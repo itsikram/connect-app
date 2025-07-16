@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 // import socket from '../../common/socket'; // Use socket.io-client for React Native
 import api from '../lib/api';
+import { colors } from '../theme/colors';
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
 
@@ -34,6 +35,16 @@ const Post: React.FC<PostProps> = ({ data }) => {
   const [comments, setComments] = useState<any[]>(post.comments || []);
 
   const navigation = useNavigation();
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  const cardBg = isDarkMode ? colors.background.dark : '#fff';
+
+  // Theme colors
+  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
+  const subTextColor = isDarkMode ? colors.gray[400] : '#888';
+  const borderColor = isDarkMode ? colors.border.dark : '#eee';
+  const inputBg = isDarkMode ? colors.gray[800] : '#fff';
+  const inputText = isDarkMode ? colors.text.light : colors.text.primary;
 
   // ... socket logic can be added here if needed
 
@@ -137,21 +148,24 @@ const Post: React.FC<PostProps> = ({ data }) => {
   // Handle posting a comment
   const handlePostComment = async () => {
     if (!commentText.trim()) return;
-    // Mock API call
-    const newComment = {
-      _id: Date.now().toString(),
-      author: { fullName: myProfile.fullName, profilePic: myProfile.profilePic },
-      text: commentText,
-      createdAt: new Date().toISOString(),
-    };
-    // In real app, send to backend and get response
-    setComments((prev) => [newComment, ...prev]);
-    setCommentText('');
+    try {
+      const res = await api.post('/comment/addComment', {
+        body: commentText,
+        post: post._id,
+        // attachment: '', // Add support for image/file attachment if needed
+      });
+      if (res.status === 200 && res.data) {
+        setComments((prev) => [res.data, ...prev]);
+        setCommentText('');
+      }
+    } catch (e) {
+      console.log(e);
+    }
   };
 
   // Render
   return (
-    <View style={styles.postContainer}>
+    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}> {/* Main card */}
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={postHeaderClick}>
@@ -161,24 +175,24 @@ const Post: React.FC<PostProps> = ({ data }) => {
           />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={styles.authorName}>{post.author.fullName}</Text>
-          <Text style={styles.time}>{moment(post.createdAt).fromNow()}</Text>
+          <Text style={[styles.authorName, { color: textColor }]}>{post.author.fullName}</Text>
+          <Text style={[styles.time, { color: subTextColor }]}>{moment(post.createdAt).fromNow()}</Text>
         </View>
         <TouchableOpacity onPress={postOptionClick}>
-          <Icon name="more-vert" size={24} />
+          <Icon name="more-vert" size={24} color={subTextColor} />
         </TouchableOpacity>
         {/* Post option modal */}
         <Modal visible={isPostOption} transparent animationType="fade">
           <TouchableOpacity style={styles.modalOverlay} onPress={() => setIsPostOption(false)}>
-            <View style={styles.optionMenu}>
+            <View style={[styles.optionMenu, { backgroundColor: cardBg }]}> {/* Modal menu */}
               <TouchableOpacity>
-                <Text>Edit Post</Text>
+                <Text style={{ color: textColor }}>Edit Post</Text>
               </TouchableOpacity>
               <TouchableOpacity>
-                <Text>Edit Audience</Text>
+                <Text style={{ color: textColor }}>Edit Audience</Text>
               </TouchableOpacity>
               <TouchableOpacity>
-                <Text>Report This Post</Text>
+                <Text style={{ color: textColor }}>Report This Post</Text>
               </TouchableOpacity>
             </View>
           </TouchableOpacity>
@@ -186,7 +200,7 @@ const Post: React.FC<PostProps> = ({ data }) => {
       </View>
       {/* Body */}
       <View style={styles.body}>
-        <Text style={styles.caption}>{post.caption}</Text>
+        <Text style={[styles.caption, { color: textColor }]}>{post.caption}</Text>
         {post.photos && (
           <Image
             source={{ uri: post.photos }}
@@ -198,61 +212,62 @@ const Post: React.FC<PostProps> = ({ data }) => {
       <View style={styles.footer}>
         <View style={styles.reactsRow}>
           <View style={styles.countsRow}>
-            <Text style={styles.countText}>{totalReacts} Reacts</Text>
-            <Text style={styles.countText}>{totalComments} Comments</Text>
-            <Text style={styles.countText}>{totalShares} Shares</Text>
+            <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
+            <Text style={[styles.countText, { color: subTextColor }]}>{totalComments} Comments</Text>
+            <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
           </View>
         </View>
         <View style={styles.actionsRow}>
           {/* Like button with long press for reactions */}
-          <View style={{ alignItems: 'center' }}>
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
             <TouchableOpacity
               onPress={handleLikePress}
               onLongPress={handleLikeLongPress}
               delayLongPress={200}
-              style={{ flexDirection: 'row', alignItems: 'center' }}
+              style={styles.actionButton}
             >
-              <Icon name="thumb-up" size={20} color={reactType === 'like' ? '#007bff' : '#888'} />
-              <Text style={[styles.actionLabel, reactType === 'like' ? styles.selectedReact : styles.reactText]}> Like</Text>
+              <Icon name="thumb-up" size={28} color={colors.primary} />
+              <Text style={[styles.actionLabel, { color: textColor }]}> Like</Text>
             </TouchableOpacity>
             {showReactions && (
-              <View style={styles.reactionPopup}>
+              <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> {/* Reaction popup */}
                 <TouchableOpacity onPress={() => handleSelectReaction('like')}>
-                  <Text style={reactType === 'like' ? styles.selectedReact : styles.reactText}>👍</Text>
+                  <Text style={[reactType === 'like' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>👍</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleSelectReaction('love')}>
-                  <Text style={reactType === 'love' ? styles.selectedReact : styles.reactText}>❤️</Text>
+                  <Text style={[reactType === 'love' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>❤️</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleSelectReaction('haha')}>
-                  <Text style={reactType === 'haha' ? styles.selectedReact : styles.reactText}>😂</Text>
+                  <Text style={[reactType === 'haha' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😂</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleSelectReaction('sad')}>
-                  <Text style={reactType === 'sad' ? styles.selectedReact : styles.reactText}>😢</Text>
+                  <Text style={[reactType === 'sad' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😢</Text>
                 </TouchableOpacity>
               </View>
             )}
           </View>
           {/* Comment button toggles comment box */}
-          <TouchableOpacity onPress={handleCommentPress} style={{ alignItems: 'center' }}>
-            <Icon name="comment" size={20} />
-            <Text>Comment</Text>
+          <TouchableOpacity onPress={handleCommentPress} style={styles.actionButton}>
+            <Icon name="comment" size={28} color={colors.primary} />
+            <Text style={[styles.actionLabel, { color: textColor }]}> Comment</Text>
           </TouchableOpacity>
           {/* Share button opens share modal */}
-          <TouchableOpacity onPress={() => setIsShareModal(true)} style={{ alignItems: 'center' }}>
-            <Icon name="share" size={20} />
-            <Text>Share</Text>
+          <TouchableOpacity onPress={() => setIsShareModal(true)} style={styles.actionButton}>
+            <Icon name="share" size={28} color={colors.primary} />
+            <Text style={[styles.actionLabel, { color: textColor }]}> Share</Text>
           </TouchableOpacity>
         </View>
         {/* Comment Box and Comments List */}
         {showCommentBox && (
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={styles.commentBoxContainer}
+            style={[styles.commentBoxContainer, { backgroundColor: cardBg, borderTopColor: borderColor }]}
           >
             <View style={styles.commentInputRow}>
               <TextInput
-                style={styles.commentInput}
+                style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder="Write a comment..."
+                placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
                 value={commentText}
                 onChangeText={setCommentText}
               />
@@ -263,39 +278,51 @@ const Post: React.FC<PostProps> = ({ data }) => {
             {/* Comments List */}
             <View style={styles.commentsList}>
               {comments.length === 0 ? (
-                <Text style={styles.noCommentsText}>No comments yet.</Text>
+                <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
               ) : (
                 comments.map((c) => (
                   <View key={c._id} style={styles.commentItem}>
                     <Image source={{ uri: c.author.profilePic || default_pp_src }} style={styles.commentProfilePic} />
-                    <View style={styles.commentBody}>
-                      <Text style={styles.commentAuthor}>{c.author.fullName}</Text>
-                      <Text style={styles.commentText}>{c.text}</Text>
-                      <Text style={styles.commentTime}>{moment(c.createdAt).fromNow()}</Text>
+                    <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> {/* Comment body */}
+                      <Text style={[styles.commentAuthor, { color: textColor }]}>
+                        {c.author.fullName ||
+                          (c.author.user
+                            ? `${c.author.user.firstName || ''} ${c.author.user.surname || ''}`
+                            : 'Unknown')}
+                      </Text>
+                      <Text style={[styles.commentText, { color: textColor }]}>{c.text || c.body || ''}</Text>
+                        {c.image || c.photo || c.attachment ? (
+                          <Image
+                            source={{ uri: c.image || c.photo || c.attachment }}
+                            style={styles.commentAttachment}
+                          />
+                        ) : null}
+                      <Text style={[styles.commentTime, { color: subTextColor }]}>{moment(c.createdAt).fromNow()}</Text>
                     </View>
                   </View>
                 ))
               )}
-            </View>
+        </View>
           </KeyboardAvoidingView>
         )}
       </View>
       {/* Share Modal */}
       <Modal visible={isShareModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={styles.shareModal}>
-            <Text>Share Post</Text>
+          <View style={[styles.shareModal, { backgroundColor: cardBg }]}> {/* Share modal */}
+            <Text style={{ color: textColor }}>Share Post</Text>
             <TextInput
-              style={styles.shareInput}
+              style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
               placeholder="What's on your mind?"
+              placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
               value={shareCap}
               onChangeText={setShareCap}
             />
             <TouchableOpacity onPress={onClickShareNow}>
-              <Text>Share Now</Text>
+              <Text style={{ color: colors.primary }}>Share Now</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setIsShareModal(false)}>
-              <Text>Cancel</Text>
+              <Text style={{ color: subTextColor }}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -364,9 +391,10 @@ const styles = StyleSheet.create({
   },
   actionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-evenly',
+    justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
+    gap: 5
   },
   modalOverlay: {
     flex: 1,
@@ -438,7 +466,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   commentPostBtn: {
-    backgroundColor: '#007bff',
+    backgroundColor: colors.primary,
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -496,6 +524,24 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#333',
     fontWeight: '500',
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  reactionIcon: {
+    fontSize: 32,
+    marginHorizontal: 4,
+  },
+  commentAttachment: {
+    width: 120,
+    height: 120,
+    borderRadius: 8,
+    marginTop: 6,
+    backgroundColor: '#eee',
   },
 });
 

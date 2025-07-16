@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, useColorScheme } from 'react-native';
+import { colors } from '../theme/colors';
 
 const SUGGESTED_FRIENDS = [
   {
@@ -65,40 +66,51 @@ const SUGGESTED_FRIENDS = [
 ];
 
 const Friends = () => {
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
+  const cardBg = isDarkMode ? colors.background.dark : '#fff';
+  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
+  const subTextColor = isDarkMode ? colors.gray[400] : '#888';
+  const buttonBg = colors.primary;
+  const buttonText = '#fff';
+  const removeBtnBg = isDarkMode ? colors.gray[800] : '#eee';
+  const removeBtnText = isDarkMode ? colors.text.light : '#333';
+
   return (
-    <ScrollView style={styles.friendsContent}>
+    <ScrollView style={[styles.friendsContent, { backgroundColor }]}> {/* Main container */}
       {/* Friend Requests Section */}
-      <View style={styles.sectionContainer}>
+      <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}> {/* Card */}
         <View style={styles.headingRow}>
-          <Text style={styles.headingTitle}>Friend Requests</Text>
+          <Text style={[styles.headingTitle, { color: textColor }]}>Friend Requests</Text>
           <TouchableOpacity>
-            <Text style={styles.viewMoreBtn}>See All</Text>
+            <Text style={[styles.viewMoreBtn, { color: colors.primary }]}>See All</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.friendGridContainer}>
-          <Text style={styles.dataNotFound}>You don't have any Friend Request to show</Text>
+          <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Request to show</Text>
         </View>
       </View>
 
       {/* People You May Know Section */}
-      <View style={[styles.sectionContainer, { marginBottom: 32 }]}> 
+      <View style={[styles.sectionContainer, { marginBottom: 32, backgroundColor: cardBg }]}> 
         <View style={styles.headingRow}>
-          <Text style={styles.headingTitle}>People You May Know</Text>
+          <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
         </View>
         <View style={styles.friendGridContainer}>
           {SUGGESTED_FRIENDS.map(friend => (
-            <View key={friend.id} style={styles.friendGridItem}>
+            <View key={friend.id} style={[styles.friendGridItem, { backgroundColor: cardBg }]}> {/* Card */}
               <View style={styles.profilePictureWrapper}>
                 <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
-                <Text style={styles.profileName}>{friend.name}</Text>
+                <Text style={[styles.profileName, { color: textColor }]}>{friend.name}</Text>
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity style={styles.addFriendBtn}>
-                    <Text style={styles.addFriendBtnText}>Add Friend</Text>
+                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]}> {/* Add Friend */}
+                    <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Add Friend</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.removeFriendBtn}>
-                    <Text style={styles.removeFriendBtnText}>Remove</Text>
+                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]}> {/* Remove */}
+                    <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Remove</Text>
                   </TouchableOpacity>
                 </View>
               </View>
@@ -193,15 +205,20 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   buttonRow: {
-    flexDirection: 'row',
+    flexDirection: 'column',
     marginTop: 4,
+    width: '100%',
+    gap: 0,
+    justifyContent: 'center',
   },
   addFriendBtn: {
-    backgroundColor: '#007bff',
+    backgroundColor: colors.primary,
     borderRadius: 6,
-    paddingVertical: 6,
+    paddingVertical: 10,
     paddingHorizontal: 12,
-    marginRight: 8,
+    marginBottom: 8,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   addFriendBtnText: {
     color: '#fff',
@@ -211,8 +228,10 @@ const styles = StyleSheet.create({
   removeFriendBtn: {
     backgroundColor: '#eee',
     borderRadius: 6,
-    paddingVertical: 6,
+    paddingVertical: 10,
     paddingHorizontal: 12,
+    width: '100%',
+    alignSelf: 'stretch',
   },
   removeFriendBtnText: {
     color: '#333',

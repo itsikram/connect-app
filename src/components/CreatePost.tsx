@@ -1,5 +1,5 @@
 import React, { useState, useContext, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, useColorScheme } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { colors } from '../theme/colors';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -19,6 +19,9 @@ type PostData = {
 
 const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const { user } = useContext(AuthContext);
+  const colorScheme = useColorScheme();
+  const isDarkMode = colorScheme === 'dark';
+  const cardBg = isDarkMode ? colors.background.dark : '#fff';
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [postData, setPostData] = useState<PostData>({
@@ -85,7 +88,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       postFormData.append('urls', uploadedUrl || '');
       postFormData.append('feelings', postData.feelings);
       postFormData.append('location', postData.location);
-      const res = await api.post('/post/create/', postFormData, {
+      const res = await api.post('/post/create', postFormData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (res.status === 200) {
@@ -100,27 +103,34 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   }, [postData, onPostCreated]);
 
   const profileName = user ? `${user.firstName || ''} ${user.surname || ''}` : '';
-  const textInputPlaceholder = `What's On Your Mind ${profileName}?`;
+  const textInputPlaceholder = `What's On Your Mind ${user.firstName}?`;
+
+  // Theme colors
+  const modalBg = isDarkMode ? colors.background.dark : colors.background.light;
+  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
+  const inputBg = isDarkMode ? colors.gray[800] : colors.gray[100];
+  const inputText = isDarkMode ? colors.text.light : colors.text.primary;
+  const borderColor = isDarkMode ? colors.border.dark : colors.gray[300];
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: cardBg }]}> {/* Main container */}
       <View style={styles.topRow}>
         <View style={styles.profilePicWrapper}>
           {/* Replace with actual profile pic if available */}
           <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/image/logo.png')} style={styles.profilePic} />
         </View>
-        <TouchableOpacity style={styles.inputWrapper} onPress={openModal}>
-          <Text style={styles.inputPlaceholder}>{textInputPlaceholder}</Text>
+        <TouchableOpacity style={[styles.inputWrapper, { backgroundColor: inputBg }]} onPress={openModal}>
+          <Text style={[styles.inputPlaceholder, { color: textColor }]}>{textInputPlaceholder}</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.bottomRow}>
-        <TouchableOpacity style={styles.button} onPress={() => { openModal(); pickMedia('image'); }}>
+        <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('image'); }}>
           <Icon name="photo-camera" size={22} color={colors.primary} />
-          <Text style={styles.buttonText}>Photo/Video</Text>
+          <Text style={[styles.buttonText, { color: colors.primary }]}>Photo/Video</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={() => { openModal(); pickMedia('video'); }}>
+        <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
           <Icon name="videocam" size={22} color={colors.primary} />
-          <Text style={styles.buttonText}>Live Video</Text>
+          <Text style={[styles.buttonText, { color: colors.primary }]}>Live Video</Text>
         </TouchableOpacity>
       </View>
       <Modal
@@ -130,43 +140,46 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
         onRequestClose={closeModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
+          <View style={[styles.modalContent, { backgroundColor: modalBg }]}> {/* Modal content */}
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create a Post</Text>
+              <Text style={[styles.modalTitle, { color: textColor }]}>Create a Post</Text>
               <TouchableOpacity onPress={closeModal}>
-                <Icon name="close" size={24} color={colors.gray[700]} />
+                <Icon name="close" size={24} color={isDarkMode ? colors.text.light : colors.gray[700]} />
               </TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
               <View style={styles.cpmHeader}>
                 <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/image/logo.png')} style={styles.profilePic} />
-                <Text style={styles.profileName}>{profileName}</Text>
+                <Text style={[styles.profileName, { color: textColor }]}>{profileName}</Text>
               </View>
               <View style={styles.feelingsLocationRow}>
                 <View style={styles.feelingsContainer}>
-                  <Text style={styles.label}>Feelings:</Text>
-                  <View style={styles.pickerWrapper}>
+                  <Text style={[styles.label, { color: textColor }]}>Feelings:</Text>
+                  <View style={[styles.pickerWrapper, { borderColor }]}> {/* Picker wrapper */}
                     <TextInput
-                      style={styles.input}
+                      style={[styles.input, { backgroundColor: inputBg, color: inputText, borderColor }]}
                       placeholder="Feelings"
+                      placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
                       value={postData.feelings}
                       onChangeText={handleFeelingsChange}
                     />
                   </View>
                 </View>
                 <View style={styles.locationContainer}>
-                  <Text style={styles.label}>Location:</Text>
+                  <Text style={[styles.label, { color: textColor }]}>Location:</Text>
                   <TextInput
-                    style={styles.input}
+                    style={[styles.input, { backgroundColor: inputBg, color: inputText, borderColor }]}
                     placeholder="Location..."
+                    placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
                     value={postData.location}
                     onChangeText={handleLocationChange}
                   />
                 </View>
               </View>
               <TextInput
-                style={styles.captionInput}
+                style={[styles.captionInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder={textInputPlaceholder}
+                placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
                 value={postData.caption}
                 onChangeText={handleCaptionChange}
                 multiline
@@ -179,13 +192,13 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 // For video preview, use react-native-video if available
               )}
               <View style={styles.attachmentRow}>
-                <TouchableOpacity style={styles.attachmentButton} onPress={() => pickMedia('image')}>
+                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
                   <Icon name="photo-camera" size={22} color={colors.primary} />
-                  <Text style={styles.attachmentButtonText}>Add Photo</Text>
+                  <Text style={[styles.attachmentButtonText, { color: colors.primary }]}>Add Photo</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.attachmentButton} onPress={() => pickMedia('video')}>
+                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
                   <Icon name="videocam" size={22} color={colors.primary} />
-                  <Text style={styles.attachmentButtonText}>Add Video</Text>
+                  <Text style={[styles.attachmentButtonText, { color: colors.primary }]}>Add Video</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
