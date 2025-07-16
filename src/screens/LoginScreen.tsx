@@ -50,7 +50,7 @@ const LoginScreen = () => {
           type: 'success',
           text1: 'Login successful!'
         });
-        navigation.navigate('Home');
+        // navigation.navigate('Home'); // Removed, handled by tab navigator
       } else {
         Toast.show({
           type: 'error',
