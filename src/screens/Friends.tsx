@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   friendGridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'flex-start',
+    justifyContent: 'center',
   },
   dataNotFound: {
     width: '100%',
@@ -169,7 +169,6 @@ const styles = StyleSheet.create({
   },
   friendGridItem: {
     width: '48%',
-    backgroundColor: '#f9f9f9',
     borderRadius: 10,
     margin: '1%',
     padding: 10,
@@ -195,10 +194,14 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   gridBody: {
-    alignItems: 'center',
+    alignItems: 'stretch',
+    justifyContent: 'center',
+    width: '100%',
+    borderRadius: 6,
+    padding: 8,
   },
   profileName: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
     color: '#222',
     marginBottom: 8,
@@ -208,15 +211,16 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     marginTop: 4,
     width: '100%',
-    gap: 0,
+    gap: 4,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   addFriendBtn: {
     backgroundColor: colors.primary,
     borderRadius: 6,
     paddingVertical: 10,
     paddingHorizontal: 12,
-    marginBottom: 8,
+    marginBottom: 3,
     width: '100%',
     alignSelf: 'stretch',
   },
@@ -224,6 +228,7 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
+    textAlign: 'center',
   },
   removeFriendBtn: {
     backgroundColor: '#eee',
@@ -237,6 +242,7 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: 'bold',
     fontSize: 14,
+    textAlign: 'center',
   },
 });
 

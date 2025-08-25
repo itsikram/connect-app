@@ -87,7 +87,7 @@ const LoginScreen = () => {
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <Button mode="contained" onPress={handleLogin} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
-        Login
+        <Text style={{ color: '#fff' }}>Login</Text>
       </Button>
       <Button mode="text" onPress={() => navigation.navigate('Register')} style={styles.link} labelStyle={{ color: theme.colors.text.light }}>
         <Text style={{ color: theme.colors.text.light }}>Don't have an account? </Text>

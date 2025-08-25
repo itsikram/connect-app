@@ -291,12 +291,12 @@ const Post: React.FC<PostProps> = ({ data }) => {
                             : 'Unknown')}
                       </Text>
                       <Text style={[styles.commentText, { color: textColor }]}>{c.text || c.body || ''}</Text>
-                        {c.image || c.photo || c.attachment ? (
-                          <Image
-                            source={{ uri: c.image || c.photo || c.attachment }}
-                            style={styles.commentAttachment}
-                          />
-                        ) : null}
+                      {c.image || c.photo || c.attachment ? (
+                        <Image
+                          source={{ uri: c.image || c.photo || c.attachment }}
+                          style={styles.commentAttachment}
+                        />
+                      ) : null}
                       <Text style={[styles.commentTime, { color: subTextColor }]}>{moment(c.createdAt).fromNow()}</Text>
                     </View>
                   </View>

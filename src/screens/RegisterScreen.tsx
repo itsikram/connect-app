@@ -167,7 +167,9 @@ const RegisterScreen = () => {
             error={!!error && error.toLowerCase().includes('surname')}
             theme={{ colors: { primary: theme.colors.primary } }}
           />
-          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>Next</Button>
+          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
+            <Text style={{ color: '#fff' }}>Next</Text>
+          </Button>
         </View>
       )}
       {tab === 1 && (
@@ -184,7 +186,9 @@ const RegisterScreen = () => {
             theme={{ colors: { primary: theme.colors.primary } }}
           />
           <Button mode="outlined" color={theme.colors.primary} onPress={() => setShowDatePicker(true)} style={[styles.input, { backgroundColor: bottomBarBg, borderColor: theme.colors.primary, borderWidth: 1 }]} labelStyle={{ color: theme.colors.primary }}>
-            {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
+            <Text style={{ color: theme.colors.primary }}>
+              {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
+            </Text>
           </Button>
           {showDatePicker && (
             <DateTimePicker
@@ -211,8 +215,12 @@ const RegisterScreen = () => {
               </View>
             </RadioButton.Group>
           </View>
-          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>Next</Button>
-          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: theme.colors.primary }}>Back</Button>
+          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
+            <Text style={{ color: '#fff' }}>Next</Text>
+          </Button>
+          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: theme.colors.primary }}>
+            <Text style={{ color: theme.colors.primary }}>Back</Text>
+          </Button>
         </View>
       )}
       {tab === 2 && (
@@ -239,8 +247,12 @@ const RegisterScreen = () => {
             theme={{ colors: { primary: theme.colors.primary } }}
             right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword(v => !v)} />}
           />
-          <Button mode="contained" onPress={handleRegister} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>Register</Button>
-          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: theme.colors.primary }}>Back</Button>
+          <Button mode="contained" onPress={handleRegister} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
+            <Text style={{ color: '#fff' }}>Register</Text>
+          </Button>
+          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: theme.colors.primary }}>
+            <Text style={{ color: theme.colors.primary }}>Back</Text>
+          </Button>
         </View>
       )}
       <Button mode="text" onPress={() => navigation.navigate('Login')} style={styles.link} labelStyle={{ color: theme.colors.text.light }}>

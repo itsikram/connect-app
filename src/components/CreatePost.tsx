@@ -123,16 +123,16 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           <Text style={[styles.inputPlaceholder, { color: textColor }]}>{textInputPlaceholder}</Text>
         </TouchableOpacity>
       </View>
-      <View style={styles.bottomRow}>
-        <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('image'); }}>
-          <Icon name="photo-camera" size={22} color={colors.primary} />
-          <Text style={[styles.buttonText, { color: colors.primary }]}>Photo/Video</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
-          <Icon name="videocam" size={22} color={colors.primary} />
-          <Text style={[styles.buttonText, { color: colors.primary }]}>Live Video</Text>
-        </TouchableOpacity>
-      </View>
+        <View style={styles.bottomRow}>
+          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('image'); }}>
+            <Icon name="photo-camera" size={22} color={colors.primary} />
+            <Text style={styles.buttonText}>Photo/Video</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
+            <Icon name="videocam" size={22} color={colors.primary} />
+            <Text style={styles.buttonText}>Live Video</Text>
+          </TouchableOpacity>
+        </View>
       <Modal
         visible={isModalVisible}
         animationType="slide"
@@ -189,16 +189,15 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
               )}
               {postData.urls && postData.type === 'video' && (
                 <Text style={{ color: colors.primary, marginVertical: 8 }}>Video selected</Text>
-                // For video preview, use react-native-video if available
               )}
               <View style={styles.attachmentRow}>
-                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
+                <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
                   <Icon name="photo-camera" size={22} color={colors.primary} />
-                  <Text style={[styles.attachmentButtonText, { color: colors.primary }]}>Add Photo</Text>
+                  <Text style={styles.buttonText}>Add Photo</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
+                <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
                   <Icon name="videocam" size={22} color={colors.primary} />
-                  <Text style={[styles.attachmentButtonText, { color: colors.primary }]}>Add Video</Text>
+                  <Text style={styles.buttonText}>Add Video</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -235,7 +234,7 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 3,
   },
   profilePicWrapper: {
     marginRight: 10,
@@ -256,7 +255,7 @@ const styles = StyleSheet.create({
   },
   inputPlaceholder: {
     color: colors.gray[500],
-    fontSize: 16,
+    fontSize: 14,
   },
   bottomRow: {
     flexDirection: 'row',

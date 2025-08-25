@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ActivityIndicator, FlatList, useColorScheme } from 'react-native';
+import { View, Text, ActivityIndicator, FlatList, useColorScheme, Alert } from 'react-native';
 import CreatePost from '../components/CreatePost';
 import api from '../lib/api';
 import Post from '../components/Post';
 import { colors } from '../theme/colors';
+import { useSocket } from '../contexts/SocketContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 const Home = () => {
     const [posts, setPosts] = useState<any[]>([]);
@@ -13,6 +16,9 @@ const Home = () => {
     const [hasMore, setHasMore] = useState(true);
     const colorScheme = useColorScheme();
     const isDarkMode = colorScheme === 'dark';
+    
+    const { connect, isConnected } = useSocket();
+    const myProfile = useSelector((state: RootState) => state.profile);
 
     const fetchPosts = useCallback(async (pageNum = 1, append = false) => {
         if (append) setLoadingMore(true);
@@ -35,6 +41,20 @@ const Home = () => {
     useEffect(() => {
         fetchPosts(1, false);
     }, [fetchPosts]);
+
+    // Connect to socket when component mounts
+    useEffect(() => {
+        if (myProfile?._id && !isConnected) {
+            connect(myProfile._id)
+                .then(() => {
+                    console.log('Socket connected successfully in Home component');
+                })
+                .catch((error) => {
+                    console.error('Failed to connect socket in Home component:', error);
+                    Alert.alert('Connection Error', 'Failed to connect to real-time service');
+                });
+        }
+    }, [myProfile?._id, isConnected, connect]);
 
     const handleLoadMore = () => {
         if (!loadingMore && hasMore) {

@@ -2,14 +2,25 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from './config';
 
+// const token = AsyncStorage.getItem('authToken').then(token => {
+//   console.log('token', token);
+//   return token;
+// });
+const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzU2MTQ3OTEzLCJleHAiOjE3NTg3Mzk5MTN9.7IsgytoCFMiOs2gVD-0_yWD4SEZHYlGkOI-BumvLe7Y";
+
 // Create axios instance with default configuration
 const api = axios.create({
   baseURL: config.API_BASE_URL,
   timeout: config.API_TIMEOUT,
   headers: {
-    'Content-Type': 'application/json',
-  },
+    'Authorization' : `${token}`,
+    "User-Agent": "MyCustomUserAgent",
+    "Access-Control-Allow-Origin": "*",
+  }
 });
+
+console.log('API Base URL:', config.API_BASE_URL);
+console.log('API Timeout:', config.API_TIMEOUT);
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
@@ -54,6 +65,16 @@ api.interceptors.response.use(
     // Handle network errors
     if (!error.response) {
       console.error('Network error:', error.message);
+      console.error('Network error details:', {
+        code: error.code,
+        message: error.message,
+        config: {
+          url: error.config?.url,
+          method: error.config?.method,
+          baseURL: error.config?.baseURL,
+          timeout: error.config?.timeout
+        }
+      });
       // You can show a network error message to the user
     }
 
@@ -73,9 +94,9 @@ export const authAPI = {
 };
 
 export const userAPI = {
-  getProfile: () => api.get('/user/profile'),
+  getProfile: (profileId) => api.get(`/profile?profileId=${profileId}`),
 
-  updateProfile: userData => api.post('/user/profile', userData),
+  updateProfile: userData => api.post('/profile', userData),
 
   changePassword: passwordData =>
     api.post('/user/change-password', passwordData),
