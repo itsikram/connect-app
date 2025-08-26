@@ -3,12 +3,18 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, Keyb
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 // import socket from '../../common/socket'; // Use socket.io-client for React Native
 import api from '../lib/api';
 import { colors } from '../theme/colors';
+import UserPP from './UserPP';
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
+
+type RootStackParamList = {
+  PostDetail: { postId: string };
+};
 
 const default_pp_src = 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
 
@@ -19,10 +25,10 @@ interface PostProps {
 const Post: React.FC<PostProps> = ({ data }) => {
   const post = data || {};
   const myProfile = useSelector((state: any) => state.profile);
-  const myProfileId = myProfile._id;
-  const [totalReacts, setTotalReacts] = useState<number>(post.reacts.length);
-  const [totalShares, setTotalShares] = useState<number>(post.shares.length);
-  const [totalComments] = useState<number>(post.comments.length);
+  const myProfileId = myProfile?._id;
+  const [totalReacts, setTotalReacts] = useState<number>(post.reacts?.length || 0);
+  const [totalShares, setTotalShares] = useState<number>(post.shares?.length || 0);
+  const [totalComments] = useState<number>(post.comments?.length || 0);
   const [reactType, setReactType] = useState<string | false>(false);
   const [isReacted, setIsReacted] = useState<boolean>(false);
   const [shareCap, setShareCap] = useState<string>('');
@@ -33,8 +39,9 @@ const Post: React.FC<PostProps> = ({ data }) => {
   const [showCommentBox, setShowCommentBox] = useState<boolean>(false);
   const [commentText, setCommentText] = useState<string>('');
   const [comments, setComments] = useState<any[]>(post.comments || []);
+  const [type, setType] = useState<string>(post.type || 'post');
 
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const cardBg = isDarkMode ? colors.background.dark : '#fff';
@@ -46,22 +53,45 @@ const Post: React.FC<PostProps> = ({ data }) => {
   const inputBg = isDarkMode ? colors.gray[800] : '#fff';
   const inputText = isDarkMode ? colors.text.light : colors.text.primary;
 
+  const reactionEmojiMap: Record<string, string> = {
+    like: '👍',
+    love: '❤️',
+    haha: '😂',
+    sad: '😢',
+  };
+
+  const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+  // Safety check for required post data
+  if (!post._id || !post.author) {
+    console.warn('Post component received invalid data:', post);
+    return (
+      <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}>
+        <Text style={[styles.caption, { color: textColor }]}>
+          Invalid post data
+        </Text>
+      </View>
+    );
+  }
+
   // ... socket logic can be added here if needed
 
   useEffect(() => {
     // Set placed reacts and isReacted
     let storedReacts: string[] = [];
-    post.reacts.forEach((react: any) => {
-      if (react.profile) {
-        if (!storedReacts.includes(react.type)) {
-          storedReacts.push(react.type);
+    if (post.reacts && Array.isArray(post.reacts)) {
+      post.reacts.forEach((react: any) => {
+        if (react.profile) {
+          if (!storedReacts.includes(react.type)) {
+            storedReacts.push(react.type);
+          }
+          if (react.profile === myProfileId) {
+            setReactType(react.type);
+            setIsReacted(true);
+          }
         }
-        if (react.profile === myProfileId) {
-          setReactType(react.type);
-          setIsReacted(true);
-        }
-      }
-    });
+      });
+    }
     setPlacedReacts(storedReacts);
   }, [post.reacts, myProfileId]);
 
@@ -169,14 +199,15 @@ const Post: React.FC<PostProps> = ({ data }) => {
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={postHeaderClick}>
-          <Image
-            source={{ uri: post.author.profilePic || default_pp_src }}
-            style={styles.profilePic}
-          />
+          <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={40} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={[styles.authorName, { color: textColor }]}>{post.author.fullName}</Text>
-          <Text style={[styles.time, { color: subTextColor }]}>{moment(post.createdAt).fromNow()}</Text>
+          <Text style={[styles.authorName, { color: textColor }]}>
+            {post.author?.fullName || 'Unknown User'}
+          </Text>
+          <Text style={[styles.time, { color: subTextColor }]}>
+            {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
+          </Text>
         </View>
         <TouchableOpacity onPress={postOptionClick}>
           <Icon name="more-vert" size={24} color={subTextColor} />
@@ -200,19 +231,41 @@ const Post: React.FC<PostProps> = ({ data }) => {
       </View>
       {/* Body */}
       <View style={styles.body}>
-        <Text style={[styles.caption, { color: textColor }]}>{post.caption}</Text>
-        {post.photos && (
-          <Image
-            source={{ uri: post.photos }}
-            style={styles.postImage}
-          />
-        )}
+        <Text style={[styles.caption, { color: textColor }]}>{post.caption || 'No caption'}</Text>
+
+        <View style={styles.attachmentContainer}>
+
+          {post.photos && post.type === 'post' && (
+            <Image
+              source={{ uri: post.photos }}
+              style={styles.postImage}
+              onError={() => console.log('Failed to load post image')}
+            />
+          )}
+          {post.photos && post.type === 'profilePic' && (
+            <Image
+              source={{ uri: post.photos }}
+              style={styles.postProfilePic}
+              onError={() => console.log('Failed to load profile picture')}
+            />
+          )}
+        </View>
+
       </View>
       {/* Footer */}
       <View style={styles.footer}>
         <View style={styles.reactsRow}>
           <View style={styles.countsRow}>
-            <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
+            <View style={styles.reactsCountLeft}>
+              <View style={styles.reactionIconsStack}>
+                {placedReacts.slice(0, 3).map((t, idx) => (
+                  <Text key={t} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -6 } : null]}>
+                    {reactionEmojiMap[t] || '👍'}
+                  </Text>
+                ))}
+              </View>
+              <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts}</Text>
+            </View>
             <Text style={[styles.countText, { color: subTextColor }]}>{totalComments} Comments</Text>
             <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
           </View>
@@ -226,8 +279,17 @@ const Post: React.FC<PostProps> = ({ data }) => {
               delayLongPress={200}
               style={styles.actionButton}
             >
-              <Icon name="thumb-up" size={28} color={colors.primary} />
-              <Text style={[styles.actionLabel, { color: textColor }]}> Like</Text>
+              {reactType ? (
+                <>
+                  <Text style={styles.likeEmoji}>{reactionEmojiMap[reactType] || '👍'}</Text>
+                  <Text style={[styles.actionLabel, { color: textColor }]}> {capitalize(reactType)}</Text>
+                </>
+              ) : (
+                <>
+                  <Icon name="thumb-up" size={28} color={colors.primary} />
+                  <Text style={[styles.actionLabel, { color: textColor }]}> Like</Text>
+                </>
+              )}
             </TouchableOpacity>
             {showReactions && (
               <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> {/* Reaction popup */}
@@ -281,28 +343,44 @@ const Post: React.FC<PostProps> = ({ data }) => {
                 <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
               ) : (
                 comments.map((c) => (
-                  <View key={c._id} style={styles.commentItem}>
-                    <Image source={{ uri: c.author.profilePic || default_pp_src }} style={styles.commentProfilePic} />
+                  <View key={c._id || Math.random()} style={styles.commentItem}>
+                    <Image
+                      source={{ uri: c.author?.profilePic || default_pp_src }}
+                      style={styles.commentProfilePic}
+                      onError={() => console.log('Failed to load comment profile picture')}
+                    />
                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> {/* Comment body */}
                       <Text style={[styles.commentAuthor, { color: textColor }]}>
-                        {c.author.fullName ||
-                          (c.author.user
-                            ? `${c.author.user.firstName || ''} ${c.author.user.surname || ''}`
-                            : 'Unknown')}
+                        {c.author?.fullName ||
+                          (c.author?.user
+                            ? (
+                              <Text>
+                                {c.author.user.firstName || ''} {c.author.user.surname || ''}
+                              </Text>
+                            )
+                            : (
+                              <Text>Unknown</Text>
+                            )
+                          )}
                       </Text>
-                      <Text style={[styles.commentText, { color: textColor }]}>{c.text || c.body || ''}</Text>
+                      <Text style={[styles.commentText, { color: textColor }]}>
+                        {c.text || c.body || 'No comment text'}
+                      </Text>
                       {c.image || c.photo || c.attachment ? (
                         <Image
                           source={{ uri: c.image || c.photo || c.attachment }}
                           style={styles.commentAttachment}
+                          onError={() => console.log('Failed to load comment attachment')}
                         />
                       ) : null}
-                      <Text style={[styles.commentTime, { color: subTextColor }]}>{moment(c.createdAt).fromNow()}</Text>
+                      <Text style={[styles.commentTime, { color: subTextColor }]}>
+                        {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
+                      </Text>
                     </View>
                   </View>
                 ))
               )}
-        </View>
+            </View>
           </KeyboardAvoidingView>
         )}
       </View>
@@ -353,6 +431,7 @@ const styles = StyleSheet.create({
   },
   headerInfo: {
     flex: 1,
+    marginLeft: 10,
   },
   authorName: {
     fontWeight: 'bold',
@@ -367,11 +446,28 @@ const styles = StyleSheet.create({
   caption: {
     marginBottom: 10,
   },
+  attachmentContainer: {
+    marginTop: 10,
+    display: 'flex',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 10,
+  },
   postImage: {
     width: '100%',
-    height: 200,
+    aspectRatio: 1,
     borderRadius: 10,
     backgroundColor: '#eee',
+    resizeMode: 'contain',
+    alignSelf: 'center',
+  },
+  postProfilePic: {
+    width: 250,
+    height: 250,
+    borderRadius: 175,
+    borderWidth: 2,
+    borderColor: '#eee',
+    marginVertical: 10,
   },
   footer: {
     marginTop: 10,
@@ -438,10 +534,22 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'space-evenly',
   },
+  reactsCountLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
   countText: {
     marginHorizontal: 6,
     color: '#555',
     fontSize: 13,
+  },
+  reactionIconsStack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  reactionSmallIcon: {
+    fontSize: 16,
   },
   commentBoxContainer: {
     backgroundColor: '#f7f7f7',
@@ -535,6 +643,10 @@ const styles = StyleSheet.create({
   reactionIcon: {
     fontSize: 32,
     marginHorizontal: 4,
+  },
+  likeEmoji: {
+    fontSize: 22,
+    marginRight: 4,
   },
   commentAttachment: {
     width: 120,

@@ -22,7 +22,7 @@ export const useProfileData = (userId: string | null) => {
       }
 
       // Fetch fresh profile data from API
-      const response = await userAPI.getProfile();
+      const response = await userAPI.getProfile(userId);
       if (response.data) {
         // Update Redux store with fresh data
         dispatch(setProfile(response.data));

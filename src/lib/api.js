@@ -2,18 +2,26 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from './config';
 
-// const token = AsyncStorage.getItem('authToken').then(token => {
-//   console.log('token', token);
-//   return token;
-// });
-const token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VyX2lkIjoiNjdiZjFlNDAwOTM5NWFkZDAzZTFlMjMyIiwiaWF0IjoxNzU2MTQ3OTEzLCJleHAiOjE3NTg3Mzk5MTN9.7IsgytoCFMiOs2gVD-0_yWD4SEZHYlGkOI-BumvLe7Y";
+// Helper function to check if token exists and has valid format
+const isValidToken = (token) => {
+  if (!token) return false;
+
+  // Check if token has the expected JWT format (3 parts separated by dots)
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    console.log('❌ Invalid token format - not a JWT token');
+    return false;
+  }
+
+  console.log('✅ Token format looks valid');
+  return true;
+};
 
 // Create axios instance with default configuration
 const api = axios.create({
   baseURL: config.API_BASE_URL,
   timeout: config.API_TIMEOUT,
   headers: {
-    'Authorization' : `${token}`,
     "User-Agent": "MyCustomUserAgent",
     "Access-Control-Allow-Origin": "*",
   }
@@ -27,11 +35,16 @@ api.interceptors.request.use(
   async config => {
     try {
       const token = await AsyncStorage.getItem('authToken');
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
+
+      if (token && isValidToken(token)) {
+        config.headers.Authorization = token;
+      } else {
+        if (token && !isValidToken(token)) {
+          await AsyncStorage.multiRemove(['authToken', 'user']);
+        }
       }
     } catch (error) {
-      console.error('Error getting auth token:', error);
+      console.error('❌ Error getting auth token:', error);
     }
     return config;
   },
@@ -57,6 +70,18 @@ api.interceptors.response.use(
         await AsyncStorage.multiRemove(['authToken', 'user']);
         // You can redirect to login screen here if needed
         console.log('Session expired, please login again');
+      } catch (storageError) {
+        console.error('Error clearing auth data:', storageError);
+      }
+    }
+
+    // Handle JWT verification errors (500 status with JWT error)
+    if (error.response?.status === 500 && error.response?.data?.message?.includes('JsonWebTokenError')) {
+      console.log('🚨 JWT verification failed - token may be expired or invalid');
+      try {
+        // Clear stored auth data
+        await AsyncStorage.multiRemove(['authToken', 'user']);
+        console.log('🗑️ Cleared invalid token from storage');
       } catch (storageError) {
         console.error('Error clearing auth data:', storageError);
       }
@@ -100,6 +125,41 @@ export const userAPI = {
 
   changePassword: passwordData =>
     api.post('/user/change-password', passwordData),
+};
+
+export const chatAPI = {
+  getChatList: (profileId) => api.get(`/message/chatList?profileId=${profileId}`),
+};
+
+
+export const friendAPI = {
+  getFriendList: (profileId) => api.get(`/friend/getFriends?profileId=${profileId}`),
+  getFriendRequest: (profileId) => api.get(`/friend/getRequest?profileId=${profileId}`),
+  getFriendSuggestions: (profileId) => api.get(`/friend/getSuggetions?profileId=${profileId}`),
+  sendFriendRequest: (profileId) => api.post(`/friend/sendRequest?profileId=${profileId}`),
+  acceptFriendRequest: (profileId) => api.post(`/friend/reqAccept`, { profile: profileId }),
+  deleteFriendRequest: (profileId) => api.post(`/friend/reqDelete`,{ profile: profileId }),
+  removeFriend: (profileId) => api.post(`/friend/removeFriend?profileId=${profileId}`),
+};
+
+// Debug function to check stored tokens
+export const debugAuth = async () => {
+  try {
+    const [userData, token] = await AsyncStorage.multiGet(['user', 'authToken']);
+    console.log('🔍 Debug Auth Storage:');
+    console.log('👤 User data:', userData[1] ? 'Found' : 'Not found');
+    console.log('🔑 Token:', token[1] ? `${token[1].substring(0, 50)}...` : 'Not found');
+
+    if (token[1]) {
+      console.log('🔍 Token validation:', isValidToken(token[1]));
+      console.log('📏 Token length:', token[1].length);
+    }
+
+    return { user: userData[1], token: token[1] };
+  } catch (error) {
+    console.error('❌ Error debugging auth:', error);
+    return { user: null, token: null };
+  }
 };
 
 // Generic API methods

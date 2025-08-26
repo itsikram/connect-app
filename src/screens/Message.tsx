@@ -1,25 +1,67 @@
 import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, ScrollView, Image, TextInput, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, ScrollView, TextInput, TouchableOpacity } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
-import { userAPI } from '../lib/api';
+import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
-import { RootState } from '../store';
+import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
 import { useNavigation } from '@react-navigation/native';
+// import { useSocket } from '../contexts/SocketContext';
+import { fetchChatList } from '../reducers/chatReducer';
+import moment from 'moment';
+import { useHeaderVisibility } from '../contexts/HeaderVisibilityContext';
+
+
+const formatTime = (date: Date) => {
+  const now = new Date();
+  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
+
+  if (diffInHours < 1) {
+    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60));
+    return `${diffInMinutes}m ago`;
+  } else if (diffInHours < 24) {
+    return `${Math.floor(diffInHours)}h ago`;
+  } else {
+    return date.toLocaleDateString();
+  }
+};
+
 
 const Message = () => {
-  const dispatch = useDispatch();
+  const dispatch = useDispatch<AppDispatch>();
   // Use proper typing for Redux state
   const profileData = useSelector((state: RootState) => state.profile);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [friends, setFriends] = React.useState([]);
+  const [friends, setFriends] = React.useState<any[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const { chats: chatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
+    chats: any[];
+    loading: boolean;
+    error: string | null;
+  });
+
+  // const { emit, on, off, isConnected } = useSocket();
+  const { spacerHeight } = useHeaderVisibility();
 
 
   useEffect(() => {
-    if (profileData?.friends.length == 0) return;
-    let friends = profileData?.friends;
-    setFriends(friends);
+    if (chatList) {
+      console.log('Chat list:', chatList);
+    }
+  }, [chatList]);
+
+
+  useEffect(() => {
+    if (profileData?._id) {
+      // Debug auth storage first
+      debugAuth().then(({ user, token }) => {
+        console.log('🔍 Auth debug result:', { hasUser: !!user, hasToken: !!token });
+      });
+
+      dispatch(fetchChatList(profileData?._id));
+
+
+    }
   }, [profileData]);
 
   const navigation = useNavigation();
@@ -61,9 +103,39 @@ const Message = () => {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
+      {/* Header spacer */}
+      <View />
+      
       <Text style={styles.heading}>Messages</Text>
+      
+      {/* Friends Section */}
+      {profileData?.friends && profileData.friends.length > 0 && (
+        <View style={styles.sectionContainer}>
+          <Text style={styles.sectionTitle}>Friends</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.friendsScrollView}>
+            {profileData.friends.map((friend: any) => (
+              <TouchableOpacity
+                key={friend._id}
+                style={styles.friendItem}
+                onPress={() => {
+                  (navigation as any).navigate('Message', {
+                    screen: 'FriendProfile',
+                    params: { friendId: friend._id, friendData: friend }
+                  });
+                }}
+              >
+                <UserPP image={friend.profilePic} isActive={friend.isActive} size={50} />
+                <Text style={styles.friendName} numberOfLines={1}>
+                  {friend.fullName || 'Friend'}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
+      )}
+
       {/* Search Bar */}
-      <View style={{ width: '100%', marginBottom: 16 }}>
+      <View style={{ width: '100%', marginBottom: 5 }}>
         <TextInput
           placeholder="Search friends..."
           style={{
@@ -81,7 +153,7 @@ const Message = () => {
             if (text.trim() === '') {
               setFriends(profileData?.friends || []);
             } else {
-              const filtered = (profileData?.friends || []).filter(friend =>
+              const filtered = (profileData?.friends || []).filter((friend: any) =>
                 (friend.fullName || '')
                   .toLowerCase()
                   .includes(text.toLowerCase())
@@ -113,22 +185,40 @@ const Message = () => {
       )}
 
       <FlatList
-        data={friends}
+        data={chatList}
         style={styles.contactListContainer}
-        renderItem={({ item }) => (
-          <TouchableOpacity style={styles.messageItem} onPress={() => {
-            navigation.navigate('SingleMessage', { friend: item });
-          }}>
-            <UserPP image={item.profilePic} isActive={item.isActive} size={40} />
-
-            <View style={styles.messageContent}>
-              <Text style={styles.profileName}>{item.fullName}</Text>
-              <Text style={styles.lastMessage}>Lorem ipsum</Text>
-            </View>
-
-              </TouchableOpacity>
-        )}
-        keyExtractor={(item) => item._id.toString()}
+        renderItem={({ item }: { item: any }) => {
+          const last = item?.messages?.[0];
+          return (
+            <TouchableOpacity
+              style={styles.messageItem}
+              onPress={() => {
+                (navigation as any).navigate('SingleMessage', { friend: item?.person as any });
+              }}
+            >
+              <UserPP image={item?.person?.profilePic} isActive={item?.person?.isActive} size={40} />
+              <View style={styles.messageContent}>
+                <Text style={styles.profileName}>{item?.person?.fullName || 'User'}</Text>
+                <View style={styles.lastMessageContainer}>
+                  {last ? (
+                    <>
+                      <Text style={styles.lastMessage} numberOfLines={1}>{last?.message}</Text>
+                      <Text style={styles.lastMessageTime}>
+                        <Text style={{ color: '#666' }}> · </Text>
+                        {moment(last?.timestamp).fromNow()}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={styles.lastMessage}>No messages yet</Text>
+                  )}
+                </View>
+              </View>
+            </TouchableOpacity>
+          );
+        }}
+        keyExtractor={(item: any) =>
+          (item?.person?._id && item?.person?._id.toString()) || String(item?.id || Math.random())
+        }
         scrollEnabled={false}
       />
     </ScrollView>
@@ -138,6 +228,28 @@ const Message = () => {
 const styles = StyleSheet.create({
   scrollView: {
     flex: 1,
+  },
+  sectionContainer: {
+    width: '100%',
+    marginBottom: 10,
+  },
+  friendsScrollView: {
+    paddingVertical: 6,
+  },
+  friendItem: {
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  friendName: {
+    marginTop: 6,
+    maxWidth: 70,
+    fontSize: 12,
+    color: '#333',
+  },
+  profileName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#111',
   },
   container: {
     alignItems: 'flex-start',
@@ -184,19 +296,20 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     gap: 0,
   },
-  profilePic: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-  },
-  profileName: {
-    fontSize: 18,
-    fontWeight: 'bold',
+  lastMessageContainer: {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   lastMessage: {
-    fontSize: 14,
     color: '#666',
-    marginTop: -3
+    maxWidth: '70%',
+  },
+  lastMessageTime: {
+    fontSize: 12,
+    color: '#666',
+    marginTop: -3,
   },
   profileKey: {
     fontWeight: '600',

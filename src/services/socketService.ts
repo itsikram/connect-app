@@ -17,7 +17,7 @@ class SocketService {
 
     try {
       this.isConnecting = true;
-      this.socket = await initializeSocket();
+      this.socket = await initializeSocket(profileId);
       console.log('Socket connected successfully');
     } catch (error) {
       console.error('Failed to connect socket:', error);

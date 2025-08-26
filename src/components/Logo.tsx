@@ -10,7 +10,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'medium' }) => {
   const getSize = () => {
     switch (size) {
       case 'small':
-        return { width: 50, height: 50 };
+        return { width: 40, height: 40 };
       case 'large':
         return { width: 80, height: 80 };
       default:
@@ -35,7 +35,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logo: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
 });
 

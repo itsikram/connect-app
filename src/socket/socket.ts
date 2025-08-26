@@ -14,7 +14,7 @@ const getUserData = async () => {
     }
 }
 
-export const initializeSocket = async (): Promise<Socket> => {
+export const initializeSocket = async (profileId: string): Promise<Socket> => {
     if (socket) {
         return socket;
     }
@@ -29,7 +29,7 @@ export const initializeSocket = async (): Promise<Socket> => {
 
         socket = io(config.SOCKET_BASE_URL, {
             transports: ['websocket', 'polling'],
-            query: { profileId: user.profile?._id },
+            query: { profile: user.profile?._id },
             timeout: 20000,
             forceNew: true,
         });

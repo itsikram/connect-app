@@ -1,71 +1,14 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, useColorScheme } from 'react-native';
 import { colors } from '../theme/colors';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
+import { friendAPI } from '../lib/api';
+import { useNavigation } from '@react-navigation/native';
 
-const SUGGESTED_FRIENDS = [
-  {
-    id: '1',
-    name: 'Mohammad Ikram',
-    profilePic: 'https://res.cloudinary.com/dz88yjerw/image/upload/v1746447796/yvxxljetumsl9sjezggu.png',
-  },
-  {
-    id: '2',
-    name: 'Md Atik',
-    profilePic: 'http://res.cloudinary.com/dz88yjerw/image/upload/v1743050609/i6cnhplhlunwrzh8v916.png',
-  },
-  {
-    id: '3',
-    name: 'Md Alamin',
-    profilePic: 'http://res.cloudinary.com/dz88yjerw/image/upload/v1743600479/yzdagmwjzeb4axm5wvbg.png',
-  },
-  {
-    id: '4',
-    name: 'Gorila Sohan',
-    profilePic: 'http://res.cloudinary.com/dz88yjerw/image/upload/v1743970799/v2qocxpe0j4uzxmnt8hv.png',
-  },
-  {
-    id: '5',
-    name: 'Mohammad Mehedi Hassan',
-    profilePic: 'https://res.cloudinary.com/dz88yjerw/image/upload/v1746960769/ixntnekeyvcfy2xghqx8.png',
-  },
-  {
-    id: '6',
-    name: 'Md Byzid',
-    profilePic: 'https://res.cloudinary.com/dz88yjerw/image/upload/v1747904851/pd6ifljwvoiyor8rmzjf.png',
-  },
-  {
-    id: '7',
-    name: 'Rohan Sheikh',
-    profilePic: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png',
-  },
-  {
-    id: '8',
-    name: 'Tuhin Sheikh',
-    profilePic: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png',
-  },
-  {
-    id: '9',
-    name: 'MD. Shamim Hossan',
-    profilePic: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png',
-  },
-  {
-    id: '10',
-    name: 'ssa dsasdgsadtest',
-    profilePic: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png',
-  },
-  {
-    id: '11',
-    name: 'asdas asdasd',
-    profilePic: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png',
-  },
-  {
-    id: '12',
-    name: 'md Tayem',
-    profilePic: 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png',
-  },
-];
 
 const Friends = () => {
+  const navigation = useNavigation();
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
@@ -76,9 +19,78 @@ const Friends = () => {
   const buttonText = '#fff';
   const removeBtnBg = isDarkMode ? colors.gray[800] : '#eee';
   const removeBtnText = isDarkMode ? colors.text.light : '#333';
+  const myProfile = useSelector((state: RootState) => state.profile);
+
+  const [friendRequests, setFriendRequests] = useState<any[]>([]);
+  const [friendSuggestions, setFriendSuggestions] = useState<any[]>([]);
+
+
+
+  useEffect(() => {
+    if (!myProfile?._id) return;
+    friendAPI.getFriendRequest(myProfile?._id).then((res) => {
+      setFriendRequests(res.data);
+    });
+    friendAPI.getFriendSuggestions(myProfile?._id).then((res) => {
+      setFriendSuggestions(res.data);
+    });
+  }, [myProfile?._id]);
+
+  const handleSendFriendRequest = async (friendId: string) => {
+    try {
+      const res = await friendAPI.sendFriendRequest(friendId);
+      console.log(res.data);
+      setFriendSuggestions((prev) => prev.filter((f: any) => f._id !== friendId));
+    } catch (error) {
+      console.log(error);
+    }
+  };
+  const handleRemoveFriendRequest = async (friendId: string) => {
+    try {
+      const res = await friendAPI.removeFriend(friendId);
+      console.log(res.data);
+      // Hide from suggestions if present
+      setFriendSuggestions((prev) => prev.filter((f: any) => f._id !== friendId));
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const handleAcceptFriendRequest = async (friendId: string) => {
+    console.log('accept friend request', friendId);
+    try {
+      const res = await friendAPI.acceptFriendRequest(friendId);
+      console.log(res.data);
+      // Remove the accepted request from the list
+      setFriendRequests((prev) => prev.filter((f: any) => f._id !== friendId));
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const handleDeleteFriendRequest = async (friendId: string) => {
+    try {
+      const res = await friendAPI.deleteFriendRequest(friendId);
+      console.log(res.data);
+      // Remove the deleted request from the list
+      setFriendRequests((prev) => prev.filter((f: any) => f._id !== friendId));
+    } catch (error) {
+      console.log(error);
+    }
+  };
+
+  const navigateToFriendProfile = (friend: any) => {
+    (navigation as any).navigate('Message', {
+      screen: 'FriendProfile',
+      params: { friendId: friend._id, friendData: friend }
+    });
+  };
 
   return (
     <ScrollView style={[styles.friendsContent, { backgroundColor }]}> {/* Main container */}
+      {/* Header spacer */}
+      <View />
+      
       {/* Friend Requests Section */}
       <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}> {/* Card */}
         <View style={styles.headingRow}>
@@ -88,34 +100,57 @@ const Friends = () => {
           </TouchableOpacity>
         </View>
         <View style={styles.friendGridContainer}>
-          <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Request to show</Text>
-        </View>
-      </View>
-
-      {/* People You May Know Section */}
-      <View style={[styles.sectionContainer, { marginBottom: 32, backgroundColor: cardBg }]}> 
-        <View style={styles.headingRow}>
-          <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
-        </View>
-        <View style={styles.friendGridContainer}>
-          {SUGGESTED_FRIENDS.map(friend => (
-            <View key={friend.id} style={[styles.friendGridItem, { backgroundColor: cardBg }]}> {/* Card */}
+          {friendRequests.length > 0 && friendRequests.map((friend: any) => (
+            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}> {/* Card */}
               <View style={styles.profilePictureWrapper}>
                 <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
-                <Text style={[styles.profileName, { color: textColor }]}>{friend.name}</Text>
+                <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]}> {/* Add Friend */}
+                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleAcceptFriendRequest(friend._id); }}> {/* Add Friend */}
+                    <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Accept</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleDeleteFriendRequest(friend._id); }}> {/* Remove */}
+                    <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </TouchableOpacity>
+          ))}
+          {friendRequests.length === 0 && (
+            <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Request to show</Text>
+          )}
+        </View>
+      </View>
+
+      {/* People You May Know Section */}
+      <View style={[styles.sectionContainer, { marginBottom: 32, backgroundColor: cardBg }]}>
+        <View style={styles.headingRow}>
+          <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
+        </View>
+        <View style={styles.friendGridContainer}>
+          {friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
+            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}> {/* Card */}
+              <View style={styles.profilePictureWrapper}>
+                <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
+              </View>
+              <View style={styles.gridBody}>
+                <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
+                <View style={styles.buttonRow}>
+                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleSendFriendRequest(friend._id); }}> {/* Add Friend */}
                     <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Add Friend</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]}> {/* Remove */}
+                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleRemoveFriendRequest(friend._id); }}> {/* Remove */}
                     <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Remove</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-            </View>
+            </TouchableOpacity>
           ))}
+          {friendSuggestions.length === 0 && (
+            <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Suggestions to show</Text>
+          )}
         </View>
       </View>
     </ScrollView>
