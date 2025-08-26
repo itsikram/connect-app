@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
@@ -158,6 +158,7 @@ const Videos = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -181,7 +182,14 @@ const Videos = () => {
     } finally {
       if (append) setLoadingMore(false); else setLoading(false);
     }
-  }, []);
+  }, [myProfile?._id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    setPage(1);
+    await fetchFeed(1, false);
+    setRefreshing(false);
+  }, [fetchFeed]);
 
   useEffect(() => {
     fetchFeed(1, false);
@@ -263,6 +271,14 @@ const Videos = () => {
       onEndReachedThreshold={0.8}
       viewabilityConfig={viewabilityConfig}
       onViewableItemsChanged={onViewableItemsChanged}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={['#fff']}
+          tintColor="#fff"
+        />
+      }
       ListEmptyComponent={
         <View style={{ height: SCREEN_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
           <Text style={{ color: textColor }}>No videos found.</Text>

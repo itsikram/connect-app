@@ -14,15 +14,17 @@ import UserPP from './UserPP';
 
 type RootStackParamList = {
   PostDetail: { postId: string };
+  FriendProfile: { friendId: string };
 };
 
 const default_pp_src = 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
 
 interface PostProps {
   data: any;
+  onPostDeleted?: (postId: string) => void;
 }
 
-const Post: React.FC<PostProps> = ({ data }) => {
+const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const post = data || {};
   const myProfile = useSelector((state: any) => state.profile);
   const myProfileId = myProfile?._id;
@@ -35,11 +37,15 @@ const Post: React.FC<PostProps> = ({ data }) => {
   const [placedReacts, setPlacedReacts] = useState<string[]>([]);
   const [isShareModal, setIsShareModal] = useState<boolean>(false);
   const [isPostOption, setIsPostOption] = useState<boolean>(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState<boolean>(false);
   const [showReactions, setShowReactions] = useState<boolean>(false);
   const [showCommentBox, setShowCommentBox] = useState<boolean>(false);
   const [commentText, setCommentText] = useState<string>('');
   const [comments, setComments] = useState<any[]>(post.comments || []);
   const [type, setType] = useState<string>(post.type || 'post');
+  const [replyingTo, setReplyingTo] = useState<any>(null);
+  const [replyText, setReplyText] = useState<string>('');
+  const [showReplyBox, setShowReplyBox] = useState<boolean>(false);
 
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { colors: themeColors, isDarkMode } = useTheme();
@@ -169,6 +175,33 @@ const Post: React.FC<PostProps> = ({ data }) => {
   // Post option menu logic
   const postOptionClick = () => setIsPostOption(!isPostOption);
 
+  // Handle post deletion
+  const handleDeletePost = async () => {
+    try {
+      const res = await api.post(`/post/delete`, { postId: post._id, authorId: post.author._id });
+      if (res.status === 200) {
+        // Close the modals
+        setIsPostOption(false);
+        setShowDeleteConfirmation(false);
+        // Notify parent component that post was deleted
+        if (onPostDeleted) {
+          onPostDeleted(post._id);
+        }
+        console.log('Post deleted successfully');
+        // Optionally show success message or trigger refresh
+      }
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      // Optionally show error message
+    }
+  };
+
+  // Show delete confirmation
+  const showDeleteConfirm = () => {
+    setIsPostOption(false);
+    setShowDeleteConfirmation(true);
+  };
+
   // Handle comment button tap
   const handleCommentPress = () => {
     setShowCommentBox((prev) => !prev);
@@ -184,7 +217,20 @@ const Post: React.FC<PostProps> = ({ data }) => {
         // attachment: '', // Add support for image/file attachment if needed
       });
       if (res.status === 200 && res.data) {
-        setComments((prev) => [res.data, ...prev]);
+        console.log('Comment response data:', res.data);
+        // Ensure the comment has proper author information
+        const newComment = {
+          ...res.data,
+          author: {
+            fullName: myProfile?.fullName || 'You',
+            profilePic: myProfile?.profilePic || default_pp_src,
+            _id: myProfile?._id
+          },
+          text: res.data.text || res.data.body || commentText,
+          createdAt: res.data.createdAt || new Date().toISOString()
+        };
+        console.log('Processed comment:', newComment);
+        setComments((prev) => [newComment, ...prev]);
         setCommentText('');
       }
     } catch (e) {
@@ -192,30 +238,103 @@ const Post: React.FC<PostProps> = ({ data }) => {
     }
   };
 
+  // Handle reply button press
+  const handleReplyPress = (comment: any) => {
+    setReplyingTo(comment);
+    setShowReplyBox(true);
+    setReplyText('');
+  };
+
+  // Handle posting a reply
+  const handlePostReply = async () => {
+    if (!replyText.trim() || !replyingTo) return;
+    try {
+      const res = await api.post('/comment/addReply', {
+        body: replyText,
+        post: post._id,
+        parentComment: replyingTo._id,
+        // attachment: '', // Add support for image/file attachment if needed
+      });
+      if (res.status === 200 && res.data) {
+        console.log('Reply response data:', res.data);
+        // Ensure the reply has proper author information
+        const newReply = {
+          ...res.data,
+          author: {
+            fullName: myProfile?.fullName || 'You',
+            profilePic: myProfile?.profilePic || default_pp_src,
+            _id: myProfile?._id
+          },
+          text: res.data.text || res.data.body || replyText,
+          createdAt: res.data.createdAt || new Date().toISOString(),
+          isReply: true,
+          parentCommentId: replyingTo._id
+        };
+        console.log('Processed reply:', newReply);
+        
+        // Add reply to the parent comment
+        setComments((prev) => prev.map(comment => {
+          if (comment._id === replyingTo._id) {
+            return {
+              ...comment,
+              replies: [...(comment.replies || []), newReply]
+            };
+          }
+          return comment;
+        }));
+        
+        setReplyText('');
+        setShowReplyBox(false);
+        setReplyingTo(null);
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
+  // Cancel reply
+  const cancelReply = () => {
+    setReplyingTo(null);
+    setShowReplyBox(false);
+    setReplyText('');
+  };
+
   // Render
   return (
     <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}> {/* Main card */}
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={postHeaderClick}>
+        <TouchableOpacity onPress={() => {
+          if (post.author?._id && post.author._id !== myProfileId) {
+            (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
+          }
+        }}>
           <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={40} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
-          <Text style={[styles.authorName, { color: textColor }]}>
-            {post.author?.fullName || 'Unknown User'}
-            {post.feelings ? (
-              <Text style={[styles.metaInline, { color: subTextColor }]}> is feeling {post.feelings}</Text>
-            ) : null}
-            {post.location ? (
-              <Text style={[styles.metaInline, { color: subTextColor }]}>
-                {post.feelings ? ' · ' : ' '}
-                at {post.location}
-              </Text>
-            ) : null}
-          </Text>
-          <Text style={[styles.time, { color: subTextColor }]}>
-            {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
-          </Text>
+          <TouchableOpacity onPress={() => {
+            if (post.author?._id && post.author._id !== myProfileId) {
+              (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
+            }
+          }}>
+            <Text style={[styles.authorName, { color: textColor }]}>
+              {post.author?.fullName || 'Unknown User'}
+              {post.feelings ? (
+                <Text style={[styles.metaInline, { color: subTextColor }]}> is feeling {post.feelings}</Text>
+              ) : null}
+              {post.location ? (
+                <Text style={[styles.metaInline, { color: subTextColor }]}>
+                  {post.feelings ? ' · ' : ' '}
+                  at {post.location}
+                </Text>
+              ) : null}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={postHeaderClick} style={styles.timeContainer}>
+            <Text style={[styles.time, { color: subTextColor }]}>
+              {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
+            </Text>
+          </TouchableOpacity>
         </View>
         <TouchableOpacity onPress={postOptionClick}>
           <Icon name="more-vert" size={24} color={subTextColor} />
@@ -224,15 +343,53 @@ const Post: React.FC<PostProps> = ({ data }) => {
         <Modal visible={isPostOption} transparent animationType="fade">
           <TouchableOpacity style={styles.modalOverlay} onPress={() => setIsPostOption(false)}>
             <View style={[styles.optionMenu, { backgroundColor: cardBg }]}> {/* Modal menu */}
-              <TouchableOpacity>
-                <Text style={{ color: textColor }}>Edit Post</Text>
-              </TouchableOpacity>
-              <TouchableOpacity>
-                <Text style={{ color: textColor }}>Edit Audience</Text>
-              </TouchableOpacity>
-              <TouchableOpacity>
-                <Text style={{ color: textColor }}>Report This Post</Text>
-              </TouchableOpacity>
+              {/* Show edit options only for post author */}
+              {post.author?._id === myProfileId && (
+                <>
+                  <TouchableOpacity>
+                    <Text style={{ color: textColor }}>Edit Post</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity>
+                    <Text style={{ color: textColor }}>Edit Audience</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={showDeleteConfirm} style={styles.deleteOptionButton}>
+                    <Icon name="delete" size={16} color={themeColors.status.error} style={{ marginRight: 8 }} />
+                    <Text style={{ color: themeColors.status.error, fontWeight: '600' }}>Delete Post</Text>
+                  </TouchableOpacity>
+                </>
+              )}
+              {/* Show report option for non-authors */}
+              {post.author?._id !== myProfileId && (
+                <TouchableOpacity>
+                  <Text style={{ color: textColor }}>Report This Post</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </TouchableOpacity>
+        </Modal>
+        
+        {/* Delete Confirmation Modal */}
+        <Modal visible={showDeleteConfirmation} transparent animationType="fade">
+          <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDeleteConfirmation(false)}>
+            <View style={[styles.deleteConfirmModal, { backgroundColor: cardBg }]}>
+              <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Delete Post</Text>
+              <Text style={[styles.deleteConfirmMessage, { color: subTextColor }]}>
+                Are you sure you want to delete this post? This action cannot be undone.
+              </Text>
+              <View style={styles.deleteConfirmButtons}>
+                <TouchableOpacity 
+                  style={[styles.deleteConfirmBtn, styles.cancelBtn]} 
+                  onPress={() => setShowDeleteConfirmation(false)}
+                >
+                  <Text style={[styles.deleteConfirmBtnText, { color: textColor }]}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.deleteConfirmBtn, styles.deleteBtn]} 
+                  onPress={handleDeletePost}
+                >
+                  <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>Delete</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </TouchableOpacity>
         </Modal>
@@ -262,21 +419,19 @@ const Post: React.FC<PostProps> = ({ data }) => {
       </View>
       {/* Footer */}
       <View style={styles.footer}>
-        <View style={styles.reactsRow}>
-          <View style={styles.countsRow}>
-            <View style={styles.reactsCountLeft}>
-              <View style={styles.reactionIconsStack}>
-                {placedReacts.slice(0, 3).map((t, idx) => (
-                  <Text key={t} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -6 } : null]}>
-                    {reactionEmojiMap[t] || '👍'}
-                  </Text>
-                ))}
-              </View>
-              <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
+        <View style={styles.countsRow}>
+          <View style={styles.reactsCountLeft}>
+            <View style={styles.reactionIconsStack}>
+              {placedReacts.slice(0, 3).map((t, idx) => (
+                <Text key={t} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -6 } : null]}>
+                  {reactionEmojiMap[t] || '👍'}
+                </Text>
+              ))}
             </View>
-            <Text style={[styles.countText, { color: subTextColor }]}>{totalComments} Comments</Text>
-            <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
+            <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
           </View>
+          <Text style={[styles.countText, { color: subTextColor }]}>{totalComments} Comments</Text>
+          <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
         </View>
         <View style={styles.actionsRow}>
           {/* Like button with long press for reactions */}
@@ -350,48 +505,117 @@ const Post: React.FC<PostProps> = ({ data }) => {
               {comments.length === 0 ? (
                 <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
               ) : (
-                comments.map((c) => (
-                  <View key={c._id || Math.random()} style={styles.commentItem}>
-                    <Image
-                      source={{ uri: c.author?.profilePic || default_pp_src }}
-                      style={styles.commentProfilePic}
-                      onError={() => console.log('Failed to load comment profile picture')}
-                    />
-                    <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> {/* Comment body */}
-                      <Text style={[styles.commentAuthor, { color: textColor }]}>
-                        {c.author?.fullName ||
+                                 comments.map((c) => (
+                   <View key={c._id || Math.random()} style={styles.commentItem}>
+                     <Image
+                       source={{ uri: c.author?.profilePic || default_pp_src }}
+                       style={styles.commentProfilePic}
+                       onError={() => console.log('Failed to load comment profile picture')}
+                     />
+                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> {/* Comment body */}
+                       <Text style={[styles.commentAuthor, { color: textColor }]}>
+                         {c.author?.fullName || 
+                          c.author?.firstName || 
+                          c.author?.name ||
                           (c.author?.user
                             ? (
                               <Text>
                                 {c.author.user.firstName || ''} {c.author.user.surname || ''}
                               </Text>
                             )
-                            : (
-                              <Text>Unknown</Text>
-                            )
+                            : 'Unknown User'
                           )}
-                      </Text>
-                      <Text style={[styles.commentText, { color: textColor }]}>
-                        {c.text || c.body || 'No comment text'}
-                      </Text>
-                      {c.image || c.photo || c.attachment ? (
-                        <Image
-                          source={{ uri: c.image || c.photo || c.attachment }}
-                          style={styles.commentAttachment}
-                          onError={() => console.log('Failed to load comment attachment')}
-                        />
-                      ) : null}
-                      <Text style={[styles.commentTime, { color: subTextColor }]}>
-                        {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
-                      </Text>
-                    </View>
-                  </View>
-                ))
+                       </Text>
+                       <Text style={[styles.commentText, { color: textColor }]}>
+                         {c.text || c.body || c.content || c.message || 'No comment text'}
+                       </Text>
+                       {c.image || c.photo || c.attachment ? (
+                         <Image
+                           source={{ uri: c.image || c.photo || c.attachment }}
+                           style={styles.commentAttachment}
+                           onError={() => console.log('Failed to load comment attachment')}
+                         />
+                       ) : null}
+                                               <View style={styles.commentActions}>
+                          <View style={styles.commentMeta}>
+                            <Text style={[styles.commentTime, { color: subTextColor }]}>
+                              {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity onPress={() => handleReplyPress(c)} style={styles.replyButton}>
+                            <Text style={styles.replyButtonText}>Reply</Text>
+                          </TouchableOpacity>
+                        </View>
+                     </View>
+                     
+                     {/* Show replies if they exist */}
+                     {c.replies && c.replies.length > 0 && (
+                       <View style={styles.repliesContainer}>
+                         {c.replies.map((reply: any) => (
+                           <View key={reply._id || Math.random()} style={styles.replyItem}>
+                             <Image
+                               source={{ uri: reply.author?.profilePic || default_pp_src }}
+                               style={styles.replyProfilePic}
+                               onError={() => console.log('Failed to load reply profile picture')}
+                             />
+                             <View style={[styles.replyBody, { backgroundColor: inputBg, borderColor }]}>
+                               <Text style={[styles.replyAuthor, { color: textColor }]}>
+                                 {reply.author?.fullName || 
+                                  reply.author?.firstName || 
+                                  reply.author?.name ||
+                                  (reply.author?.user
+                                    ? (
+                                      <Text>
+                                        {reply.author.user.firstName || ''} {reply.author.user.surname || ''}
+                                      </Text>
+                                    )
+                                    : 'Unknown User'
+                                  )}
+                               </Text>
+                               <Text style={[styles.replyText, { color: textColor }]}>
+                                 {reply.text || reply.body || reply.content || reply.message || 'No reply text'}
+                               </Text>
+                               <Text style={[styles.replyTime, { color: subTextColor }]}>
+                                 {reply.createdAt ? moment(reply.createdAt).fromNow() : 'Unknown time'}
+                               </Text>
+                             </View>
+                           </View>
+                         ))}
+                       </View>
+                     )}
+                   </View>
+                 ))
               )}
-            </View>
-          </KeyboardAvoidingView>
-        )}
-      </View>
+                         </View>
+             
+             {/* Reply Input Box */}
+             {showReplyBox && replyingTo && (
+               <View style={styles.replyInputContainer}>
+                 <View style={styles.replyInputHeader}>
+                   <Text style={[styles.replyingToText, { color: subTextColor }]}>
+                     Replying to {replyingTo.author?.fullName || replyingTo.author?.firstName || 'Unknown'}
+                   </Text>
+                   <TouchableOpacity onPress={cancelReply} style={styles.cancelReplyBtn}>
+                     <Icon name="close" size={16} color={subTextColor} />
+                   </TouchableOpacity>
+                 </View>
+                 <View style={styles.replyInputRow}>
+                   <TextInput
+                     style={[styles.replyInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
+                     placeholder="Write a reply..."
+                     placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
+                     value={replyText}
+                     onChangeText={setReplyText}
+                   />
+                   <TouchableOpacity style={styles.replyPostBtn} onPress={handlePostReply}>
+                     <Text style={styles.replyPostBtnText}>Reply</Text>
+                   </TouchableOpacity>
+                 </View>
+               </View>
+             )}
+           </KeyboardAvoidingView>
+         )}
+       </View>
       {/* Share Modal */}
       <Modal visible={isShareModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -451,6 +675,9 @@ const styles = StyleSheet.create({
     color: '#888',
     fontSize: 12,
   },
+  timeContainer: {
+    marginTop: 2,
+  },
   body: {
     marginTop: 10,
   },
@@ -483,11 +710,7 @@ const styles = StyleSheet.create({
   footer: {
     marginTop: 10,
   },
-  reactsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 5,
-  },
+
   reactText: {
     fontWeight: 'bold',
     color: '#007bff',
@@ -541,9 +764,8 @@ const styles = StyleSheet.create({
   countsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: 16,
-    flex: 1,
-    justifyContent: 'space-evenly',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
   },
   reactsCountLeft: {
     flexDirection: 'row',
@@ -575,20 +797,30 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#ffffff',
     borderRadius: 20,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: '#e0e0e0',
     marginRight: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   commentPostBtn: {
-    backgroundColor: '#29b1a9', // Using the primary color directly
+    backgroundColor: '#29b1a9',
     borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    shadowColor: '#29b1a9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
   },
   commentPostBtnText: {
     color: '#fff',
@@ -604,34 +836,43 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   commentProfilePic: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    marginRight: 8,
-    backgroundColor: '#eee',
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginRight: 10,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   commentBody: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 8,
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#eee',
+    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   commentAuthor: {
-    fontWeight: 'bold',
+    fontWeight: '600',
     fontSize: 14,
-    color: '#222',
+    color: '#2c3e50',
+    marginBottom: 6,
   },
   commentText: {
     fontSize: 14,
-    color: '#333',
-    marginTop: 2,
+    color: '#34495e',
+    lineHeight: 20,
+    marginBottom: 8,
   },
   commentTime: {
     fontSize: 12,
-    color: '#888',
-    marginTop: 2,
+    color: '#95a5a6',
+    fontWeight: '500',
   },
   noCommentsText: {
     color: '#888',
@@ -665,6 +906,202 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 6,
     backgroundColor: '#eee',
+  },
+  // Delete confirmation modal styles
+  deleteConfirmModal: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    width: '80%',
+    maxWidth: 350,
+  },
+  deleteConfirmTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  deleteConfirmMessage: {
+    fontSize: 14,
+    marginBottom: 20,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  deleteConfirmButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  deleteConfirmBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelBtn: {
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: '#ddd',
+  },
+  deleteBtn: {
+    backgroundColor: '#ff4444',
+  },
+  deleteConfirmBtnText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  deleteOptionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  // Comment reply styles
+  commentActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 12,
+    paddingHorizontal: 4,
+  },
+  commentMeta: {
+    flex: 1,
+  },
+  replyButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: 'rgba(41, 177, 169, 0.1)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(41, 177, 169, 0.3)',
+  },
+  replyButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#29b1a9',
+  },
+  repliesContainer: {
+    marginLeft: 48,
+    marginTop: 12,
+    paddingLeft: 12,
+    borderLeftWidth: 2,
+    borderLeftColor: 'rgba(41, 177, 169, 0.2)',
+  },
+  replyItem: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    paddingLeft: 12,
+  },
+  replyProfilePic: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    marginRight: 10,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+  },
+  replyBody: {
+    flex: 1,
+    backgroundColor: '#fafafa',
+    borderRadius: 12,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: '#f0f0f0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  replyAuthor: {
+    fontWeight: '600',
+    fontSize: 13,
+    color: '#2c3e50',
+    marginBottom: 4,
+  },
+  replyText: {
+    fontSize: 13,
+    color: '#34495e',
+    lineHeight: 18,
+    marginBottom: 6,
+  },
+  replyTime: {
+    fontSize: 11,
+    color: '#95a5a6',
+    fontWeight: '500',
+  },
+  // Reply input styles
+  replyInputContainer: {
+    borderTopWidth: 1,
+    borderTopColor: '#e8e8e8',
+    padding: 16,
+    backgroundColor: '#fafafa',
+    marginTop: 8,
+  },
+  replyInputHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+    paddingHorizontal: 4,
+  },
+  replyingToText: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#7f8c8d',
+    backgroundColor: 'rgba(41, 177, 169, 0.1)',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(41, 177, 169, 0.2)',
+  },
+  cancelReplyBtn: {
+    padding: 6,
+    backgroundColor: '#ecf0f1',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#d5dbdb',
+  },
+  replyInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  replyInput: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  replyPostBtn: {
+    backgroundColor: '#29b1a9',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    shadowColor: '#29b1a9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  replyPostBtnText: {
+    color: '#ffffff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });
 

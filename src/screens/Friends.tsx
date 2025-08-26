@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -22,16 +22,33 @@ const Friends = () => {
 
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [friendSuggestions, setFriendSuggestions] = useState<any[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const fetchFriendData = useCallback(async () => {
+    if (!myProfile?._id) return;
+    
+    try {
+      const [friendRequestsRes, friendSuggestionsRes] = await Promise.all([
+        friendAPI.getFriendRequest(myProfile._id),
+        friendAPI.getFriendSuggestions(myProfile._id)
+      ]);
+      
+      setFriendRequests(friendRequestsRes.data);
+      setFriendSuggestions(friendSuggestionsRes.data);
+    } catch (error) {
+      console.error('Error fetching friend data:', error);
+    }
+  }, [myProfile?._id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchFriendData();
+    setRefreshing(false);
+  }, [fetchFriendData]);
 
   useEffect(() => {
-    if (!myProfile?._id) return;
-    friendAPI.getFriendRequest(myProfile?._id).then((res) => {
-      setFriendRequests(res.data);
-    });
-    friendAPI.getFriendSuggestions(myProfile?._id).then((res) => {
-      setFriendSuggestions(res.data);
-    });
-  }, [myProfile?._id]);
+    fetchFriendData();
+  }, [fetchFriendData]);
 
   const handleSendFriendRequest = async (friendId: string) => {
     try {
@@ -77,14 +94,24 @@ const Friends = () => {
   };
 
   const navigateToFriendProfile = (friend: any) => {
-    (navigation as any).navigate('Message', {
-      screen: 'FriendProfile',
-      params: { friendId: friend._id, friendData: friend }
+    (navigation as any).navigate('FriendProfile', { 
+      friendId: friend._id, 
+      friendData: friend 
     });
   };
 
   return (
-    <ScrollView style={[styles.friendsContent, { backgroundColor }]}> {/* Main container */}
+    <ScrollView 
+      style={[styles.friendsContent, { backgroundColor }]}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[themeColors.primary]}
+          tintColor={themeColors.primary}
+        />
+      }
+    > {/* Main container */}
 
       
       {/* Friend Requests Section */}

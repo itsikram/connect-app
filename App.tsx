@@ -54,6 +54,27 @@ function MessageStack() {
     </Stack.Navigator>
   );
 }
+
+// Stack navigator for Home tab
+function HomeStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="HomeMain" component={Home} />
+      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+    </Stack.Navigator>
+  );
+}
+
+// Stack navigator for Friends tab
+function FriendsStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="FriendsMain" component={Friends} />
+      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+    </Stack.Navigator>
+  );
+}
+
 function MenuStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
@@ -69,7 +90,8 @@ function AppContent() {
 
   const { connect, isConnected, emit, on, off } = useSocket();
   const myProfile = useSelector((state: RootState) => state.profile);
-  const { showMessageToast } = useUserToast();
+  const { showMessageToast, showNotificationToast } = useUserToast();
+  const { showInfo } = useToast();
   const navigation = useNavigation();
   const [screen, setScreen] = React.useState<string>('');
 
@@ -148,9 +170,43 @@ function AppContent() {
 
     on('newMessageToUser', handleNewMessage)
 
+    // Show toast on new notification
+    let handleNewNotification = (notification: any) => {
+      // Notifications are general; always show via notification-themed toast
+      try {
+        showNotificationToast({
+          userProfilePic: notification.icon,
+          fullName: notification.title || 'Notification',
+          message: notification.text || 'You have a new notification',
+          onPress: () => {
+            // Navigate if a link implies a messages route
+            if (notification.link) {
+              // Best-effort: route by known segments
+              const link: string = notification.link as string;
+              if (link.includes('message')) {
+                (navigation as any).navigate('Message');
+              } else if (link.includes('profile')) {
+                (navigation as any).navigate('Menu', { screen: 'MyProfile' });
+              } else if (link.includes('friends')) {
+                (navigation as any).navigate('Friends');
+              } else {
+                (navigation as any).navigate('Home');
+              }
+            }
+          }
+        });
+      } catch (e) {
+        // Fallback to basic toast if user toast is unavailable
+        showInfo(notification.text || 'New notification');
+      }
+    }
+
+    on('newNotification', handleNewNotification)
+
     return () => {
       off('bumpUser',handleBumpUser)
       off('newMessageToUser',handleNewMessage)
+      off('newNotification', handleNewNotification)
     }
   }, [isConnected,on,off,screen])
 
@@ -229,7 +285,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   <>
                     <Tab.Screen
                       name="Home"
-                      component={Home}
+                      component={HomeStack}
                       options={{
                         tabBarLabel: 'Home',
                       }}
@@ -244,7 +300,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                     />
                     <Tab.Screen
                       name="Friends"
-                      component={Friends}
+                      component={FriendsStack}
                       options={{
                         tabBarLabel: 'Friends',
                         headerShown: false,

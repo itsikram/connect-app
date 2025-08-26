@@ -88,6 +88,10 @@ const Home = () => {
         setPosts((prev: any[]) => [post, ...prev]);
     };
 
+    const handlePostDeleted = (postId: string) => {
+        setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
+    };
+
     const backgroundColor = themeColors.background.primary;
     const textColor = themeColors.text.primary;
 
@@ -137,7 +141,7 @@ const Home = () => {
                 ListHeaderComponent={
                     <CreatePost onPostCreated={handlePostCreated} />
                 }
-                renderItem={({ item }) => <Post key={item._id} data={item} />}
+                renderItem={({ item }) => <Post key={item._id} data={item} onPostDeleted={handlePostDeleted} />}
                 ListEmptyComponent={loading ? (
                     <View style={{ alignItems: 'center', marginTop: 40 }}>
                         <ActivityIndicator size="large" color={themeColors.primary} />
@@ -159,7 +163,7 @@ const Home = () => {
                 )}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.5}
-                ListFooterComponent={loadingMore ? (
+                ListFooterComponent={loadingMore && !loading ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={themeColors.primary} />
                         <Text style={{ color: textColor, marginTop: 8 }}>Loading more...</Text>

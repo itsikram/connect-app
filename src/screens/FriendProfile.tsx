@@ -1,9 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
-import { colors } from '../theme/colors'
+import { useTheme } from '../contexts/ThemeContext'
 import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
@@ -31,6 +31,7 @@ const FriendProfile = () => {
     const navigation = useNavigation();
     const route = useRoute();
     const { friendId, friendData: initialFriendData } = route.params as FriendProfileRouteParams;
+    const { colors: themeColors } = useTheme();
     
     const myProfile = useSelector((state: RootState) => state.profile)
     const [activeTab, setActiveTab] = React.useState<TabKey>('About')
@@ -45,6 +46,7 @@ const FriendProfile = () => {
     const [isLoading, setIsLoading] = React.useState<boolean>(!initialFriendData)
     const [isFriend, setIsFriend] = React.useState<boolean>(false)
     const [friendStatus, setFriendStatus] = React.useState<'none' | 'pending' | 'friends'>('none')
+    const [refreshing, setRefreshing] = React.useState<boolean>(false)
 
     const friendsCount = Array.isArray(friendData?.friends) ? friendData.friends.length : 0
 
@@ -59,37 +61,88 @@ const FriendProfile = () => {
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
     const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
 
-    // Fetch friend profile data
-    React.useEffect(() => {
+    const fetchFriendData = React.useCallback(async () => {
         if (!friendId) return;
         
         setIsLoading(true);
-        api.get('/profile', { params: { profileId: friendId } })
-            .then(res => {
-                if (res.status === 200) {
-                    setFriendData(res.data);
-                    // Check if this friend is in my friends list
-                    if (myProfile?.friends) {
-                        const isInFriendsList = myProfile.friends.some((f: any) => f._id === friendId);
-                        setIsFriend(isInFriendsList);
-                        setFriendStatus(isInFriendsList ? 'friends' : 'none');
-                    }
+        setPostsLoading(true);
+        setFriendsLoading(true);
+        setVideosLoading(true);
+        
+        try {
+            const [profileRes, postsRes, friendsRes, videosRes] = await Promise.all([
+                api.get('/profile', { params: { profileId: friendId } }),
+                api.get('/post/myPosts', { params: { profile: friendId } }),
+                api.get('/friend/getFriends', { params: { profile: friendId } }),
+                api.get('/watch/profileWatch', { params: { profile: friendId, pageNumber: 1 } })
+            ]);
+            
+            if (profileRes.status === 200) {
+                setFriendData(profileRes.data);
+                // Check if this friend is in my friends list
+                if (myProfile?.friends) {
+                    const isInFriendsList = myProfile.friends.some((f: any) => f._id === friendId);
+                    setIsFriend(isInFriendsList);
+                    setFriendStatus(isInFriendsList ? 'friends' : 'none');
                 }
-            })
-            .catch(err => {
-                console.error('Error fetching friend profile:', err);
-            })
-            .finally(() => setIsLoading(false));
+            }
+            
+            if (postsRes.status === 200) {
+                setPosts(Array.isArray(postsRes.data) ? postsRes.data : []);
+            }
+            
+            if (friendsRes.status === 200) {
+                const arr = Array.isArray(friendsRes.data) ? friendsRes.data : [];
+                setFriends(arr.length ? arr : []);
+            }
+            
+            if (videosRes.status === 200) {
+                const data = videosRes.data.watchs || videosRes.data || [];
+                setVideos(Array.isArray(data) ? data : []);
+            }
+        } catch (err) {
+            console.error('Error fetching friend data:', err);
+        } finally {
+            setIsLoading(false);
+            setPostsLoading(false);
+            setFriendsLoading(false);
+            setVideosLoading(false);
+        }
     }, [friendId, myProfile?.friends]);
+
+    const onRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        await fetchFriendData();
+        setRefreshing(false);
+    }, [fetchFriendData]);
+
+    const handlePostDeleted = (postId: string) => {
+        setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
+    };
+
+    // Fetch friend profile data
+    React.useEffect(() => {
+        let isMounted = true;
+        
+        if (isMounted) {
+            fetchFriendData();
+        }
+        
+        return () => {
+            isMounted = false;
+        };
+    }, [fetchFriendData]);
 
     // Check friend request status
     React.useEffect(() => {
+        let isMounted = true;
+        
         if (!friendId || !myProfile?._id) return;
         
         // Check if there's a pending friend request
         friendAPI.getFriendRequest(myProfile._id)
             .then(res => {
-                if (res.status === 200 && Array.isArray(res.data)) {
+                if (isMounted && res.status === 200 && Array.isArray(res.data)) {
                     const hasPendingRequest = res.data.some((req: any) => req._id === friendId);
                     if (hasPendingRequest) {
                         setFriendStatus('pending');
@@ -97,58 +150,46 @@ const FriendProfile = () => {
                 }
             })
             .catch(() => {});
+            
+        return () => {
+            isMounted = false;
+        };
     }, [friendId, myProfile?._id]);
-
-    React.useEffect(() => {
-        if (!friendId) return;
-
-        // Posts (for Posts and Images tabs)
-        setPostsLoading(true)
-        api.get('/post/myPosts', { params: { profile: friendId } }).then(res => {
-            if (res.status === 200) {
-                setPosts(Array.isArray(res.data) ? res.data : [])
-            }
-        }).catch(() => {}).finally(() => setPostsLoading(false))
-
-        // Friends
-        setFriendsLoading(true)
-        api.get('/friend/getFriends', { params: { profile: friendId } }).then(res => {
-            if (res.status === 200) {
-                const arr = Array.isArray(res.data) ? res.data : []
-                setFriends(arr.length ? arr : (Array.isArray(friendData?.friends) ? friendData.friends : []))
-            }
-        }).catch(() => {
-            setFriends(Array.isArray(friendData?.friends) ? friendData.friends : [])
-        }).finally(() => setFriendsLoading(false))
-
-        // Videos (profile watch list)
-        setVideosLoading(true)
-        api.get('/watch/profileWatch', { params: { profile: friendId, pageNumber: 1 } }).then(res => {
-            if (res.status === 200) {
-                const data = res.data.watchs || res.data || []
-                setVideos(Array.isArray(data) ? data : [])
-            }
-        }).catch(() => {}).finally(() => setVideosLoading(false))
-    }, [friendId, friendData?.friends])
 
     // Fetch images directly from profile endpoint
     React.useEffect(() => {
         if (!friendId) return
-        api.get('/profile/getImages', { params: { profileId: friendId } }).then(res => {
-            if (res.status === 200 && Array.isArray(res.data)) {
-                const imgs = res.data
-                    .filter((p: any) => p?.photos)
-                    .map((p: any) => p.photos)
-                setImages(imgs)
-                return
+        
+        let isMounted = true;
+        
+        const fetchImages = async () => {
+            try {
+                const res = await api.get('/profile/getImages', { params: { profileId: friendId } });
+                if (isMounted && res.status === 200 && Array.isArray(res.data)) {
+                    const imgs = res.data
+                        .filter((p: any) => p?.photos)
+                        .map((p: any) => p.photos);
+                    setImages(imgs);
+                } else if (isMounted) {
+                    // Fallback to posts if no direct images endpoint
+                    const derived = posts.filter((p: any) => p?.photos).map((p: any) => p.photos);
+                    setImages(derived);
+                }
+            } catch (error) {
+                if (isMounted) {
+                    // Fallback to posts if API fails
+                    const derived = posts.filter((p: any) => p?.photos).map((p: any) => p.photos);
+                    setImages(derived);
+                }
             }
-            const derived = posts.filter((p: any) => p?.photos).map((p: any) => p.photos)
-            setImages(derived)
-        }).catch(() => {
-            const derived = posts.filter((p: any) => p?.photos).map((p: any) => p.photos)
-            setImages(derived)
-        })
-    }, [friendId, posts])
+        };
+        
+        fetchImages();
+        
+        return () => {
+            isMounted = false;
+        };
+    }, [friendId, posts.length]); // Only depend on posts.length, not the entire posts array
 
     const handleSendFriendRequest = async () => {
         if (!friendId || !myProfile?._id) return;
@@ -190,22 +231,22 @@ const FriendProfile = () => {
             case 'friends':
                 return (
                     <Pressable style={[styles.button, styles.removeButton]} onPress={handleRemoveFriend}>
-                        <Icon name="person-remove" size={18} color={colors.text.light} />
-                        <Text style={styles.buttonText}>Remove Friend</Text>
+                        <Icon name="person-remove" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Friend</Text>
                     </Pressable>
                 );
             case 'pending':
                 return (
                     <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptFriendRequest}>
-                        <Icon name="check" size={18} color={colors.text.light} />
-                        <Text style={styles.buttonText}>Accept Request</Text>
+                        <Icon name="check" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Accept Request</Text>
                     </Pressable>
                 );
             default:
                 return (
                     <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSendFriendRequest}>
-                        <Icon name="person-add" size={18} color={colors.text.light} />
-                        <Text style={styles.buttonText}>Add Friend</Text>
+                        <Icon name="person-add" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add Friend</Text>
                     </Pressable>
                 );
         }
@@ -216,13 +257,13 @@ const FriendProfile = () => {
             key: 'About',
             label: 'About',
             render: () => (
-                <View style={styles.detailsCard}>
+                <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                     {/* Bio */}
                     {friendData?.bio && (
                         <View style={styles.detailsItem}>
-                            <Icon name="info" size={20} color={colors.text.light} />
-                            <Text style={styles.detailsText}>
-                                <Text style={styles.detailsStrong}>{friendData.bio}</Text>
+                            <Icon name="info" size={20} color={themeColors.text.secondary} />
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{friendData.bio}</Text>
                             </Text>
                         </View>
                     )}
@@ -230,10 +271,10 @@ const FriendProfile = () => {
                     {/* Workplaces */}
                     {Array.isArray(friendData?.workPlaces) && friendData.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
-                            <Icon name="work" size={20} color={colors.text.light} />
-                            <Text style={styles.detailsText}>
+                            <Icon name="work" size={20} color={themeColors.text.secondary} />
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
                                 {wp?.designation ? `${wp.designation} at ` : ''}
-                                <Text style={styles.detailsStrong}>{wp?.name || 'Unknown workplace'}</Text>
+                                <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{wp?.name || 'Unknown workplace'}</Text>
                             </Text>
                         </View>
                     ))}
@@ -241,10 +282,10 @@ const FriendProfile = () => {
                     {/* Schools */}
                     {Array.isArray(friendData?.schools) && friendData.schools.map((sc: any, idx: number) => (
                         <View key={`sc-${idx}`} style={styles.detailsItem}>
-                            <Icon name="school" size={20} color={colors.text.light} />
-                            <Text style={styles.detailsText}>
-                                Studied at <Text style={styles.detailsStrong}>{sc?.name || 'Unknown school'}</Text>
-                                {sc?.degree ? <Text style={styles.detailsMuted}> ({sc.degree})</Text> : null}
+                            <Icon name="school" size={20} color={themeColors.text.secondary} />
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                Studied at <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{sc?.name || 'Unknown school'}</Text>
+                                {sc?.degree ? <Text style={[styles.detailsMuted, { color: themeColors.text.tertiary }]}> ({sc.degree})</Text> : null}
                             </Text>
                         </View>
                     ))}
@@ -252,9 +293,9 @@ const FriendProfile = () => {
                     {/* Present address */}
                     {!!friendData?.presentAddress && (
                         <View style={styles.detailsItem}>
-                            <Icon name="home" size={20} color={colors.text.light} />
-                            <Text style={styles.detailsText}>
-                                Lives in <Text style={styles.detailsStrong}>{friendData.presentAddress}</Text>
+                            <Icon name="home" size={20} color={themeColors.text.secondary} />
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                Lives in <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{friendData.presentAddress}</Text>
                             </Text>
                         </View>
                     )}
@@ -262,18 +303,18 @@ const FriendProfile = () => {
                     {/* Permanent address */}
                     {!!friendData?.permanentAddress && (
                         <View style={styles.detailsItem}>
-                            <Icon name="public" size={20} color={colors.text.light} />
-                            <Text style={styles.detailsText}>
-                                From <Text style={styles.detailsStrong}>{friendData.permanentAddress}</Text>
+                            <Icon name="public" size={20} color={themeColors.text.secondary} />
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                From <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{friendData.permanentAddress}</Text>
                             </Text>
                         </View>
                     )}
 
                     {/* Joined */}
                     <View style={styles.detailsItem}>
-                        <Icon name="schedule" size={20} color={colors.text.light} />
-                        <Text style={styles.detailsText}>
-                            Joined <Text style={styles.detailsStrong}>{formatMonthYear(friendData?.user?.createdAt || friendData?.createdAt)}</Text>
+                        <Icon name="schedule" size={20} color={themeColors.text.secondary} />
+                        <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                            Joined <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{formatMonthYear(friendData?.user?.createdAt || friendData?.createdAt)}</Text>
                         </Text>
                     </View>
                 </View>
@@ -286,13 +327,13 @@ const FriendProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {postsLoading && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>Loading posts...</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading posts...</Text></View>
                     )}
                     {!postsLoading && posts.length === 0 && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No posts yet.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
                     )}
                     {!postsLoading && posts.map((p: any) => (
-                        <PostItem key={p._id} data={p} />
+                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} />
                     ))}
                 </View>
             )
@@ -304,10 +345,10 @@ const FriendProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {friendsLoading && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>Loading friends...</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading friends...</Text></View>
                     )}
                     {!friendsLoading && friends.length === 0 && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No friends found.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No friends found.</Text></View>
                     )}
                     {!friendsLoading && friends.length > 0 && (
                         <View style={styles.friendsGrid}>
@@ -317,7 +358,7 @@ const FriendProfile = () => {
                                 return (
                                     <TouchableOpacity 
                                         key={f._id || userName} 
-                                        style={styles.friendItem}
+                                        style={[styles.friendItem, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
                                         onPress={() => {
                                             (navigation as any).navigate('Message', {
                                                 screen: 'FriendProfile',
@@ -325,14 +366,14 @@ const FriendProfile = () => {
                                             });
                                         }}
                                     >
-                                        <View style={styles.friendAvatarWrap}>
+                                        <View style={[styles.friendAvatarWrap, { backgroundColor: themeColors.surface.secondary }]}>
                                             {pp ? (
                                                 <Image source={{ uri: pp }} style={styles.friendAvatar} />
                                             ) : (
-                                                <View style={[styles.friendAvatar, { backgroundColor: '#555' }]} />
+                                                <View style={[styles.friendAvatar, { backgroundColor: themeColors.gray[400] }]} />
                                             )}
                                         </View>
-                                        <Text style={styles.friendName} numberOfLines={1}>{userName}</Text>
+                                        <Text style={[styles.friendName, { color: themeColors.text.primary }]} numberOfLines={1}>{userName}</Text>
                                     </TouchableOpacity>
                                 )
                             })}
@@ -348,12 +389,12 @@ const FriendProfile = () => {
             render: () => (
                 <View>
                     {images.length === 0 ? (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No images found.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No images found.</Text></View>
                     ) : (
                         <View>
                             {images.map((uri, idx) => (
                                 <TouchableOpacity key={uri + idx} onPress={() => { setImageViewerIndex(idx); setImageViewerOpen(true); }}>
-                                    <View style={styles.mediaCard}>
+                                    <View style={[styles.mediaCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                                         <Image source={{ uri }} style={styles.mediaImage} />
                                     </View>
                                 </TouchableOpacity>
@@ -364,18 +405,18 @@ const FriendProfile = () => {
                     <Modal visible={imageViewerOpen} transparent animationType="fade" onRequestClose={() => setImageViewerOpen(false)}>
                         <View style={styles.viewerOverlay}>
                             <TouchableOpacity style={styles.viewerClose} onPress={() => setImageViewerOpen(false)}>
-                                <Icon name="close" size={24} color={colors.text.light} />
+                                <Icon name="close" size={24} color={themeColors.text.secondary} />
                             </TouchableOpacity>
                             <View style={styles.viewerContent}>
                                 <TouchableOpacity style={styles.viewerNavLeft} onPress={() => setImageViewerIndex(i => Math.max(0, i - 1))}>
-                                    <Icon name="chevron-left" size={28} color={colors.text.light} />
+                                    <Icon name="chevron-left" size={28} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
-                                <Image source={{ uri: images[imageViewerIndex] }} style={styles.viewerImage} />
+                                <Image source={{ uri: images[imageViewerIndex] }} style={styles.mediaImage} />
                                 <TouchableOpacity style={styles.viewerNavRight} onPress={() => setImageViewerIndex(i => Math.min(images.length - 1, i + 1))}>
-                                    <Icon name="chevron-right" size={28} color={colors.text.light} />
+                                    <Icon name="chevron-right" size={28} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
                             </View>
-                            <Text style={styles.viewerCounter}>{imageViewerIndex + 1} / {images.length}</Text>
+                            <Text style={[styles.viewerCounter, { color: themeColors.text.primary }]}>{imageViewerIndex + 1} / {images.length}</Text>
                         </View>
                     </Modal>
                 </View>
@@ -388,19 +429,19 @@ const FriendProfile = () => {
             render: () => (
                 <View>
                     {videosLoading && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>Loading videos...</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading videos...</Text></View>
                     )}
                     {!videosLoading && videos.length === 0 && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No videos found.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No videos found.</Text></View>
                     )}
                     {!videosLoading && videos.length > 0 && (
                         <View>
                             {videos.map((v: any) => {
                                 const thumb = v.thumbnail || v.photos || v.videoUrl
                                 return (
-                                    <View key={v._id} style={[styles.mediaCard, { position: 'relative' }]}>
+                                    <View key={v._id} style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                                         <Image source={{ uri: thumb }} style={styles.mediaImage} />
-                                        <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={colors.text.light} /></View>
+                                        <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={themeColors.text.secondary} /></View>
                                     </View>
                                 )
                             })}
@@ -413,83 +454,94 @@ const FriendProfile = () => {
 
     if (isLoading) {
         return (
-            <View style={styles.loadingContainer}>
-                <ActivityIndicator size="large" color={colors.primary} />
-                <Text style={styles.loadingText}>Loading profile...</Text>
+            <View style={[styles.loadingContainer, { backgroundColor: themeColors.background.primary }]}>
+                <ActivityIndicator size="large" color={themeColors.primary} />
+                <Text style={[styles.loadingText, { color: themeColors.text.primary }]}>Loading profile...</Text>
             </View>
         );
     }
 
     return (
-        <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+        <ScrollView 
+            style={[styles.container, { backgroundColor: themeColors.background.primary }]} 
+            contentContainerStyle={styles.contentContainer}
+            refreshControl={
+                <RefreshControl
+                    refreshing={refreshing}
+                    onRefresh={onRefresh}
+                    colors={[themeColors.primary]}
+                    tintColor={themeColors.primary}
+                />
+            }
+        >
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { backgroundColor: themeColors.surface.header, borderBottomColor: themeColors.border.secondary }]}>
                 <TouchableOpacity
                     style={styles.backButton}
                     onPress={() => navigation.goBack()}
                 >
-                    <Icon name="arrow-back" size={24} color={colors.text.light} />
+                    <Icon name="arrow-back" size={24} color={themeColors.text.primary} />
                 </TouchableOpacity>
-                <Text style={styles.headerTitle}>Profile</Text>
+                <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>Profile</Text>
 
             </View>
             
 
             
-            <View style={styles.profileHeader}>
-                <View style={styles.coverContainer}>
+            <View style={[styles.profileHeader, { backgroundColor: themeColors.surface.header }]}>
+                <View style={[styles.coverContainer, { backgroundColor: themeColors.gray[200] }]}>
                     {friendData?.coverPic ? (
                         <Image source={{ uri: friendData.coverPic }} style={[styles.cover, { height: coverHeight }]} />
                     ) : (
-                        <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight }]} />
+                        <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight, backgroundColor: themeColors.gray[200] }]} />
                     )}
                 </View>
 
-                <View style={[styles.profileInfoContainer, { marginTop: infoOverlap }]} pointerEvents="box-none">
+                <View style={[styles.profileInfoContainer, { marginTop: infoOverlap, borderBottomColor: themeColors.border.secondary }]} pointerEvents="box-none">
                     <View style={[styles.profilePicSection, { height: avatarSize, width: avatarSize }]}>
                         <View style={[
                             styles.avatarWrapper,
-                            { height: avatarSize, width: avatarSize, borderRadius: avatarSize / 2 },
+                            { height: avatarSize, width: avatarSize, borderRadius: avatarSize / 2, borderColor: themeColors.gray[400], backgroundColor: themeColors.surface.secondary },
                             friendData?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
                             {friendData?.profilePic ? (
                                 <Image source={{ uri: friendData.profilePic }} style={styles.avatar} />
                             ) : (
-                                <View style={styles.avatarPlaceholder} />
+                                <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
                             )}
                         </View>
                     </View>
 
                     <View style={styles.profileInfo}>
                         <View style={styles.profileNameBlock}>
-                            <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null]} numberOfLines={2}>
+                            <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]} numberOfLines={2}>
                                 {friendData?.fullName || 'Friend Profile'}
                             </Text>
                             {friendsCount > 0 ? (
-                                <Text style={styles.friendsCount}>{friendsCount} friends</Text>
+                                <Text style={[styles.friendsCount, { color: themeColors.text.secondary }]}>{friendsCount} friends</Text>
                             ) : null}
                         </View>
 
                         {/* Bio Section */}
-                        <View style={styles.bioSection}>
+                        <View style={[styles.bioSection, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                             {friendData?.bio ? (
                                 <>
-                                    <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 3}>
+                                    <Text style={[styles.bioText, { color: themeColors.text.primary }]} numberOfLines={showFullBio ? undefined : 3}>
                                         {friendData.bio}
                                     </Text>
                                     {friendData.bio.length > 100 && (
                                         <TouchableOpacity 
-                                            style={styles.bioToggleButton}
+                                            style={[styles.bioToggleButton, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
                                             onPress={() => setShowFullBio(!showFullBio)}
                                         >
-                                            <Text style={styles.bioToggleText}>
+                                            <Text style={[styles.bioToggleText, { color: themeColors.text.secondary }]}>
                                                 {showFullBio ? 'Show Less' : 'Show More'}
                                             </Text>
                                         </TouchableOpacity>
                                     )}
                                 </>
                             ) : (
-                                <Text style={styles.bioPlaceholder}>
+                                <Text style={[styles.bioPlaceholder, { color: themeColors.text.tertiary }]}>
                                     No bio added yet
                                 </Text>
                             )}
@@ -497,15 +549,15 @@ const FriendProfile = () => {
 
                         <View style={styles.profileButtons}>
                             {getFriendButton()}
-                            <Pressable style={[styles.button, styles.secondaryButton]} onPress={() => {
+                            <Pressable style={[styles.button, styles.secondaryButton, { backgroundColor: themeColors.surface.secondary }]} onPress={() => {
                                 // Navigate to message screen
                                 (navigation as any).navigate('Message', { 
                                     screen: 'SingleMessage',
                                     params: { friend: friendData }
                                 });
                             }}>
-                                <Icon name="message" size={18} color={colors.text.light} />
-                                <Text style={styles.buttonText}>Message</Text>
+                                <Icon name="message" size={18} color={themeColors.text.secondary} />
+                                <Text style={[styles.buttonText, { color: themeColors.text.secondary }]}>Message</Text>
                             </Pressable>
                         </View>
                     </View>
@@ -514,19 +566,19 @@ const FriendProfile = () => {
                 <View style={styles.tabRow}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabNavigator}>
                         {tabs.map(({ key, label, count }) => (
-                            <Pressable key={key} onPress={() => setActiveTab(key)} style={[styles.tabItem, activeTab === key && styles.activeTabItem]}>
+                            <Pressable key={key} onPress={() => setActiveTab(key)} style={[styles.tabItem, activeTab === key && [styles.activeTabItem, { backgroundColor: themeColors.surface.secondary }]]}>
                                 <View style={styles.tabLabelRow}>
-                                    <Text style={[styles.tabText, activeTab === key && styles.activeTabText]}>{label}</Text>
+                                    <Text style={[styles.tabText, { color: themeColors.text.primary }, activeTab === key && styles.activeTabText]}>{label}</Text>
                                     {typeof count === 'number' && count > 0 && (
-                                        <View style={styles.countBadge}>
-                                            <Text style={styles.countBadgeText}>{count}</Text>
+                                        <View style={[styles.countBadge, { backgroundColor: themeColors.surface.secondary }]}>
+                                            <Text style={[styles.countBadgeText, { color: themeColors.text.secondary }]}>{count}</Text>
                                         </View>
                                     )}
                                 </View>
                             </Pressable>
                         ))}
                     </ScrollView>
-                    <View style={styles.optionsMenu}><Icon name="more-horiz" size={22} color={colors.text.light} /></View>
+                    <View style={[styles.optionsMenu, { backgroundColor: themeColors.surface.secondary }]}><Icon name="more-horiz" size={22} color={themeColors.text.secondary} /></View>
                 </View>
             </View>
 
@@ -540,7 +592,6 @@ const FriendProfile = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background.dark,
     },
     contentContainer: {
         paddingBottom: 24,
@@ -550,9 +601,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#242526',
         borderBottomWidth: 1,
-        borderBottomColor: '#3B3C3C',
     },
     backButton: {
         padding: 8,
@@ -562,23 +611,19 @@ const styles = StyleSheet.create({
         flex: 1,
         fontSize: 18,
         fontWeight: 'bold',
-        color: colors.text.light,
         textAlign: 'center',
     },
 
     loadingContainer: {
         flex: 1,
-        backgroundColor: colors.background.dark,
         justifyContent: 'center',
         alignItems: 'center',
     },
     loadingText: {
-        color: colors.text.light,
         marginTop: 16,
         fontSize: 16,
     },
     profileHeader: {
-        backgroundColor: '#242526',
         marginBottom: 15,
     },
     coverContainer: {
@@ -587,20 +632,18 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 10,
         borderBottomRightRadius: 10,
         position: 'relative',
-        backgroundColor: colors.gray[800],
     },
     cover: {
         width: '100%',
         height: 220,
     },
     coverPlaceholder: {
-        backgroundColor: colors.gray[800],
+        // backgroundColor will be set dynamically
     },
     profileInfoContainer: {
         width: '94%',
         alignSelf: 'center',
         borderBottomWidth: 1,
-        borderBottomColor: '#3B3C3C',
         paddingBottom: 20,
         flexDirection: 'column',
         alignItems: 'center',
@@ -618,8 +661,6 @@ const styles = StyleSheet.create({
         borderRadius: 85,
         overflow: 'hidden',
         borderWidth: 3.5,
-        borderColor: 'gray',
-        backgroundColor: '#3B3C3C',
         marginBottom: 20,
     },
     avatarWithStory: {
@@ -631,7 +672,6 @@ const styles = StyleSheet.create({
     },
     avatarPlaceholder: {
         flex: 1,
-        backgroundColor: '#48484A',
     },
     profileInfo: {
         marginLeft: -20,
@@ -644,13 +684,11 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
     },
     fullName: {
-        color: colors.text.light,
         fontWeight: 'bold',
         fontSize: 22,
         textTransform: 'capitalize',
     },
     friendsCount: {
-        color: '#DFE1E6',
         marginTop: 4,
         textAlign: 'center',
     },
@@ -669,16 +707,15 @@ const styles = StyleSheet.create({
         marginLeft: 6,
     },
     primaryButton: {
-        backgroundColor: colors.primary,
+        backgroundColor: '#29b1a9', // This will be overridden dynamically
     },
     secondaryButton: {
-        backgroundColor: '#3B3C3C',
+        // backgroundColor will be set dynamically
     },
     removeButton: {
         backgroundColor: '#E74C3C',
     },
     buttonText: {
-        color: colors.text.light,
         marginLeft: 6,
         fontWeight: '600',
     },
@@ -705,24 +742,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     activeTabItem: {
-        backgroundColor: '#3B3C3C',
         borderRadius: 10,
     },
     tabText: {
-        color: colors.text.light,
+        // color will be set dynamically
     },
     activeTabText: {
         fontWeight: '700',
     },
     countBadge: {
         marginLeft: 6,
-        backgroundColor: '#3B3C3C',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 10,
     },
     countBadgeText: {
-        color: colors.text.light,
         fontSize: 12,
         fontWeight: '700',
     },
@@ -730,26 +764,23 @@ const styles = StyleSheet.create({
         marginLeft: 'auto',
         padding: 8,
         borderRadius: 6,
-        backgroundColor: '#3B3C3C',
     },
     profileContentContainer: {
         padding: 16,
         gap: 10,
     },
     placeholderCard: {
-        backgroundColor: '#242526',
         borderRadius: 10,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
+        // backgroundColor and borderColor will be set dynamically
     },
     detailsCard: {
-        backgroundColor: '#242526',
         borderRadius: 10,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         gap: 12,
+        // backgroundColor and borderColor will be set dynamically
     },
     detailsItem: {
         flexDirection: 'row',
@@ -757,15 +788,15 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     detailsText: {
-        color: colors.text.light,
         flexShrink: 1,
+        // color will be set dynamically
     },
     detailsStrong: {
-        color: colors.text.light,
         fontWeight: '700',
+        // color will be set dynamically
     },
     detailsMuted: {
-        color: '#B0B3B8',
+        // color will be set dynamically
     },
     friendsGrid: {
         flexDirection: 'row',
@@ -774,13 +805,12 @@ const styles = StyleSheet.create({
     },
     friendItem: {
         width: '48%',
-        backgroundColor: '#242526',
         borderRadius: 10,
         padding: 12,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         alignItems: 'center',
+        // backgroundColor and borderColor will be set dynamically
     },
     friendAvatarWrap: {
         width: 64,
@@ -788,23 +818,22 @@ const styles = StyleSheet.create({
         borderRadius: 32,
         overflow: 'hidden',
         marginBottom: 8,
-        backgroundColor: '#3B3C3C',
+        // backgroundColor will be set dynamically
     },
     friendAvatar: {
         width: '100%',
         height: '100%',
     },
     friendName: {
-        color: colors.text.light,
         fontWeight: '600',
+        // color will be set dynamically
     },
     mediaCard: {
-        backgroundColor: '#242526',
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         marginBottom: 12,
         overflow: 'hidden',
+        // backgroundColor and borderColor will be set dynamically
     },
     mediaImage: {
         width: '100%',
@@ -847,7 +876,7 @@ const styles = StyleSheet.create({
     viewerCounter: {
         position: 'absolute',
         bottom: 20,
-        color: colors.text.light,
+        // color will be set dynamically
     },
     playBadge: {
         position: 'absolute',
@@ -858,45 +887,41 @@ const styles = StyleSheet.create({
         padding: 2,
     },
     placeholderText: {
-        color: colors.text.light,
+        // color will be set dynamically
     },
     bioSection: {
         marginTop: 10,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#3B3C3C',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#555',
         width: '100%',
         alignSelf: 'center',
         minHeight: 60,
     },
     bioText: {
-        color: colors.text.light,
         fontSize: 14,
         textAlign: 'center',
         lineHeight: 20,
+        // color will be set dynamically
     },
     bioPlaceholder: {
-        color: '#B0B3B8',
         fontSize: 14,
         textAlign: 'center',
         fontStyle: 'italic',
+        // color will be set dynamically
     },
     bioToggleButton: {
         marginTop: 8,
         paddingVertical: 4,
         paddingHorizontal: 10,
-        backgroundColor: '#3B3C3C',
         borderRadius: 6,
         borderWidth: 1,
-        borderColor: '#555',
     },
     bioToggleText: {
-        color: colors.text.light,
         fontSize: 12,
         fontWeight: '600',
+        // color will be set dynamically
     },
 })
 

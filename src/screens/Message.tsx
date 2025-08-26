@@ -1,5 +1,5 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, ScrollView, TextInput, TouchableOpacity } from 'react-native';
+import React, { useEffect, useCallback } from 'react';
+import { View, Text, StyleSheet, FlatList, ActivityIndicator, ScrollView, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
@@ -36,6 +36,7 @@ const Message = () => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [friends, setFriends] = React.useState<any[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [refreshing, setRefreshing] = React.useState(false);
   const { chats: chatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
     chats: any[];
     loading: boolean;
@@ -68,26 +69,29 @@ const Message = () => {
 
   const navigation = useNavigation();
 
-
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        setIsLoading(true);
-        const response = await userAPI.getProfile();
-        console.log('Profile data:', response.data);
-        dispatch(setProfile(response.data));
-      } catch (error) {
-        console.error('Error fetching profile:', error);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    // Only fetch if profile data is empty
-    if (!profileData || Object.keys(profileData).length === 0) {
-      fetchProfile();
+  const fetchProfile = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      const response = await userAPI.getProfile();
+      console.log('Profile data:', response.data);
+      dispatch(setProfile(response.data));
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setIsLoading(false);
     }
-  }, [dispatch, profileData]);
+  }, [dispatch]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    if (profileData?._id) {
+      dispatch(fetchChatList(profileData._id));
+    }
+    if (!profileData || Object.keys(profileData).length === 0) {
+      await fetchProfile();
+    }
+    setRefreshing(false);
+  }, [profileData?._id, dispatch, fetchProfile]);
 
 
   if (isLoading) {
@@ -104,6 +108,14 @@ const Message = () => {
       style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]}
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[themeColors.primary]}
+          tintColor={themeColors.primary}
+        />
+      }
     >
 
       

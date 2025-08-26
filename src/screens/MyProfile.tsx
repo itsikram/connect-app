@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -10,7 +10,6 @@ import { launchImageLibrary } from 'react-native-image-picker'
 import { useDispatch } from 'react-redux'
 import { setProfile } from '../reducers/profileReducer'
 import { useNavigation } from '@react-navigation/native'
-import { colors } from '../theme/colors'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -51,8 +50,9 @@ const MyProfile = () => {
     const [videos, setVideos] = React.useState<any[]>([])
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
     const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
+    const [refreshing, setRefreshing] = React.useState<boolean>(false)
 
-    React.useEffect(() => {
+    const fetchProfileData = React.useCallback(async () => {
         if (!myProfile?._id) return;
 
         // Posts (for Posts and Images tabs)
@@ -85,6 +85,20 @@ const MyProfile = () => {
             }
         }).catch(() => {}).finally(() => setVideosLoading(false))
     }, [myProfile?._id])
+
+    const onRefresh = React.useCallback(async () => {
+        setRefreshing(true);
+        await fetchProfileData();
+        setRefreshing(false);
+    }, [fetchProfileData]);
+
+    const handlePostDeleted = (postId: string) => {
+        setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
+    };
+
+    React.useEffect(() => {
+        fetchProfileData();
+    }, [fetchProfileData])
 
     const [isUploadingCover, setIsUploadingCover] = React.useState(false)
     const [isUploadingPP, setIsUploadingPP] = React.useState(false)
@@ -179,13 +193,13 @@ const MyProfile = () => {
             key: 'About',
             label: 'About',
             render: () => (
-                <View style={styles.detailsCard}>
+                <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                     {/* Bio */}
                     {myProfile?.bio && (
                         <View style={styles.detailsItem}>
                             <Icon name="info" size={20} color={themeColors.text.secondary} />
-                            <Text style={styles.detailsText}>
-                                <Text style={styles.detailsStrong}>{myProfile.bio}</Text>
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{myProfile.bio}</Text>
                             </Text>
                         </View>
                     )}
@@ -194,9 +208,9 @@ const MyProfile = () => {
                     {Array.isArray(myProfile?.workPlaces) && myProfile.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
                             <Icon name="work" size={20} color={themeColors.text.secondary} />
-                            <Text style={styles.detailsText}>
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
                                 {wp?.designation ? `${wp.designation} at ` : ''}
-                                <Text style={styles.detailsStrong}>{wp?.name || 'Unknown workplace'}</Text>
+                                <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{wp?.name || 'Unknown workplace'}</Text>
                             </Text>
                         </View>
                     ))}
@@ -205,9 +219,9 @@ const MyProfile = () => {
                     {Array.isArray(myProfile?.schools) && myProfile.schools.map((sc: any, idx: number) => (
                         <View key={`sc-${idx}`} style={styles.detailsItem}>
                             <Icon name="school" size={20} color={themeColors.text.secondary} />
-                            <Text style={styles.detailsText}>
-                                Studied at <Text style={styles.detailsStrong}>{sc?.name || 'Unknown school'}</Text>
-                                {sc?.degree ? <Text style={styles.detailsMuted}> ({sc.degree})</Text> : null}
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                Studied at <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{sc?.name || 'Unknown school'}</Text>
+                                {sc?.degree ? <Text style={[styles.detailsMuted, { color: themeColors.text.tertiary }]}> ({sc.degree})</Text> : null}
                             </Text>
                         </View>
                     ))}
@@ -216,8 +230,8 @@ const MyProfile = () => {
                     {!!myProfile?.presentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="home" size={20} color={themeColors.text.secondary} />
-                            <Text style={styles.detailsText}>
-                                Lives in <Text style={styles.detailsStrong}>{myProfile.presentAddress}</Text>
+                            <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                                Lives in <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{myProfile.presentAddress}</Text>
                             </Text>
                         </View>
                     )}
@@ -227,7 +241,7 @@ const MyProfile = () => {
                         <View style={styles.detailsItem}>
                             <Icon name="public" size={20} color={themeColors.text.secondary} />
                             <Text style={styles.detailsText}>
-                                From <Text style={styles.detailsStrong}>{myProfile.permanentAddress}</Text>
+                                From <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{myProfile.permanentAddress}</Text>
                             </Text>
                         </View>
                     )}
@@ -235,8 +249,8 @@ const MyProfile = () => {
                     {/* Joined */}
                     <View style={styles.detailsItem}>
                         <Icon name="schedule" size={20} color={themeColors.text.secondary} />
-                        <Text style={styles.detailsText}>
-                            Joined <Text style={styles.detailsStrong}>{formatMonthYear(myProfile?.user?.createdAt || myProfile?.createdAt)}</Text>
+                        <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
+                            Joined <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{formatMonthYear(myProfile?.user?.createdAt || myProfile?.createdAt)}</Text>
                         </Text>
                     </View>
                 </View>
@@ -249,13 +263,13 @@ const MyProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {postsLoading && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>Loading posts...</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading posts...</Text></View>
                     )}
                     {!postsLoading && posts.length === 0 && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No posts yet.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
                     )}
                     {!postsLoading && posts.map((p: any) => (
-                        <PostItem key={p._id} data={p} />
+                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} />
                     ))}
                 </View>
             )
@@ -267,10 +281,10 @@ const MyProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {friendsLoading && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>Loading friends...</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading friends...</Text></View>
                     )}
                     {!friendsLoading && friends.length === 0 && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No friends found.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No friends found.</Text></View>
                     )}
                     {!friendsLoading && friends.length > 0 && (
                         <View style={styles.friendsGrid}>
@@ -280,7 +294,7 @@ const MyProfile = () => {
                                 return (
                                     <TouchableOpacity 
                                         key={f._id || userName} 
-                                        style={styles.friendItem}
+                                        style={[styles.friendItem, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
                                         onPress={() => {
                                             (navigation as any).navigate('Message', {
                                                 screen: 'FriendProfile',
@@ -288,14 +302,14 @@ const MyProfile = () => {
                                             });
                                         }}
                                     >
-                                        <View style={styles.friendAvatarWrap}>
+                                        <View style={[styles.friendAvatarWrap, { backgroundColor: themeColors.surface.secondary }]}>
                                             {pp ? (
                                                 <Image source={{ uri: pp }} style={styles.friendAvatar} />
                                             ) : (
-                                                <View style={[styles.friendAvatar, { backgroundColor: '#555' }]} />
+                                                <View style={[styles.friendAvatar, { backgroundColor: themeColors.gray[400] }]} />
                                             )}
                                         </View>
-                                        <Text style={styles.friendName} numberOfLines={1}>{userName}</Text>
+                                        <Text style={[styles.friendName, { color: themeColors.text.primary }]} numberOfLines={1}>{userName}</Text>
                                     </TouchableOpacity>
                                 )
                             })}
@@ -311,12 +325,12 @@ const MyProfile = () => {
             render: () => (
                 <View>
                     {images.length === 0 ? (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No images found.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No images found.</Text></View>
                     ) : (
                         <View>
                             {images.map((uri, idx) => (
                                 <TouchableOpacity key={uri + idx} onPress={() => { setImageViewerIndex(idx); setImageViewerOpen(true); }}>
-                                    <View style={styles.mediaCard}>
+                                    <View style={[styles.mediaCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                                         <Image source={{ uri }} style={styles.mediaImage} />
                                     </View>
                                 </TouchableOpacity>
@@ -333,12 +347,12 @@ const MyProfile = () => {
                                 <TouchableOpacity style={styles.viewerNavLeft} onPress={() => setImageViewerIndex(i => Math.max(0, i - 1))}>
                                     <Icon name="chevron-left" size={28} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
-                                <Image source={{ uri: images[imageViewerIndex] }} style={styles.viewerImage} />
+                                <Image source={{ uri: images[imageViewerIndex] }} style={styles.mediaImage} />
                                 <TouchableOpacity style={styles.viewerNavRight} onPress={() => setImageViewerIndex(i => Math.min(images.length - 1, i + 1))}>
                                     <Icon name="chevron-right" size={28} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
                             </View>
-                            <Text style={styles.viewerCounter}>{imageViewerIndex + 1} / {images.length}</Text>
+                            <Text style={[styles.viewerCounter, { color: themeColors.text.primary }]}>{imageViewerIndex + 1} / {images.length}</Text>
                         </View>
                     </Modal>
                 </View>
@@ -351,17 +365,17 @@ const MyProfile = () => {
             render: () => (
                 <View>
                     {videosLoading && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>Loading videos...</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading videos...</Text></View>
                     )}
                     {!videosLoading && videos.length === 0 && (
-                        <View style={styles.placeholderCard}><Text style={styles.placeholderText}>No videos found.</Text></View>
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No videos found.</Text></View>
                     )}
                     {!videosLoading && videos.length > 0 && (
                         <View>
                             {videos.map((v: any) => {
                                 const thumb = v.thumbnail || v.photos || v.videoUrl
                                 return (
-                                    <View key={v._id} style={[styles.mediaCard, { position: 'relative' }]}>
+                                    <View key={v._id} style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                                         <Image source={{ uri: thumb }} style={styles.mediaImage} />
                                         <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={themeColors.text.secondary} /></View>
                                     </View>
@@ -394,38 +408,40 @@ const MyProfile = () => {
     }, [myProfile?._id, posts])
 
     return (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView style={[styles.container, { backgroundColor: themeColors.background.primary }]} showsVerticalScrollIndicator={false} refreshControl={
+            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[themeColors.text.secondary]} />
+        }>
 
             
             {/* Cover Photo */}
-            <View style={styles.profileHeader}>
-                <View style={styles.coverContainer}>
+            <View style={[styles.profileHeader, { backgroundColor: themeColors.surface.header }]}>
+                <View style={[styles.coverContainer, { backgroundColor: themeColors.gray[200] }]}>
                 {myProfile?.coverPic ? (
                         <Image source={{ uri: myProfile.coverPic }} style={[styles.cover, { height: coverHeight }]} />
                     ) : (
-                        <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight }]} />
+                        <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight, backgroundColor: themeColors.gray[200] }]} />
                     )}
-                    <TouchableOpacity style={styles.uploadCoverBtn} onPress={onUploadCover} disabled={isUploadingCover} activeOpacity={0.8} hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}>
+                    <TouchableOpacity style={[styles.uploadCoverBtn, { backgroundColor: themeColors.surface.secondary }]} onPress={onUploadCover} disabled={isUploadingCover} activeOpacity={0.8} hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}>
                         <Icon name="photo-camera" color={themeColors.text.secondary} size={18} />
-                        <Text style={styles.uploadCoverText}>{isUploadingCover ? 'Uploading...' : 'Edit cover photo'}</Text>
+                        <Text style={[styles.uploadCoverText, { color: themeColors.text.secondary }]}>{isUploadingCover ? 'Uploading...' : 'Edit cover photo'}</Text>
                         {isUploadingCover && <ActivityIndicator size="small" color={themeColors.text.secondary} style={{ marginLeft: 6 }} />}
                     </TouchableOpacity>
                 </View>
 
-                <View style={[styles.profileInfoContainer, { marginTop: infoOverlap }]} pointerEvents="box-none">
+                <View style={[styles.profileInfoContainer, { marginTop: infoOverlap, borderBottomColor: themeColors.border.secondary }]} pointerEvents="box-none">
                     <View style={[styles.profilePicSection, { height: avatarSize, width: avatarSize }]}>
                         <View style={[
                             styles.avatarWrapper,
-                            { height: avatarSize, width: avatarSize, borderRadius: avatarSize / 2 },
+                            { height: avatarSize, width: avatarSize, borderRadius: avatarSize / 2, borderColor: themeColors.gray[400], backgroundColor: themeColors.surface.secondary },
                             myProfile?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
                     {myProfile?.profilePic ? (
                         <Image source={{ uri: myProfile.profilePic }} style={styles.avatar} />
                     ) : (
-                        <View style={styles.avatarPlaceholder} />
+                        <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
                     )}
                 </View>
-                        <Pressable style={styles.uploadPPBtn} onPress={onUploadProfilePic} disabled={isUploadingPP}>
+                        <Pressable style={[styles.uploadPPBtn, { backgroundColor: themeColors.surface.secondary }]} onPress={onUploadProfilePic} disabled={isUploadingPP}>
                             {isUploadingPP ? (
                                 <ActivityIndicator size="small" color={themeColors.text.secondary} />
                             ) : (
@@ -436,61 +452,58 @@ const MyProfile = () => {
 
                     <View style={styles.profileInfo}>
                         <View style={styles.profileNameBlock}>
-                            <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null]} numberOfLines={2}>
+                            <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]} numberOfLines={2}>
                                 {myProfile?.fullName || 'My Profile'}
                             </Text>
                             {friendsCount > 0 ? (
-                                <Text style={styles.friendsCount}>{friendsCount} friends</Text>
+                                <Text style={[styles.friendsCount, { color: themeColors.text.secondary }]}>{friendsCount} friends</Text>
                             ) : null}
                         </View>
 
                         {/* Bio Section */}
-                        <View style={styles.bioSection}>
+                        <View style={[styles.bioSection, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                             {myProfile?.bio ? (
                                 <>
-                                    <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 3}>
+                                    <Text style={[styles.bioText, { color: themeColors.text.primary }]} numberOfLines={showFullBio ? undefined : 3}>
                                         {myProfile.bio}
                                     </Text>
                                     {myProfile.bio.length > 100 && (
-                                        <TouchableOpacity 
-                                            style={styles.bioToggleButton}
-                                            onPress={() => setShowFullBio(!showFullBio)}
-                                        >
-                                            <Text style={styles.bioToggleText}>
-                                                {showFullBio ? 'Show Less' : 'Show More'}
-                                            </Text>
-                                        </TouchableOpacity>
+                                                                    <TouchableOpacity 
+                                style={[styles.bioToggleButton, { backgroundColor: themeColors.surface.secondary }]}
+                                onPress={() => setShowFullBio(!showFullBio)}
+                            >
+                                <Text style={[styles.bioToggleText, { color: themeColors.text.secondary }]}>
+                                    {showFullBio ? 'Show Less' : 'Show More'}
+                                </Text>
+                            </TouchableOpacity>
                                     )}
                                 </>
                             ) : (
-                                <Text style={styles.bioPlaceholder}>
+                                <Text style={[styles.bioPlaceholder, { color: themeColors.text.tertiary }]}>
                                     Add a bio to tell people about yourself
                                 </Text>
                             )}
                             <TouchableOpacity 
-                                style={styles.editBioButton}
+                                style={[styles.editBioButton, { backgroundColor: themeColors.surface.secondary }]}
                                 onPress={() => {
                                     // Navigate to profile settings
                                     (navigation as any).navigate('Settings', { screen: 'ProfileSettings' });
                                 }}
                             >
                                 <Icon name="edit" size={16} color={themeColors.text.secondary} />
-                                <Text style={styles.editBioText}>Edit Bio</Text>
+                                <Text style={[styles.editBioText, { color: themeColors.text.secondary }]}>Edit Bio</Text>
                             </TouchableOpacity>
                         </View>
 
                         <View style={styles.profileButtons}>
-                            <Pressable style={[styles.button, styles.primaryButton]}>
-                                <Icon name="add-circle" size={18} color={themeColors.text.secondary} />
-                                <Text style={styles.buttonText}>Add to story</Text>
+                            <Pressable style={[styles.button, styles.primaryButton, { backgroundColor: themeColors.primary }]}>
+                                <Icon name="add-circle" size={18} color={themeColors.text.inverse} />
+                                <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add to story</Text>
                             </Pressable>
-                            <Pressable style={[styles.button, styles.secondaryButton]}>
+                            <Pressable style={[styles.button, styles.secondaryButton, { backgroundColor: themeColors.surface.secondary }]}>
                                 <Icon name="edit" size={18} color={themeColors.text.secondary} />
-                                <Text style={styles.buttonText}>Edit profile</Text>
+                                <Text style={[styles.buttonText, { color: themeColors.text.secondary }]}>Edit profile</Text>
                             </Pressable>
-                            {/* <Pressable style={[styles.iconButton]}>
-                                <Icon name="more-horiz" size={22} color={themeColors.text.light} />
-                            </Pressable> */}
                         </View>
                     </View>
                 </View>
@@ -498,19 +511,19 @@ const MyProfile = () => {
                 <View style={styles.tabRow}>
                     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabNavigator}>
                         {tabs.map(({ key, label, count }) => (
-                            <Pressable key={key} onPress={() => setActiveTab(key)} style={[styles.tabItem, activeTab === key && styles.activeTabItem]}>
+                            <Pressable key={key} onPress={() => setActiveTab(key)} style={[styles.tabItem, activeTab === key && [styles.activeTabItem, { backgroundColor: themeColors.surface.secondary }]]}>
                                 <View style={styles.tabLabelRow}>
-                                    <Text style={[styles.tabText, activeTab === key && styles.activeTabText]}>{label}</Text>
+                                    <Text style={[styles.tabText, { color: themeColors.text.primary }, activeTab === key && styles.activeTabText]}>{label}</Text>
                                     {typeof count === 'number' && count > 0 && (
-                                        <View style={styles.countBadge}>
-                                            <Text style={styles.countBadgeText}>{count}</Text>
+                                        <View style={[styles.countBadge, { backgroundColor: themeColors.surface.secondary }]}>
+                                            <Text style={[styles.countBadgeText, { color: themeColors.text.secondary }]}>{count}</Text>
                                         </View>
                                     )}
                                 </View>
                             </Pressable>
                         ))}
                     </ScrollView>
-                    <View style={styles.optionsMenu}><Icon name="more-horiz" size={22} color={themeColors.text.secondary} /></View>
+                    <View style={[styles.optionsMenu, { backgroundColor: themeColors.surface.secondary }]}><Icon name="more-horiz" size={22} color={themeColors.text.secondary} /></View>
                 </View>
             </View>
 
@@ -524,13 +537,11 @@ const MyProfile = () => {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        backgroundColor: colors.background.dark,
     },
     contentContainer: {
         paddingBottom: 24,
     },
     profileHeader: {
-        backgroundColor: '#242526',
         marginBottom: 15,
     },
     coverContainer: {
@@ -539,14 +550,13 @@ const styles = StyleSheet.create({
         borderBottomLeftRadius: 10,
         borderBottomRightRadius: 10,
         position: 'relative',
-        backgroundColor: colors.gray[800],
     },
     cover: {
         width: '100%',
         height: 220,
     },
     coverPlaceholder: {
-        backgroundColor: colors.gray[800],
+        // backgroundColor will be set dynamically
     },
     uploadCoverBtn: {
         position: 'absolute',
@@ -554,14 +564,12 @@ const styles = StyleSheet.create({
         top: 16,
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: '#3B3C3C',
         paddingVertical: 6,
         paddingHorizontal: 10,
         borderRadius: 8,
         zIndex: 5,
     },
     uploadCoverText: {
-        color: colors.text.secondary,
         marginLeft: 6,
         fontSize: 12,
     },
@@ -569,7 +577,6 @@ const styles = StyleSheet.create({
         width: '94%',
         alignSelf: 'center',
         borderBottomWidth: 1,
-        borderBottomColor: '#3B3C3C',
         paddingBottom: 20,
         flexDirection: 'column',
         alignItems: 'center',
@@ -587,10 +594,7 @@ const styles = StyleSheet.create({
         borderRadius: 85,
         overflow: 'hidden',
         borderWidth: 3.5,
-        borderColor: 'gray',
-        backgroundColor: '#3B3C3C',
         marginBottom: 20,
-
     },
     avatarWithStory: {
         borderColor: '#5D93EB',
@@ -601,13 +605,11 @@ const styles = StyleSheet.create({
     },
     avatarPlaceholder: {
         flex: 1,
-        backgroundColor: '#48484A',
     },
     uploadPPBtn: {
         position: 'absolute',
         bottom: 20,
         right: 4,
-        backgroundColor: '#3B3C3C',
         padding: 8,
         borderRadius: 20,
     },
@@ -622,13 +624,11 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
     },
     fullName: {
-        color: colors.text.secondary,
         fontWeight: 'bold',
         fontSize: 22,
         textTransform: 'capitalize',
     },
     friendsCount: {
-        color: '#DFE1E6',
         marginTop: 4,
         textAlign: 'center',
     },
@@ -647,22 +647,18 @@ const styles = StyleSheet.create({
         marginLeft: 6,
     },
     primaryButton: {
-        backgroundColor: colors.primary,
+        // backgroundColor will be set dynamically
     },
     secondaryButton: {
-
-        backgroundColor: '#3B3C3C',
+        // backgroundColor will be set dynamically
     },
     iconButton: {
-        backgroundColor: '#3B3C3C',
         padding: 8,
         borderRadius: 6,
         marginLeft: 6,
         marginTop: 30,
-
     },
     buttonText: {
-        color: colors.text.secondary,
         marginLeft: 6,
         fontWeight: '600',
     },
@@ -689,24 +685,21 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     activeTabItem: {
-        backgroundColor: '#3B3C3C',
         borderRadius: 10,
     },
     tabText: {
-        color: colors.text.secondary,
+        // color will be set dynamically
     },
     activeTabText: {
         fontWeight: '700',
     },
     countBadge: {
         marginLeft: 6,
-        backgroundColor: '#3B3C3C',
         paddingHorizontal: 6,
         paddingVertical: 2,
         borderRadius: 10,
     },
     countBadgeText: {
-        color: colors.text.secondary,
         fontSize: 12,
         fontWeight: '700',
     },
@@ -714,26 +707,23 @@ const styles = StyleSheet.create({
         marginLeft: 'auto',
         padding: 8,
         borderRadius: 6,
-        backgroundColor: '#3B3C3C',
     },
     profileContentContainer: {
         padding: 16,
         gap: 10,
     },
     placeholderCard: {
-        backgroundColor: '#242526',
         borderRadius: 10,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
+        // backgroundColor and borderColor will be set dynamically
     },
     detailsCard: {
-        backgroundColor: '#242526',
         borderRadius: 10,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         gap: 12,
+        // backgroundColor and borderColor will be set dynamically
     },
     detailsItem: {
         flexDirection: 'row',
@@ -741,15 +731,15 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     detailsText: {
-        color: colors.text.secondary,
         flexShrink: 1,
+        // color will be set dynamically
     },
     detailsStrong: {
-        color: colors.text.secondary,
         fontWeight: '700',
+        // color will be set dynamically
     },
     detailsMuted: {
-        color: '#B0B3B8',
+        // color will be set dynamically
     },
     friendsGrid: {
         flexDirection: 'row',
@@ -758,13 +748,12 @@ const styles = StyleSheet.create({
     },
     friendItem: {
         width: '48%',
-        backgroundColor: '#242526',
         borderRadius: 10,
         padding: 12,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         alignItems: 'center',
+        // backgroundColor and borderColor will be set dynamically
     },
     friendAvatarWrap: {
         width: 64,
@@ -772,15 +761,15 @@ const styles = StyleSheet.create({
         borderRadius: 32,
         overflow: 'hidden',
         marginBottom: 8,
-        backgroundColor: '#3B3C3C',
+        // backgroundColor will be set dynamically
     },
     friendAvatar: {
         width: '100%',
         height: '100%',
     },
     friendName: {
-        color: colors.text.secondary,
         fontWeight: '600',
+        // color will be set dynamically
     },
     imageGrid: {
         flexDirection: 'row',
@@ -792,15 +781,14 @@ const styles = StyleSheet.create({
         aspectRatio: 1,
         marginBottom: 8,
         borderRadius: 8,
-        backgroundColor: '#3B3C3C',
+        // backgroundColor will be set dynamically
     },
     mediaCard: {
-        backgroundColor: '#242526',
         borderRadius: 10,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         marginBottom: 12,
         overflow: 'hidden',
+        // backgroundColor and borderColor will be set dynamically
     },
     mediaImage: {
         width: '100%',
@@ -843,7 +831,7 @@ const styles = StyleSheet.create({
     viewerCounter: {
         position: 'absolute',
         bottom: 20,
-        color: colors.text.secondary,
+        // color will be set dynamically
     },
     videoThumbWrap: {
         width: '32%',
@@ -851,8 +839,8 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         borderRadius: 8,
         overflow: 'hidden',
-        backgroundColor: '#3B3C3C',
         position: 'relative',
+        // backgroundColor will be set dynamically
     },
     playBadge: {
         position: 'absolute',
@@ -863,33 +851,31 @@ const styles = StyleSheet.create({
         padding: 2,
     },
     placeholderText: {
-        color: colors.text.secondary,
+        // color will be set dynamically
     },
     bioSection: {
         marginTop: 10,
         paddingHorizontal: 16,
         paddingVertical: 12,
-        backgroundColor: '#242526',
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#3B3C3C',
         width: '90%',
         alignSelf: 'center',
         minHeight: 60,
     },
     bioText: {
-        color: colors.text.secondary,
         fontSize: 14,
         textAlign: 'center',
         lineHeight: 20,
         marginBottom: 8,
+        // color will be set dynamically
     },
     bioPlaceholder: {
-        color: '#B0B3B8',
         fontSize: 14,
         textAlign: 'center',
         marginBottom: 10,
         fontStyle: 'italic',
+        // color will be set dynamically
     },
     editBioButton: {
         flexDirection: 'row',
@@ -898,27 +884,25 @@ const styles = StyleSheet.create({
         paddingVertical: 6,
         paddingHorizontal: 12,
         borderRadius: 6,
-        backgroundColor: '#3B3C3C',
         alignSelf: 'center',
     },
     editBioText: {
-        color: colors.text.secondary,
         marginLeft: 6,
         fontSize: 12,
         fontWeight: '600',
+        // color will be set dynamically
     },
     bioToggleButton: {
         paddingVertical: 4,
         paddingHorizontal: 10,
         borderRadius: 6,
-        backgroundColor: '#3B3C3C',
         alignSelf: 'center',
         marginTop: 8,
     },
     bioToggleText: {
-        color: colors.text.secondary,
         fontSize: 12,
         fontWeight: '600',
+        // color will be set dynamically
     },
 })
 
