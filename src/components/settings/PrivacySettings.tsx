@@ -5,10 +5,9 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  useColorScheme,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface PrivacySettings {
   postVisibility: string;
@@ -17,8 +16,7 @@ interface PrivacySettings {
 }
 
 const PrivacySettings = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors } = useTheme();
   
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
     postVisibility: 'public',
@@ -33,7 +31,6 @@ const PrivacySettings = () => {
   ];
 
   const handleSave = () => {
-    // Here you would typically make an API call to save the privacy settings
     console.log('Privacy settings:', privacySettings);
   };
 
@@ -44,28 +41,28 @@ const PrivacySettings = () => {
     description?: string
   ) => (
     <View style={styles.settingItem}>
-      <Text style={[styles.settingLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <Text style={[styles.settingLabel, { color: themeColors.text.primary }]}>
         {label}
       </Text>
-      <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+      <View style={[styles.pickerContainer, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
         <Picker
           selectedValue={value}
           onValueChange={onValueChange}
-          style={[styles.picker, { color: isDarkMode ? colors.text.light : colors.text.primary }]}
-          dropdownIconColor={isDarkMode ? colors.text.light : colors.text.primary}
+          style={[styles.picker, { color: themeColors.text.primary }]}
+          dropdownIconColor={themeColors.text.primary}
         >
           {visibilityOptions.map((option) => (
             <Picker.Item
               key={option.value}
               label={option.label}
               value={option.value}
-              color={isDarkMode ? colors.text.light : colors.text.primary}
+              color={themeColors.text.primary}
             />
           ))}
         </Picker>
       </View>
       {description && (
-        <Text style={[styles.description, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.description, { color: themeColors.text.secondary }]}>
           {description}
         </Text>
       )}
@@ -75,16 +72,16 @@ const PrivacySettings = () => {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Privacy Settings
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
           Control who can see your content and interact with you
         </Text>
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Content Visibility
         </Text>
         
@@ -111,15 +108,15 @@ const PrivacySettings = () => {
       </View>
 
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Additional Privacy Options
         </Text>
         
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Profile Privacy
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             Your profile information visibility is controlled by your general privacy settings. 
             You can customize specific fields in the Profile tab.
           </Text>
@@ -127,8 +124,8 @@ const PrivacySettings = () => {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Privacy Settings</Text>
+      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
+        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Privacy Settings</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -171,7 +168,6 @@ const styles = StyleSheet.create({
   pickerContainer: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     overflow: 'hidden',
   },
   picker: {
@@ -186,7 +182,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
   infoTitle: {
     fontSize: 16,
@@ -206,7 +201,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },

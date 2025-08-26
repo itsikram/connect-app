@@ -215,8 +215,8 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   tabBarActiveTintColor: themeColors.primary,
                   tabBarInactiveTintColor: themeColors.gray[500],
                   tabBarStyle: {
-                    backgroundColor: themeIsDarkMode ? themeColors.surface.header : themeColors.surface.header,
-                    borderTopColor: themeIsDarkMode ? themeColors.border.primary : themeColors.border.primary,
+                    backgroundColor: themeColors.surface.header,
+                    borderTopColor: themeColors.border.primary,
                     height: 60,
                     paddingBottom: 8,
                     paddingTop: 8,

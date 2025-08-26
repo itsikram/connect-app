@@ -7,10 +7,9 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  useColorScheme,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface AccountData {
   userEmail: string;
@@ -20,11 +19,10 @@ interface AccountData {
 }
 
 const AccountSettings = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors } = useTheme();
   
   const [accountData, setAccountData] = useState<AccountData>({
-    userEmail: 'user@example.com', // This would come from your user state
+    userEmail: 'user@example.com',
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
@@ -44,7 +42,6 @@ const AccountSettings = () => {
   };
 
   const handleSubmit = () => {
-    // Validate passwords
     if (accountData.newPassword && accountData.newPassword.length < 6) {
       Alert.alert('Error', 'New password must be at least 6 characters long');
       return;
@@ -60,10 +57,8 @@ const AccountSettings = () => {
       return;
     }
 
-    // Here you would typically make an API call to update account settings
     Alert.alert('Success', 'Account settings updated successfully!');
     
-    // Reset password fields
     setAccountData(prev => ({
       ...prev,
       currentPassword: '',
@@ -82,7 +77,6 @@ const AccountSettings = () => {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            // Here you would typically make an API call to delete the account
             Alert.alert('Account Deleted', 'Your account has been deleted successfully.');
           },
         },
@@ -100,15 +94,15 @@ const AccountSettings = () => {
     icon?: string
   ) => (
     <View style={styles.inputContainer}>
-      <Text style={[styles.label, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <Text style={[styles.label, { color: themeColors.text.primary }]}>
         {label}
       </Text>
-      <View style={[styles.inputWrapper, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+      <View style={[styles.inputWrapper, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
         {icon && (
           <Icon 
             name={icon} 
             size={20} 
-            color={isDarkMode ? colors.gray[400] : colors.gray[600]} 
+            color={themeColors.gray[400]} 
             style={styles.inputIcon}
           />
         )}
@@ -116,14 +110,14 @@ const AccountSettings = () => {
           style={[
             styles.textInput,
             { 
-              color: isDarkMode ? colors.text.light : colors.text.primary,
+              color: themeColors.text.primary,
               paddingLeft: icon ? 40 : 16,
             }
           ]}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[500]}
+          placeholderTextColor={themeColors.gray[400]}
           secureTextEntry={secureTextEntry}
           editable={editable}
         />
@@ -134,17 +128,17 @@ const AccountSettings = () => {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Account Settings
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
           Manage your account information and security
         </Text>
       </View>
 
       {/* Email Settings */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Email Settings
         </Text>
         
@@ -160,11 +154,11 @@ const AccountSettings = () => {
           )}
           
           <TouchableOpacity 
-            style={[styles.editButton, { backgroundColor: editEmail ? colors.error : colors.secondary }]} 
+            style={[styles.editButton, { backgroundColor: editEmail ? themeColors.status.error : themeColors.secondary }]} 
             onPress={handleEditEmail}
           >
-            <Icon name={editEmail ? 'close' : 'edit'} size={16} color={colors.white} />
-            <Text style={styles.editButtonText}>
+            <Icon name={editEmail ? 'close' : 'edit'} size={16} color={themeColors.text.inverse} />
+            <Text style={[styles.editButtonText, { color: themeColors.text.inverse }]}>
               {editEmail ? 'Cancel' : 'Edit'}
             </Text>
           </TouchableOpacity>
@@ -173,7 +167,7 @@ const AccountSettings = () => {
 
       {/* Password Change */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Change Password
         </Text>
         
@@ -209,11 +203,11 @@ const AccountSettings = () => {
       </View>
 
       {/* Security Info */}
-      <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-        <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+        <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
           Password Requirements
         </Text>
-        <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
           • Minimum 6 characters{'\n'}
           • Include letters and numbers for better security{'\n'}
           • Avoid using personal information{'\n'}
@@ -223,13 +217,13 @@ const AccountSettings = () => {
 
       {/* Action Buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSubmit}>
-          <Text style={styles.saveButtonText}>Save Changes</Text>
+        <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSubmit}>
+          <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Changes</Text>
         </TouchableOpacity>
         
-        <TouchableOpacity style={[styles.deleteButton, { backgroundColor: colors.error }]} onPress={handleDeleteAccount}>
-          <Icon name="delete-forever" size={20} color={colors.white} />
-          <Text style={styles.deleteButtonText}>Delete My Account</Text>
+        <TouchableOpacity style={[styles.deleteButton, { backgroundColor: themeColors.status.error }]} onPress={handleDeleteAccount}>
+          <Icon name="delete-forever" size={20} color={themeColors.text.inverse} />
+          <Text style={[styles.deleteButtonText, { color: themeColors.text.inverse }]}>Delete My Account</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>
@@ -281,7 +275,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     overflow: 'hidden',
   },
   inputIcon: {
@@ -304,7 +297,6 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   editButtonText: {
-    color: colors.white,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -312,7 +304,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     marginBottom: 24,
   },
   infoTitle: {
@@ -335,7 +326,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },
@@ -349,7 +339,6 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   deleteButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },

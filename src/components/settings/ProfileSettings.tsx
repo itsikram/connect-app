@@ -7,7 +7,6 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  useColorScheme,
   ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -16,7 +15,7 @@ import { RootState } from '../../store';
 import { setProfile } from '../../reducers/profileReducer';
 import { AuthContext } from '../../contexts/AuthContext';
 import { useProfileData } from '../../hooks/useProfileData';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 import api from '../../lib/api';
 
 interface ProfileData {
@@ -33,8 +32,7 @@ interface ProfileData {
 }
 
 const ProfileSettings = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors } = useTheme();
   const dispatch = useDispatch();
   const { user } = useContext(AuthContext);
   
@@ -209,7 +207,7 @@ const ProfileSettings = () => {
       ...profileData,
       workPlaces: profileData.workPlaces.filter(wp => wp.name.trim() !== '' || wp.designation.trim() !== ''),
       schools: profileData.schools.filter(school => school.name.trim() !== '' || school.degree.trim() !== ''),
-    };
+    } as ProfileData & { workPlaces: Array<{ name: string; designation: string }>; schools: Array<{ name: string; degree: string }> };
 
     // Ensure at least one workplace entry exists
     if (filteredData.workPlaces.length === 0) {
@@ -250,15 +248,21 @@ const ProfileSettings = () => {
     keyboardType: 'default' | 'email-address' | 'numeric' | 'phone-pad' = 'default'
   ) => (
     <View style={styles.inputContainer}>
-      <Text style={[styles.label, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <Text style={[styles.label, { color: themeColors.text.primary }]}>
         {label}
       </Text>
-      <View style={[styles.inputWrapper, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+      <View style={[
+        styles.inputWrapper,
+        { 
+          backgroundColor: themeColors.surface.secondary,
+          borderColor: themeColors.border.primary,
+        }
+      ]}>
         {icon && (
           <Icon 
             name={icon} 
             size={20} 
-            color={isDarkMode ? colors.gray[400] : colors.gray[600]} 
+            color={themeColors.gray[400]}
             style={styles.inputIcon}
           />
         )}
@@ -266,14 +270,14 @@ const ProfileSettings = () => {
           style={[
             styles.textInput,
             { 
-              color: isDarkMode ? colors.text.light : colors.text.primary,
+              color: themeColors.text.primary,
               paddingLeft: icon ? 40 : 16,
             }
           ]}
           value={value}
           onChangeText={onChangeText}
           placeholder={placeholder}
-          placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[500]}
+          placeholderTextColor={themeColors.gray[400]}
           keyboardType={keyboardType}
         />
       </View>
@@ -281,9 +285,15 @@ const ProfileSettings = () => {
   );
 
   const renderSchoolItem = (school: { name: string; degree: string }, index: number) => (
-    <View key={index} style={[styles.dynamicRow, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+    <View key={index} style={[
+      styles.dynamicRow,
+      { 
+        backgroundColor: themeColors.surface.secondary,
+        borderColor: themeColors.border.primary,
+      }
+    ]}>
       <View style={styles.dynamicRowHeader}>
-        <Text style={[styles.itemTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>
           School {index + 1}
         </Text>
         {profileData.schools.length > 1 && (
@@ -291,7 +301,7 @@ const ProfileSettings = () => {
             style={styles.removeButton} 
             onPress={() => removeSchool(index)}
           >
-            <Icon name="remove-circle" size={24} color={colors.error} />
+            <Icon name="remove-circle" size={24} color={themeColors.status.error} />
           </TouchableOpacity>
         )}
       </View>
@@ -301,16 +311,22 @@ const ProfileSettings = () => {
   );
 
   const renderWorkplaceItem = (workplace: { name: string; designation: string }, index: number) => (
-    <View key={index} style={[styles.dynamicRow, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+    <View key={index} style={[
+      styles.dynamicRow,
+      { 
+        backgroundColor: themeColors.surface.secondary,
+        borderColor: themeColors.border.primary,
+      }
+    ]}>
       <View style={styles.dynamicRowHeader}>
-        <Text style={[styles.itemTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>
           Workplace {index + 1}
         </Text>
         <TouchableOpacity 
           style={styles.removeButton} 
           onPress={() => removeWorkplace(index)}
         >
-          <Icon name="remove-circle" size={24} color={colors.error} />
+          <Icon name="remove-circle" size={24} color={themeColors.status.error} />
         </TouchableOpacity>
       </View>
       {renderInputField('Designation', workplace.designation, (text) => handleWorkplaceChange(index, 'designation', text), 'Your Designation', 'work')}
@@ -326,14 +342,14 @@ const ProfileSettings = () => {
       nestedScrollEnabled={true}
     >
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Profile Settings
         </Text>
       </View>
 
       {/* Basic Information */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Basic Information
         </Text>
         
@@ -345,14 +361,20 @@ const ProfileSettings = () => {
         
         {/* Bio Field - Special handling for multiline */}
         <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+          <Text style={[styles.label, { color: themeColors.text.primary }]}>
             Bio
           </Text>
-          <View style={[styles.inputWrapper, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+          <View style={[
+            styles.inputWrapper, 
+            { 
+              backgroundColor: themeColors.surface.secondary,
+              borderColor: themeColors.border.primary,
+            }
+          ]}>
             <Icon 
               name="info" 
               size={20} 
-              color={isDarkMode ? colors.gray[400] : colors.gray[600]} 
+              color={themeColors.gray[400]} 
               style={styles.inputIcon}
             />
             <TextInput
@@ -360,7 +382,7 @@ const ProfileSettings = () => {
                 styles.textInput,
                 styles.bioTextInput,
                 { 
-                  color: isDarkMode ? colors.text.light : colors.text.primary,
+                  color: themeColors.text.primary,
                   paddingLeft: 40,
                   textAlignVertical: 'top',
                 }
@@ -368,13 +390,13 @@ const ProfileSettings = () => {
               value={profileData.bio}
               onChangeText={(text) => handleInputChange('bio', text)}
               placeholder="Tell people about yourself..."
-              placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[500]}
+              placeholderTextColor={themeColors.gray[400]}
               multiline
               numberOfLines={4}
               maxLength={150}
             />
           </View>
-          <Text style={[styles.characterCount, { color: isDarkMode ? colors.gray[400] : colors.gray[500] }]}>
+          <Text style={[styles.characterCount, { color: themeColors.text.tertiary }]}>
             {profileData.bio.length}/150 characters
           </Text>
         </View>
@@ -382,7 +404,7 @@ const ProfileSettings = () => {
 
       {/* Address Information */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Address Information
         </Text>
         
@@ -392,29 +414,29 @@ const ProfileSettings = () => {
 
       {/* Schools */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Education
         </Text>
         
         {profileData.schools.map((school, index) => renderSchoolItem(school, index))}
         
-        <TouchableOpacity style={styles.addButton} onPress={addSchool}>
-          <Icon name="add" size={20} color={colors.white} />
-          <Text style={styles.addButtonText}>Add School</Text>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: themeColors.secondary }]} onPress={addSchool}>
+          <Icon name="add" size={20} color={themeColors.text.inverse} />
+          <Text style={[styles.addButtonText, { color: themeColors.text.inverse }]}>Add School</Text>
         </TouchableOpacity>
       </View>
 
       {/* Workplaces */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Work Experience
         </Text>
         
         {profileData.workPlaces.map((workplace, index) => renderWorkplaceItem(workplace, index))}
         
-        <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.secondary }]} onPress={addWorkplace}>
-          <Icon name="add" size={20} color={colors.white} />
-          <Text style={styles.addButtonText}>Add Workplace</Text>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: themeColors.secondary }]} onPress={addWorkplace}>
+          <Icon name="add" size={20} color={themeColors.text.inverse} />
+          <Text style={[styles.addButtonText, { color: themeColors.text.inverse }]}>Add Workplace</Text>
         </TouchableOpacity>
       </View>
 
@@ -422,18 +444,18 @@ const ProfileSettings = () => {
       <TouchableOpacity 
         style={[
           styles.saveButton, 
-          { backgroundColor: isSaving ? colors.gray[600] : colors.primary }
+          { backgroundColor: isSaving ? themeColors.gray[600] : themeColors.primary }
         ]} 
         onPress={handleSave}
         disabled={isSaving}
       >
         {isSaving ? (
           <>
-            <ActivityIndicator size="small" color={colors.white} style={{ marginRight: 8 }} />
-            <Text style={styles.saveButtonText}>Saving...</Text>
+            <ActivityIndicator size="small" color={themeColors.text.inverse} style={{ marginRight: 8 }} />
+            <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Saving...</Text>
           </>
         ) : (
-          <Text style={styles.saveButtonText}>Save Settings</Text>
+          <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Settings</Text>
         )}
       </TouchableOpacity>
     </ScrollView>
@@ -476,7 +498,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     overflow: 'hidden',
   },
   inputIcon: {
@@ -491,9 +512,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   bioTextInput: {
-    minHeight: 80, // Ensure minimum height for multiline input
-    textAlignVertical: 'top', // Align text to the top
-    paddingTop: 12, // Add some top padding for better text positioning
+    minHeight: 80,
+    textAlignVertical: 'top',
+    paddingTop: 12,
   },
   characterCount: {
     fontSize: 12,
@@ -506,7 +527,6 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -535,7 +555,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.secondary,
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -551,7 +570,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   addButtonText: {
-    color: colors.white,
     fontSize: 16,
     fontWeight: '600',
     marginLeft: 8,
@@ -565,7 +583,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },

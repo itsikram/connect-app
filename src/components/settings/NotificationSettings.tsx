@@ -6,12 +6,10 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  useColorScheme,
 } from 'react-native';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface NotificationSettings {
-  // Push Notifications
   friendRequestReceived: boolean;
   friendRequestAccepted: boolean;
   newMessageReceived: boolean;
@@ -19,7 +17,6 @@ interface NotificationSettings {
   newFriendStory: boolean;
   newFriendWatch: boolean;
   
-  // Email Notifications
   friendRequestReceivedEmail: boolean;
   friendRequestAcceptedEmail: boolean;
   newMessageReceivedEmail: boolean;
@@ -29,8 +26,7 @@ interface NotificationSettings {
 }
 
 const NotificationSettings = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors } = useTheme();
   
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     friendRequestReceived: true,
@@ -55,7 +51,6 @@ const NotificationSettings = () => {
   };
 
   const handleSave = () => {
-    // Here you would typically make an API call to save the notification settings
     console.log('Notification settings:', notificationSettings);
   };
 
@@ -64,20 +59,20 @@ const NotificationSettings = () => {
     label: string,
     description: string
   ) => (
-    <View style={styles.switchItem}>
+    <View style={[styles.switchItem, { borderBottomColor: themeColors.border.primary }]}>
       <View style={styles.switchContent}>
-        <Text style={[styles.switchLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.switchLabel, { color: themeColors.text.primary }]}>
           {label}
         </Text>
-        <Text style={[styles.switchDescription, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.switchDescription, { color: themeColors.text.secondary }]}>
           {description}
         </Text>
       </View>
       <Switch
         value={notificationSettings[key]}
         onValueChange={() => handleToggle(key)}
-        trackColor={{ false: isDarkMode ? colors.gray[700] : colors.gray[300], true: colors.primary }}
-        thumbColor={notificationSettings[key] ? colors.white : isDarkMode ? colors.gray[500] : colors.gray[400]}
+        trackColor={{ false: themeColors.gray[300], true: themeColors.primary }}
+        thumbColor={notificationSettings[key] ? themeColors.text.inverse : themeColors.gray[400]}
       />
     </View>
   );
@@ -85,20 +80,20 @@ const NotificationSettings = () => {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Notification Settings
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
           Control how and when you receive notifications
         </Text>
       </View>
 
       {/* Push Notifications */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Push Notifications
         </Text>
-        <Text style={[styles.sectionDescription, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.sectionDescription, { color: themeColors.text.secondary }]}>
           Receive instant notifications on your device
         </Text>
         
@@ -122,29 +117,29 @@ const NotificationSettings = () => {
         
         {renderSwitchSetting(
           'newFriendPost',
-          'New Friend\'s Post',
+          "New Friend's Post",
           'Get notified when your friends create new posts'
         )}
         
         {renderSwitchSetting(
           'newFriendStory',
-          'New Friend\'s Story',
+          "New Friend's Story",
           'Get notified when your friends share new stories'
         )}
         
         {renderSwitchSetting(
           'newFriendWatch',
-          'New Friend\'s Watch',
+          "New Friend's Watch",
           'Get notified when your friends share new watch content'
         )}
       </View>
 
       {/* Email Notifications */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Email Notifications
         </Text>
-        <Text style={[styles.sectionDescription, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.sectionDescription, { color: themeColors.text.secondary }]}>
           Receive email notifications for important updates
         </Text>
         
@@ -168,29 +163,29 @@ const NotificationSettings = () => {
         
         {renderSwitchSetting(
           'newFriendPostEmail',
-          'New Friend\'s Post',
+          "New Friend's Post",
           'Get email notifications for new friend posts'
         )}
         
         {renderSwitchSetting(
           'newFriendStoryEmail',
-          'New Friend\'s Story',
+          "New Friend's Story",
           'Get email notifications for new friend stories'
         )}
         
         {renderSwitchSetting(
           'newFriendWatchEmail',
-          'New Friend\'s Watch',
+          "New Friend's Watch",
           'Get email notifications for new friend watch content'
         )}
       </View>
 
       {/* Info Card */}
-      <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-        <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+        <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
           Notification Tips
         </Text>
-        <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
           • Push notifications are instant and appear on your device{'\n'}
           • Email notifications are sent periodically and may be delayed{'\n'}
           • You can customize these settings at any time{'\n'}
@@ -199,8 +194,8 @@ const NotificationSettings = () => {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Notification Settings</Text>
+      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
+        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Notification Settings</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -243,7 +238,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5EA',
   },
   switchContent: {
     flex: 1,
@@ -262,7 +256,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     marginBottom: 24,
   },
   infoTitle: {
@@ -282,7 +275,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },

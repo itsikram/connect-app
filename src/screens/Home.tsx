@@ -129,22 +129,7 @@ const Home = () => {
 
     return (
         <View style={{ flex: 1, backgroundColor }}>
-            {/* Debug toggle button */}
-            <TouchableOpacity 
-                onPress={() => setDebugMode(true)}
-                style={{ 
-                    position: 'absolute', 
-                    top: 50, 
-                    right: 16, 
-                    zIndex: 1000,
-                    backgroundColor: themeColors.primary,
-                    padding: 8,
-                    borderRadius: 20,
-                    opacity: 0.7
-                }}
-            >
-                <Icon name="bug-report" size={20} color={themeColors.text.inverse} />
-            </TouchableOpacity>
+            
             
             <FlatList
                 data={posts}

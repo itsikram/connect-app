@@ -6,10 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  useColorScheme,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface SoundSettings {
   ringtone: string;
@@ -21,8 +20,7 @@ interface SoundSettings {
 }
 
 const SoundSettings = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors } = useTheme();
   
   const [soundSettings, setSoundSettings] = useState<SoundSettings>({
     ringtone: '1',
@@ -33,7 +31,6 @@ const SoundSettings = () => {
     volumeLevel: 80,
   });
 
-  // Sample ringtone data - you can expand this or load from a config file
   const ringtones = [
     { id: '1', name: 'Default Ringtone' },
     { id: '2', name: 'Classic Bell' },
@@ -60,7 +57,6 @@ const SoundSettings = () => {
   ];
 
   const handleSave = () => {
-    // Here you would typically make an API call to save the sound settings
     console.log('Sound settings:', soundSettings);
   };
 
@@ -72,28 +68,28 @@ const SoundSettings = () => {
     description?: string
   ) => (
     <View style={styles.settingItem}>
-      <Text style={[styles.settingLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <Text style={[styles.settingLabel, { color: themeColors.text.primary }]}>
         {label}
       </Text>
-      <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+      <View style={[styles.pickerContainer, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
         <Picker
           selectedValue={value}
           onValueChange={onValueChange}
-          style={[styles.picker, { color: isDarkMode ? colors.text.light : colors.text.primary }]}
-          dropdownIconColor={isDarkMode ? colors.text.light : colors.text.primary}
+          style={[styles.picker, { color: themeColors.text.primary }]}
+          dropdownIconColor={themeColors.text.primary}
         >
           {options.map((option) => (
             <Picker.Item
               key={option.id}
               label={option.name}
               value={option.id}
-              color={isDarkMode ? colors.text.light : colors.text.primary}
+              color={themeColors.text.primary}
             />
           ))}
         </Picker>
       </View>
       {description && (
-        <Text style={[styles.description, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.description, { color: themeColors.text.secondary }]}>
           {description}
         </Text>
       )}
@@ -105,20 +101,20 @@ const SoundSettings = () => {
     label: string,
     description: string
   ) => (
-    <View style={styles.switchItem}>
+    <View style={[styles.switchItem, { borderBottomColor: themeColors.border.primary }]}>
       <View style={styles.switchContent}>
-        <Text style={[styles.switchLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.switchLabel, { color: themeColors.text.primary }]}>
           {label}
         </Text>
-        <Text style={[styles.switchDescription, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.switchDescription, { color: themeColors.text.secondary }]}>
           {description}
         </Text>
       </View>
       <Switch
         value={soundSettings[key] as boolean}
         onValueChange={() => setSoundSettings(prev => ({ ...prev, [key]: !prev[key] }))}
-        trackColor={{ false: isDarkMode ? colors.gray[700] : colors.gray[300], true: colors.primary }}
-        thumbColor={(soundSettings[key] as boolean) ? colors.white : isDarkMode ? colors.gray[500] : colors.gray[400]}
+        trackColor={{ false: themeColors.gray[300], true: themeColors.primary }}
+        thumbColor={(soundSettings[key] as boolean) ? themeColors.text.inverse : themeColors.gray[400]}
       />
     </View>
   );
@@ -126,17 +122,17 @@ const SoundSettings = () => {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Sound Settings
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
           Customize your audio experience and notifications
         </Text>
       </View>
 
       {/* Call Sounds */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Call Sounds
         </Text>
         
@@ -151,7 +147,7 @@ const SoundSettings = () => {
 
       {/* Notification Sounds */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Notification Sounds
         </Text>
         
@@ -174,7 +170,7 @@ const SoundSettings = () => {
 
       {/* Sound Controls */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Sound Controls
         </Text>
         
@@ -193,26 +189,26 @@ const SoundSettings = () => {
 
       {/* Volume Control */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Volume Control
         </Text>
         
         <View style={styles.volumeContainer}>
-          <Text style={[styles.volumeLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+          <Text style={[styles.volumeLabel, { color: themeColors.text.primary }]}>
             Notification Volume
           </Text>
-          <View style={[styles.volumeBar, { backgroundColor: isDarkMode ? colors.gray[700] : colors.gray[300] }]}>
+          <View style={[styles.volumeBar, { backgroundColor: themeColors.gray[300] }]}>
             <View 
               style={[
                 styles.volumeFill, 
                 { 
                   width: `${soundSettings.volumeLevel}%`,
-                  backgroundColor: colors.primary 
+                  backgroundColor: themeColors.primary 
                 }
               ]} 
             />
           </View>
-          <Text style={[styles.volumeText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.volumeText, { color: themeColors.text.secondary }]}>
             {soundSettings.volumeLevel}%
           </Text>
         </View>
@@ -220,11 +216,11 @@ const SoundSettings = () => {
 
       {/* Info Cards */}
       <View style={styles.infoContainer}>
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Sound Tips
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             • Ringtones play during incoming calls{'\n'}
             • Notification sounds play for alerts{'\n'}
             • Message sounds play for new messages{'\n'}
@@ -233,11 +229,11 @@ const SoundSettings = () => {
           </Text>
         </View>
 
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Device Integration
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             Sound settings integrate with your device's volume controls. 
             Make sure your device is not on silent mode to hear sounds properly.
           </Text>
@@ -245,8 +241,8 @@ const SoundSettings = () => {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Sound Settings</Text>
+      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
+        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Sound Settings</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -289,7 +285,6 @@ const styles = StyleSheet.create({
   pickerContainer: {
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
     overflow: 'hidden',
   },
   picker: {
@@ -306,7 +301,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5EA',
   },
   switchContent: {
     flex: 1,
@@ -351,7 +345,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
   infoTitle: {
     fontSize: 16,
@@ -370,7 +363,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },

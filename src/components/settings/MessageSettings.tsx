@@ -6,9 +6,8 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
-  useColorScheme,
 } from 'react-native';
-import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
 
 interface MessageSettings {
   showTyping: boolean;
@@ -20,8 +19,7 @@ interface MessageSettings {
 }
 
 const MessageSettings = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors } = useTheme();
   
   const [messageSettings, setMessageSettings] = useState<MessageSettings>({
     showTyping: true,
@@ -40,7 +38,6 @@ const MessageSettings = () => {
   };
 
   const handleSave = () => {
-    // Here you would typically make an API call to save the message settings
     console.log('Message settings:', messageSettings);
   };
 
@@ -49,20 +46,20 @@ const MessageSettings = () => {
     label: string,
     description: string
   ) => (
-    <View style={styles.switchItem}>
+    <View style={[styles.switchItem, { borderBottomColor: themeColors.border.primary }]}>
       <View style={styles.switchContent}>
-        <Text style={[styles.switchLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.switchLabel, { color: themeColors.text.primary }]}>
           {label}
         </Text>
-        <Text style={[styles.switchDescription, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.switchDescription, { color: themeColors.text.secondary }]}>
           {description}
         </Text>
       </View>
       <Switch
         value={messageSettings[key]}
         onValueChange={() => handleToggle(key)}
-        trackColor={{ false: isDarkMode ? colors.gray[700] : colors.gray[300], true: colors.primary }}
-        thumbColor={messageSettings[key] ? colors.white : isDarkMode ? colors.gray[500] : colors.gray[400]}
+        trackColor={{ false: themeColors.gray[300], true: themeColors.primary }}
+        thumbColor={messageSettings[key] ? themeColors.text.inverse : themeColors.gray[400]}
       />
     </View>
   );
@@ -70,17 +67,17 @@ const MessageSettings = () => {
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Messaging Settings
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
           Customize your messaging experience and privacy
         </Text>
       </View>
 
       {/* Privacy & Visibility */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Privacy & Visibility
         </Text>
         
@@ -105,7 +102,7 @@ const MessageSettings = () => {
 
       {/* Advanced Features */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Advanced Features
         </Text>
         
@@ -130,31 +127,31 @@ const MessageSettings = () => {
 
       {/* Info Cards */}
       <View style={styles.infoContainer}>
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Typing Indicators
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             When enabled, your friends will see "typing..." when you're composing a message. 
             This helps them know you're actively responding.
           </Text>
         </View>
 
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Face Mode Sharing
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             This feature uses your camera to analyze facial expressions and share your mood 
             with friends. Camera access is required and can be revoked in device settings.
           </Text>
         </View>
 
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Read Receipts
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             Read receipts show when your messages have been seen by the recipient. 
             This works both ways - you'll also see when others have read your messages.
           </Text>
@@ -162,8 +159,8 @@ const MessageSettings = () => {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Message Settings</Text>
+      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
+        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Message Settings</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -201,7 +198,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: 16,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5EA',
   },
   switchContent: {
     flex: 1,
@@ -224,7 +220,6 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
   },
   infoTitle: {
     fontSize: 16,
@@ -243,7 +238,6 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
   },
