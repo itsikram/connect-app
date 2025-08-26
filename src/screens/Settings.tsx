@@ -101,9 +101,9 @@ const Settings = () => {
         </View>
 
         {/* Tab Content */}
-        <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.tabContent}>
           {renderTabContent()}
-        </ScrollView>
+        </View>
       </View>
     </SafeAreaView>
   );

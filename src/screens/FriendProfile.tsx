@@ -57,6 +57,7 @@ const FriendProfile = () => {
     const [friendsLoading, setFriendsLoading] = React.useState<boolean>(false)
     const [videos, setVideos] = React.useState<any[]>([])
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
+    const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
 
     // Fetch friend profile data
     React.useEffect(() => {
@@ -216,6 +217,16 @@ const FriendProfile = () => {
             label: 'About',
             render: () => (
                 <View style={styles.detailsCard}>
+                    {/* Bio */}
+                    {friendData?.bio && (
+                        <View style={styles.detailsItem}>
+                            <Icon name="info" size={20} color={colors.text.light} />
+                            <Text style={styles.detailsText}>
+                                <Text style={styles.detailsStrong}>{friendData.bio}</Text>
+                            </Text>
+                        </View>
+                    )}
+
                     {/* Workplaces */}
                     {Array.isArray(friendData?.workPlaces) && friendData.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
@@ -304,7 +315,16 @@ const FriendProfile = () => {
                                 const userName = f.fullName || (f.user ? `${f.user.firstName || ''} ${f.user.surname || ''}`.trim() : f.username) || 'Unknown'
                                 const pp = f.profilePic || (f.user && f.user.profilePic)
                                 return (
-                                    <View key={f._id || userName} style={styles.friendItem}>
+                                    <TouchableOpacity 
+                                        key={f._id || userName} 
+                                        style={styles.friendItem}
+                                        onPress={() => {
+                                            (navigation as any).navigate('Message', {
+                                                screen: 'FriendProfile',
+                                                params: { friendId: f._id, friendData: f }
+                                            });
+                                        }}
+                                    >
                                         <View style={styles.friendAvatarWrap}>
                                             {pp ? (
                                                 <Image source={{ uri: pp }} style={styles.friendAvatar} />
@@ -313,7 +333,7 @@ const FriendProfile = () => {
                                             )}
                                         </View>
                                         <Text style={styles.friendName} numberOfLines={1}>{userName}</Text>
-                                    </View>
+                                    </TouchableOpacity>
                                 )
                             })}
                         </View>
@@ -411,11 +431,10 @@ const FriendProfile = () => {
                     <Icon name="arrow-back" size={24} color={colors.text.light} />
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Profile</Text>
-                <View style={styles.headerSpacer} />
+
             </View>
             
-            {/* Header spacer */}
-            <View />
+
             
             <View style={styles.profileHeader}>
                 <View style={styles.coverContainer}>
@@ -449,6 +468,31 @@ const FriendProfile = () => {
                             {friendsCount > 0 ? (
                                 <Text style={styles.friendsCount}>{friendsCount} friends</Text>
                             ) : null}
+                        </View>
+
+                        {/* Bio Section */}
+                        <View style={styles.bioSection}>
+                            {friendData?.bio ? (
+                                <>
+                                    <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 3}>
+                                        {friendData.bio}
+                                    </Text>
+                                    {friendData.bio.length > 100 && (
+                                        <TouchableOpacity 
+                                            style={styles.bioToggleButton}
+                                            onPress={() => setShowFullBio(!showFullBio)}
+                                        >
+                                            <Text style={styles.bioToggleText}>
+                                                {showFullBio ? 'Show Less' : 'Show More'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </>
+                            ) : (
+                                <Text style={styles.bioPlaceholder}>
+                                    No bio added yet
+                                </Text>
+                            )}
                         </View>
 
                         <View style={styles.profileButtons}>
@@ -521,9 +565,7 @@ const styles = StyleSheet.create({
         color: colors.text.light,
         textAlign: 'center',
     },
-    headerSpacer: {
-        width: 44,
-    },
+
     loadingContainer: {
         flex: 1,
         backgroundColor: colors.background.dark,
@@ -817,6 +859,44 @@ const styles = StyleSheet.create({
     },
     placeholderText: {
         color: colors.text.light,
+    },
+    bioSection: {
+        marginTop: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#3B3C3C',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#555',
+        width: '100%',
+        alignSelf: 'center',
+        minHeight: 60,
+    },
+    bioText: {
+        color: colors.text.light,
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20,
+    },
+    bioPlaceholder: {
+        color: '#B0B3B8',
+        fontSize: 14,
+        textAlign: 'center',
+        fontStyle: 'italic',
+    },
+    bioToggleButton: {
+        marginTop: 8,
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        backgroundColor: '#3B3C3C',
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: '#555',
+    },
+    bioToggleText: {
+        color: colors.text.light,
+        fontSize: 12,
+        fontWeight: '600',
     },
 })
 

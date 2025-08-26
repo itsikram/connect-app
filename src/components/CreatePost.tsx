@@ -1,5 +1,5 @@
 import React, { useState, useContext, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, useColorScheme } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, useColorScheme, FlatList } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { colors } from '../theme/colors';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -24,6 +24,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const cardBg = isDarkMode ? colors.background.dark : '#fff';
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isFeelingsPickerVisible, setIsFeelingsPickerVisible] = useState(false);
   const [postData, setPostData] = useState<PostData>({
     caption: '',
     urls: null,
@@ -31,6 +32,19 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
     location: '',
     feelings: '',
   });
+
+  const defaultFeelings: { label: string; value: string; emoji?: string }[] = [
+    { label: 'None', value: '' },
+    { label: 'Happy', value: 'happy', emoji: '😊' },
+    { label: 'Sad', value: 'sad', emoji: '😢' },
+    { label: 'Excited', value: 'excited', emoji: '🤩' },
+    { label: 'Angry', value: 'angry', emoji: '😡' },
+    { label: 'Blessed', value: 'blessed', emoji: '🙏' },
+    { label: 'Loved', value: 'loved', emoji: '❤️' },
+    { label: 'Grateful', value: 'grateful', emoji: '🥰' },
+    { label: 'Bored', value: 'bored', emoji: '🥱' },
+    { label: 'Tired', value: 'tired', emoji: '😴' },
+  ];
 
   const openModal = () => setModalVisible(true);
   const closeModal = () => {
@@ -41,6 +55,12 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const handleCaptionChange = (text: string) => setPostData((prev) => ({ ...prev, caption: text }));
   const handleLocationChange = (text: string) => setPostData((prev) => ({ ...prev, location: text }));
   const handleFeelingsChange = (value: string) => setPostData((prev) => ({ ...prev, feelings: value }));
+  const openFeelingsPicker = () => setIsFeelingsPickerVisible(true);
+  const closeFeelingsPicker = () => setIsFeelingsPickerVisible(false);
+  const selectFeeling = (value: string) => {
+    handleFeelingsChange(value);
+    closeFeelingsPicker();
+  };
 
   const pickMedia = async (mediaType: 'image' | 'video') => {
     const options: ImageLibraryOptions = {
@@ -67,25 +87,64 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
     try {
       let uploadedUrl = postData.urls;
       if (postData.urls && typeof postData.urls === 'string' && postData.urls.startsWith('file://')) {
+        // Validate file URI
+        if (!postData.urls || postData.urls.trim() === '') {
+          throw new Error('Invalid file URI');
+        }
         // Upload file
         const formData = new FormData();
-        formData.append('file', {
+        const fileData = {
           uri: postData.urls,
           name: `upload.${postData.type === 'image' ? 'jpg' : 'mp4'}`,
           type: postData.type === 'image' ? 'image/jpeg' : 'video/mp4',
-        } as any);
-        formData.append('type', postData.type === 'image' ? 'image/jpeg' : 'video/mp4');
-        const uploadRes = await api.post('/upload/', formData, {
+        } as any;
+        
+        // Validate file type
+        if (!postData.type || (postData.type !== 'image' && postData.type !== 'video')) {
+          throw new Error('Invalid file type');
+        }
+        
+        // Validate MIME type
+        const expectedMimeType = postData.type === 'image' ? 'image/jpeg' : 'video/mp4';
+        if (fileData.type !== expectedMimeType) {
+          throw new Error(`Invalid MIME type: expected ${expectedMimeType}, got ${fileData.type}`);
+        }
+        
+        let uploadEndpoint = '/upload/';
+        let fieldName = 'image';
+        
+        if (postData.type === 'video') {
+          uploadEndpoint = '/upload/video';
+          fieldName = 'attachment';
+        } else if (postData.type === 'image') {
+          uploadEndpoint = '/upload/';
+          fieldName = 'image';
+        }
+        
+        formData.append(fieldName, fileData);
+        
+        console.log('Uploading to:', uploadEndpoint);
+        console.log('Field name:', fieldName);
+        console.log('File data:', fileData);
+        
+        const uploadRes = await api.post(uploadEndpoint, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
         });
         if (uploadRes.status === 200) {
-          uploadedUrl = uploadRes.data.secure_url;
+          uploadedUrl = uploadRes.data.secure_url || uploadRes.data.url;
+          if (!uploadedUrl) {
+            throw new Error('Upload successful but no URL returned');
+          }
+          console.log('Upload successful:', uploadRes.data);
+        } else {
+          console.log('Upload failed with status:', uploadRes.status);
+          throw new Error(`Upload failed with status: ${uploadRes.status}`);
         }
       }
       // Create post
       const postFormData = new FormData();
       postFormData.append('caption', postData.caption);
-      postFormData.append('urls', uploadedUrl || '');
+      postFormData.append('photos', uploadedUrl || '');
       postFormData.append('feelings', postData.feelings);
       postFormData.append('location', postData.location);
       const res = await api.post('/post/create', postFormData, {
@@ -96,7 +155,8 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
         closeModal();
       }
     } catch (e) {
-      console.log(e);
+      console.log('Error creating post:', e);
+      // You might want to show an error message to the user here
     } finally {
       setIsUploading(false);
     }
@@ -133,6 +193,23 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             <Text style={styles.buttonText}>Live Video</Text>
           </TouchableOpacity>
         </View>
+        {/* Facebook-style action row */}
+        <View style={styles.actionRow}>
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: inputBg }]} 
+            onPress={() => { openModal(); openFeelingsPicker(); }}
+          >
+            <Icon name="mood" size={20} color={colors.primary} />
+            <Text style={styles.actionButtonText}>Feeling</Text>
+          </TouchableOpacity>
+          <TouchableOpacity 
+            style={[styles.actionButton, { backgroundColor: inputBg }]} 
+            onPress={() => { openModal(); }}
+          >
+            <Icon name="location-on" size={20} color={colors.primary} />
+            <Text style={styles.actionButtonText}>Check in</Text>
+          </TouchableOpacity>
+        </View>
       <Modal
         visible={isModalVisible}
         animationType="slide"
@@ -155,15 +232,17 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
               <View style={styles.feelingsLocationRow}>
                 <View style={styles.feelingsContainer}>
                   <Text style={[styles.label, { color: textColor }]}>Feelings:</Text>
-                  <View style={[styles.pickerWrapper, { borderColor }]}> {/* Picker wrapper */}
-                    <TextInput
-                      style={[styles.input, { backgroundColor: inputBg, color: inputText, borderColor }]}
-                      placeholder="Feelings"
-                      placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
-                      value={postData.feelings}
-                      onChangeText={handleFeelingsChange}
-                    />
-                  </View>
+                  <TouchableOpacity
+                    onPress={openFeelingsPicker}
+                    style={[styles.input, { backgroundColor: inputBg, borderColor, flexDirection: 'row', alignItems: 'center' }]}
+                  >
+                    <Icon name="mood" size={18} color={colors.primary} />
+                    <Text style={{ marginLeft: 8, color: inputText }}>
+                      {postData.feelings
+                        ? defaultFeelings.find(f => f.value === postData.feelings)?.label || postData.feelings
+                        : 'Select feeling'}
+                    </Text>
+                  </TouchableOpacity>
                 </View>
                 <View style={styles.locationContainer}>
                   <Text style={[styles.label, { color: textColor }]}>Location:</Text>
@@ -214,6 +293,33 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             </View>
           </View>
         </View>
+      </Modal>
+      {/* Feelings picker modal */}
+      <Modal
+        visible={isFeelingsPickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={closeFeelingsPicker}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeFeelingsPicker}>
+          <View style={[styles.modalContent, { backgroundColor: modalBg }]}> {/* Reuse modal style */}
+            <Text style={[styles.modalTitle, { color: textColor }]}>Select Feeling</Text>
+            <FlatList
+              data={defaultFeelings}
+              keyExtractor={(item) => item.value}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => selectFeeling(item.value)}
+                  style={{ paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
+                >
+                  {item.emoji ? <Text style={{ fontSize: 18, marginRight: 8 }}>{item.emoji}</Text> : null}
+                  <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
+            />
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -386,6 +492,28 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginTop: 8,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colors.gray[300],
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+  },
+  actionButtonText: {
+    marginLeft: 8,
+    color: colors.primary,
+    fontWeight: 'bold',
+    fontSize: 14,
   },
 });
 

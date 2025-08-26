@@ -88,8 +88,7 @@ const Friends = () => {
 
   return (
     <ScrollView style={[styles.friendsContent, { backgroundColor }]}> {/* Main container */}
-      {/* Header spacer */}
-      <View />
+
       
       {/* Friend Requests Section */}
       <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}> {/* Card */}

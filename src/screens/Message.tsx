@@ -9,7 +9,7 @@ import { useNavigation } from '@react-navigation/native';
 // import { useSocket } from '../contexts/SocketContext';
 import { fetchChatList } from '../reducers/chatReducer';
 import moment from 'moment';
-import { useHeaderVisibility } from '../contexts/HeaderVisibilityContext';
+
 
 
 const formatTime = (date: Date) => {
@@ -41,7 +41,7 @@ const Message = () => {
   });
 
   // const { emit, on, off, isConnected } = useSocket();
-  const { spacerHeight } = useHeaderVisibility();
+
 
 
   useEffect(() => {
@@ -103,8 +103,7 @@ const Message = () => {
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
-      {/* Header spacer */}
-      <View />
+
       
       <Text style={styles.heading}>Messages</Text>
       

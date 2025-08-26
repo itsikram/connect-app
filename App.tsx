@@ -29,6 +29,7 @@ import store, { RootState } from './src/store';
 // Profile data hook
 import { useProfileData } from './src/hooks/useProfileData';
 import SingleMessage from './src/screens/SingleMessage';
+import FriendProfile from './src/screens/FriendProfile';
 import Videos from './src/screens/Videos';
 // Socket context
 import { SocketProvider, useSocket } from './src/contexts/SocketContext';
@@ -48,6 +49,7 @@ function MessageStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MessageList" component={Message} />
       <Stack.Screen name="SingleMessage" component={SingleMessage} />
+      <Stack.Screen name="FriendProfile" component={FriendProfile} />
     </Stack.Navigator>
   );
 }
@@ -206,8 +208,8 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                 paddingBottom: 8,
                 paddingTop: 8,
               },
-              headerShown: true,
-              header: () => <FacebookHeader />,
+              headerShown: route.name === 'Home',
+              header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
             })}
           >
             {user ? (
@@ -224,6 +226,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   component={Videos}
                   options={{
                     tabBarLabel: 'Videos',
+                    headerShown: false,
                   }}
                 />
                 <Tab.Screen
@@ -231,6 +234,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   component={Friends}
                   options={{
                     tabBarLabel: 'Friends',
+                    headerShown: false,
                   }}
                 />
                 <Tab.Screen
@@ -238,7 +242,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   component={MessageStack}
                   options={({ route }) => ({
                     tabBarLabel: 'Message',
-                    headerShown: getFocusedRouteNameFromRoute(route as any) !== 'SingleMessage',
+                    headerShown: false,
                   })}
                 />
 
@@ -247,6 +251,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   component={MenuStack}
                   options={{
                     tabBarLabel: 'Menu',
+                    headerShown: false,
                   }}
                 />
               </>

@@ -8,6 +8,7 @@ import {
   ScrollView,
   Alert,
   useColorScheme,
+  ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector, useDispatch } from 'react-redux';
@@ -16,6 +17,7 @@ import { setProfile } from '../../reducers/profileReducer';
 import { AuthContext } from '../../contexts/AuthContext';
 import { useProfileData } from '../../hooks/useProfileData';
 import { colors } from '../../theme/colors';
+import api from '../../lib/api';
 
 interface ProfileData {
   firstName: string;
@@ -23,6 +25,7 @@ interface ProfileData {
   nickname: string;
   username: string;
   displayName: string;
+  bio: string;
   presentAddress: string;
   permanentAddress: string;
   workPlaces: Array<{ name: string; designation: string }>;
@@ -47,11 +50,14 @@ const ProfileSettings = () => {
     nickname: '',
     username: '',
     displayName: '',
+    bio: '',
     presentAddress: '',
     permanentAddress: '',
     workPlaces: [{ name: '', designation: '' }],
     schools: [{ name: '', degree: '' }],
   });
+
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Update local state when Redux store changes
   useEffect(() => {
@@ -67,6 +73,7 @@ const ProfileSettings = () => {
         nickname: currentProfile.nickname || '',
         username: currentProfile.username || currentProfile.user_name || '',
         displayName: currentProfile.displayName || currentProfile.display_name || '',
+        bio: currentProfile.bio || '',
         presentAddress: currentProfile.presentAddress || currentProfile.present_address || '',
         permanentAddress: currentProfile.permanentAddress || currentProfile.permanent_address || '',
         workPlaces: currentProfile.workPlaces && currentProfile.workPlaces.length > 0 
@@ -89,6 +96,7 @@ const ProfileSettings = () => {
         nickname: user.profile.nickname || '',
         username: user.profile.username || user.profile.user_name || '',
         displayName: user.profile.displayName || user.profile.display_name || '',
+        bio: user.profile.bio || '',
         presentAddress: user.profile.presentAddress || user.profile.present_address || '',
         permanentAddress: user.profile.permanentAddress || user.profile.permanent_address || '',
         workPlaces: user.profile.workPlaces && user.profile.workPlaces.length > 0 
@@ -160,13 +168,27 @@ const ProfileSettings = () => {
   };
 
   const removeWorkplace = (index: number) => {
-    if (profileData.workPlaces.length > 1) {
-      const newWorkPlaces = profileData.workPlaces.filter((_, i) => i !== index);
-      setProfileData(prev => ({
-        ...prev,
-        workPlaces: newWorkPlaces,
-      }));
-    }
+    Alert.alert(
+      'Remove Workplace',
+      'Are you sure you want to remove this workplace?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Remove',
+          style: 'destructive',
+          onPress: () => {
+            const newWorkPlaces = profileData.workPlaces.filter((_, i) => i !== index);
+            setProfileData(prev => ({
+              ...prev,
+              workPlaces: newWorkPlaces.length > 0 ? newWorkPlaces : [{ name: '', designation: '' }],
+            }));
+          },
+        },
+      ]
+    );
   };
 
   const removeSchool = (index: number) => {
@@ -179,7 +201,9 @@ const ProfileSettings = () => {
     }
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (isSaving) return; // Prevent multiple saves
+    
     // Filter out empty entries
     const filteredData = {
       ...profileData,
@@ -187,11 +211,34 @@ const ProfileSettings = () => {
       schools: profileData.schools.filter(school => school.name.trim() !== '' || school.degree.trim() !== ''),
     };
 
-    // Update Redux store
-    dispatch(setProfile(filteredData));
-    
-    // Here you would typically make an API call to save the profile data
-    Alert.alert('Success', 'Profile settings saved successfully!');
+    // Ensure at least one workplace entry exists
+    if (filteredData.workPlaces.length === 0) {
+      filteredData.workPlaces = [{ name: '', designation: '' }];
+    }
+
+    // Ensure at least one school entry exists
+    if (filteredData.schools.length === 0) {
+      filteredData.schools = [{ name: '', degree: '' }];
+    }
+
+    try {
+      setIsSaving(true);
+      // Make API call to save profile data
+      const response = await api.post('/profile/update', filteredData);
+      
+      if (response.status === 200) {
+        // Update Redux store with the response data
+        dispatch(setProfile(response.data));
+        Alert.alert('Success', 'Profile settings saved successfully!');
+      } else {
+        Alert.alert('Error', 'Failed to save profile settings. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      Alert.alert('Error', 'Failed to save profile settings. Please check your connection and try again.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const renderInputField = (
@@ -259,14 +306,12 @@ const ProfileSettings = () => {
         <Text style={[styles.itemTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
           Workplace {index + 1}
         </Text>
-        {profileData.workPlaces.length > 1 && (
-          <TouchableOpacity 
-            style={styles.removeButton} 
-            onPress={() => removeWorkplace(index)}
-          >
-            <Icon name="remove-circle" size={24} color={colors.error} />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity 
+          style={styles.removeButton} 
+          onPress={() => removeWorkplace(index)}
+        >
+          <Icon name="remove-circle" size={24} color={colors.error} />
+        </TouchableOpacity>
       </View>
       {renderInputField('Designation', workplace.designation, (text) => handleWorkplaceChange(index, 'designation', text), 'Your Designation', 'work')}
       {renderInputField('Company Name', workplace.name, (text) => handleWorkplaceChange(index, 'name', text), 'Company Name', 'business')}
@@ -274,7 +319,12 @@ const ProfileSettings = () => {
   );
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView 
+      style={styles.container} 
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={styles.scrollContent}
+      nestedScrollEnabled={true}
+    >
       <View style={styles.header}>
         <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
           Profile Settings
@@ -292,6 +342,42 @@ const ProfileSettings = () => {
         {renderInputField('Username', profileData.username, (text) => handleInputChange('username', text), 'Enter Username', 'alternate-email')}
         {renderInputField('Nickname', profileData.nickname, (text) => handleInputChange('nickname', text), 'Enter Nickname')}
         {renderInputField('Display Name', profileData.displayName, (text) => handleInputChange('displayName', text), 'Enter Display Name')}
+        
+        {/* Bio Field - Special handling for multiline */}
+        <View style={styles.inputContainer}>
+          <Text style={[styles.label, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+            Bio
+          </Text>
+          <View style={[styles.inputWrapper, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+            <Icon 
+              name="info" 
+              size={20} 
+              color={isDarkMode ? colors.gray[400] : colors.gray[600]} 
+              style={styles.inputIcon}
+            />
+            <TextInput
+              style={[
+                styles.textInput,
+                styles.bioTextInput,
+                { 
+                  color: isDarkMode ? colors.text.light : colors.text.primary,
+                  paddingLeft: 40,
+                  textAlignVertical: 'top',
+                }
+              ]}
+              value={profileData.bio}
+              onChangeText={(text) => handleInputChange('bio', text)}
+              placeholder="Tell people about yourself..."
+              placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[500]}
+              multiline
+              numberOfLines={4}
+              maxLength={150}
+            />
+          </View>
+          <Text style={[styles.characterCount, { color: isDarkMode ? colors.gray[400] : colors.gray[500] }]}>
+            {profileData.bio.length}/150 characters
+          </Text>
+        </View>
       </View>
 
       {/* Address Information */}
@@ -326,15 +412,29 @@ const ProfileSettings = () => {
         
         {profileData.workPlaces.map((workplace, index) => renderWorkplaceItem(workplace, index))}
         
-        <TouchableOpacity style={styles.addButton} onPress={addWorkplace}>
+        <TouchableOpacity style={[styles.addButton, { backgroundColor: colors.secondary }]} onPress={addWorkplace}>
           <Icon name="add" size={20} color={colors.white} />
           <Text style={styles.addButtonText}>Add Workplace</Text>
         </TouchableOpacity>
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Settings</Text>
+      <TouchableOpacity 
+        style={[
+          styles.saveButton, 
+          { backgroundColor: isSaving ? colors.gray[600] : colors.primary }
+        ]} 
+        onPress={handleSave}
+        disabled={isSaving}
+      >
+        {isSaving ? (
+          <>
+            <ActivityIndicator size="small" color={colors.white} style={{ marginRight: 8 }} />
+            <Text style={styles.saveButtonText}>Saving...</Text>
+          </>
+        ) : (
+          <Text style={styles.saveButtonText}>Save Settings</Text>
+        )}
       </TouchableOpacity>
     </ScrollView>
   );
@@ -343,6 +443,9 @@ const ProfileSettings = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 32,
   },
   header: {
     alignItems: 'center',
@@ -387,25 +490,46 @@ const styles = StyleSheet.create({
     paddingRight: 16,
     fontSize: 16,
   },
+  bioTextInput: {
+    minHeight: 80, // Ensure minimum height for multiline input
+    textAlignVertical: 'top', // Align text to the top
+    paddingTop: 12, // Add some top padding for better text positioning
+  },
+  characterCount: {
+    fontSize: 12,
+    marginTop: 8,
+    alignSelf: 'flex-end',
+    fontStyle: 'italic',
+  },
   dynamicRow: {
     padding: 16,
     borderRadius: 12,
-    marginBottom: 12,
+    marginBottom: 16,
     borderWidth: 1,
     borderColor: '#E5E5EA',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
   dynamicRowHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 16,
   },
   itemTitle: {
     fontSize: 16,
     fontWeight: '600',
   },
   removeButton: {
-    padding: 4,
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
   },
   addButton: {
     flexDirection: 'row',
@@ -416,6 +540,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     borderRadius: 8,
     alignSelf: 'flex-start',
+    marginTop: 8,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
   },
   addButtonText: {
     color: colors.white,

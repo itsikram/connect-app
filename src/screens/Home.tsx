@@ -9,7 +9,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import DebugInfo from '../components/DebugInfo';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useHeaderVisibility } from '../contexts/HeaderVisibilityContext';
+
 
 const Home = () => {
     const [posts, setPosts] = useState<any[]>([]);
@@ -91,7 +91,7 @@ const Home = () => {
 
     const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
     const textColor = isDarkMode ? colors.text.light : colors.text.primary;
-    const { handleScroll, spacerHeight } = useHeaderVisibility();
+
 
     // Show error state
     if (error && !loading && posts.length === 0) {
@@ -152,10 +152,7 @@ const Home = () => {
                 data={posts}
                 keyExtractor={(item, idx) => item._id || idx.toString()}
                 ListHeaderComponent={
-                    <>
-                        <Animated.View style={{ height: spacerHeight }} />
-                        <CreatePost onPostCreated={handlePostCreated} />
-                    </>
+                    <CreatePost onPostCreated={handlePostCreated} />
                 }
                 renderItem={({ item }) => <Post key={item._id} data={item} />}
                 ListEmptyComponent={loading ? (
@@ -195,8 +192,6 @@ const Home = () => {
                 }
                 style={{ backgroundColor }}
                 contentContainerStyle={{ backgroundColor, flexGrow: 1 }}
-                onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => handleScroll(e.nativeEvent.contentOffset.y)}
-                scrollEventThrottle={16}
             />
         </View>
     );

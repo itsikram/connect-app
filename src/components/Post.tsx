@@ -204,6 +204,15 @@ const Post: React.FC<PostProps> = ({ data }) => {
         <View style={styles.headerInfo}>
           <Text style={[styles.authorName, { color: textColor }]}>
             {post.author?.fullName || 'Unknown User'}
+            {post.feelings ? (
+              <Text style={[styles.metaInline, { color: subTextColor }]}> is feeling {post.feelings}</Text>
+            ) : null}
+            {post.location ? (
+              <Text style={[styles.metaInline, { color: subTextColor }]}>
+                {post.feelings ? ' · ' : ' '}
+                at {post.location}
+              </Text>
+            ) : null}
           </Text>
           <Text style={[styles.time, { color: subTextColor }]}>
             {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
@@ -435,6 +444,9 @@ const styles = StyleSheet.create({
   },
   authorName: {
     fontWeight: 'bold',
+  },
+  metaInline: {
+    fontWeight: '400',
   },
   time: {
     color: '#888',

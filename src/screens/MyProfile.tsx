@@ -48,6 +48,7 @@ const MyProfile = () => {
     const [friendsLoading, setFriendsLoading] = React.useState<boolean>(false)
     const [videos, setVideos] = React.useState<any[]>([])
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
+    const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
 
     React.useEffect(() => {
         if (!myProfile?._id) return;
@@ -177,6 +178,16 @@ const MyProfile = () => {
             label: 'About',
             render: () => (
                 <View style={styles.detailsCard}>
+                    {/* Bio */}
+                    {myProfile?.bio && (
+                        <View style={styles.detailsItem}>
+                            <Icon name="info" size={20} color={colors.text.light} />
+                            <Text style={styles.detailsText}>
+                                <Text style={styles.detailsStrong}>{myProfile.bio}</Text>
+                            </Text>
+                        </View>
+                    )}
+
                     {/* Workplaces */}
                     {Array.isArray(myProfile?.workPlaces) && myProfile.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
@@ -382,8 +393,7 @@ const MyProfile = () => {
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-            {/* Header spacer */}
-            <View/>
+
             
             {/* Cover Photo */}
             <View style={styles.profileHeader}>
@@ -430,6 +440,41 @@ const MyProfile = () => {
                             {friendsCount > 0 ? (
                                 <Text style={styles.friendsCount}>{friendsCount} friends</Text>
                             ) : null}
+                        </View>
+
+                        {/* Bio Section */}
+                        <View style={styles.bioSection}>
+                            {myProfile?.bio ? (
+                                <>
+                                    <Text style={styles.bioText} numberOfLines={showFullBio ? undefined : 3}>
+                                        {myProfile.bio}
+                                    </Text>
+                                    {myProfile.bio.length > 100 && (
+                                        <TouchableOpacity 
+                                            style={styles.bioToggleButton}
+                                            onPress={() => setShowFullBio(!showFullBio)}
+                                        >
+                                            <Text style={styles.bioToggleText}>
+                                                {showFullBio ? 'Show Less' : 'Show More'}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
+                                </>
+                            ) : (
+                                <Text style={styles.bioPlaceholder}>
+                                    Add a bio to tell people about yourself
+                                </Text>
+                            )}
+                            <TouchableOpacity 
+                                style={styles.editBioButton}
+                                onPress={() => {
+                                    // Navigate to profile settings
+                                    (navigation as any).navigate('Settings', { screen: 'ProfileSettings' });
+                                }}
+                            >
+                                <Icon name="edit" size={16} color={colors.text.light} />
+                                <Text style={styles.editBioText}>Edit Bio</Text>
+                            </TouchableOpacity>
                         </View>
 
                         <View style={styles.profileButtons}>
@@ -817,6 +862,61 @@ const styles = StyleSheet.create({
     },
     placeholderText: {
         color: colors.text.light,
+    },
+    bioSection: {
+        marginTop: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#242526',
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: '#3B3C3C',
+        width: '90%',
+        alignSelf: 'center',
+        minHeight: 60,
+    },
+    bioText: {
+        color: colors.text.light,
+        fontSize: 14,
+        textAlign: 'center',
+        lineHeight: 20,
+        marginBottom: 8,
+    },
+    bioPlaceholder: {
+        color: '#B0B3B8',
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 10,
+        fontStyle: 'italic',
+    },
+    editBioButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 12,
+        borderRadius: 6,
+        backgroundColor: '#3B3C3C',
+        alignSelf: 'center',
+    },
+    editBioText: {
+        color: colors.text.light,
+        marginLeft: 6,
+        fontSize: 12,
+        fontWeight: '600',
+    },
+    bioToggleButton: {
+        paddingVertical: 4,
+        paddingHorizontal: 10,
+        borderRadius: 6,
+        backgroundColor: '#3B3C3C',
+        alignSelf: 'center',
+        marginTop: 8,
+    },
+    bioToggleText: {
+        color: colors.text.light,
+        fontSize: 12,
+        fontWeight: '600',
     },
 })
 
