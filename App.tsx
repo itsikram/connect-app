@@ -14,6 +14,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from './src/theme/colors';
 import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
+import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import { Provider as PaperProvider } from 'react-native-paper';
@@ -98,6 +99,13 @@ function AppContent() {
     }
   }, [myProfile?._id, isConnected, connect]);
 
+  // Fetch initial notifications
+  React.useEffect(() => {
+    if (myProfile?._id) {
+      emit('fetchNotifications', myProfile._id);
+    }
+  }, [myProfile?._id, emit]);
+
   React.useEffect(() => {
 
     if (!isConnected) return;
@@ -165,117 +173,125 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
   }
 
   return (
-    <SafeAreaView style={{
-      flex: 1,
-      backgroundColor: isDarkMode ? '#000' : colors.background.light
-    }}>
-        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-        {isLoading ? (
-          <LoadingScreen message="Initializing app..." />
-        ) : (
-          <Tab.Navigator
-            initialRouteName={user ? 'Home' : 'Login'}
-            screenOptions={({ route }) => ({
-              tabBarIcon: ({ color, size }) => {
-                let iconName: string;
-
-                if (route.name === 'Home') {
-                  iconName = 'home';
-                } else if (route.name === 'Videos') {
-                  iconName = 'play-circle';
-                } else if (route.name === 'Message') {
-                  iconName = 'message';
-                } else if (route.name === 'Menu') {
-                  iconName = 'menu';
-                } else if (route.name === 'Login') {
-                  iconName = 'login';
-                } else if (route.name === 'Register') {
-                  iconName = 'person-add';
-                } else if (route.name === 'Friends') {
-                  iconName = 'people';
-                } else {
-                  iconName = 'help';
-                }
-
-                return <Icon name={iconName} size={size} color={color} />;
-              },
-              tabBarActiveTintColor: colors.primary,
-              tabBarInactiveTintColor: colors.gray[500],
-              tabBarStyle: {
-                backgroundColor: isDarkMode ? '#242526' : colors.background.light,
-                borderTopColor: isDarkMode ? colors.border.dark : colors.border.light,
-                height: 60,
-                paddingBottom: 8,
-                paddingTop: 8,
-              },
-              headerShown: route.name === 'Home',
-              header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
-            })}
-          >
-            {user ? (
-              <>
-                <Tab.Screen
-                  name="Home"
-                  component={Home}
-                  options={{
-                    tabBarLabel: 'Home',
-                  }}
-                />
-                <Tab.Screen
-                  name="Videos"
-                  component={Videos}
-                  options={{
-                    tabBarLabel: 'Videos',
-                    headerShown: false,
-                  }}
-                />
-                <Tab.Screen
-                  name="Friends"
-                  component={Friends}
-                  options={{
-                    tabBarLabel: 'Friends',
-                    headerShown: false,
-                  }}
-                />
-                <Tab.Screen
-                  name="Message"
-                  component={MessageStack}
-                  options={({ route }) => ({
-                    tabBarLabel: 'Message',
-                    headerShown: false,
-                  })}
-                />
-
-                <Tab.Screen
-                  name="Menu"
-                  component={MenuStack}
-                  options={{
-                    tabBarLabel: 'Menu',
-                    headerShown: false,
-                  }}
-                />
-              </>
+    <ThemeContext.Consumer>
+      {(themeContext) => {
+        if (!themeContext) return null;
+        const { colors: themeColors, isDarkMode: themeIsDarkMode } = themeContext;
+        return (
+        <SafeAreaView style={{
+          flex: 1,
+          backgroundColor: themeIsDarkMode ? themeColors.background.primary : themeColors.background.primary
+        }}>
+            <StatusBar barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'} />
+            {isLoading ? (
+              <LoadingScreen message="Initializing app..." />
             ) : (
-              <>
-                <Tab.Screen
-                  name="Login"
-                  component={LoginScreen}
-                  options={{
-                    tabBarLabel: 'Login',
-                  }}
-                />
-                <Tab.Screen
-                  name="Register"
-                  component={RegisterScreen}
-                  options={{
-                    tabBarLabel: 'Register',
-                  }}
-                />
-              </>
+              <Tab.Navigator
+                initialRouteName={user ? 'Home' : 'Login'}
+                screenOptions={({ route }) => ({
+                  tabBarIcon: ({ color, size }) => {
+                    let iconName: string;
+
+                    if (route.name === 'Home') {
+                      iconName = 'home';
+                    } else if (route.name === 'Videos') {
+                      iconName = 'play-circle';
+                    } else if (route.name === 'Message') {
+                      iconName = 'message';
+                    } else if (route.name === 'Menu') {
+                      iconName = 'menu';
+                    } else if (route.name === 'Login') {
+                      iconName = 'login';
+                    } else if (route.name === 'Register') {
+                      iconName = 'person-add';
+                    } else if (route.name === 'Friends') {
+                      iconName = 'people';
+                    } else {
+                      iconName = 'help';
+                    }
+
+                    return <Icon name={iconName} size={size} color={color} />;
+                  },
+                  tabBarActiveTintColor: themeColors.primary,
+                  tabBarInactiveTintColor: themeColors.gray[500],
+                  tabBarStyle: {
+                    backgroundColor: themeIsDarkMode ? themeColors.surface.header : themeColors.surface.header,
+                    borderTopColor: themeIsDarkMode ? themeColors.border.primary : themeColors.border.primary,
+                    height: 60,
+                    paddingBottom: 8,
+                    paddingTop: 8,
+                  },
+                  headerShown: route.name === 'Home',
+                  header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
+                })}
+              >
+                {user ? (
+                  <>
+                    <Tab.Screen
+                      name="Home"
+                      component={Home}
+                      options={{
+                        tabBarLabel: 'Home',
+                      }}
+                    />
+                    <Tab.Screen
+                      name="Videos"
+                      component={Videos}
+                      options={{
+                        tabBarLabel: 'Videos',
+                        headerShown: false,
+                      }}
+                    />
+                    <Tab.Screen
+                      name="Friends"
+                      component={Friends}
+                      options={{
+                        tabBarLabel: 'Friends',
+                        headerShown: false,
+                      }}
+                    />
+                    <Tab.Screen
+                      name="Message"
+                      component={MessageStack}
+                      options={({ route }) => ({
+                        tabBarLabel: 'Message',
+                        headerShown: false,
+                      })}
+                    />
+
+                    <Tab.Screen
+                      name="Menu"
+                      component={MenuStack}
+                      options={{
+                        tabBarLabel: 'Menu',
+                        headerShown: false,
+                      }}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <Tab.Screen
+                      name="Login"
+                      component={LoginScreen}
+                      options={{
+                        tabBarLabel: 'Login',
+                      }}
+                    />
+                    <Tab.Screen
+                      name="Register"
+                      component={RegisterScreen}
+                      options={{
+                        tabBarLabel: 'Register',
+                      }}
+                    />
+                  </>
+                )}
+              </Tab.Navigator>
             )}
-          </Tab.Navigator>
-        )}
-    </SafeAreaView>
+        </SafeAreaView>
+        );
+      }}
+    </ThemeContext.Consumer>
   );
 }
 
@@ -289,19 +305,21 @@ function App() {
       <GestureHandlerRootView style={{ flex: 1 }}>
         <Provider store={store}>
           <PaperProvider>
-            <AuthProvider>
-              <SocketProvider>
-                <ToastProvider>
-                  <UserToastProvider>
-                    <HeaderVisibilityProvider>
-                      <NavigationContainer>
-                        <AppContent />
-                      </NavigationContainer>
-                    </HeaderVisibilityProvider>
-                  </UserToastProvider>
-                </ToastProvider>
-              </SocketProvider>
-            </AuthProvider>
+            <ThemeProvider>
+              <AuthProvider>
+                <SocketProvider>
+                  <ToastProvider>
+                    <UserToastProvider>
+                      <HeaderVisibilityProvider>
+                        <NavigationContainer>
+                          <AppContent />
+                        </NavigationContainer>
+                      </HeaderVisibilityProvider>
+                    </UserToastProvider>
+                  </ToastProvider>
+                </SocketProvider>
+              </AuthProvider>
+            </ThemeProvider>
           </PaperProvider>
         </Provider>
       </GestureHandlerRootView>

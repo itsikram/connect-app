@@ -20,7 +20,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import UserPP from '../components/UserPP';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -56,6 +56,7 @@ const SingleMessage = () => {
     const myProfile = useSelector((state: RootState) => state.profile);
     const [room, setRoom] = useState('');
     const { connect, isConnected, emit, on, off } = useSocket();
+    const { colors: themeColors, isDarkMode } = useTheme();
 
     // Add state for context menu
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -181,7 +182,7 @@ const SingleMessage = () => {
     // Early return if required data is not available
     if (!friend?._id || !myProfile?._id) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: colors.background.light }}>
+            <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                     <Text>Loading...</Text>
                 </View>
@@ -189,27 +190,31 @@ const SingleMessage = () => {
         );
     }
 
-    // Hide bottom tabs when this screen is focused
+    // Hide tab bar when focused
     useFocusEffect(
         React.useCallback(() => {
-            // Hide bottom tabs
             navigation.getParent()?.setOptions({
-                tabBarStyle: { display: 'none' }
+                tabBarStyle: {
+                    backgroundColor: themeColors.surface.header,
+                    borderTopColor: themeColors.border.primary,
+                    height: 60,
+                    paddingBottom: 8,
+                    paddingTop: 8,
+                },
             });
 
-            // Show bottom tabs when screen loses focus
             return () => {
                 navigation.getParent()?.setOptions({
                     tabBarStyle: {
-                        backgroundColor: colors.background.light,
-                        borderTopColor: colors.border.light,
+                        backgroundColor: themeColors.surface.header,
+                        borderTopColor: themeColors.border.primary,
                         height: 60,
                         paddingBottom: 8,
                         paddingTop: 8,
-                    }
+                    },
                 });
             };
-        }, [navigation])
+        }, [navigation, themeColors.surface.header, themeColors.border.primary])
     );
 
     const [messages, setMessages] = useState<Message[]>([]);
@@ -461,168 +466,88 @@ const SingleMessage = () => {
     };
 
     const renderMessage = ({ item }: { item: Message }) => (
-        <Swipeable
-            friction={2}
-            leftThreshold={40}
-            overshootLeft={false}
-            onSwipeableLeftOpen={() => startReply(item)}
-            renderLeftActions={() => (
-                <View style={{
-                    marginVertical: 4,
-                    marginLeft: 16,
-                    justifyContent: 'center',
-                }}>
-                    <View style={{
-                        backgroundColor: colors.gray[200],
-                        paddingHorizontal: 12,
-                        paddingVertical: 6,
-                        borderRadius: 16,
-                        flexDirection: 'row',
-                        alignItems: 'center'
-                    }}>
-                        <Icon name="reply" size={16} color={colors.text.primary} />
-                        <Text style={{ marginLeft: 6, color: colors.text.primary }}>Reply</Text>
-                    </View>
-                </View>
-            )}
-        >
-            <Pressable
-                onLongPress={(event) => handleMessageLongPress(item, event)}
-                style={{
-                    marginVertical: 4,
-                    marginHorizontal: 16,
-                    flexDirection: 'row',
-                    alignItems: 'flex-end',
-                    justifyContent: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
-                }}
-            >
-            {/* Avatar for friend messages (left side) */}
-            {item.senderId === friend?._id && (
-                <View style={{
-                    marginRight: 8,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    marginBottom: 18,
-                }}>
-                    <UserPP image={friend?.profilePic} isActive={true} size={30} />
-                </View>
-            )}
-
-            {/* Message content */}
+        <View key={item._id} style={{
+            marginBottom: 8,
+            alignItems: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
+        }}>
             <View style={{
-                maxWidth: '75%',
-                alignItems: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
+                backgroundColor: item.senderId === myProfile?._id ? themeColors.primary : themeColors.gray[200],
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 20,
+                maxWidth: '80%',
+                borderBottomLeftRadius: item.senderId === myProfile._id ? 20 : 4,
+                borderBottomRightRadius: item.senderId === myProfile._id ? 4 : 20,
+                borderWidth: highlightedMessageId === item._id ? 2 : 0,
+                borderColor: highlightedMessageId === item._id ? themeColors.primary : 'transparent',
             }}>
-                <View style={{
-                    backgroundColor: item.senderId === myProfile?._id ? colors.primary : colors.gray[200],
-                    paddingHorizontal: 12,
-                    paddingVertical: 6,
-                    borderRadius: 20,
-                    borderBottomLeftRadius: item.senderId === myProfile?._id ? 20 : 4,
-                    borderBottomRightRadius: item.senderId === myProfile?._id ? 4 : 20,
-                    borderWidth: highlightedMessageId === item._id ? 2 : 0,
-                    borderColor: highlightedMessageId === item._id ? colors.primary : 'transparent',
-                }}>
-
-                    {item.parent && (
-                        <TouchableOpacity onPress={() => {
-                            try {
-                                const parentId = typeof item.parent === 'object' && item.parent?._id ? item.parent._id : item.parent as string;
-                                const index = messages.findIndex(m => m._id === parentId);
-                                if (index >= 0) {
-                                    flatListRef.current?.scrollToIndex?.({ index, animated: true });
-                                    setHighlightedMessageId(parentId);
-                                    setTimeout(() => setHighlightedMessageId(null), 1500);
-                                }
-                            } catch (e) {
-                                // noop
-                            }
-                        }} style={{
-                            marginBottom: 6,
-                            padding: 8,
-                            borderLeftWidth: 3,
-                            borderLeftColor: item.senderId === myProfile?._id ? colors.white : colors.primary,
-                            backgroundColor: item.senderId === myProfile?._id ? 'rgba(255,255,255,0.12)' : colors.gray[300],
-                            borderRadius: 6
-                        }}>
-                            {(() => {
-                                const parentObj: any = typeof item.parent === 'object' && item.parent !== null ? item.parent : messages.find(m => m._id === item.parent);
-                                const repliedText = parentObj?.message || 'Message';
-                                const repliedHasImage = isValidImageUrl(parentObj?.attachment || '');
-                                return (
-                                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                        {repliedHasImage && (
-                                            <Image source={{ uri: parentObj?.attachment || '' }} style={{ width: 28, height: 28, borderRadius: 4, marginRight: 8 }} />
-                                        )}
-                                        <Text style={{
-                                            color: item.senderId === myProfile?._id ? colors.white : colors.text.primary,
-                                            opacity: 0.8,
-                                            fontSize: 12,
-                                        }} numberOfLines={1}>
-                                            {repliedText}
-                                        </Text>
-                                    </View>
-                                );
-                            })()}
-                        </TouchableOpacity>
-                    )}
-
-                    {typeof item.attachment === 'string' && isValidImageUrl(item.attachment) && (
-                        <TouchableOpacity onPress={() => openImageModal(item.attachment as string)}>
-                            <Image 
-                                source={{ uri: item.attachment as string }} 
-                                style={{ 
-                                    width: 250, 
-                                    height: 200, 
-                                    borderRadius: 5,
-                                    resizeMode: 'contain'
-                                }} 
-                            />
-                        </TouchableOpacity>
-                    )}
-                    <Text style={{
-                        color: item.senderId === myProfile?._id ? colors.white : colors.text.primary,
-                        fontSize: 16,
-                        lineHeight: 20,
+                {item.parent && (
+                    <View style={{
+                        marginBottom: 8,
+                        padding: 8,
+                        borderLeftWidth: 3,
+                        borderLeftColor: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.primary,
+                        backgroundColor: item.senderId === myProfile?._id ? 'rgba(255,255,255,0.12)' : themeColors.gray[300],
+                        borderRadius: 6
                     }}>
-                        {item.message}
-                    </Text>
-                    {item.senderId === myProfile?._id ? (
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            marginTop: -2,
-                            justifyContent: 'flex-end',
-                        }}>
-                            <Icon
-                                name={item.isSeen ? 'done-all' : 'check'}
-                                size={16}
-                                color={item.isSeen ? colors.info : colors.white}
-                                style={{ marginLeft: 4 }}
-                            />
-                            <Text style={{
-                                color: colors.white,
-                                fontSize: 12,
-                                opacity: 0.7,
-                                marginHorizontal: 4,
-                            }}>
-                                {formatTime(item.timestamp) === '0m ago' ? 'now' : formatTime(item.timestamp)}
-                            </Text>
-                        </View>
-                    ) : (
                         <Text style={{
-                            color: item.senderId === myProfile?._id ? colors.primary : colors.text.secondary,
+                            color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
+                            opacity: 0.8,
                             fontSize: 12,
-                            opacity: 0.7,
-                            marginTop: 0,
+                            fontStyle: 'italic',
                         }}>
-                            {formatTime(item.timestamp) === '0m ago' ? 'now' : formatTime(item.timestamp)}
+                            {item.parent.message || 'Message'}
                         </Text>
-                    )}
+                    </View>
+                )}
+                <Text style={{
+                    color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
+                    fontSize: 16,
+                    lineHeight: 20,
+                }}>
+                    {item.message}
+                </Text>
+                {item.attachment && isValidImageUrl(item.attachment) && (
+                    <Image
+                        source={{ uri: item.attachment }}
+                        style={{ width: 200, height: 200, borderRadius: 8, marginTop: 8 }}
+                        resizeMode="cover"
+                    />
+                )}
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'flex-end',
+                    marginTop: 4,
+                }}>
+                    <Icon
+                        name={item.isSeen ? 'done-all' : 'check'}
+                        size={16}
+                        color={item.isSeen ? themeColors.status.info : themeColors.text.inverse}
+                        style={{ marginLeft: 4 }}
+                    />
+                    <Text style={{
+                        color: themeColors.text.inverse,
+                        fontSize: 12,
+                        opacity: 0.7,
+                        marginLeft: 4,
+                    }}>
+                        {moment(item.timestamp).format('HH:mm')}
+                    </Text>
                 </View>
             </View>
-            </Pressable>
-        </Swipeable>
+            {item.senderId !== myProfile?._id && (
+                <Text style={{
+                    color: item.senderId === myProfile?._id ? themeColors.primary : themeColors.text.secondary,
+                    fontSize: 12,
+                    opacity: 0.7,
+                    marginTop: 4,
+                    marginLeft: 8,
+                }}>
+                    {moment(item.timestamp).fromNow()}
+                </Text>
+            )}
+        </View>
     );
 
     const renderTypingIndicator = () => {
@@ -640,7 +565,7 @@ const SingleMessage = () => {
                 <UserPP image={friend?.profilePic} isActive={true} size={30} />
 
                 <View style={{
-                    backgroundColor: colors.gray[200],
+                    backgroundColor: themeColors.gray[200],
                     paddingHorizontal: 16,
                     paddingVertical: 12,
                     borderRadius: 20,
@@ -656,7 +581,7 @@ const SingleMessage = () => {
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: colors.gray[500],
+                                backgroundColor: themeColors.gray[500],
                                 marginRight: 4,
                                 opacity: 0.6,
                             }} />
@@ -664,7 +589,7 @@ const SingleMessage = () => {
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: colors.gray[500],
+                                backgroundColor: themeColors.gray[500],
                                 marginRight: 4,
                                 opacity: 0.8,
                             }} />
@@ -672,12 +597,12 @@ const SingleMessage = () => {
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: colors.gray[500],
+                                backgroundColor: themeColors.gray[500],
                                 opacity: 1,
                             }} />
                         </View>
                         <Text style={{
-                            color: colors.text.secondary,
+                            color: themeColors.text.secondary,
                             fontSize: 14,
                             marginLeft: 8,
                         }}>
@@ -690,17 +615,17 @@ const SingleMessage = () => {
     };
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: colors.background.light }}>
-            <StatusBar barStyle="dark-content" backgroundColor={colors.background.light} />
+        <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
+            <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={themeColors.background.primary} />
             {/* Header */}
             <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 16,
                 paddingVertical: 8,
-                backgroundColor: colors.white,
+                backgroundColor: themeColors.surface.header,
                 borderBottomWidth: 1,
-                borderBottomColor: colors.border.light,
+                borderBottomColor: themeColors.border.primary,
             }}>
                 <TouchableOpacity
                     onPress={() => navigation.navigate('Message', { screen: 'MessageList' })}
@@ -710,7 +635,7 @@ const SingleMessage = () => {
                         marginRight: 5,
                     }}
                 >
-                    <Icon name="arrow-back" size={22} color={colors.text.primary} />
+                    <Icon name="arrow-back" size={22} color={themeColors.text.primary} />
                 </TouchableOpacity>
 
                 <View style={{ flex: 1 }}>
@@ -725,7 +650,7 @@ const SingleMessage = () => {
                                 style={{
                                     fontSize: 16,
                                     fontWeight: '600',
-                                    color: colors.text.primary,
+                                    color: themeColors.text.primary,
                                 }}
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
@@ -734,7 +659,7 @@ const SingleMessage = () => {
                             </Text>
                             <Text style={{
                                 fontSize: 14,
-                                color: colors.text.secondary,
+                                color: themeColors.text.secondary,
                                 marginTop: -3,
                             }}>
                                 {isTyping ? (
@@ -746,7 +671,7 @@ const SingleMessage = () => {
                                 ) : friend?.isActive ? (
                                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <View style={{ height: 10, width: 10, borderRadius: 5, backgroundColor: 'green' }}></View>
-                                        <Text style={{ fontSize: 12, color: colors.text.secondary }}>Online</Text>
+                                        <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Online</Text>
                                     </View>
                                 ) : (
                                     <Text>Away</Text>
@@ -763,13 +688,13 @@ const SingleMessage = () => {
                         width: 35,
                         height: 35,
                         borderRadius: 20,
-                        backgroundColor: colors.primary,
+                        backgroundColor: themeColors.primary,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginLeft: 5,
                     }}
                 >
-                    <Icon name="notifications" size={20} color={colors.white} />
+                    <Icon name="notifications" size={20} color={themeColors.text.inverse} />
                 </TouchableOpacity>
                 <TouchableOpacity
                     onPress={() => Alert.alert('Call', 'Call feature coming soon!')}
@@ -777,13 +702,13 @@ const SingleMessage = () => {
                         width: 35,
                         height: 35,
                         borderRadius: 20,
-                        backgroundColor: colors.primary,
+                        backgroundColor: themeColors.primary,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginLeft: 5,
                     }}
                 >
-                    <Icon name="call" size={20} color={colors.white} />
+                    <Icon name="call" size={20} color={themeColors.text.inverse} />
                 </TouchableOpacity>
 
                 <TouchableOpacity
@@ -792,13 +717,13 @@ const SingleMessage = () => {
                         width: 35,
                         height: 35,
                         borderRadius: 20,
-                        backgroundColor: colors.secondary,
+                        backgroundColor: themeColors.secondary,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginLeft: 5,
                     }}
                 >
-                    <Icon name="videocam" size={20} color={colors.white} />
+                    <Icon name="videocam" size={20} color={themeColors.text.inverse} />
                 </TouchableOpacity>
             </View>
 
@@ -833,7 +758,7 @@ const SingleMessage = () => {
                             position: 'absolute',
                             left: contextMenuPosition.x,
                             top: contextMenuPosition.y,
-                            backgroundColor: colors.white,
+                            backgroundColor: themeColors.surface.primary,
                             borderRadius: 12,
                             paddingVertical: 8,
                             paddingHorizontal: 4,
@@ -860,8 +785,8 @@ const SingleMessage = () => {
                                 }}
                                 onPress={playSound}
                             >
-                                <Icon name="speaker" size={20} color={colors.text.primary} />
-                                <Text style={{ marginLeft: 12, fontSize: 16, color: colors.text.primary }}>
+                                <Icon name="speaker" size={20} color={themeColors.text.primary} />
+                                <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
                                     Play Sound
                                 </Text>
                             </TouchableOpacity>
@@ -875,8 +800,8 @@ const SingleMessage = () => {
                             }}
                             onPress={copyMessage}
                         >
-                            <Icon name="content-copy" size={20} color={colors.text.primary} />
-                            <Text style={{ marginLeft: 12, fontSize: 16, color: colors.text.primary }}>
+                            <Icon name="content-copy" size={20} color={themeColors.text.primary} />
+                            <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
                                 Copy
                             </Text>
                         </TouchableOpacity>
@@ -890,8 +815,8 @@ const SingleMessage = () => {
                             }}
                             onPress={replyToMessage}
                         >
-                            <Icon name="reply" size={20} color={colors.text.primary} />
-                            <Text style={{ marginLeft: 12, fontSize: 16, color: colors.text.primary }}>
+                            <Icon name="reply" size={20} color={themeColors.text.primary} />
+                            <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
                                 Reply
                             </Text>
                         </TouchableOpacity>
@@ -905,8 +830,8 @@ const SingleMessage = () => {
                             }}
                             onPress={forwardMessage}
                         >
-                            <Icon name="forward" size={20} color={colors.text.primary} />
-                            <Text style={{ marginLeft: 12, fontSize: 16, color: colors.text.primary }}>
+                            <Icon name="forward" size={20} color={themeColors.text.primary} />
+                            <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
                                 Forward
                             </Text>
                         </TouchableOpacity>
@@ -919,12 +844,12 @@ const SingleMessage = () => {
                                     paddingVertical: 12,
                                     paddingHorizontal: 16,
                                     borderTopWidth: 1,
-                                    borderTopColor: colors.border.light,
+                                    borderTopColor: themeColors.border.primary,
                                 }}
                                 onPress={deleteMessage}
                             >
-                                <Icon name="delete" size={20} color={colors.error || '#FF3B30'} />
-                                <Text style={{ marginLeft: 12, fontSize: 16, color: colors.error || '#FF3B30' }}>
+                                <Icon name="delete" size={20} color={themeColors.status.error} />
+                                <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.status.error }}>
                                     Delete
                                 </Text>
                             </TouchableOpacity>
@@ -1008,7 +933,7 @@ const SingleMessage = () => {
                                 marginRight: 10,
                             }}
                         >
-                            <Icon name="zoom-out" size={20} color={colors.white} />
+                            <Icon name="zoom-out" size={20} color={themeColors.text.inverse} />
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -1038,7 +963,7 @@ const SingleMessage = () => {
                                 marginRight: 10,
                             }}
                         >
-                            <Icon name="zoom-in" size={20} color={colors.white} />
+                            <Icon name="zoom-in" size={20} color={themeColors.text.inverse} />
                         </TouchableOpacity>
 
                         <TouchableOpacity
@@ -1052,7 +977,7 @@ const SingleMessage = () => {
                                 alignItems: 'center',
                             }}
                         >
-                            <Icon name="download" size={20} color={colors.white} />
+                            <Icon name="download" size={20} color={themeColors.text.inverse} />
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -1062,9 +987,9 @@ const SingleMessage = () => {
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{
-                    backgroundColor: colors.white,
+                    backgroundColor: themeColors.surface.header,
                     borderTopWidth: 1,
-                    borderTopColor: colors.border.light,
+                    borderTopColor: themeColors.border.primary,
                     paddingHorizontal: 16,
                     paddingVertical: 10,
                 }}
@@ -1072,25 +997,25 @@ const SingleMessage = () => {
                 {replyingTo && (
                     <View style={{
                         marginBottom: 8,
-                        backgroundColor: colors.gray[100],
+                        backgroundColor: themeColors.gray[100],
                         borderRadius: 12,
                         padding: 10,
                         flexDirection: 'row',
                         alignItems: 'center'
                     }}>
                         <View style={{ flex: 1 }}>
-                            <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Replying to</Text>
+                            <Text style={{ color: themeColors.text.secondary, fontSize: 12 }}>Replying to</Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                                 {typeof replyingTo.attachment === 'string' && isValidImageUrl(replyingTo.attachment) && (
                                     <Image source={{ uri: replyingTo.attachment as string }} style={{ width: 28, height: 28, borderRadius: 4, marginRight: 8 }} />
                                 )}
-                                <Text numberOfLines={1} style={{ color: colors.text.primary }}>
+                                <Text numberOfLines={1} style={{ color: themeColors.text.primary }}>
                                     {replyingTo.message || 'Message'}
                                 </Text>
                             </View>
                         </View>
                         <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ marginLeft: 8 }}>
-                            <Icon name="close" size={18} color={colors.text.secondary} />
+                            <Icon name="close" size={18} color={themeColors.text.secondary} />
                         </TouchableOpacity>
                     </View>
                 )}
@@ -1098,7 +1023,7 @@ const SingleMessage = () => {
                     <View style={{
                         marginBottom: 8,
                         marginHorizontal: 0,
-                        backgroundColor: colors.gray[100],
+                        backgroundColor: themeColors.gray[100],
                         borderRadius: 12,
                         padding: 8,
                         flexDirection: 'row',
@@ -1112,16 +1037,16 @@ const SingleMessage = () => {
                         )}
                         <View style={{ flex: 1 }}>
                             {isUploading && (
-                                <View style={{ height: 6, backgroundColor: colors.gray[300], borderRadius: 3, overflow: 'hidden' }}>
-                                    <View style={{ width: `${uploadProgress || 0}%`, height: 6, backgroundColor: colors.primary }} />
+                                <View style={{ height: 6, backgroundColor: themeColors.gray[300], borderRadius: 3, overflow: 'hidden' }}>
+                                    <View style={{ width: `${uploadProgress || 0}%`, height: 6, backgroundColor: themeColors.primary }} />
                                 </View>
                             )}
                             {!isUploading && pendingAttachment && (
-                                <Text style={{ color: colors.text.secondary, fontSize: 12 }}>Attachment ready</Text>
+                                <Text style={{ color: themeColors.text.secondary, fontSize: 12 }}>Attachment ready</Text>
                             )}
                         </View>
                         <TouchableOpacity onPress={removePendingAttachment} style={{ marginLeft: 8 }}>
-                            <Icon name="close" size={18} color={colors.text.secondary} />
+                            <Icon name="close" size={18} color={themeColors.text.secondary} />
                         </TouchableOpacity>
                     </View>
                 )}
@@ -1135,20 +1060,20 @@ const SingleMessage = () => {
                             width: 35,
                             height: 35,
                             borderRadius: 20,
-                            backgroundColor: colors.gray[100],
+                            backgroundColor: themeColors.gray[100],
                             alignItems: 'center',
                             justifyContent: 'center',
                             marginRight: 8,
                         }}
                     >
-                        <Icon name="add" size={24} color={colors.text.secondary} />
+                        <Icon name="add" size={24} color={themeColors.text.secondary} />
                     </TouchableOpacity>
 
                     <View style={{
                         flex: 1,
                         flexDirection: 'row',
                         alignItems: 'center',
-                        backgroundColor: colors.gray[100],
+                        backgroundColor: themeColors.gray[100],
                         borderRadius: 20,
                         paddingHorizontal: 12,
                         paddingVertical: 0,
@@ -1161,11 +1086,11 @@ const SingleMessage = () => {
                             onSubmitEditing={sendMessage}
                             onKeyPress={handleTyping}
                             placeholder="Type a message..."
-                            placeholderTextColor={colors.text.secondary}
+                            placeholderTextColor={themeColors.text.secondary}
                             style={{
                                 flex: 1,
                                 fontSize: 16,
-                                color: colors.text.primary,
+                                color: themeColors.text.primary,
                                 maxHeight: 80,
                                 height: 40,
                                 paddingVertical: 3,
@@ -1182,7 +1107,7 @@ const SingleMessage = () => {
                             width: 35,
                             height: 35,
                             borderRadius: 20,
-                            backgroundColor: (inputText.trim() || pendingAttachment) && !isUploading ? colors.primary : colors.gray[300],
+                            backgroundColor: (inputText.trim() || pendingAttachment) && !isUploading ? themeColors.primary : themeColors.gray[300],
                             alignItems: 'center',
                             justifyContent: 'center',
                         }}
@@ -1190,9 +1115,9 @@ const SingleMessage = () => {
 
                         {
                             (inputText.length === 0 && !pendingAttachment) ? (
-                                <View style={{ width: 35, height: 35, borderRadius: 20, backgroundColor: colors.gray[300], alignItems: 'center', justifyContent: 'center' }}>
+                                <View style={{ width: 35, height: 35, borderRadius: 20, backgroundColor: themeColors.gray[300], alignItems: 'center', justifyContent: 'center' }}>
                                     <TouchableOpacity onPress={handleEmojiPress}>
-                                        <Text style={{ fontSize: 16, color: colors.text.secondary }}>👍</Text>
+                                        <Text style={{ fontSize: 16, color: themeColors.text.secondary }}>👍</Text>
                                     </TouchableOpacity>
 
                                 </View>
@@ -1201,7 +1126,7 @@ const SingleMessage = () => {
                                     name="send"
                                     style={{ marginRight: -2 }}
                                     size={20}
-                                    color={(inputText.trim() || pendingAttachment) && !isUploading ? colors.white : colors.text.secondary}
+                                    color={(inputText.trim() || pendingAttachment) && !isUploading ? themeColors.text.inverse : themeColors.text.secondary}
                                 />)
                         }
 

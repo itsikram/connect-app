@@ -1,7 +1,7 @@
 import React, { useState, useContext, useCallback } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, useColorScheme, FlatList } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, FlatList } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { launchImageLibrary, Asset, ImageLibraryOptions } from 'react-native-image-picker';
 import api from '../lib/api';
@@ -19,9 +19,8 @@ type PostData = {
 
 const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const { user } = useContext(AuthContext);
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  const cardBg = isDarkMode ? colors.background.dark : '#fff';
+  const { colors: themeColors, isDarkMode } = useTheme();
+  
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isFeelingsPickerVisible, setIsFeelingsPickerVisible] = useState(false);
@@ -166,11 +165,12 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const textInputPlaceholder = `What's On Your Mind ${user.firstName}?`;
 
   // Theme colors
-  const modalBg = isDarkMode ? colors.background.dark : colors.background.light;
-  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
-  const inputBg = isDarkMode ? colors.gray[800] : colors.gray[100];
-  const inputText = isDarkMode ? colors.text.light : colors.text.primary;
-  const borderColor = isDarkMode ? colors.border.dark : colors.gray[300];
+  const cardBg = themeColors.surface.primary;
+  const modalBg = themeColors.surface.primary;
+  const textColor = themeColors.text.primary;
+  const inputBg = themeColors.surface.secondary;
+  const inputText = themeColors.text.primary;
+  const borderColor = themeColors.border.primary;
 
   return (
     <View style={[styles.container, { backgroundColor: cardBg }]}> {/* Main container */}
@@ -185,29 +185,29 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       </View>
         <View style={styles.bottomRow}>
           <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('image'); }}>
-            <Icon name="photo-camera" size={22} color={colors.primary} />
+            <Icon name="photo-camera" size={22} color={themeColors.primary} />
             <Text style={styles.buttonText}>Photo/Video</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
-            <Icon name="videocam" size={22} color={colors.primary} />
+          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg, borderBottomWidth: 0 }]} onPress={() => { openModal(); pickMedia('video'); }}>
+            <Icon name="videocam" size={22} color={themeColors.primary} />
             <Text style={styles.buttonText}>Live Video</Text>
           </TouchableOpacity>
         </View>
         {/* Facebook-style action row */}
-        <View style={styles.actionRow}>
+        <View style={[styles.actionRow, { borderBottomWidth: 0 }]}>
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: inputBg }]} 
             onPress={() => { openModal(); openFeelingsPicker(); }}
           >
-            <Icon name="mood" size={20} color={colors.primary} />
+            <Icon name="mood" size={20} color={themeColors.primary} />
             <Text style={styles.actionButtonText}>Feeling</Text>
           </TouchableOpacity>
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: inputBg }]} 
             onPress={() => { openModal(); }}
           >
-            <Icon name="location-on" size={20} color={colors.primary} />
-            <Text style={styles.actionButtonText}>Check in</Text>
+            <Icon name="location-on" size={20} color={themeColors.primary} />
+            <Text style={styles.buttonText}>Check in</Text>
           </TouchableOpacity>
         </View>
       <Modal
@@ -221,7 +221,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: textColor }]}>Create a Post</Text>
               <TouchableOpacity onPress={closeModal}>
-                <Icon name="close" size={24} color={isDarkMode ? colors.text.light : colors.gray[700]} />
+                <Icon name="close" size={24} color={isDarkMode ? themeColors.text.inverse : themeColors.text.secondary} />
               </TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
@@ -236,7 +236,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                     onPress={openFeelingsPicker}
                     style={[styles.input, { backgroundColor: inputBg, borderColor, flexDirection: 'row', alignItems: 'center' }]}
                   >
-                    <Icon name="mood" size={18} color={colors.primary} />
+                    <Icon name="mood" size={18} color={themeColors.primary} />
                     <Text style={{ marginLeft: 8, color: inputText }}>
                       {postData.feelings
                         ? defaultFeelings.find(f => f.value === postData.feelings)?.label || postData.feelings
@@ -249,7 +249,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                   <TextInput
                     style={[styles.input, { backgroundColor: inputBg, color: inputText, borderColor }]}
                     placeholder="Location..."
-                    placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
+                    placeholderTextColor={isDarkMode ? themeColors.gray[400] : themeColors.gray[600]}
                     value={postData.location}
                     onChangeText={handleLocationChange}
                   />
@@ -258,7 +258,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
               <TextInput
                 style={[styles.captionInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder={textInputPlaceholder}
-                placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
+                placeholderTextColor={isDarkMode ? themeColors.gray[400] : themeColors.gray[600]}
                 value={postData.caption}
                 onChangeText={handleCaptionChange}
                 multiline
@@ -267,20 +267,20 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 <Image source={{ uri: postData.urls }} style={styles.attachmentPreview} />
               )}
               {postData.urls && postData.type === 'video' && (
-                <Text style={{ color: colors.primary, marginVertical: 8 }}>Video selected</Text>
+                <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
               )}
               <View style={styles.attachmentRow}>
                 <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
-                  <Icon name="photo-camera" size={22} color={colors.primary} />
+                  <Icon name="photo-camera" size={22} color={themeColors.primary} />
                   <Text style={styles.buttonText}>Add Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
-                  <Icon name="videocam" size={22} color={colors.primary} />
+                  <Icon name="videocam" size={22} color={themeColors.primary} />
                   <Text style={styles.buttonText}>Add Video</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
-                style={[styles.submitButton, isUploading && { backgroundColor: colors.gray[400] }]}
+                style={[styles.submitButton, isUploading && { backgroundColor: themeColors.gray[400] }]}
                 onPress={handlePostSubmit}
                 disabled={isUploading}
               >
@@ -349,18 +349,18 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.gray[200],
+    backgroundColor: '#E5E5EA',
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F2F2F2',
     borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 16,
     justifyContent: 'center',
   },
   inputPlaceholder: {
-    color: colors.gray[500],
+    color: '#AEAEB2',
     fontSize: 14,
   },
   bottomRow: {
@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
   button: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F2F2F2',
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
@@ -379,7 +379,7 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     marginLeft: 6,
-    color: colors.primary,
+    color: '#29b1a9',
     fontWeight: 'bold',
   },
   modalOverlay: {
@@ -429,29 +429,29 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 12,
-    color: colors.gray[600],
+    color: '#8E8E93',
     marginBottom: 2,
   },
   pickerWrapper: {
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: '#D1D1D6',
     borderRadius: 8,
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F2F2F2',
   },
   input: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F2F2F2',
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: '#D1D1D6',
     fontSize: 14,
   },
   captionInput: {
     minHeight: 60,
     borderWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: '#D1D1D6',
     borderRadius: 8,
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F2F2F2',
     padding: 10,
     fontSize: 15,
     marginBottom: 8,
@@ -471,18 +471,18 @@ const styles = StyleSheet.create({
   attachmentButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: colors.gray[100],
+    backgroundColor: '#F2F2F2',
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
   },
   attachmentButtonText: {
     marginLeft: 6,
-    color: colors.primary,
+    color: '#29b1a9',
     fontWeight: 'bold',
   },
   submitButton: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#29b1a9',
     borderRadius: 20,
     paddingVertical: 12,
     alignItems: 'center',
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: colors.gray[300],
+    borderColor: '#D1D1D6',
   },
   actionButton: {
     flexDirection: 'row',
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
   },
   actionButtonText: {
     marginLeft: 8,
-    color: colors.primary,
+    color: '#29b1a9',
     fontWeight: 'bold',
     fontSize: 14,
   },

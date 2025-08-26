@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, useColorScheme, FlatList, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, Animated } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
@@ -15,8 +15,7 @@ interface FacebookHeaderProps {
 }
 
 const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { colors: themeColors, isDarkMode } = useTheme();
   const navigation = useNavigation();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { isConnected, emit, on, off } = useSocket();
@@ -24,9 +23,9 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
 
-  const backgroundColor = isDarkMode ? '#242526' : colors.white;
-  const iconColor = isDarkMode ? colors.white : colors.black;
-  const textColor = isDarkMode ? colors.white : colors.black;
+  const backgroundColor = themeColors.surface.primary;
+  const iconColor = themeColors.text.primary;
+  const textColor = themeColors.text.primary;
 
   const handleSearchPress = () => {
     setSearchOpen(true);
@@ -71,28 +70,28 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
   const { translateY } = useHeaderVisibility();
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor, borderBottomColor: isDarkMode ? colors.border.dark : colors.border.light, transform: [{ translateY }] }]}> 
+    <Animated.View style={[styles.container, { backgroundColor, borderBottomColor: themeColors.border.primary, transform: [{ translateY }] }]}> 
       <TouchableOpacity style={styles.leftSection} onPress={handleLogoPress} accessibilityRole="button" accessibilityLabel="Go to Home">
         <Logo size="small" />
-        <Text style={{ color: colors.primary, fontWeight: '700', fontSize: 28, marginLeft: 3, marginTop: 0 }}>Connect</Text>
+        <Text style={{ color: themeColors.primary, fontWeight: '700', fontSize: 28, marginLeft: 3, marginTop: 0 }}>Connect</Text>
       </TouchableOpacity>
 
       <View style={styles.rightSection}>
-        <TouchableOpacity onPress={handleSearchPress} style={[styles.actionButton, { backgroundColor: isDarkMode ? '#3A3B3C' : colors.gray[100] }]}>
+        <TouchableOpacity onPress={handleSearchPress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
           <Icon name="search" size={20} color={iconColor} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleMessagePress} style={[styles.actionButton, { backgroundColor: isDarkMode ? '#3A3B3C' : colors.gray[100] }]}>
+        <TouchableOpacity onPress={handleMessagePress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
           <Icon name="chat" size={20} color={iconColor} />
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleNotificationsPress} style={[styles.actionButton, { backgroundColor: isDarkMode ? '#3A3B3C' : colors.gray[100] }]}>
+        <TouchableOpacity onPress={handleNotificationsPress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
           <Icon name="notifications" size={20} color={iconColor} />
         </TouchableOpacity>
-        {/* <TouchableOpacity onPress={handleSettingsPress} style={[styles.actionButton, { backgroundColor: isDarkMode ? '#3A3B3C' : colors.gray[100] }]}>
+        {/* <TouchableOpacity onPress={handleSettingsPress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
           <Icon name="settings" size={20} color={iconColor} />
         </TouchableOpacity> */}
       </View>
       {notifOpen && (
-        <View style={[styles.notificationsMenu, { backgroundColor: isDarkMode ? '#1F1F1F' : colors.white, borderColor: isDarkMode ? colors.border.dark : colors.border.light }]}> 
+        <View style={[styles.notificationsMenu, { backgroundColor: themeColors.surface.elevated, borderColor: themeColors.border.primary }]}> 
           {notifications.length === 0 ? (
             <Text style={{ color: textColor, padding: 12 }}>No notifications</Text>
           ) : (

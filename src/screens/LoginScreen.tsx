@@ -1,8 +1,8 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import theme from '../theme/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { TextInput as PaperTextInput, Button } from 'react-native-paper';
 import Logo from '../components/Logo';
 import Toast from 'react-native-toast-message';
@@ -18,9 +18,8 @@ const LoginScreen = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  const bottomBarBg = isDarkMode ? '#242526' : theme.colors.background.light;
+  const { colors: themeColors } = useTheme();
+  const bottomBarBg = themeColors.surface.secondary;
   const { login } = useContext(AuthContext);
 
   const validate = () => {
@@ -61,9 +60,9 @@ const LoginScreen = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: isDarkMode ? theme.colors.background.dark : theme.colors.background.light }]}>
+    <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
       <Logo size="large" />
-      <Text style={[styles.title, { color: theme.colors.primary }]}>Login</Text>
+      <Text style={[styles.title, { color: themeColors.primary }]}>Login</Text>
       <PaperTextInput
         mode="outlined"
         label="Email"
@@ -73,7 +72,7 @@ const LoginScreen = () => {
         keyboardType="email-address"
         style={[styles.input, { backgroundColor: bottomBarBg }]}
         error={!!error && error.toLowerCase().includes('email')}
-        theme={{ colors: { primary: theme.colors.primary } }}
+        theme={{ colors: { primary: themeColors.primary } }}
       />
       <PaperTextInput
         mode="outlined"
@@ -83,15 +82,15 @@ const LoginScreen = () => {
         secureTextEntry
         style={[styles.input, { backgroundColor: bottomBarBg }]}
         error={!!error && error.toLowerCase().includes('password')}
-        theme={{ colors: { primary: theme.colors.primary } }}
+        theme={{ colors: { primary: themeColors.primary } }}
       />
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      <Button mode="contained" onPress={handleLogin} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
-        <Text style={{ color: '#fff' }}>Login</Text>
+      {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
+      <Button mode="contained" onPress={handleLogin} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: themeColors.text.inverse }}>
+        <Text style={{ color: themeColors.text.inverse }}>Login</Text>
       </Button>
-      <Button mode="text" onPress={() => navigation.navigate('Register')} style={styles.link} labelStyle={{ color: theme.colors.text.light }}>
-        <Text style={{ color: theme.colors.text.light }}>Don't have an account? </Text>
-        <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>Signup</Text>
+      <Button mode="text" onPress={() => navigation.navigate('Register')} style={styles.link} labelStyle={{ color: themeColors.text.secondary }}>
+        <Text style={{ color: themeColors.text.secondary }}>Don't have an account? </Text>
+        <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>Signup</Text>
       </Button>
       <Toast />
     </View>
@@ -103,40 +102,36 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.lg,
+    padding: 20,
   },
   title: {
-    ...theme.typography.h1,
-    color: theme.colors.primary,
-    marginBottom: 0,
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 32,
     textAlign: 'center',
   },
   input: {
     width: 280,
-    marginBottom: theme.spacing.md,
-    color: theme.colors.primary,
+    marginBottom: 16,
   },
   button: {
     width: 280,
-    marginBottom: theme.spacing.sm,
+    marginBottom: 12,
     alignSelf: 'center',
-    backgroundColor: theme.colors.primary,
   },
   buttonText: {
-    color: theme.colors.text.light,
-    fontSize: theme.typography.body.fontSize,
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
   },
   link: {
-    color: theme.colors.primary,
-    fontSize: theme.typography.bodySmall.fontSize,
-    marginTop: theme.spacing.md,
+    fontSize: 14,
+    marginTop: 16,
     alignSelf: 'center',
   },
   error: {
-    color: theme.colors.error,
-    marginBottom: theme.spacing.sm,
-    fontSize: theme.typography.bodySmall.fontSize,
+    marginBottom: 12,
+    fontSize: 14,
     textAlign: 'center',
   },
 });

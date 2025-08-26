@@ -6,6 +6,7 @@ import { setProfile } from '../reducers/profileReducer';
 import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
 import { useNavigation } from '@react-navigation/native';
+import { useTheme } from '../contexts/ThemeContext';
 // import { useSocket } from '../contexts/SocketContext';
 import { fetchChatList } from '../reducers/chatReducer';
 import moment from 'moment';
@@ -29,6 +30,7 @@ const formatTime = (date: Date) => {
 
 const Message = () => {
   const dispatch = useDispatch<AppDispatch>();
+  const { colors: themeColors } = useTheme();
   // Use proper typing for Redux state
   const profileData = useSelector((state: RootState) => state.profile);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -62,7 +64,7 @@ const Message = () => {
 
 
     }
-  }, [profileData]);
+  }, [dispatch, profileData]);
 
   const navigation = useNavigation();
 
@@ -90,27 +92,27 @@ const Message = () => {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#0000ff" />
-        <Text>Loading profile...</Text>
+      <View style={[styles.loadingContainer, { backgroundColor: themeColors.background.primary }]}>
+        <ActivityIndicator size="large" color={themeColors.primary} />
+        <Text style={{ color: themeColors.text.primary }}>Loading profile...</Text>
       </View>
     );
   }
 
   return (
     <ScrollView
-      style={styles.scrollView}
+      style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]}
       contentContainerStyle={styles.container}
       showsVerticalScrollIndicator={false}
     >
 
       
-      <Text style={styles.heading}>Messages</Text>
+      <Text style={[styles.heading, { color: themeColors.text.primary }]}>Messages</Text>
       
       {/* Friends Section */}
       {profileData?.friends && profileData.friends.length > 0 && (
         <View style={styles.sectionContainer}>
-          <Text style={styles.sectionTitle}>Friends</Text>
+          <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Friends</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.friendsScrollView}>
             {profileData.friends.map((friend: any) => (
               <TouchableOpacity
@@ -124,7 +126,7 @@ const Message = () => {
                 }}
               >
                 <UserPP image={friend.profilePic} isActive={friend.isActive} size={50} />
-                <Text style={styles.friendName} numberOfLines={1}>
+                <Text style={[styles.friendName, { color: themeColors.text.secondary }]} numberOfLines={1}>
                   {friend.fullName || 'Friend'}
                 </Text>
               </TouchableOpacity>
@@ -137,14 +139,16 @@ const Message = () => {
       <View style={{ width: '100%', marginBottom: 5 }}>
         <TextInput
           placeholder="Search friends..."
+          placeholderTextColor={themeColors.text.tertiary}
           style={{
-            backgroundColor: '#f0f0f0',
+            backgroundColor: themeColors.surface.secondary,
             borderRadius: 8,
             paddingHorizontal: 12,
             paddingVertical: 8,
             fontSize: 16,
             borderWidth: 1,
-            borderColor: '#ddd',
+            borderColor: themeColors.border.primary,
+            color: themeColors.text.primary,
           }}
           value={searchQuery}
           onChangeText={text => {
@@ -170,7 +174,7 @@ const Message = () => {
           justifyContent: 'center',
           height: '100%',
         }}>
-          <Text style={{ fontSize: 20, color: '#888' }}>🔍</Text>
+          <Text style={{ fontSize: 20, color: themeColors.text.tertiary }}>🔍</Text>
         </View>
 
       </View>
@@ -178,8 +182,11 @@ const Message = () => {
 
       {/* Show message if no profile data */}
       {(!profileData || Object.keys(profileData).length === 0) && (
-        <View style={styles.noDataSection}>
-          <Text style={styles.noDataText}>No profile data available</Text>
+        <View style={[styles.noDataSection, { 
+          backgroundColor: themeColors.surface.secondary, 
+          borderColor: themeColors.border.secondary 
+        }]}>
+          <Text style={[styles.noDataText, { color: themeColors.text.secondary }]}>No profile data available</Text>
         </View>
       )}
 
@@ -190,25 +197,25 @@ const Message = () => {
           const last = item?.messages?.[0];
           return (
             <TouchableOpacity
-              style={styles.messageItem}
+              style={[styles.messageItem, { borderBottomColor: themeColors.border.secondary }]}
               onPress={() => {
                 (navigation as any).navigate('SingleMessage', { friend: item?.person as any });
               }}
             >
               <UserPP image={item?.person?.profilePic} isActive={item?.person?.isActive} size={40} />
               <View style={styles.messageContent}>
-                <Text style={styles.profileName}>{item?.person?.fullName || 'User'}</Text>
+                <Text style={[styles.profileName, { color: themeColors.text.primary }]}>{item?.person?.fullName || 'User'}</Text>
                 <View style={styles.lastMessageContainer}>
                   {last ? (
                     <>
-                      <Text style={styles.lastMessage} numberOfLines={1}>{last?.message}</Text>
-                      <Text style={styles.lastMessageTime}>
-                        <Text style={{ color: '#666' }}> · </Text>
+                      <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={1}>{last?.message}</Text>
+                      <Text style={[styles.lastMessageTime, { color: themeColors.text.tertiary }]}>
+                        <Text style={{ color: themeColors.text.tertiary }}> · </Text>
                         {moment(last?.timestamp).fromNow()}
                       </Text>
                     </>
                   ) : (
-                    <Text style={styles.lastMessage}>No messages yet</Text>
+                    <Text style={[styles.lastMessage, { color: themeColors.text.tertiary }]} numberOfLines={1}>No messages yet</Text>
                   )}
                 </View>
               </View>
@@ -243,12 +250,10 @@ const styles = StyleSheet.create({
     marginTop: 6,
     maxWidth: 70,
     fontSize: 12,
-    color: '#333',
   },
   profileName: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#111',
   },
   container: {
     alignItems: 'flex-start',
@@ -269,7 +274,6 @@ const styles = StyleSheet.create({
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 5,
-    color: '#333',
   },
   text: {
     fontSize: 24,
@@ -279,7 +283,6 @@ const styles = StyleSheet.create({
     width: '100%',
     marginVertical: 20,
     padding: 15,
-    backgroundColor: '#f5f5f5',
     borderRadius: 8,
 
   },
@@ -287,7 +290,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
-    color: '#333',
 
   },
   messageContent: {
@@ -302,21 +304,19 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   lastMessage: {
-    color: '#666',
     maxWidth: '70%',
+    fontSize: 14,
+    lineHeight: 18,
   },
   lastMessageTime: {
     fontSize: 12,
-    color: '#666',
     marginTop: -3,
   },
   profileKey: {
     fontWeight: '600',
-    color: '#666',
     marginRight: 5,
   },
   profileValue: {
-    color: '#333',
     flex: 1,
   },
   messageItem: {
@@ -327,19 +327,15 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     paddingHorizontal: 5,
     borderBottomWidth: 1,
-    borderBottomColor: '#e0e0e0',
   },
   noDataSection: {
     width: '100%',
     marginVertical: 20,
     padding: 15,
-    backgroundColor: '#fff3cd',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#ffeaa7',
   },
   noDataText: {
-    color: '#856404',
     textAlign: 'center',
     fontSize: 16,
   },

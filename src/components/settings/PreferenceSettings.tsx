@@ -9,9 +9,11 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { colors } from '../../theme/colors';
+import { useTheme } from '../../contexts/ThemeContext';
+import { themes, ThemeType } from '../../theme/colors';
 
 interface PreferenceSettings {
-  themeMode: string;
+  themeMode: ThemeType;
   language: string;
   timezone: string;
   dateFormat: string;
@@ -19,11 +21,12 @@ interface PreferenceSettings {
 }
 
 const PreferenceSettings = () => {
+  const { currentTheme, setTheme, colors: themeColors } = useTheme();
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
   
   const [preferences, setPreferences] = useState<PreferenceSettings>({
-    themeMode: 'default',
+    themeMode: currentTheme,
     language: 'en',
     timezone: 'UTC',
     dateFormat: 'MM/DD/YYYY',
@@ -31,9 +34,12 @@ const PreferenceSettings = () => {
   });
 
   const themeOptions = [
-    { label: 'Default', value: 'default' },
-    { label: 'Dark', value: 'dark' },
+    { label: 'Default (System)', value: 'default' },
     { label: 'Light', value: 'light' },
+    { label: 'Dark', value: 'dark' },
+    { label: 'Blue', value: 'blue' },
+    { label: 'Green', value: 'green' },
+    { label: 'Purple', value: 'purple' },
   ];
 
   const languageOptions = [
@@ -66,6 +72,11 @@ const PreferenceSettings = () => {
     { label: '24-hour', value: '24h' },
   ];
 
+  const handleThemeChange = (theme: ThemeType) => {
+    setPreferences(prev => ({ ...prev, themeMode: theme }));
+    setTheme(theme);
+  };
+
   const handleSave = () => {
     // Here you would typically make an API call to save the preference settings
     console.log('Preference settings:', preferences);
@@ -79,55 +90,107 @@ const PreferenceSettings = () => {
     description?: string
   ) => (
     <View style={styles.settingItem}>
-      <Text style={[styles.settingLabel, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+      <Text style={[styles.settingLabel, { color: themeColors.text.primary }]}>
         {label}
       </Text>
-      <View style={[styles.pickerContainer, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
+      <View style={[styles.pickerContainer, { backgroundColor: themeColors.surface.secondary }]}>
         <Picker
           selectedValue={value}
           onValueChange={onValueChange}
-          style={[styles.picker, { color: isDarkMode ? colors.text.light : colors.text.primary }]}
-          dropdownIconColor={isDarkMode ? colors.text.light : colors.text.primary}
+          style={[styles.picker, { color: themeColors.text.primary }]}
+          dropdownIconColor={themeColors.text.primary}
         >
           {options.map((option) => (
             <Picker.Item
               key={option.value}
               label={option.label}
               value={option.value}
-              color={isDarkMode ? colors.text.light : colors.text.primary}
+              color={themeColors.text.primary}
             />
           ))}
         </Picker>
       </View>
       {description && (
-        <Text style={[styles.description, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.description, { color: themeColors.text.tertiary }]}>
           {description}
         </Text>
       )}
     </View>
   );
 
+  const renderThemePreview = () => (
+    <View style={styles.themePreviewSection}>
+      <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
+        Theme Preview
+      </Text>
+      <View style={styles.themePreviewContainer}>
+        {themeOptions.map((themeOption) => (
+          <TouchableOpacity
+            key={themeOption.value}
+            style={[
+              styles.themePreviewCard,
+              { 
+                backgroundColor: themes[themeOption.value as ThemeType]?.surface.primary || themeColors.surface.primary,
+                borderColor: preferences.themeMode === themeOption.value ? themeColors.primary : themeColors.border.primary,
+                borderWidth: preferences.themeMode === themeOption.value ? 2 : 1,
+              }
+            ]}
+            onPress={() => handleThemeChange(themeOption.value as ThemeType)}
+          >
+            <View style={[
+              styles.themePreviewHeader,
+              { backgroundColor: themes[themeOption.value as ThemeType]?.primary || themeColors.primary }
+            ]}>
+              <Text style={[styles.themePreviewTitle, { color: themeColors.text.inverse }]}>
+                {themeOption.label}
+              </Text>
+            </View>
+            <View style={styles.themePreviewContent}>
+              <View style={[
+                styles.themePreviewButton,
+                { backgroundColor: themes[themeOption.value as ThemeType]?.primary || themeColors.primary }
+              ]}>
+                <Text style={[styles.themePreviewButtonText, { color: themeColors.text.inverse }]}>
+                  Button
+                </Text>
+              </View>
+              <Text style={[
+                styles.themePreviewText,
+                { color: themes[themeOption.value as ThemeType]?.text.primary || themeColors.text.primary }
+              ]}>
+                Sample text
+              </Text>
+            </View>
+          </TouchableOpacity>
+        ))}
+      </View>
+    </View>
+  );
+
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
       <View style={styles.header}>
-        <Text style={[styles.title, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
           Preference Settings
         </Text>
-        <Text style={[styles.subtitle, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
           Customize your app experience and appearance
         </Text>
       </View>
 
+      {/* Theme Preview */}
+      {renderThemePreview()}
+
       {/* Appearance */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Appearance
         </Text>
         
         {renderPicker(
           'Theme Mode',
           preferences.themeMode,
-          (value) => setPreferences(prev => ({ ...prev, themeMode: value })),
+          (value) => handleThemeChange(value as ThemeType),
           themeOptions,
           'Choose your preferred theme. Default follows your system settings.'
         )}
@@ -135,7 +198,7 @@ const PreferenceSettings = () => {
 
       {/* Language & Region */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Language & Region
         </Text>
         
@@ -158,7 +221,7 @@ const PreferenceSettings = () => {
 
       {/* Date & Time Format */}
       <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Date & Time Format
         </Text>
         
@@ -181,23 +244,26 @@ const PreferenceSettings = () => {
 
       {/* Info Cards */}
       <View style={styles.infoContainer}>
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Theme Information
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             • Default: Follows your device's system theme{'\n'}
-            • Dark: Always uses dark theme{'\n'}
-            • Light: Always uses light theme{'\n'}
+            • Light: Clean, bright interface{'\n'}
+            • Dark: Easy on the eyes in low light{'\n'}
+            • Blue: Calming blue color scheme{'\n'}
+            • Green: Natural, eco-friendly theme{'\n'}
+            • Purple: Creative, artistic theme{'\n'}
             • Changes take effect immediately
           </Text>
         </View>
 
-        <View style={[styles.infoCard, { backgroundColor: isDarkMode ? colors.gray[800] : colors.white }]}>
-          <Text style={[styles.infoTitle, { color: isDarkMode ? colors.text.light : colors.text.primary }]}>
+        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary }]}>
+          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
             Language & Region
           </Text>
-          <Text style={[styles.infoText, { color: isDarkMode ? colors.gray[400] : colors.gray[600] }]}>
+          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
             • Language changes affect the entire app{'\n'}
             • Timezone affects post timestamps and scheduling{'\n'}
             • Some features may require app restart{'\n'}
@@ -207,8 +273,8 @@ const PreferenceSettings = () => {
       </View>
 
       {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: colors.primary }]} onPress={handleSave}>
-        <Text style={styles.saveButtonText}>Save Preferences</Text>
+      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
+        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Preferences</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -289,9 +355,53 @@ const styles = StyleSheet.create({
     marginBottom: 32,
   },
   saveButtonText: {
-    color: colors.white,
     fontSize: 18,
     fontWeight: '600',
+  },
+  themePreviewSection: {
+    marginBottom: 24,
+  },
+  themePreviewContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  themePreviewCard: {
+    width: '48%',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+  },
+  themePreviewHeader: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  themePreviewTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  themePreviewContent: {
+    padding: 12,
+    alignItems: 'center',
+    gap: 8,
+  },
+  themePreviewButton: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  themePreviewButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  themePreviewText: {
+    fontSize: 12,
   },
 });
 

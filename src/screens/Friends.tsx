@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, useColorScheme } from 'react-native';
-import { colors } from '../theme/colors';
+import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView } from 'react-native';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { friendAPI } from '../lib/api';
@@ -9,22 +9,19 @@ import { useNavigation } from '@react-navigation/native';
 
 const Friends = () => {
   const navigation = useNavigation();
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
-  const cardBg = isDarkMode ? colors.background.dark : '#fff';
-  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
-  const subTextColor = isDarkMode ? colors.gray[400] : '#888';
-  const buttonBg = colors.primary;
-  const buttonText = '#fff';
-  const removeBtnBg = isDarkMode ? colors.gray[800] : '#eee';
-  const removeBtnText = isDarkMode ? colors.text.light : '#333';
+  const { colors: themeColors, isDarkMode } = useTheme();
+  const backgroundColor = themeColors.background.primary;
+  const cardBg = themeColors.surface.primary;
+  const textColor = themeColors.text.primary;
+  const subTextColor = themeColors.text.secondary;
+  const buttonBg = themeColors.primary;
+  const buttonText = themeColors.text.inverse;
+  const removeBtnBg = themeColors.surface.secondary;
+  const removeBtnText = themeColors.text.primary;
   const myProfile = useSelector((state: RootState) => state.profile);
 
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [friendSuggestions, setFriendSuggestions] = useState<any[]>([]);
-
-
 
   useEffect(() => {
     if (!myProfile?._id) return;
@@ -95,7 +92,7 @@ const Friends = () => {
         <View style={styles.headingRow}>
           <Text style={[styles.headingTitle, { color: textColor }]}>Friend Requests</Text>
           <TouchableOpacity>
-            <Text style={[styles.viewMoreBtn, { color: colors.primary }]}>See All</Text>
+            <Text style={[styles.viewMoreBtn, { color: themeColors.primary }]}>See All</Text>
           </TouchableOpacity>
         </View>
         <View style={styles.friendGridContainer}>
@@ -213,6 +210,8 @@ const styles = StyleSheet.create({
     shadowRadius: 2,
     shadowOffset: { width: 0, height: 1 },
     elevation: 1,
+    borderWidth: 1,
+    borderColor: '#ddd',
   },
   profilePictureWrapper: {
     width: 64,
@@ -233,6 +232,7 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 6,
     padding: 8,
+
   },
   profileName: {
     fontSize: 18,
@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   addFriendBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#29b1a9', // Using the primary color directly
     borderRadius: 6,
     paddingVertical: 10,
     paddingHorizontal: 12,

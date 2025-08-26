@@ -3,13 +3,14 @@ import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensio
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
-import { colors } from '../theme/colors'
+import { useTheme } from '../contexts/ThemeContext'
 import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { launchImageLibrary } from 'react-native-image-picker'
 import { useDispatch } from 'react-redux'
 import { setProfile } from '../reducers/profileReducer'
 import { useNavigation } from '@react-navigation/native'
+import { colors } from '../theme/colors'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -27,6 +28,7 @@ type TabKey = 'Posts' | 'About' | 'Friends' | 'Images' | 'Videos'
 
 const MyProfile = () => {
     const navigation = useNavigation();
+    const { colors: themeColors } = useTheme();
     const myProfile = useSelector((state: RootState) => state.profile)
     const [activeTab, setActiveTab] = React.useState<TabKey>('About')
     const { width } = useWindowDimensions()
@@ -181,7 +183,7 @@ const MyProfile = () => {
                     {/* Bio */}
                     {myProfile?.bio && (
                         <View style={styles.detailsItem}>
-                            <Icon name="info" size={20} color={colors.text.light} />
+                            <Icon name="info" size={20} color={themeColors.text.secondary} />
                             <Text style={styles.detailsText}>
                                 <Text style={styles.detailsStrong}>{myProfile.bio}</Text>
                             </Text>
@@ -191,7 +193,7 @@ const MyProfile = () => {
                     {/* Workplaces */}
                     {Array.isArray(myProfile?.workPlaces) && myProfile.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
-                            <Icon name="work" size={20} color={colors.text.light} />
+                            <Icon name="work" size={20} color={themeColors.text.secondary} />
                             <Text style={styles.detailsText}>
                                 {wp?.designation ? `${wp.designation} at ` : ''}
                                 <Text style={styles.detailsStrong}>{wp?.name || 'Unknown workplace'}</Text>
@@ -202,7 +204,7 @@ const MyProfile = () => {
                     {/* Schools */}
                     {Array.isArray(myProfile?.schools) && myProfile.schools.map((sc: any, idx: number) => (
                         <View key={`sc-${idx}`} style={styles.detailsItem}>
-                            <Icon name="school" size={20} color={colors.text.light} />
+                            <Icon name="school" size={20} color={themeColors.text.secondary} />
                             <Text style={styles.detailsText}>
                                 Studied at <Text style={styles.detailsStrong}>{sc?.name || 'Unknown school'}</Text>
                                 {sc?.degree ? <Text style={styles.detailsMuted}> ({sc.degree})</Text> : null}
@@ -213,7 +215,7 @@ const MyProfile = () => {
                     {/* Present address */}
                     {!!myProfile?.presentAddress && (
                         <View style={styles.detailsItem}>
-                            <Icon name="home" size={20} color={colors.text.light} />
+                            <Icon name="home" size={20} color={themeColors.text.secondary} />
                             <Text style={styles.detailsText}>
                                 Lives in <Text style={styles.detailsStrong}>{myProfile.presentAddress}</Text>
                             </Text>
@@ -223,7 +225,7 @@ const MyProfile = () => {
                     {/* Permanent address */}
                     {!!myProfile?.permanentAddress && (
                         <View style={styles.detailsItem}>
-                            <Icon name="public" size={20} color={colors.text.light} />
+                            <Icon name="public" size={20} color={themeColors.text.secondary} />
                             <Text style={styles.detailsText}>
                                 From <Text style={styles.detailsStrong}>{myProfile.permanentAddress}</Text>
                             </Text>
@@ -232,7 +234,7 @@ const MyProfile = () => {
 
                     {/* Joined */}
                     <View style={styles.detailsItem}>
-                        <Icon name="schedule" size={20} color={colors.text.light} />
+                        <Icon name="schedule" size={20} color={themeColors.text.secondary} />
                         <Text style={styles.detailsText}>
                             Joined <Text style={styles.detailsStrong}>{formatMonthYear(myProfile?.user?.createdAt || myProfile?.createdAt)}</Text>
                         </Text>
@@ -325,15 +327,15 @@ const MyProfile = () => {
                     <Modal visible={imageViewerOpen} transparent animationType="fade" onRequestClose={() => setImageViewerOpen(false)}>
                         <View style={styles.viewerOverlay}>
                             <TouchableOpacity style={styles.viewerClose} onPress={() => setImageViewerOpen(false)}>
-                                <Icon name="close" size={24} color={colors.text.light} />
+                                <Icon name="close" size={24} color={themeColors.text.secondary} />
                             </TouchableOpacity>
                             <View style={styles.viewerContent}>
                                 <TouchableOpacity style={styles.viewerNavLeft} onPress={() => setImageViewerIndex(i => Math.max(0, i - 1))}>
-                                    <Icon name="chevron-left" size={28} color={colors.text.light} />
+                                    <Icon name="chevron-left" size={28} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
                                 <Image source={{ uri: images[imageViewerIndex] }} style={styles.viewerImage} />
                                 <TouchableOpacity style={styles.viewerNavRight} onPress={() => setImageViewerIndex(i => Math.min(images.length - 1, i + 1))}>
-                                    <Icon name="chevron-right" size={28} color={colors.text.light} />
+                                    <Icon name="chevron-right" size={28} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
                             </View>
                             <Text style={styles.viewerCounter}>{imageViewerIndex + 1} / {images.length}</Text>
@@ -361,7 +363,7 @@ const MyProfile = () => {
                                 return (
                                     <View key={v._id} style={[styles.mediaCard, { position: 'relative' }]}>
                                         <Image source={{ uri: thumb }} style={styles.mediaImage} />
-                                        <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={colors.text.light} /></View>
+                                        <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={themeColors.text.secondary} /></View>
                                     </View>
                                 )
                             })}
@@ -404,9 +406,9 @@ const MyProfile = () => {
                         <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight }]} />
                     )}
                     <TouchableOpacity style={styles.uploadCoverBtn} onPress={onUploadCover} disabled={isUploadingCover} activeOpacity={0.8} hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}>
-                        <Icon name="photo-camera" color={colors.text.light} size={18} />
+                        <Icon name="photo-camera" color={themeColors.text.secondary} size={18} />
                         <Text style={styles.uploadCoverText}>{isUploadingCover ? 'Uploading...' : 'Edit cover photo'}</Text>
-                        {isUploadingCover && <ActivityIndicator size="small" color={colors.text.light} style={{ marginLeft: 6 }} />}
+                        {isUploadingCover && <ActivityIndicator size="small" color={themeColors.text.secondary} style={{ marginLeft: 6 }} />}
                     </TouchableOpacity>
                 </View>
 
@@ -425,9 +427,9 @@ const MyProfile = () => {
                 </View>
                         <Pressable style={styles.uploadPPBtn} onPress={onUploadProfilePic} disabled={isUploadingPP}>
                             {isUploadingPP ? (
-                                <ActivityIndicator size="small" color={colors.text.light} />
+                                <ActivityIndicator size="small" color={themeColors.text.secondary} />
                             ) : (
-                                <Icon name="photo-camera" color={colors.text.light} size={18} />
+                                <Icon name="photo-camera" color={themeColors.text.secondary} size={18} />
                             )}
                         </Pressable>
                     </View>
@@ -472,22 +474,22 @@ const MyProfile = () => {
                                     (navigation as any).navigate('Settings', { screen: 'ProfileSettings' });
                                 }}
                             >
-                                <Icon name="edit" size={16} color={colors.text.light} />
+                                <Icon name="edit" size={16} color={themeColors.text.secondary} />
                                 <Text style={styles.editBioText}>Edit Bio</Text>
                             </TouchableOpacity>
                         </View>
 
                         <View style={styles.profileButtons}>
                             <Pressable style={[styles.button, styles.primaryButton]}>
-                                <Icon name="add-circle" size={18} color={colors.text.light} />
+                                <Icon name="add-circle" size={18} color={themeColors.text.secondary} />
                                 <Text style={styles.buttonText}>Add to story</Text>
                             </Pressable>
                             <Pressable style={[styles.button, styles.secondaryButton]}>
-                                <Icon name="edit" size={18} color={colors.text.light} />
+                                <Icon name="edit" size={18} color={themeColors.text.secondary} />
                                 <Text style={styles.buttonText}>Edit profile</Text>
                             </Pressable>
                             {/* <Pressable style={[styles.iconButton]}>
-                                <Icon name="more-horiz" size={22} color={colors.text.light} />
+                                <Icon name="more-horiz" size={22} color={themeColors.text.light} />
                             </Pressable> */}
                         </View>
                     </View>
@@ -508,7 +510,7 @@ const MyProfile = () => {
                             </Pressable>
                         ))}
                     </ScrollView>
-                    <View style={styles.optionsMenu}><Icon name="more-horiz" size={22} color={colors.text.light} /></View>
+                    <View style={styles.optionsMenu}><Icon name="more-horiz" size={22} color={themeColors.text.secondary} /></View>
                 </View>
             </View>
 
@@ -559,7 +561,7 @@ const styles = StyleSheet.create({
         zIndex: 5,
     },
     uploadCoverText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         marginLeft: 6,
         fontSize: 12,
     },
@@ -620,7 +622,7 @@ const styles = StyleSheet.create({
         flexDirection: 'column',
     },
     fullName: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         fontWeight: 'bold',
         fontSize: 22,
         textTransform: 'capitalize',
@@ -660,7 +662,7 @@ const styles = StyleSheet.create({
 
     },
     buttonText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         marginLeft: 6,
         fontWeight: '600',
     },
@@ -691,7 +693,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     tabText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
     },
     activeTabText: {
         fontWeight: '700',
@@ -704,7 +706,7 @@ const styles = StyleSheet.create({
         borderRadius: 10,
     },
     countBadgeText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         fontSize: 12,
         fontWeight: '700',
     },
@@ -739,11 +741,11 @@ const styles = StyleSheet.create({
         gap: 10,
     },
     detailsText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         flexShrink: 1,
     },
     detailsStrong: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         fontWeight: '700',
     },
     detailsMuted: {
@@ -777,7 +779,7 @@ const styles = StyleSheet.create({
         height: '100%',
     },
     friendName: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         fontWeight: '600',
     },
     imageGrid: {
@@ -841,7 +843,7 @@ const styles = StyleSheet.create({
     viewerCounter: {
         position: 'absolute',
         bottom: 20,
-        color: colors.text.light,
+        color: colors.text.secondary,
     },
     videoThumbWrap: {
         width: '32%',
@@ -861,7 +863,7 @@ const styles = StyleSheet.create({
         padding: 2,
     },
     placeholderText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
     },
     bioSection: {
         marginTop: 10,
@@ -876,7 +878,7 @@ const styles = StyleSheet.create({
         minHeight: 60,
     },
     bioText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         fontSize: 14,
         textAlign: 'center',
         lineHeight: 20,
@@ -900,7 +902,7 @@ const styles = StyleSheet.create({
         alignSelf: 'center',
     },
     editBioText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         marginLeft: 6,
         fontSize: 12,
         fontWeight: '600',
@@ -914,7 +916,7 @@ const styles = StyleSheet.create({
         marginTop: 8,
     },
     bioToggleText: {
-        color: colors.text.light,
+        color: colors.text.secondary,
         fontSize: 12,
         fontWeight: '600',
     },

@@ -1,84 +1,108 @@
 # Theme System
 
-This project uses a centralized theme system for consistent colors, spacing, and typography.
+This app now includes a comprehensive theme system that allows users to choose from multiple theme options and customize their app experience.
 
-## Primary Color
+## Available Themes
 
-The primary color is set to `#007AFF` (iOS blue) and can be accessed through the theme system.
+1. **Default (System)** - Follows your device's system theme (light/dark)
+2. **Light** - Clean, bright interface
+3. **Dark** - Easy on the eyes in low light
+4. **Blue** - Calming blue color scheme
+5. **Green** - Natural, eco-friendly theme
+6. **Purple** - Creative, artistic theme
 
 ## How to Use
 
-### 1. Import Colors
-```typescript
-import { colors } from '../theme/colors';
-```
+### 1. Access Theme Settings
+- Navigate to **Menu** → **Settings**
+- You'll see a theme selection interface with all available themes
 
-### 2. Use Primary Color
-```typescript
-// In components
-<View style={{ backgroundColor: colors.primary }} />
+### 2. Change Themes
+- Tap on any theme card to select it
+- The selected theme will be highlighted with a checkmark
+- Use the "Quick Toggle" button to quickly switch between light and dark themes
 
-// In styles
-const styles = StyleSheet.create({
-  button: {
-    backgroundColor: colors.primary,
-    color: colors.white,
-  },
-});
-```
+### 3. Theme Persistence
+- Your theme choice is automatically saved and will persist across app restarts
+- The theme is stored locally on your device
 
-### 3. Available Colors
+## For Developers
 
-#### Primary Colors
-- `colors.primary` - Main primary color (#007AFF)
-- `colors.primaryLight` - Lighter variant (#4DA3FF)
-- `colors.primaryDark` - Darker variant (#0056CC)
+### Using the Theme Context
 
-#### Secondary Colors
-- `colors.secondary` - Secondary color (#5856D6)
-- `colors.secondaryLight` - Lighter secondary (#8A8AFF)
-- `colors.secondaryDark` - Darker secondary (#3A3A8C)
+```tsx
+import { useTheme } from '../contexts/ThemeContext';
 
-#### Neutral Colors
-- `colors.white` - Pure white (#FFFFFF)
-- `colors.black` - Pure black (#000000)
-- `colors.gray` - Gray scale (50-900)
-
-#### Status Colors
-- `colors.success` - Success green (#34C759)
-- `colors.warning` - Warning orange (#FF9500)
-- `colors.error` - Error red (#FF3B30)
-- `colors.info` - Info blue (#007AFF)
-
-### 4. Changing Primary Color
-
-To change the primary color for your entire app, simply update the `primary` value in `src/theme/colors.ts`:
-
-```typescript
-export const colors = {
-  primary: '#YOUR_NEW_COLOR', // Change this line
-  // ... rest of colors
+const MyComponent = () => {
+  const { colors: themeColors, isDarkMode, currentTheme, setTheme } = useTheme();
+  
+  return (
+    <View style={{ backgroundColor: themeColors.background.primary }}>
+      <Text style={{ color: themeColors.text.primary }}>
+        Hello World
+      </Text>
+    </View>
+  );
 };
 ```
 
-### 5. Using with Components
+### Available Theme Properties
 
-The Logo component now uses the theme system:
-```typescript
-<Logo color={colors.primary} />
-<Logo color={colors.secondary} />
+Each theme provides these color categories:
+
+- `primary` - Main brand color
+- `secondary` - Secondary brand color
+- `background.primary` - Main background
+- `background.secondary` - Secondary background
+- `background.tertiary` - Tertiary background
+- `surface.primary` - Main surface color
+- `surface.secondary` - Secondary surface
+- `surface.elevated` - Elevated surface
+- `text.primary` - Primary text color
+- `text.secondary` - Secondary text color
+- `text.tertiary` - Tertiary text color
+- `text.inverse` - Inverse text color
+- `border.primary` - Primary border color
+- `border.secondary` - Secondary border color
+- `border.focus` - Focus border color
+- `status.success` - Success color
+- `status.warning` - Warning color
+- `status.error` - Error color
+- `status.info` - Info color
+- `gray[50-900]` - Gray scale colors
+
+### Adding New Themes
+
+To add a new theme, update the `themes` object in `colors.ts`:
+
+```tsx
+export const themes = {
+  // ... existing themes
+  newTheme: {
+    primary: '#your-color',
+    secondary: '#your-color',
+    background: {
+      primary: '#your-color',
+      secondary: '#your-color',
+      tertiary: '#your-color',
+    },
+    // ... other properties
+  },
+} as const;
 ```
 
-### 6. Theme Export
+### Theme Context API
 
-For complete theme access (colors, spacing, typography, etc.):
-```typescript
-import theme from '../theme/theme';
-```
+- `currentTheme` - Current selected theme
+- `setTheme(theme)` - Set a specific theme
+- `isDarkMode` - Boolean indicating if dark mode is active
+- `colors` - Current theme's color palette
+- `toggleTheme()` - Toggle between light and dark themes
 
-## Benefits
+## Implementation Notes
 
-- **Consistency**: All colors are defined in one place
-- **Maintainability**: Easy to change colors across the entire app
-- **Type Safety**: TypeScript support for color names
-- **Scalability**: Easy to add new colors and theme properties 
+- The theme system uses React Context for global state management
+- Themes are persisted using AsyncStorage
+- The system automatically handles system theme changes when using "Default" theme
+- All components should use the theme context instead of hardcoded colors
+- The theme system is fully compatible with React Native's built-in dark mode detection 

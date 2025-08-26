@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, useColorScheme } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TextInput as PaperTextInput, Button, RadioButton } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Logo from '../components/Logo';
-import theme from '../theme/theme';
+import { useTheme } from '../contexts/ThemeContext';
 import { authAPI } from '../lib/api';
 import Toast from 'react-native-toast-message';
 
@@ -36,9 +36,8 @@ const RegisterScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  const bottomBarBg = isDarkMode ? '#242526' : theme.colors.background.light;
+  const { colors: themeColors } = useTheme();
+  const bottomBarBg = themeColors.surface.secondary;
 
   // Validation per tab
   const validateTab = () => {
@@ -127,20 +126,20 @@ const RegisterScreen = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: isDarkMode ? theme.colors.background.dark : theme.colors.background.light }]}>
+    <View style={[styles.container, { backgroundColor: themeColors.surface.primary }]}>
       <Logo size="large" />
-      <Text style={[styles.title, { color: theme.colors.primary }]}>Register</Text>
+      <Text style={[styles.title, { color: themeColors.primary }]}>Register</Text>
       {/* Tab headers - fixed width, centered, pill/rounded style */}
       <View style={styles.tabHeaderContainerOuter}>
-        <View style={[styles.tabHeaderPillBg, { backgroundColor: bottomBarBg }]}>
+        <View style={[styles.tabHeaderContainer, { backgroundColor: bottomBarBg }]}>
           {TABS.map((t, idx) => (
             <TouchableOpacity
               key={t.key}
-              style={[styles.tabHeaderPill, tab === idx && [styles.tabHeaderPillActive, { backgroundColor: isDarkMode ? theme.colors.primary : theme.colors.primaryLight }]]}
+              style={[styles.tabHeaderPill, tab === idx && [styles.tabHeaderPillActive, { backgroundColor: themeColors.primary }]]}
               onPress={() => handleTabPress(idx)}
               activeOpacity={0.8}
             >
-              <Text style={[styles.tabHeaderText, { color: theme.colors.primary }, tab === idx && styles.tabHeaderTextActive, tab === idx && { color: '#fff' }]}>{t.label}</Text>
+              <Text style={[styles.tabHeaderText, { color: themeColors.primary }, tab === idx && styles.tabHeaderTextActive, tab === idx && { color: '#fff' }]}>{t.label}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -156,7 +155,7 @@ const RegisterScreen = () => {
             onChangeText={v => setFormData(f => ({ ...f, firstName: v }))}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
             error={!!error && error.toLowerCase().includes('first name')}
-            theme={{ colors: { primary: theme.colors.primary } }}
+            theme={{ colors: { primary: themeColors.primary } }}
           />
           <PaperTextInput
             mode="outlined"
@@ -165,9 +164,9 @@ const RegisterScreen = () => {
             onChangeText={v => setFormData(f => ({ ...f, surname: v }))}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
             error={!!error && error.toLowerCase().includes('surname')}
-            theme={{ colors: { primary: theme.colors.primary } }}
+            theme={{ colors: { primary: themeColors.primary } }}
           />
-          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
+          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
             <Text style={{ color: '#fff' }}>Next</Text>
           </Button>
         </View>
@@ -183,10 +182,10 @@ const RegisterScreen = () => {
             keyboardType="email-address"
             style={[styles.input, { backgroundColor: bottomBarBg }]}
             error={!!error && error.toLowerCase().includes('email')}
-            theme={{ colors: { primary: theme.colors.primary } }}
+            theme={{ colors: { primary: themeColors.primary } }}
           />
-          <Button mode="outlined" color={theme.colors.primary} onPress={() => setShowDatePicker(true)} style={[styles.input, { backgroundColor: bottomBarBg, borderColor: theme.colors.primary, borderWidth: 1 }]} labelStyle={{ color: theme.colors.primary }}>
-            <Text style={{ color: theme.colors.primary }}>
+          <Button mode="outlined" color={themeColors.primary} onPress={() => setShowDatePicker(true)} style={[styles.input, { backgroundColor: bottomBarBg, borderColor: themeColors.primary, borderWidth: 1 }]} labelStyle={{ color: themeColors.primary }}>
+            <Text style={{ color: themeColors.primary }}>
               {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
             </Text>
           </Button>
@@ -203,23 +202,23 @@ const RegisterScreen = () => {
             />
           )}
           <View style={styles.radioGroup}>
-            <Text style={[styles.radioLabel, { color: theme.colors.text.light }]}>Gender:</Text>
+            <Text style={[styles.radioLabel, { color: themeColors.text.secondary }]}>Gender:</Text>
             <RadioButton.Group
               onValueChange={v => setFormData(f => ({ ...f, gender: v }))}
               value={formData.gender}
             >
               <View style={styles.radioRow}>
-                <RadioButton value="male" /><Text style={[styles.radioText, { color: theme.colors.text.light }]}>Male</Text>
-                <RadioButton value="female" /><Text style={[styles.radioText, { color: theme.colors.text.light }]}>Female</Text>
-                <RadioButton value="other" /><Text style={[styles.radioText, { color: theme.colors.text.light }]}>Other</Text>
+                <RadioButton value="male" /><Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Male</Text>
+                <RadioButton value="female" /><Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Female</Text>
+                <RadioButton value="other" /><Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Other</Text>
               </View>
             </RadioButton.Group>
           </View>
-          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
+          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
             <Text style={{ color: '#fff' }}>Next</Text>
           </Button>
-          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: theme.colors.primary }}>
-            <Text style={{ color: theme.colors.primary }}>Back</Text>
+          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
+            <Text style={{ color: themeColors.primary }}>Back</Text>
           </Button>
         </View>
       )}
@@ -233,7 +232,7 @@ const RegisterScreen = () => {
             secureTextEntry={!showPassword}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
             error={!!error && error.toLowerCase().includes('password') && !error.toLowerCase().includes('confirm')}
-            theme={{ colors: { primary: theme.colors.primary } }}
+            theme={{ colors: { primary: themeColors.primary } }}
             right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
           />
           <PaperTextInput
@@ -244,20 +243,20 @@ const RegisterScreen = () => {
             secureTextEntry={!showConfirmPassword}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
             error={!!error && error.toLowerCase().includes('confirm')}
-            theme={{ colors: { primary: theme.colors.primary } }}
+            theme={{ colors: { primary: themeColors.primary } }}
             right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword(v => !v)} />}
           />
-          <Button mode="contained" onPress={handleRegister} style={[styles.button, { backgroundColor: theme.colors.primary }]} labelStyle={{ color: '#fff' }}>
+          <Button mode="contained" onPress={handleRegister} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
             <Text style={{ color: '#fff' }}>Register</Text>
           </Button>
-          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: theme.colors.primary }}>
-            <Text style={{ color: theme.colors.primary }}>Back</Text>
+          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
+            <Text style={{ color: themeColors.primary }}>Back</Text>
           </Button>
         </View>
       )}
-      <Button mode="text" onPress={() => navigation.navigate('Login')} style={styles.link} labelStyle={{ color: theme.colors.text.light }}>
-        <Text style={{ color: theme.colors.text.light }}>Already have an account? </Text>
-        <Text style={{ color: theme.colors.primary, fontWeight: 'bold' }}>Signin</Text>
+      <Button mode="text" onPress={() => navigation.navigate('Login')} style={styles.link} labelStyle={{ color: themeColors.text.secondary }}>
+        <Text style={{ color: themeColors.text.secondary }}>Already have an account? </Text>
+        <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>Signin</Text>
       </Button>
       <Toast />
     </View>
@@ -269,108 +268,94 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: theme.spacing.lg,
+    padding: 20,
   },
   title: {
-    ...theme.typography.h1,
-    color: theme.colors.primary,
-    marginBottom: 0,
+    fontSize: 32,
+    fontWeight: 'bold',
+    marginBottom: 32,
     textAlign: 'center',
+  },
+  tabHeaderContainerOuter: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 32,
   },
   tabHeaderContainer: {
     flexDirection: 'row',
-    marginBottom: 5,
-    alignSelf: 'center',
-  },
-  tabHeaderContainerOuter: {
-    width: 320,
-    alignSelf: 'center',
-    marginBottom: theme.spacing.md,
-    marginTop: theme.spacing.md,
-  },
-  tabHeaderPillBg: {
-    flexDirection: 'row',
+    backgroundColor: '#f0f0f0',
     borderRadius: 32,
     padding: 4,
-    shadowColor: theme.colors.black,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowRadius: 4,
     elevation: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
   tabHeaderPill: {
-    paddingVertical: 8,
-    paddingHorizontal: 28,
-    borderRadius: 24,
-    backgroundColor: 'transparent',
-    marginHorizontal: 2,
-    justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 28,
+    minWidth: 100,
     alignItems: 'center',
-    minWidth: 80,
+    justifyContent: 'center',
   },
   tabHeaderPillActive: {
-    backgroundColor: theme.colors.primary,
+    backgroundColor: '#29b1a9',
   },
   tabHeaderText: {
-    color: theme.colors.primary,
-    fontSize: theme.typography.caption.fontSize,
+    color: '#29b1a9',
+    fontSize: 14,
     fontWeight: '600',
     textAlign: 'center',
   },
   tabHeaderTextActive: {
     color: '#fff',
-    fontWeight: 'bold',
-  },
-  input: {
-    width: 280,
-    marginBottom: theme.spacing.md,
-    color: theme.colors.primary,
-  },
-  button: {
-    width: 280,
-    marginBottom: theme.spacing.sm,
-    alignSelf: 'center',
-    backgroundColor: theme.colors.primary,
-  },
-  link: {
-    color: theme.colors.primary,
-    fontSize: theme.typography.bodySmall.fontSize,
-    marginTop: theme.spacing.md,
-    alignSelf: 'center',
-  },
-  error: {
-    color: theme.colors.error,
-    marginBottom: theme.spacing.sm,
-    fontSize: theme.typography.bodySmall.fontSize,
-    textAlign: 'center',
   },
   tabContent: {
     width: '100%',
     alignItems: 'center',
-    paddingVertical: theme.spacing.md,
+  },
+  input: {
+    width: 280,
+    marginBottom: 16,
+  },
+  button: {
+    width: 280,
+    marginBottom: 12,
+    alignSelf: 'center',
+    backgroundColor: '#29b1a9',
+  },
+  link: {
+    color: '#29b1a9',
+    fontSize: 14,
+    marginTop: 16,
+    alignSelf: 'center',
+  },
+  error: {
+    color: '#ff0000',
+    marginBottom: 12,
+    fontSize: 14,
+    textAlign: 'center',
   },
   radioGroup: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-    marginBottom: theme.spacing.md,
     width: 280,
+    marginBottom: 16,
   },
   radioRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: theme.spacing.sm,
+    marginTop: 8,
   },
   radioLabel: {
-    fontSize: theme.typography.body.fontSize,
+    fontSize: 16,
     marginBottom: 4,
-    color: theme.colors.primary,
+    color: '#29b1a9',
   },
   radioText: {
-    fontSize: theme.typography.body.fontSize,
+    fontSize: 16,
     marginRight: 16,
-    color: theme.colors.primary,
+    color: '#29b1a9',
   },
 });
 

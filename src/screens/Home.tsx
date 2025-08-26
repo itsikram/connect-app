@@ -1,9 +1,9 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ActivityIndicator, FlatList, useColorScheme, Alert, RefreshControl, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Animated } from 'react-native';
+import { View, Text, ActivityIndicator, FlatList, Alert, RefreshControl, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Animated } from 'react-native';
 import CreatePost from '../components/CreatePost';
 import api from '../lib/api';
 import Post from '../components/Post';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -20,8 +20,7 @@ const Home = () => {
     const [page, setPage] = useState(1);
     const [hasMore, setHasMore] = useState(true);
     const [debugMode, setDebugMode] = useState(false);
-    const colorScheme = useColorScheme();
-    const isDarkMode = colorScheme === 'dark';
+    const { colors: themeColors, isDarkMode } = useTheme();
     
     const { connect, isConnected } = useSocket();
     const myProfile = useSelector((state: RootState) => state.profile);
@@ -89,15 +88,14 @@ const Home = () => {
         setPosts((prev: any[]) => [post, ...prev]);
     };
 
-    const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
-    const textColor = isDarkMode ? colors.text.light : colors.text.primary;
-
+    const backgroundColor = themeColors.background.primary;
+    const textColor = themeColors.text.primary;
 
     // Show error state
     if (error && !loading && posts.length === 0) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor }}>
-                <Text style={{ color: colors.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+                <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
                     {error}
                 </Text>
                 <Text style={{ color: textColor, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
@@ -112,7 +110,7 @@ const Home = () => {
     if (debugMode) {
         return (
             <View style={{ flex: 1, backgroundColor }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: colors.border.light }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: themeColors.border.primary }}>
                     <Text style={{ color: textColor, fontSize: 18, fontWeight: 'bold' }}>Debug Mode</Text>
                     <TouchableOpacity onPress={() => setDebugMode(false)} style={{ padding: 8 }}>
                         <Icon name="close" size={24} color={textColor} />
@@ -139,13 +137,13 @@ const Home = () => {
                     top: 50, 
                     right: 16, 
                     zIndex: 1000,
-                    backgroundColor: colors.primary,
+                    backgroundColor: themeColors.primary,
                     padding: 8,
                     borderRadius: 20,
                     opacity: 0.7
                 }}
             >
-                <Icon name="bug-report" size={20} color={colors.white} />
+                <Icon name="bug-report" size={20} color={themeColors.text.inverse} />
             </TouchableOpacity>
             
             <FlatList
@@ -157,12 +155,12 @@ const Home = () => {
                 renderItem={({ item }) => <Post key={item._id} data={item} />}
                 ListEmptyComponent={loading ? (
                     <View style={{ alignItems: 'center', marginTop: 40 }}>
-                        <ActivityIndicator size="large" color={colors.primary} />
+                        <ActivityIndicator size="large" color={themeColors.primary} />
                         <Text style={{ color: textColor, marginTop: 16 }}>Loading posts...</Text>
                     </View>
                 ) : error ? (
                     <View style={{ alignItems: 'center', marginTop: 40 }}>
-                        <Text style={{ color: colors.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+                        <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
                             {error}
                         </Text>
                         <Text style={{ color: textColor, fontSize: 14, textAlign: 'center' }}>
@@ -178,7 +176,7 @@ const Home = () => {
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={loadingMore ? (
                     <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={colors.primary} />
+                        <ActivityIndicator size="small" color={themeColors.primary} />
                         <Text style={{ color: textColor, marginTop: 8 }}>Loading more...</Text>
                     </View>
                 ) : null}
@@ -186,8 +184,8 @@ const Home = () => {
                     <RefreshControl
                         refreshing={refreshing}
                         onRefresh={onRefresh}
-                        colors={[colors.primary]}
-                        tintColor={colors.primary}
+                        colors={[themeColors.primary]}
+                        tintColor={themeColors.primary}
                     />
                 }
                 style={{ backgroundColor }}

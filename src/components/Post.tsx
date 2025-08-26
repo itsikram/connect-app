@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, useColorScheme } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
@@ -7,7 +7,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 // import socket from '../../common/socket'; // Use socket.io-client for React Native
 import api from '../lib/api';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
@@ -42,16 +42,15 @@ const Post: React.FC<PostProps> = ({ data }) => {
   const [type, setType] = useState<string>(post.type || 'post');
 
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
-  const cardBg = isDarkMode ? colors.background.dark : '#fff';
+  const { colors: themeColors, isDarkMode } = useTheme();
+  const cardBg = themeColors.surface.primary;
 
   // Theme colors
-  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
-  const subTextColor = isDarkMode ? colors.gray[400] : '#888';
-  const borderColor = isDarkMode ? colors.border.dark : '#eee';
-  const inputBg = isDarkMode ? colors.gray[800] : '#fff';
-  const inputText = isDarkMode ? colors.text.light : colors.text.primary;
+  const textColor = themeColors.text.primary;
+  const subTextColor = themeColors.text.secondary;
+  const borderColor = themeColors.border.primary;
+  const inputBg = themeColors.surface.secondary;
+  const inputText = themeColors.text.primary;
 
   const reactionEmojiMap: Record<string, string> = {
     like: '👍',
@@ -273,7 +272,7 @@ const Post: React.FC<PostProps> = ({ data }) => {
                   </Text>
                 ))}
               </View>
-              <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts}</Text>
+              <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
             </View>
             <Text style={[styles.countText, { color: subTextColor }]}>{totalComments} Comments</Text>
             <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
@@ -295,7 +294,7 @@ const Post: React.FC<PostProps> = ({ data }) => {
                 </>
               ) : (
                 <>
-                  <Icon name="thumb-up" size={28} color={colors.primary} />
+                  <Icon name="thumb-up" size={28} color={themeColors.primary} />
                   <Text style={[styles.actionLabel, { color: textColor }]}> Like</Text>
                 </>
               )}
@@ -319,12 +318,12 @@ const Post: React.FC<PostProps> = ({ data }) => {
           </View>
           {/* Comment button toggles comment box */}
           <TouchableOpacity onPress={handleCommentPress} style={styles.actionButton}>
-            <Icon name="comment" size={28} color={colors.primary} />
+            <Icon name="comment" size={28} color={themeColors.primary} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Comment</Text>
           </TouchableOpacity>
           {/* Share button opens share modal */}
           <TouchableOpacity onPress={() => setIsShareModal(true)} style={styles.actionButton}>
-            <Icon name="share" size={28} color={colors.primary} />
+            <Icon name="share" size={28} color={themeColors.primary} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Share</Text>
           </TouchableOpacity>
         </View>
@@ -338,7 +337,7 @@ const Post: React.FC<PostProps> = ({ data }) => {
               <TextInput
                 style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder="Write a comment..."
-                placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
+                placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
                 value={commentText}
                 onChangeText={setCommentText}
               />
@@ -401,12 +400,12 @@ const Post: React.FC<PostProps> = ({ data }) => {
             <TextInput
               style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
               placeholder="What's on your mind?"
-              placeholderTextColor={isDarkMode ? colors.gray[400] : colors.gray[600]}
+              placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
               value={shareCap}
               onChangeText={setShareCap}
             />
             <TouchableOpacity onPress={onClickShareNow}>
-              <Text style={{ color: colors.primary }}>Share Now</Text>
+              <Text style={{ color: themeColors.primary }}>Share Now</Text>
             </TouchableOpacity>
             <TouchableOpacity onPress={() => setIsShareModal(false)}>
               <Text style={{ color: subTextColor }}>Cancel</Text>
@@ -586,7 +585,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   commentPostBtn: {
-    backgroundColor: colors.primary,
+    backgroundColor: '#29b1a9', // Using the primary color directly
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,

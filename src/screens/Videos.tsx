@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Text, useColorScheme, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable } from 'react-native';
+import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import api from '../lib/api';
-import { colors } from '../theme/colors';
+import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import Video from 'react-native-video';
@@ -47,7 +47,8 @@ const VideoPlaceholder = ({ textColor }: { textColor: string }) => (
 );
 
 const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Video; isActive: boolean; isDarkMode: boolean; containerHeight: number }) => {
-  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
+  const { colors: themeColors } = useTheme();
+  const textColor = themeColors.text.primary;
 
   // // Lazy require to avoid hard dependency if package is missing
   // let VideoComp: any = null;
@@ -152,8 +153,7 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
 };
 
 const Videos = () => {
-  const colorScheme = useColorScheme();
-  const isDarkMode = colorScheme === 'dark';
+  const { isDarkMode } = useTheme();
 
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
@@ -226,8 +226,8 @@ const Videos = () => {
     }
   }).current;
 
-  const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
-  const textColor = isDarkMode ? colors.text.light : colors.text.primary;
+  const backgroundColor = isDarkMode ? '#000' : '#000';
+  const textColor = '#fff';
 
   const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetY = e.nativeEvent.contentOffset.y;
@@ -238,7 +238,7 @@ const Videos = () => {
   if (loading && videos.length === 0) {
     return (
       <View style={{ flex: 1, backgroundColor, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color={colors.primary} />
+        <ActivityIndicator size="large" color="#fff" />
       </View>
     );
   }
