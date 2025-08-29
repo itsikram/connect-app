@@ -6,6 +6,13 @@ buildscript {
         targetSdkVersion = 35
         ndkVersion = "26.2.11394342"
         kotlinVersion = "2.1.20"
+        // Reduce react-native-video ExoPlayer modules to minimize dex size
+        useExoplayerIMA = false
+        useExoplayerSmoothStreaming = false
+        useExoplayerDash = false
+        useExoplayerHls = false
+        useExoplayerRtsp = false
+        buildFromMedia3Source = false
     }
     repositories {
         google()

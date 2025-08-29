@@ -111,11 +111,11 @@ const Friends = () => {
           tintColor={themeColors.primary}
         />
       }
-    > {/* Main container */}
+    >
 
       
-      {/* Friend Requests Section */}
-      <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}> {/* Card */}
+
+      <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}>
         <View style={styles.headingRow}>
           <Text style={[styles.headingTitle, { color: textColor }]}>Friend Requests</Text>
           <TouchableOpacity>
@@ -124,17 +124,17 @@ const Friends = () => {
         </View>
         <View style={styles.friendGridContainer}>
           {friendRequests.length > 0 && friendRequests.map((friend: any) => (
-            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}> {/* Card */}
+            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
                 <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
                 <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleAcceptFriendRequest(friend._id); }}> {/* Add Friend */}
+                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleAcceptFriendRequest(friend._id); }}>
                     <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Accept</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleDeleteFriendRequest(friend._id); }}> {/* Remove */}
+                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleDeleteFriendRequest(friend._id); }}>
                     <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Delete</Text>
                   </TouchableOpacity>
                 </View>
@@ -147,24 +147,24 @@ const Friends = () => {
         </View>
       </View>
 
-      {/* People You May Know Section */}
+
       <View style={[styles.sectionContainer, { marginBottom: 32, backgroundColor: cardBg }]}>
         <View style={styles.headingRow}>
           <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
         </View>
         <View style={styles.friendGridContainer}>
           {friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
-            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}> {/* Card */}
+            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
                 <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
                 <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
                 <View style={styles.buttonRow}>
-                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleSendFriendRequest(friend._id); }}> {/* Add Friend */}
+                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleSendFriendRequest(friend._id); }}>
                     <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Add Friend</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleRemoveFriendRequest(friend._id); }}> {/* Remove */}
+                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleRemoveFriendRequest(friend._id); }}>
                     <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Remove</Text>
                   </TouchableOpacity>
                 </View>

@@ -121,7 +121,7 @@ const Message = () => {
       
       <Text style={[styles.heading, { color: themeColors.text.primary }]}>Messages</Text>
       
-      {/* Friends Section */}
+
       {profileData?.friends && profileData.friends.length > 0 && (
         <View style={styles.sectionContainer}>
           <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Friends</Text>
@@ -147,7 +147,7 @@ const Message = () => {
         </View>
       )}
 
-      {/* Search Bar */}
+
       <View style={{ width: '100%', marginBottom: 5 }}>
         <TextInput
           placeholder="Search friends..."
@@ -192,7 +192,7 @@ const Message = () => {
       </View>
 
 
-      {/* Show message if no profile data */}
+
       {(!profileData || Object.keys(profileData).length === 0) && (
         <View style={[styles.noDataSection, { 
           backgroundColor: themeColors.surface.secondary, 

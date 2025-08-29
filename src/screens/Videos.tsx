@@ -107,7 +107,7 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
           <Icon name="play" size={48} color={overlayTextColor} />
         </View>
       )}
-      {/* Right action buttons */}
+
       <View style={{ position: 'absolute', right: 12, bottom: 80, alignItems: 'center', zIndex: 12 }}>
         <TouchableOpacity onPress={() => {}} activeOpacity={0.8} style={{ alignItems: 'center', marginBottom: 18 }}>
           <Icon name="heart" size={28} color={overlayTextColor} />
@@ -129,7 +129,7 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
         </TouchableOpacity>
       </View>
 
-      {/* Bottom-left author and caption */}
+
       <View style={{ position: 'absolute', left: 12, right: 80, bottom: 20, zIndex: 12 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 }}>
           {authorAvatar ? (

@@ -638,7 +638,7 @@ const SingleMessage = () => {
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
             <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={themeColors.background.primary} />
-            {/* Header */}
+
             <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
@@ -748,7 +748,7 @@ const SingleMessage = () => {
                 </TouchableOpacity>
             </View>
 
-            {/* Messages */}
+
             <FlatList
                 ref={flatListRef}
                 data={messages}
@@ -760,7 +760,7 @@ const SingleMessage = () => {
                 ListFooterComponent={renderTypingIndicator}
             />
 
-            {/* Context Menu Modal */}
+
             <Modal
                 visible={contextMenuVisible}
                 transparent={true}
@@ -879,7 +879,7 @@ const SingleMessage = () => {
                 </Pressable>
             </Modal>
 
-            {/* Image Modal */}
+
             <Modal
                 visible={imageModalVisible}
                 transparent={true}
@@ -892,7 +892,7 @@ const SingleMessage = () => {
                     justifyContent: 'center',
                     alignItems: 'center',
                 }}>
-                    {/* Close button */}
+
                     <TouchableOpacity
                         onPress={closeImageModal}
                         style={{
@@ -911,7 +911,7 @@ const SingleMessage = () => {
                         <Icon name="close" size={24} color="white" />
                     </TouchableOpacity>
 
-                    {/* Image with zoom */}
+
                     <ScrollView
                         horizontal={true}
                         contentContainerStyle={{
@@ -932,7 +932,7 @@ const SingleMessage = () => {
                         />
                     </ScrollView>
 
-                    {/* Control buttons */}
+
                     <View style={{
                         position: 'absolute',
                         bottom: 50,
@@ -1004,7 +1004,7 @@ const SingleMessage = () => {
                 </View>
             </Modal>
 
-            {/* Input Area */}
+
             <KeyboardAvoidingView
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                 style={{

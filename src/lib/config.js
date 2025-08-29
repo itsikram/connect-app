@@ -15,13 +15,13 @@
 // };
 const ENV = {
   development: {
-    API_BASE_URL: 'https://connect-server-y1ku.onrender.com/api/',
-    SOCKET_BASE_URL: 'https://connect-server-y1ku.onrender.com',
+    API_BASE_URL: 'http://192.168.1.100:4000/api/',
+    SOCKET_BASE_URL: 'http://192.168.1.100:4000',
     API_TIMEOUT: 10000,
   },
   staging: {
-    API_BASE_URL: 'https://connect-server-y1ku.onrender.com/api/',
-    SOCKET_BASE_URL: 'https://connect-server-y1ku.onrender.com',
+    API_BASE_URL: 'http://192.168.1.100:4000/api/',
+    SOCKET_BASE_URL: 'http://192.168.1.100:4000',
     API_TIMEOUT: 15000,
   },
   production: {

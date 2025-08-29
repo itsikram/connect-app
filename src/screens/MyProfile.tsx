@@ -14,7 +14,7 @@ import { useNavigation } from '@react-navigation/native'
 function formatMonthYear(dateInput: any): string {
     try {
         const d = dateInput ? new Date(dateInput) : null
-        if (!d || isNaN(d as unknown as number)) return 'Unknown'
+        if (!d || isNaN(d.getTime())) return 'Unknown'
         const month = d.toLocaleString('default', { month: 'long' })
         const year = d.getFullYear()
         return `${month} ${year}`
@@ -194,7 +194,7 @@ const MyProfile = () => {
             label: 'About',
             render: () => (
                 <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
-                    {/* Bio */}
+
                     {myProfile?.bio && (
                         <View style={styles.detailsItem}>
                             <Icon name="info" size={20} color={themeColors.text.secondary} />
@@ -204,18 +204,18 @@ const MyProfile = () => {
                         </View>
                     )}
 
-                    {/* Workplaces */}
+
                     {Array.isArray(myProfile?.workPlaces) && myProfile.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
                             <Icon name="work" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
-                                {wp?.designation ? `${wp.designation} at ` : ''}
+                                <Text>{wp?.designation ? `${wp.designation} at ` : ''}</Text>
                                 <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{wp?.name || 'Unknown workplace'}</Text>
                             </Text>
                         </View>
                     ))}
 
-                    {/* Schools */}
+
                     {Array.isArray(myProfile?.schools) && myProfile.schools.map((sc: any, idx: number) => (
                         <View key={`sc-${idx}`} style={styles.detailsItem}>
                             <Icon name="school" size={20} color={themeColors.text.secondary} />
@@ -226,7 +226,7 @@ const MyProfile = () => {
                         </View>
                     ))}
 
-                    {/* Present address */}
+
                     {!!myProfile?.presentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="home" size={20} color={themeColors.text.secondary} />
@@ -236,7 +236,7 @@ const MyProfile = () => {
                         </View>
                     )}
 
-                    {/* Permanent address */}
+
                     {!!myProfile?.permanentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="public" size={20} color={themeColors.text.secondary} />
@@ -246,7 +246,7 @@ const MyProfile = () => {
                         </View>
                     )}
 
-                    {/* Joined */}
+
                     <View style={styles.detailsItem}>
                         <Icon name="schedule" size={20} color={themeColors.text.secondary} />
                         <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
@@ -413,7 +413,7 @@ const MyProfile = () => {
         }>
 
             
-            {/* Cover Photo */}
+
             <View style={[styles.profileHeader, { backgroundColor: themeColors.surface.header }]}>
                 <View style={[styles.coverContainer, { backgroundColor: themeColors.gray[200] }]}>
                 {myProfile?.coverPic ? (
@@ -460,7 +460,7 @@ const MyProfile = () => {
                             ) : null}
                         </View>
 
-                        {/* Bio Section */}
+
                         <View style={[styles.bioSection, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                             {myProfile?.bio ? (
                                 <>

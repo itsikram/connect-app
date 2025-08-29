@@ -162,7 +162,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   }, [postData, onPostCreated]);
 
   const profileName = user ? `${user.firstName || ''} ${user.surname || ''}` : '';
-  const textInputPlaceholder = `What's On Your Mind ${user.firstName}?`;
+  const textInputPlaceholder = `What's On Your Mind ${user?.firstName || 'there'}?`;
 
   // Theme colors
   const cardBg = themeColors.surface.primary;
@@ -173,10 +173,10 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const borderColor = themeColors.border.primary;
 
   return (
-    <View style={[styles.container, { backgroundColor: cardBg }]}> {/* Main container */}
+    <View style={[styles.container, { backgroundColor: cardBg }]}>
       <View style={styles.topRow}>
         <View style={styles.profilePicWrapper}>
-          {/* Replace with actual profile pic if available */}
+
           <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/image/logo.png')} style={styles.profilePic} />
         </View>
         <TouchableOpacity style={[styles.inputWrapper, { backgroundColor: inputBg }]} onPress={openModal}>
@@ -193,7 +193,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             <Text style={styles.buttonText}>Live Video</Text>
           </TouchableOpacity>
         </View>
-        {/* Facebook-style action row */}
+
         <View style={[styles.actionRow, { borderBottomWidth: 0 }]}>
           <TouchableOpacity 
             style={[styles.actionButton, { backgroundColor: inputBg }]} 
@@ -217,7 +217,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
         onRequestClose={closeModal}
       >
         <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: modalBg }]}> {/* Modal content */}
+          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
             <View style={styles.modalHeader}>
               <Text style={[styles.modalTitle, { color: textColor }]}>Create a Post</Text>
               <TouchableOpacity onPress={closeModal}>
@@ -294,7 +294,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           </View>
         </View>
       </Modal>
-      {/* Feelings picker modal */}
+
       <Modal
         visible={isFeelingsPickerVisible}
         animationType="slide"
@@ -302,7 +302,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
         onRequestClose={closeFeelingsPicker}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeFeelingsPicker}>
-          <View style={[styles.modalContent, { backgroundColor: modalBg }]}> {/* Reuse modal style */}
+          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
             <Text style={[styles.modalTitle, { color: textColor }]}>Select Feeling</Text>
             <FlatList
               data={defaultFeelings}

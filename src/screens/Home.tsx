@@ -135,6 +135,7 @@ const Home = () => {
         <View style={{ flex: 1, backgroundColor }}>
             
             
+            
             <FlatList
                 data={posts}
                 keyExtractor={(item, idx) => item._id || idx.toString()}

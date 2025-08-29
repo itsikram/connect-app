@@ -88,7 +88,7 @@ const NotificationSettings = () => {
         </Text>
       </View>
 
-      {/* Push Notifications */}
+      
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Push Notifications
@@ -134,7 +134,7 @@ const NotificationSettings = () => {
         )}
       </View>
 
-      {/* Email Notifications */}
+      
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Email Notifications
@@ -180,7 +180,7 @@ const NotificationSettings = () => {
         )}
       </View>
 
-      {/* Info Card */}
+      
       <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
         <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
           Notification Tips
@@ -193,7 +193,7 @@ const NotificationSettings = () => {
         </Text>
       </View>
 
-      {/* Save Button */}
+      
       <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
         <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Notification Settings</Text>
       </TouchableOpacity>

@@ -301,8 +301,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Render
   return (
-    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}> {/* Main card */}
-      {/* Header */}
+    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}> 
       <View style={styles.header}>
         <TouchableOpacity onPress={() => {
           if (post.author?._id && post.author._id !== myProfileId) {
@@ -339,11 +338,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         <TouchableOpacity onPress={postOptionClick}>
           <Icon name="more-vert" size={24} color={subTextColor} />
         </TouchableOpacity>
-        {/* Post option modal */}
         <Modal visible={isPostOption} transparent animationType="fade">
           <TouchableOpacity style={styles.modalOverlay} onPress={() => setIsPostOption(false)}>
-            <View style={[styles.optionMenu, { backgroundColor: cardBg }]}> {/* Modal menu */}
-              {/* Show edit options only for post author */}
+            <View style={[styles.optionMenu, { backgroundColor: cardBg }]}> 
               {post.author?._id === myProfileId && (
                 <>
                   <TouchableOpacity>
@@ -358,7 +355,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   </TouchableOpacity>
                 </>
               )}
-              {/* Show report option for non-authors */}
               {post.author?._id !== myProfileId && (
                 <TouchableOpacity>
                   <Text style={{ color: textColor }}>Report This Post</Text>
@@ -368,7 +364,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           </TouchableOpacity>
         </Modal>
         
-        {/* Delete Confirmation Modal */}
         <Modal visible={showDeleteConfirmation} transparent animationType="fade">
           <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDeleteConfirmation(false)}>
             <View style={[styles.deleteConfirmModal, { backgroundColor: cardBg }]}>
@@ -394,7 +389,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           </TouchableOpacity>
         </Modal>
       </View>
-      {/* Body */}
       <View style={styles.body}>
         <Text style={[styles.caption, { color: textColor }]}>{post.caption || 'No caption'}</Text>
 
@@ -417,7 +411,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         </View>
 
       </View>
-      {/* Footer */}
       <View style={styles.footer}>
         <View style={styles.countsRow}>
           <View style={styles.reactsCountLeft}>
@@ -434,7 +427,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
         </View>
         <View style={styles.actionsRow}>
-          {/* Like button with long press for reactions */}
           <View style={{ alignItems: 'center', justifyContent: 'center' }}>
             <TouchableOpacity
               onPress={handleLikePress}
@@ -471,18 +463,15 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               </View>
             )}
           </View>
-          {/* Comment button toggles comment box */}
           <TouchableOpacity onPress={handleCommentPress} style={styles.actionButton}>
             <Icon name="comment" size={28} color={themeColors.primary} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Comment</Text>
           </TouchableOpacity>
-          {/* Share button opens share modal */}
           <TouchableOpacity onPress={() => setIsShareModal(true)} style={styles.actionButton}>
             <Icon name="share" size={28} color={themeColors.primary} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Share</Text>
           </TouchableOpacity>
         </View>
-        {/* Comment Box and Comments List */}
         {showCommentBox && (
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -500,7 +489,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                 <Text style={styles.commentPostBtnText}>Post</Text>
               </TouchableOpacity>
             </View>
-            {/* Comments List */}
             <View style={styles.commentsList}>
               {comments.length === 0 ? (
                 <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
@@ -512,7 +500,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                        style={styles.commentProfilePic}
                        onError={() => console.log('Failed to load comment profile picture')}
                      />
-                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> {/* Comment body */}
+                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> 
                        <Text style={[styles.commentAuthor, { color: textColor }]}>
                          {c.author?.fullName || 
                           c.author?.firstName || 
@@ -548,7 +536,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                         </View>
                      </View>
                      
-                     {/* Show replies if they exist */}
                      {c.replies && c.replies.length > 0 && (
                        <View style={styles.repliesContainer}>
                          {c.replies.map((reply: any) => (
@@ -588,7 +575,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               )}
                          </View>
              
-             {/* Reply Input Box */}
              {showReplyBox && replyingTo && (
                <View style={styles.replyInputContainer}>
                  <View style={styles.replyInputHeader}>
@@ -616,10 +602,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
            </KeyboardAvoidingView>
          )}
        </View>
-      {/* Share Modal */}
       <Modal visible={isShareModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.shareModal, { backgroundColor: cardBg }]}> {/* Share modal */}
+          <View style={[styles.shareModal, { backgroundColor: cardBg }]}> 
             <Text style={{ color: textColor }}>Share Post</Text>
             <TextInput
               style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
@@ -637,8 +622,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           </View>
         </View>
       </Modal>
-      {/* Comments */}
-      {/* <PostComment ... /> */}
     </View>
   );
 };

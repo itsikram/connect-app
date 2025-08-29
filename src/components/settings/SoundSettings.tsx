@@ -130,7 +130,7 @@ const SoundSettings = () => {
         </Text>
       </View>
 
-      {/* Call Sounds */}
+     
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Call Sounds
@@ -145,7 +145,7 @@ const SoundSettings = () => {
         )}
       </View>
 
-      {/* Notification Sounds */}
+     
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Notification Sounds
@@ -168,7 +168,7 @@ const SoundSettings = () => {
         )}
       </View>
 
-      {/* Sound Controls */}
+     
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Sound Controls
@@ -187,7 +187,7 @@ const SoundSettings = () => {
         )}
       </View>
 
-      {/* Volume Control */}
+     
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
           Volume Control
@@ -214,7 +214,7 @@ const SoundSettings = () => {
         </View>
       </View>
 
-      {/* Info Cards */}
+     
       <View style={styles.infoContainer}>
         <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
           <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
@@ -240,7 +240,7 @@ const SoundSettings = () => {
         </View>
       </View>
 
-      {/* Save Button */}
+     
       <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
         <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Sound Settings</Text>
       </TouchableOpacity>

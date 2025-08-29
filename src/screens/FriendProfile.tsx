@@ -11,7 +11,7 @@ import { useNavigation, useRoute } from '@react-navigation/native'
 function formatMonthYear(dateInput: any): string {
     try {
         const d = dateInput ? new Date(dateInput) : null
-        if (!d || isNaN(d as unknown as number)) return 'Unknown'
+        if (!d || isNaN(d.getTime())) return 'Unknown'
         const month = d.toLocaleString('default', { month: 'long' })
         const year = d.getFullYear()
         return `${month} ${year}`
@@ -258,7 +258,7 @@ const FriendProfile = () => {
             label: 'About',
             render: () => (
                 <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
-                    {/* Bio */}
+
                     {friendData?.bio && (
                         <View style={styles.detailsItem}>
                             <Icon name="info" size={20} color={themeColors.text.secondary} />
@@ -268,18 +268,18 @@ const FriendProfile = () => {
                         </View>
                     )}
 
-                    {/* Workplaces */}
+
                     {Array.isArray(friendData?.workPlaces) && friendData.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
                             <Icon name="work" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
-                                {wp?.designation ? `${wp.designation} at ` : ''}
+                                <Text>{wp?.designation ? `${wp.designation} at ` : ''}</Text>
                                 <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{wp?.name || 'Unknown workplace'}</Text>
                             </Text>
                         </View>
                     ))}
 
-                    {/* Schools */}
+
                     {Array.isArray(friendData?.schools) && friendData.schools.map((sc: any, idx: number) => (
                         <View key={`sc-${idx}`} style={styles.detailsItem}>
                             <Icon name="school" size={20} color={themeColors.text.secondary} />
@@ -290,7 +290,7 @@ const FriendProfile = () => {
                         </View>
                     ))}
 
-                    {/* Present address */}
+
                     {!!friendData?.presentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="home" size={20} color={themeColors.text.secondary} />
@@ -300,7 +300,7 @@ const FriendProfile = () => {
                         </View>
                     )}
 
-                    {/* Permanent address */}
+
                     {!!friendData?.permanentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="public" size={20} color={themeColors.text.secondary} />
@@ -310,7 +310,7 @@ const FriendProfile = () => {
                         </View>
                     )}
 
-                    {/* Joined */}
+
                     <View style={styles.detailsItem}>
                         <Icon name="schedule" size={20} color={themeColors.text.secondary} />
                         <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
@@ -474,7 +474,7 @@ const FriendProfile = () => {
                 />
             }
         >
-            {/* Header */}
+
             <View style={[styles.header, { backgroundColor: themeColors.surface.header, borderBottomColor: themeColors.border.secondary }]}>
                 <TouchableOpacity
                     style={styles.backButton}
@@ -522,7 +522,7 @@ const FriendProfile = () => {
                             ) : null}
                         </View>
 
-                        {/* Bio Section */}
+
                         <View style={[styles.bioSection, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
                             {friendData?.bio ? (
                                 <>
