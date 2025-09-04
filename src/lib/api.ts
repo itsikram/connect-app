@@ -187,6 +187,21 @@ export const friendAPI = {
     api.post(`/friend/removeFriend?profileId=${profileId}`),
 };
 
+export const storyAPI = {
+  getAllStories: (): Promise<AxiosResponse> => 
+    api.get('/story/'),
+  getSingleStory: (storyId: string): Promise<AxiosResponse> => 
+    api.get(`/story/single?storyId=${storyId}`),
+  createStory: (storyData: FormData): Promise<AxiosResponse> => 
+    api.post('/story/create', storyData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    }),
+  deleteStory: (storyId: string): Promise<AxiosResponse> => 
+    api.post('/story/delete', { storyId }),
+};
+
 // Debug function to check stored tokens
 export const debugAuth = async (): Promise<DebugAuthResult> => {
   try {

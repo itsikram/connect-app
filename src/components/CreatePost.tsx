@@ -188,7 +188,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             <Icon name="photo-camera" size={22} color={themeColors.primary} />
             <Text style={styles.buttonText}>Photo/Video</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg, borderBottomWidth: 0 }]} onPress={() => { openModal(); pickMedia('video'); }}>
+          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
             <Icon name="videocam" size={22} color={themeColors.primary} />
             <Text style={styles.buttonText}>Live Video</Text>
           </TouchableOpacity>
@@ -216,12 +216,12 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
         transparent={true}
         onRequestClose={closeModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
-            <View style={styles.modalHeader}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
+          <TouchableOpacity style={[styles.modalContent, { backgroundColor: modalBg }]} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
               <Text style={[styles.modalTitle, { color: textColor }]}>Create a Post</Text>
-              <TouchableOpacity onPress={closeModal}>
-                <Icon name="close" size={24} color={isDarkMode ? themeColors.text.inverse : themeColors.text.secondary} />
+              <TouchableOpacity onPress={closeModal} style={[styles.closeButton, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
+                <Icon name="close" size={24} color={textColor} />
               </TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
@@ -270,13 +270,13 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
               )}
               <View style={styles.attachmentRow}>
-                <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
+                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
                   <Icon name="photo-camera" size={22} color={themeColors.primary} />
-                  <Text style={styles.buttonText}>Add Photo</Text>
+                  <Text style={styles.attachmentButtonText}>Add Photo</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
+                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
                   <Icon name="videocam" size={22} color={themeColors.primary} />
-                  <Text style={styles.buttonText}>Add Video</Text>
+                  <Text style={styles.attachmentButtonText}>Add Video</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -291,8 +291,8 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
       <Modal
@@ -375,7 +375,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
-    marginRight: 8,
+    flex: 0.48,
+    justifyContent: 'center',
   },
   buttonText: {
     marginLeft: 6,
@@ -384,7 +385,7 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
+    backgroundColor: 'rgba(0,0,0,0.6)',
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -400,6 +401,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E5EA',
   },
   modalTitle: {
     fontSize: 18,
@@ -475,6 +479,8 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 16,
+    flex: 0.48,
+    justifyContent: 'center',
   },
   attachmentButtonText: {
     marginLeft: 6,
@@ -495,7 +501,7 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
+    justifyContent: 'space-between',
     marginTop: 8,
     paddingVertical: 8,
     borderTopWidth: 1,
@@ -508,12 +514,18 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 16,
     borderRadius: 20,
+    flex: 0.48,
+    justifyContent: 'center',
   },
   actionButtonText: {
     marginLeft: 8,
     color: '#29b1a9',
     fontWeight: 'bold',
     fontSize: 14,
+  },
+  closeButton: {
+    padding: 4,
+    borderRadius: 20,
   },
 });
 

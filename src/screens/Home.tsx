@@ -9,6 +9,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import DebugInfo from '../components/DebugInfo';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import StorySlider from '../components/StorySlider';
 
 
 const Home = () => {
@@ -140,7 +141,10 @@ const Home = () => {
                 data={posts}
                 keyExtractor={(item, idx) => item._id || idx.toString()}
                 ListHeaderComponent={
-                    <CreatePost onPostCreated={handlePostCreated} />
+                    <View>
+                        <StorySlider />
+                        <CreatePost onPostCreated={handlePostCreated} />
+                    </View>
                 }
                 renderItem={({ item }) => <Post key={item._id} data={item} onPostDeleted={handlePostDeleted} />}
                 ListEmptyComponent={loading ? (

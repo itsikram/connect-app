@@ -338,42 +338,147 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         <TouchableOpacity onPress={postOptionClick}>
           <Icon name="more-vert" size={24} color={subTextColor} />
         </TouchableOpacity>
-        <Modal visible={isPostOption} transparent animationType="fade">
-          <TouchableOpacity style={styles.modalOverlay} onPress={() => setIsPostOption(false)}>
-            <View style={[styles.optionMenu, { backgroundColor: cardBg }]}> 
+        <Modal visible={isPostOption} transparent animationType="slide">
+          <TouchableOpacity 
+            style={styles.modalOverlay} 
+            onPress={() => setIsPostOption(false)}
+            activeOpacity={1}
+          >
+            <View style={[styles.optionMenu, { backgroundColor: cardBg, borderColor }]}> 
+              <View style={styles.optionMenuHeader}>
+                <View style={[styles.optionMenuHandle, { backgroundColor: borderColor }]} />
+              </View>
+              
               {post.author?._id === myProfileId && (
                 <>
-                  <TouchableOpacity>
-                    <Text style={{ color: textColor }}>Edit Post</Text>
+                  <TouchableOpacity 
+                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    onPress={() => {
+                      setIsPostOption(false);
+                      // Add edit post functionality here
+                    }}
+                  >
+                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                      <Icon name="edit" size={20} color={themeColors.primary} />
+                    </View>
+                    <View style={styles.optionMenuContent}>
+                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Edit Post</Text>
+                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>Make changes to your post</Text>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
-                  <TouchableOpacity>
-                    <Text style={{ color: textColor }}>Edit Audience</Text>
+                  
+                  <TouchableOpacity 
+                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    onPress={() => {
+                      setIsPostOption(false);
+                      // Add edit audience functionality here
+                    }}
+                  >
+                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                      <Icon name="people" size={20} color={themeColors.primary} />
+                    </View>
+                    <View style={styles.optionMenuContent}>
+                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Edit Audience</Text>
+                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>Change who can see this post</Text>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={showDeleteConfirm} style={styles.deleteOptionButton}>
-                    <Icon name="delete" size={16} color={themeColors.status.error} style={{ marginRight: 8 }} />
-                    <Text style={{ color: themeColors.status.error, fontWeight: '600' }}>Delete Post</Text>
+                  
+                  <TouchableOpacity 
+                    style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
+                    onPress={showDeleteConfirm}
+                  >
+                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
+                      <Icon name="delete" size={20} color={themeColors.status.error} />
+                    </View>
+                    <View style={styles.optionMenuContent}>
+                      <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Delete Post</Text>
+                      <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Remove this post permanently</Text>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
                   </TouchableOpacity>
                 </>
               )}
+              
               {post.author?._id !== myProfileId && (
-                <TouchableOpacity>
-                  <Text style={{ color: textColor }}>Report This Post</Text>
-                </TouchableOpacity>
+                <>
+                  <TouchableOpacity 
+                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    onPress={() => {
+                      setIsPostOption(false);
+                      // Add save post functionality here
+                    }}
+                  >
+                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                      <Icon name="bookmark" size={20} color={themeColors.primary} />
+                    </View>
+                    <View style={styles.optionMenuContent}>
+                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Save Post</Text>
+                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>Add this to your saved items</Text>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={subTextColor} />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    onPress={() => {
+                      setIsPostOption(false);
+                      // Add hide post functionality here
+                    }}
+                  >
+                    <View style={[styles.optionMenuIcon, { backgroundColor: '#FFA50015' }]}>
+                      <Icon name="visibility-off" size={20} color="#FFA500" />
+                    </View>
+                    <View style={styles.optionMenuContent}>
+                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Hide Post</Text>
+                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>See fewer posts like this</Text>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={subTextColor} />
+                  </TouchableOpacity>
+                  
+                  <TouchableOpacity 
+                    style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
+                    onPress={() => {
+                      setIsPostOption(false);
+                      // Add report post functionality here
+                    }}
+                  >
+                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
+                      <Icon name="flag" size={20} color={themeColors.status.error} />
+                    </View>
+                    <View style={styles.optionMenuContent}>
+                      <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Report Post</Text>
+                      <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Report inappropriate content</Text>
+                    </View>
+                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
+                  </TouchableOpacity>
+                </>
               )}
             </View>
           </TouchableOpacity>
         </Modal>
         
         <Modal visible={showDeleteConfirmation} transparent animationType="fade">
-          <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowDeleteConfirmation(false)}>
-            <View style={[styles.deleteConfirmModal, { backgroundColor: cardBg }]}>
-              <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Delete Post</Text>
-              <Text style={[styles.deleteConfirmMessage, { color: subTextColor }]}>
-                Are you sure you want to delete this post? This action cannot be undone.
-              </Text>
+          <TouchableOpacity 
+            style={[styles.modalOverlay, { justifyContent: 'center' }]} 
+            onPress={() => setShowDeleteConfirmation(false)}
+            activeOpacity={1}
+          >
+            <View style={[styles.deleteConfirmModal, { backgroundColor: cardBg, borderColor }]}>
+              <View style={styles.deleteConfirmHeader}>
+                <View style={[styles.deleteConfirmIcon, { backgroundColor: themeColors.status.error + '15' }]}>
+                  <Icon name="delete" size={28} color={themeColors.status.error} />
+                </View>
+                <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Delete Post</Text>
+                <Text style={[styles.deleteConfirmMessage, { color: subTextColor }]}>
+                  Are you sure you want to delete this post? This action cannot be undone and the post will be permanently removed.
+                </Text>
+              </View>
+              
               <View style={styles.deleteConfirmButtons}>
                 <TouchableOpacity 
-                  style={[styles.deleteConfirmBtn, styles.cancelBtn]} 
+                  style={[styles.deleteConfirmBtn, styles.cancelBtn, { borderColor }]} 
                   onPress={() => setShowDeleteConfirmation(false)}
                 >
                   <Text style={[styles.deleteConfirmBtnText, { color: textColor }]}>Cancel</Text>
@@ -382,7 +487,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   style={[styles.deleteConfirmBtn, styles.deleteBtn]} 
                   onPress={handleDeletePost}
                 >
-                  <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>Delete</Text>
+                  <Icon name="delete" size={18} color="#fff" style={{ marginRight: 8 }} />
+                  <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>Delete Post</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -711,14 +817,76 @@ const styles = StyleSheet.create({
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
     alignItems: 'center',
   },
   optionMenu: {
     backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 8,
+    paddingBottom: 34,
+    paddingHorizontal: 0,
+    width: '100%',
+    maxHeight: '70%',
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: -4,
+    },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  optionMenuHeader: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingBottom: 20,
+  },
+  optionMenuHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#E5E5E5',
+  },
+  optionMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+    backgroundColor: 'transparent',
+  },
+  optionMenuItemDanger: {
+    borderBottomWidth: 0,
+  },
+  optionMenuIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  optionMenuContent: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  optionMenuTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    lineHeight: 20,
+    marginBottom: 2,
+  },
+  optionMenuSubtitle: {
+    fontSize: 13,
+    fontWeight: '400',
+    lineHeight: 16,
+    opacity: 0.8,
   },
   shareModal: {
     backgroundColor: '#fff',
@@ -893,53 +1061,79 @@ const styles = StyleSheet.create({
   // Delete confirmation modal styles
   deleteConfirmModal: {
     backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
-    width: '80%',
-    maxWidth: 350,
+    borderRadius: 20,
+    width: '85%',
+    maxWidth: 380,
+    paddingBottom: 24,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 8,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  deleteConfirmHeader: {
+    alignItems: 'center',
+    paddingTop: 32,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
+  },
+  deleteConfirmIcon: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 20,
   },
   deleteConfirmTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 10,
+    fontSize: 20,
+    fontWeight: '700',
+    marginBottom: 12,
     textAlign: 'center',
   },
   deleteConfirmMessage: {
-    fontSize: 14,
-    marginBottom: 20,
+    fontSize: 15,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 22,
+    opacity: 0.8,
   },
   deleteConfirmButtons: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 10,
+    paddingHorizontal: 24,
+    gap: 12,
   },
   deleteConfirmBtn: {
     flex: 1,
-    paddingVertical: 12,
+    paddingVertical: 14,
     paddingHorizontal: 20,
-    borderRadius: 8,
+    borderRadius: 12,
     alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
   },
   cancelBtn: {
     backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: '#ddd',
+    borderWidth: 1.5,
+    borderColor: '#E5E5E5',
   },
   deleteBtn: {
-    backgroundColor: '#ff4444',
+    backgroundColor: '#FF4444',
+    shadowColor: '#FF4444',
+    shadowOffset: {
+      width: 0,
+      height: 4,
+    },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 6,
   },
   deleteConfirmBtnText: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  deleteOptionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
   },
   // Comment reply styles
   commentActions: {
