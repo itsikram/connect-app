@@ -17,6 +17,7 @@ const LoginScreen = () => {
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const { colors: themeColors } = useTheme();
   const bottomBarBg = themeColors.surface.secondary;
@@ -79,10 +80,11 @@ const LoginScreen = () => {
         label="Password"
         value={password}
         onChangeText={setPassword}
-        secureTextEntry
+        secureTextEntry={!showPassword}
         style={[styles.input, { backgroundColor: bottomBarBg }]}
         error={!!error && error.toLowerCase().includes('password')}
         theme={{ colors: { primary: themeColors.primary } }}
+        right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
       />
       {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
       <Button mode="contained" onPress={handleLogin} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: themeColors.text.inverse }}>
