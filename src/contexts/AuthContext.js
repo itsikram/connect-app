@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }) => {
   const register = async (userData) => {
     try {
       setIsLoading(true);
-      const response = await authAPI.register(userData);
+      const response = await authAPI.signup(userData);
       const { user: newUser, token } = response.data;
       
       // Store user data and token

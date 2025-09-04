@@ -71,8 +71,12 @@ const Message = () => {
 
   const fetchProfile = useCallback(async () => {
     try {
+      if (!profileData?._id) {
+        console.log('No profile ID available for fetching profile');
+        return;
+      }
       setIsLoading(true);
-      const response = await userAPI.getProfile();
+      const response = await userAPI.getProfile(profileData._id);
       console.log('Profile data:', response.data);
       dispatch(setProfile(response.data));
     } catch (error) {
@@ -80,7 +84,7 @@ const Message = () => {
     } finally {
       setIsLoading(false);
     }
-  }, [dispatch]);
+  }, [dispatch, profileData?._id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);

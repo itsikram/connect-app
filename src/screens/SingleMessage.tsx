@@ -8,7 +8,6 @@ import {
     KeyboardAvoidingView,
     Platform,
     SafeAreaView,
-    StatusBar,
     Alert,
     Modal,
     Pressable,
@@ -637,7 +636,6 @@ const SingleMessage = () => {
 
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
-            <StatusBar barStyle={isDarkMode ? "light-content" : "dark-content"} backgroundColor={themeColors.background.primary} />
 
             <View style={{
                 flexDirection: 'row',

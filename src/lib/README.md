@@ -48,7 +48,7 @@ if (result.success) {
 }
 
 // Register
-const result = await authAPI.register(userData);
+const result = await authAPI.signup(userData);
 
 // Logout
 await authAPI.logout();
@@ -60,7 +60,7 @@ await authAPI.logout();
 import { userAPI } from '../lib/api';
 
 // Get user profile
-const profile = await userAPI.getProfile();
+const profile = await userAPI.getProfile(profileId);
 
 // Update profile
 await userAPI.updateProfile(userData);

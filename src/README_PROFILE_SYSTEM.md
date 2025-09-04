@@ -74,7 +74,7 @@ const MyComponent = () => {
   
   const refreshProfile = async () => {
     try {
-      const response = await userAPI.getProfile();
+      const response = await userAPI.getProfile(profileId);
       if (response.data) {
         dispatch(setProfile(response.data));
       }

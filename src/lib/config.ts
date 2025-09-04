@@ -1,19 +1,13 @@
-// Environment configuration
-// const ENV = {
-//   development: {
-//     API_BASE_URL: 'http://192.168.1.100:4000/api/',
-//     API_TIMEOUT: 10000,
-//   },
-//   staging: {
-//     API_BASE_URL: 'http://192.168.0.108:4000/api/',
-//     API_TIMEOUT: 15000,
-//   },
-//   production: {
-//     API_BASE_URL: 'http://192.168.0.108:4000/api/',
-//     API_TIMEOUT: 20000,
-//   },
-// };
-const ENV = {
+// Environment configuration types
+interface EnvironmentConfig {
+  API_BASE_URL: string;
+  SOCKET_BASE_URL: string;
+  API_TIMEOUT: number;
+}
+
+type Environment = 'development' | 'staging' | 'production';
+
+const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
     API_BASE_URL: 'http://192.168.1.100:4000/api/',
     SOCKET_BASE_URL: 'http://192.168.1.100:4000',
@@ -32,7 +26,7 @@ const ENV = {
 };
 
 // Get current environment (you can set this via environment variables)
-const getEnvironment = () => {
+const getEnvironment = (): Environment => {
   // For React Native, you might want to use __DEV__ or environment variables
   if (__DEV__) {
     return 'development';
@@ -41,7 +35,7 @@ const getEnvironment = () => {
   return 'production';
 };
 
-export const config = ENV[getEnvironment()];
+export const config: EnvironmentConfig = ENV[getEnvironment()];
 
 // API endpoints
 export const API_ENDPOINTS = {
@@ -57,6 +51,6 @@ export const API_ENDPOINTS = {
     CHANGE_PASSWORD: '/user/change-password',
   },
   // Add more endpoint categories as needed
-};
+} as const;
 
 export default config; 

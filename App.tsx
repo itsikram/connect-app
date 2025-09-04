@@ -238,7 +238,11 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
           flex: 1,
           backgroundColor: themeIsDarkMode ? themeColors.background.primary : themeColors.background.primary
         }}>
-            <StatusBar barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'} />
+            <StatusBar 
+              barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'}
+              backgroundColor={themeColors.background.primary}
+              translucent={false}
+            />
             {isLoading ? (
               <LoadingScreen message="Initializing app..." />
             ) : (

@@ -1,9 +1,39 @@
-import axios from 'axios';
+import axios, { AxiosInstance, AxiosResponse, AxiosError, AxiosRequestConfig } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from './config';
 
+// Type definitions
+interface LoginData {
+  email: string;
+  password: string;
+}
+
+interface SignupData {
+  email: string;
+  password: string;
+  name?: string;
+  [key: string]: any;
+}
+
+interface PasswordChangeData {
+  oldPassword: string;
+  newPassword: string;
+}
+
+interface AuthResponse {
+  accessToken: string;
+  user?: any;
+  message?: string;
+}
+
+interface DebugAuthResult {
+  user: string | null;
+  token: string | null;
+  error?: string;
+}
+
 // Helper function to check if token exists and has valid format
-const isValidToken = (token) => {
+const isValidToken = (token: string | null): boolean => {
   if (!token) return false;
 
   // Check if token has the expected JWT format (3 parts separated by dots)
@@ -18,7 +48,7 @@ const isValidToken = (token) => {
 };
 
 // Create axios instance with default configuration
-const api = axios.create({
+const api: AxiosInstance = axios.create({
   baseURL: config.API_BASE_URL,
   timeout: config.API_TIMEOUT,
   headers: {
@@ -32,11 +62,14 @@ console.log('API Timeout:', config.API_TIMEOUT);
 
 // Request interceptor to add auth token
 api.interceptors.request.use(
-  async config => {
+  async (config: any) => {
     try {
       const token = await AsyncStorage.getItem('authToken');
 
       if (token && isValidToken(token)) {
+        if (!config.headers) {
+          config.headers = {};
+        }
         config.headers.Authorization = token;
       } else {
         if (token && !isValidToken(token)) {
@@ -48,18 +81,18 @@ api.interceptors.request.use(
     }
     return config;
   },
-  error => {
+  (error: AxiosError) => {
     return Promise.reject(error);
   },
 );
 
 // Response interceptor for error handling
 api.interceptors.response.use(
-  response => {
+  (response: AxiosResponse) => {
     return response;
   },
-  async error => {
-    const originalRequest = error.config;
+  async (error: AxiosError) => {
+    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
 
     // Handle 401 Unauthorized errors
     if (error.response?.status === 401 && !originalRequest._retry) {
@@ -76,7 +109,7 @@ api.interceptors.response.use(
     }
 
     // Handle JWT verification errors (500 status with JWT error)
-    if (error.response?.status === 500 && error.response?.data?.message?.includes('JsonWebTokenError')) {
+    if (error.response?.status === 500 && (error.response?.data as any)?.message?.includes('JsonWebTokenError')) {
       console.log('🚨 JWT verification failed - token may be expired or invalid');
       try {
         // Clear stored auth data
@@ -109,41 +142,53 @@ api.interceptors.response.use(
 
 // API service methods
 export const authAPI = {
-  login: (email, password) => api.post('/auth/login', { email, password }),
+  login: (email: string, password: string): Promise<AxiosResponse<AuthResponse>> => 
+    api.post('/auth/login', { email, password }),
 
-  signup: userData => api.post('/auth/signup', userData),
+  signup: (userData: SignupData): Promise<AxiosResponse<AuthResponse>> => 
+    api.post('/auth/signup', userData),
 
-  logout: () => api.post('/auth/logout'),
+  logout: (): Promise<AxiosResponse> => api.post('/auth/logout'),
 
-  refreshToken: () => api.post('/auth/refresh'),
+  refreshToken: (): Promise<AxiosResponse<AuthResponse>> => api.post('/auth/refresh'),
 };
 
 export const userAPI = {
-  getProfile: (profileId) => api.get(`/profile?profileId=${profileId}`),
+  getProfile: (profileId: string): Promise<AxiosResponse> => 
+    api.get(`/profile?profileId=${profileId}`),
 
-  updateProfile: userData => api.post('/profile', userData),
+  updateProfile: (userData: any): Promise<AxiosResponse> => 
+    api.post('/profile', userData),
 
-  changePassword: passwordData =>
+  changePassword: (passwordData: PasswordChangeData): Promise<AxiosResponse> =>
     api.post('/user/change-password', passwordData),
 };
 
 export const chatAPI = {
-  getChatList: (profileId) => api.get(`/message/chatList?profileId=${profileId}`),
+  getChatList: (profileId: string): Promise<AxiosResponse> => 
+    api.get(`/message/chatList?profileId=${profileId}`),
 };
 
 
 export const friendAPI = {
-  getFriendList: (profileId) => api.get(`/friend/getFriends?profileId=${profileId}`),
-  getFriendRequest: (profileId) => api.get(`/friend/getRequest?profileId=${profileId}`),
-  getFriendSuggestions: (profileId) => api.get(`/friend/getSuggetions?profileId=${profileId}`),
-  sendFriendRequest: (profileId) => api.post(`/friend/sendRequest?profileId=${profileId}`),
-  acceptFriendRequest: (profileId) => api.post(`/friend/reqAccept`, { profile: profileId }),
-  deleteFriendRequest: (profileId) => api.post(`/friend/reqDelete`,{ profile: profileId }),
-  removeFriend: (profileId) => api.post(`/friend/removeFriend?profileId=${profileId}`),
+  getFriendList: (profileId: string): Promise<AxiosResponse> => 
+    api.get(`/friend/getFriends?profileId=${profileId}`),
+  getFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+    api.get(`/friend/getRequest?profileId=${profileId}`),
+  getFriendSuggestions: (profileId: string): Promise<AxiosResponse> => 
+    api.get(`/friend/getSuggetions?profileId=${profileId}`),
+  sendFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+    api.post(`/friend/sendRequest?profileId=${profileId}`),
+  acceptFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+    api.post(`/friend/reqAccept`, { profile: profileId }),
+  deleteFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+    api.post(`/friend/reqDelete`, { profile: profileId }),
+  removeFriend: (profileId: string): Promise<AxiosResponse> => 
+    api.post(`/friend/removeFriend?profileId=${profileId}`),
 };
 
 // Debug function to check stored tokens
-export const debugAuth = async () => {
+export const debugAuth = async (): Promise<DebugAuthResult> => {
   try {
     const [userData, token] = await AsyncStorage.multiGet(['user', 'authToken']);
     console.log('🔍 Debug Auth Storage:');
@@ -158,17 +203,22 @@ export const debugAuth = async () => {
     return { user: userData[1], token: token[1] };
   } catch (error) {
     console.error('❌ Error debugging auth:', error);
-    return { user: null, token: null };
+    return { user: null, token: null, error: (error as Error).message };
   }
 };
 
 // Generic API methods
 export const apiService = {
-  get: (url, config = {}) => api.get(url, config),
-  post: (url, data = {}, config = {}) => api.post(url, data, config),
-  put: (url, data = {}, config = {}) => api.put(url, data, config),
-  delete: (url, config = {}) => api.delete(url, config),
-  patch: (url, data = {}, config = {}) => api.patch(url, data, config),
+  get: (url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
+    api.get(url, config),
+  post: (url: string, data: any = {}, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
+    api.post(url, data, config),
+  put: (url: string, data: any = {}, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
+    api.put(url, data, config),
+  delete: (url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
+    api.delete(url, config),
+  patch: (url: string, data: any = {}, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
+    api.patch(url, data, config),
 };
 
 // Export the configured axios instance
