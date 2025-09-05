@@ -16,6 +16,16 @@ interface SocketContextType {
   fetchMessages: (profileId: string) => void;
   updateLastLogin: (userId: string) => void;
   checkUserActive: (profileId: string, myId: string) => void;
+  // Video call methods
+  startVideoCall: (to: string, channelName: string) => void;
+  answerVideoCall: (to: string, channelName: string) => void;
+  endVideoCall: (friendId: string) => void;
+  // Audio call methods
+  startAudioCall: (to: string, channelName: string) => void;
+  answerAudioCall: (to: string, channelName: string) => void;
+  endAudioCall: (friendId: string) => void;
+  // Filter methods
+  applyVideoFilter: (to: string, filter: string) => void;
 }
 
 const SocketContext = createContext<SocketContextType | undefined>(undefined);
@@ -110,6 +120,37 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.checkUserActive(profileId, myId);
   };
 
+  // Video call methods
+  const startVideoCall = (to: string, channelName: string) => {
+    socketService.startVideoCall(to, channelName);
+  };
+
+  const answerVideoCall = (to: string, channelName: string) => {
+    socketService.answerVideoCall(to, channelName);
+  };
+
+  const endVideoCall = (friendId: string) => {
+    socketService.endVideoCall(friendId);
+  };
+
+  // Audio call methods
+  const startAudioCall = (to: string, channelName: string) => {
+    socketService.startAudioCall(to, channelName);
+  };
+
+  const answerAudioCall = (to: string, channelName: string) => {
+    socketService.answerAudioCall(to, channelName);
+  };
+
+  const endAudioCall = (friendId: string) => {
+    socketService.endAudioCall(friendId);
+  };
+
+  // Filter methods
+  const applyVideoFilter = (to: string, filter: string) => {
+    socketService.applyVideoFilter(to, filter);
+  };
+
   const value: SocketContextType = {
     isConnected,
     connect,
@@ -125,6 +166,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     fetchMessages,
     updateLastLogin,
     checkUserActive,
+    startVideoCall,
+    answerVideoCall,
+    endVideoCall,
+    startAudioCall,
+    answerAudioCall,
+    endAudioCall,
+    applyVideoFilter,
   };
 
   return (

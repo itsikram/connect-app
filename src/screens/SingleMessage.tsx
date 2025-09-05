@@ -29,6 +29,8 @@ import moment from 'moment';
 import { launchImageLibrary } from 'react-native-image-picker';
 import api from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import VideoCall from '../components/VideoCall';
+import AudioCall from '../components/AudioCall';
 
 interface Message {
     _id: string;
@@ -58,7 +60,7 @@ const SingleMessage = () => {
     const { friend } = route.params as { friend: any };
     const myProfile = useSelector((state: RootState) => state.profile);
     const [room, setRoom] = useState('');
-    const { connect, isConnected, emit, on, off } = useSocket();
+    const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall } = useSocket();
     const { colors: themeColors, isDarkMode } = useTheme();
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
 
@@ -512,6 +514,30 @@ const SingleMessage = () => {
         setIsUploading(false);
     };
 
+    // Handle video call
+    const handleVideoCall = () => {
+        if (!friend?._id || !myProfile?._id) {
+            Alert.alert('Error', 'Unable to start call. Please try again.');
+            return;
+        }
+        
+        const channelName = `${myProfile._id}-${friend._id}`;
+        console.log('Starting video call with channel:', channelName);
+        startVideoCall(friend._id, channelName);
+    };
+
+    // Handle audio call
+    const handleAudioCall = () => {
+        if (!friend?._id || !myProfile?._id) {
+            Alert.alert('Error', 'Unable to start call. Please try again.');
+            return;
+        }
+        
+        const channelName = `${myProfile._id}-${friend._id}`;
+        console.log('Starting audio call with channel:', channelName);
+        startAudioCall(friend._id, channelName);
+    };
+
     const handleAttachmentPress = async () => {
         try {
             if (!isConnected) {
@@ -853,7 +879,7 @@ const SingleMessage = () => {
                     <Icon name="notifications" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                    onPress={() => Alert.alert('Call', 'Call feature coming soon!')}
+                    onPress={handleAudioCall}
                     style={{
                         width: 35,
                         height: 35,
@@ -868,7 +894,7 @@ const SingleMessage = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                    onPress={() => Alert.alert('Video Call', 'Video call feature coming soon!')}
+                    onPress={handleVideoCall}
                     style={{
                         width: 35,
                         height: 35,
@@ -1695,6 +1721,10 @@ const SingleMessage = () => {
                     </TouchableOpacity>
                 </View>
             </KeyboardAvoidingView>
+
+            {/* Video and Audio Call Components */}
+            <VideoCall myId={myProfile?._id || ''} />
+            <AudioCall myId={myProfile?._id || ''} />
         </SafeAreaView>
     );
 };

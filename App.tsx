@@ -41,6 +41,8 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
 import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext';
+import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
+import MinimizedCallBar from './src/components/MinimizedCallBar';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
@@ -378,6 +380,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                 )}
               </Tab.Navigator>
             )}
+            <MinimizedCallBar />
         </SafeAreaView>
         );
       }}
@@ -398,17 +401,19 @@ function App() {
             <ThemeProvider>
               <AuthProvider>
                 <SocketProvider>
-                  <ToastProvider>
-                    <UserToastProvider>
-                      <SettingsProvider>
-                        <HeaderVisibilityProvider>
-                          <NavigationContainer>
-                            <AppContent />
-                          </NavigationContainer>
-                        </HeaderVisibilityProvider>
-                      </SettingsProvider>
-                    </UserToastProvider>
-                  </ToastProvider>
+                  <CallMinimizeProvider>
+                    <ToastProvider>
+                      <UserToastProvider>
+                        <SettingsProvider>
+                          <HeaderVisibilityProvider>
+                            <NavigationContainer>
+                              <AppContent />
+                            </NavigationContainer>
+                          </HeaderVisibilityProvider>
+                        </SettingsProvider>
+                      </UserToastProvider>
+                    </ToastProvider>
+                  </CallMinimizeProvider>
                 </SocketProvider>
               </AuthProvider>
             </ThemeProvider>

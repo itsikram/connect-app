@@ -150,6 +150,37 @@ class SocketService {
   checkUserActive(profileId: string, myId: string): void {
     this.emit('check-user-active', { profileId, myId });
   }
+
+  // Video call methods
+  startVideoCall(to: string, channelName: string): void {
+    this.emit('agora-video-call', { to, channelName, isAudio: false });
+  }
+
+  answerVideoCall(to: string, channelName: string): void {
+    this.emit('agora-answer-call', { to, channelName, isAudio: false });
+  }
+
+  endVideoCall(friendId: string): void {
+    this.emit('leaveVideoCall', friendId);
+  }
+
+  // Audio call methods
+  startAudioCall(to: string, channelName: string): void {
+    this.emit('agora-audio-call', { to, channelName, isAudio: true });
+  }
+
+  answerAudioCall(to: string, channelName: string): void {
+    this.emit('agora-answer-call', { to, channelName, isAudio: true });
+  }
+
+  endAudioCall(friendId: string): void {
+    this.emit('leaveAudioCall', friendId);
+  }
+
+  // Filter methods
+  applyVideoFilter(to: string, filter: string): void {
+    this.emit('agora-filter-video', { to, filter });
+  }
 }
 
 export default new SocketService();
