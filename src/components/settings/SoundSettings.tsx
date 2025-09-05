@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 
 interface SoundSettings {
   ringtone: string;
@@ -21,6 +22,7 @@ interface SoundSettings {
 
 const SoundSettings = () => {
   const { colors: themeColors } = useTheme();
+  const { showSuccess } = useToast();
   
   const [soundSettings, setSoundSettings] = useState<SoundSettings>({
     ringtone: '1',
@@ -58,6 +60,7 @@ const SoundSettings = () => {
 
   const handleSave = () => {
     console.log('Sound settings:', soundSettings);
+    showSuccess('Sound settings saved');
   };
 
   const renderPicker = (

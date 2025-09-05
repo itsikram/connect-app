@@ -12,6 +12,7 @@ import {
     Modal,
     Pressable,
     Image,
+    ImageBackground,
     Dimensions,
     ScrollView,
 } from 'react-native';
@@ -27,6 +28,7 @@ import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
 import { launchImageLibrary } from 'react-native-image-picker';
 import api from '../lib/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 interface Message {
     _id: string;
@@ -58,6 +60,7 @@ const SingleMessage = () => {
     const [room, setRoom] = useState('');
     const { connect, isConnected, emit, on, off } = useSocket();
     const { colors: themeColors, isDarkMode } = useTheme();
+    const CHAT_BG_STORAGE_KEY = '@chat_background_image';
 
     // Add state for context menu
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -82,6 +85,7 @@ const SingleMessage = () => {
     
     // Add state for info menu
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
+    const [chatBackground, setChatBackground] = useState<string | null>(null);
 
     // Set up room and socket events when both IDs are available
     useEffect(() => {
@@ -263,6 +267,22 @@ const SingleMessage = () => {
                 setTimeout(showTabBar, 100);
             };
         }, [navigation, themeColors.surface.header, themeColors.border.primary])
+    );
+
+    useFocusEffect(
+        React.useCallback(() => {
+            let isActive = true;
+            const loadBackground = async () => {
+                try {
+                    const saved = await AsyncStorage.getItem(CHAT_BG_STORAGE_KEY);
+                    if (isActive) setChatBackground(saved);
+                } catch (e) {
+                    // noop
+                }
+            };
+            loadBackground();
+            return () => { isActive = false; };
+        }, [])
     );
 
     const [messages, setMessages] = useState<Message[]>([]);
@@ -872,22 +892,47 @@ const SingleMessage = () => {
             </View>
 
 
-            <FlatList
-                ref={flatListRef}
-                data={messages}
-                renderItem={renderMessage}
-                keyExtractor={(item) => item._id}
-                style={{ flex: 1 }}
-                contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
-                showsVerticalScrollIndicator={false}
-                ListFooterComponent={renderTypingIndicator}
-                onScrollToIndexFailed={(info) => {
-                    const wait = new Promise(resolve => setTimeout(resolve, 200));
-                    wait.then(() => {
-                        flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-                    });
-                }}
-            />
+            {chatBackground ? (
+                <ImageBackground
+                    source={{ uri: chatBackground }}
+                    style={{ flex: 1 }}
+                    imageStyle={{ opacity: isDarkMode ? 0.2 : 0.35 }}
+                >
+                    <FlatList
+                        ref={flatListRef}
+                        data={messages}
+                        renderItem={renderMessage}
+                        keyExtractor={(item) => item._id}
+                        style={{ flex: 1 }}
+                        contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                        showsVerticalScrollIndicator={false}
+                        ListFooterComponent={renderTypingIndicator}
+                        onScrollToIndexFailed={(info) => {
+                            const wait = new Promise(resolve => setTimeout(resolve, 200));
+                            wait.then(() => {
+                                flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                            });
+                        }}
+                    />
+                </ImageBackground>
+            ) : (
+                <FlatList
+                    ref={flatListRef}
+                    data={messages}
+                    renderItem={renderMessage}
+                    keyExtractor={(item) => item._id}
+                    style={{ flex: 1 }}
+                    contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                    showsVerticalScrollIndicator={false}
+                    ListFooterComponent={renderTypingIndicator}
+                    onScrollToIndexFailed={(info) => {
+                        const wait = new Promise(resolve => setTimeout(resolve, 200));
+                        wait.then(() => {
+                            flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                        });
+                    }}
+                />
+            )}
 
 
             <Modal
@@ -1164,7 +1209,6 @@ const SingleMessage = () => {
                 </View>
             </Modal>
 
-            {/* Info Menu Modal */}
             <Modal
                 visible={infoMenuVisible}
                 transparent={true}
@@ -1189,7 +1233,6 @@ const SingleMessage = () => {
                         maxHeight: '80%',
                         minHeight: '40%',
                     }}>
-                        {/* Menu Handle */}
                         <View style={{
                             alignSelf: 'center',
                             width: 40,
@@ -1199,7 +1242,6 @@ const SingleMessage = () => {
                             marginBottom: 20,
                         }} />
                         
-                        {/* Menu Header */}
                         <View style={{
                             flexDirection: 'row',
                             alignItems: 'center',
@@ -1224,7 +1266,6 @@ const SingleMessage = () => {
                             </View>
                         </View>
 
-                        {/* Menu Options */}
                         <ScrollView 
                             style={{ flex: 1 }}
                             contentContainerStyle={{ paddingBottom: 40 }}

@@ -22,14 +22,14 @@ const Home = () => {
     const [hasMore, setHasMore] = useState(true);
     const [debugMode, setDebugMode] = useState(false);
     const { colors: themeColors, isDarkMode } = useTheme();
-    
+
     const { connect, isConnected } = useSocket();
     const myProfile = useSelector((state: RootState) => state.profile);
 
     const fetchPosts = useCallback(async (pageNum = 1, append = false) => {
         if (append) setLoadingMore(true);
         else setLoading(true);
-        
+
         try {
             setError(null);
             const res = await api.get(`/post/newsFeed?pageNumber=${pageNum}`);
@@ -42,7 +42,7 @@ const Home = () => {
             console.error('Error fetching posts:', e);
             const errorMessage = e?.response?.data?.message || 'Failed to load posts. Please try again.';
             setError(errorMessage);
-            
+
             if (!append) {
                 setPosts([]);
             }
@@ -121,7 +121,7 @@ const Home = () => {
                         <Icon name="close" size={24} color={textColor} />
                     </TouchableOpacity>
                 </View>
-                <DebugInfo 
+                <DebugInfo
                     user={null} // You can pass user data here if available
                     isLoading={loading}
                     isDarkMode={isDarkMode}
@@ -134,16 +134,17 @@ const Home = () => {
 
     return (
         <View style={{ flex: 1, backgroundColor }}>
-            
-            
-            
+
+
+
             <FlatList
                 data={posts}
                 keyExtractor={(item, idx) => item._id || idx.toString()}
                 ListHeaderComponent={
                     <View>
-                        <StorySlider />
                         <CreatePost onPostCreated={handlePostCreated} />
+
+                        <StorySlider />
                     </View>
                 }
                 renderItem={({ item }) => <Post key={item._id} data={item} onPostDeleted={handlePostDeleted} />}

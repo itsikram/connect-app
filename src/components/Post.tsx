@@ -355,7 +355,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
-                      // Add edit post functionality here
                     }}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
@@ -372,7 +371,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
-                      // Add edit audience functionality here
                     }}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
@@ -407,7 +405,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
-                      // Add save post functionality here
                     }}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
@@ -424,7 +421,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
-                      // Add hide post functionality here
                     }}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: '#FFA50015' }]}>
@@ -441,7 +437,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
                     onPress={() => {
                       setIsPostOption(false);
-                      // Add report post functionality here
                     }}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
@@ -518,7 +513,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
       </View>
       <View style={styles.footer}>
-        <View style={styles.countsRow}>
+        <View style={[styles.countsRow, { borderTopColor: borderColor }]}>
           <View style={styles.reactsCountLeft}>
             <View style={styles.reactionIconsStack}>
               {placedReacts.slice(0, 3).map((t, idx) => (
@@ -529,52 +524,63 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             </View>
             <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
           </View>
-          <Text style={[styles.countText, { color: subTextColor }]}>{totalComments} Comments</Text>
-          <Text style={[styles.countText, { color: subTextColor }]}>{totalShares} Shares</Text>
+          <View style={styles.countsRight}>
+            <View style={styles.countItem}>
+              <Icon name="chat-bubble-outline" size={16} color={subTextColor} />
+              <Text style={[styles.countText, { color: subTextColor }]}>{totalComments}</Text>
+            </View>
+            <View style={styles.countItem}>
+              <Icon name="share" size={16} color={subTextColor} />
+              <Text style={[styles.countText, { color: subTextColor }]}>{totalShares}</Text>
+            </View>
+          </View>
         </View>
-        <View style={styles.actionsRow}>
-          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+        <View style={[styles.actionBar, { backgroundColor: themeColors.surface.secondary, borderColor }]}>
+          <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
             <TouchableOpacity
               onPress={handleLikePress}
               onLongPress={handleLikeLongPress}
               delayLongPress={200}
-              style={styles.actionButton}
+              style={[styles.actionButton, styles.actionBarItem, isReacted ? { backgroundColor: themeColors.primary + '15' } : null]}
             >
               {reactType ? (
                 <>
                   <Text style={styles.likeEmoji}>{reactionEmojiMap[reactType] || '👍'}</Text>
-                  <Text style={[styles.actionLabel, { color: textColor }]}> {capitalize(reactType)}</Text>
+                  <Text style={[styles.actionLabel, { color: themeColors.primary }]}> {capitalize(reactType)}</Text>
                 </>
               ) : (
                 <>
-                  <Icon name="thumb-up" size={28} color={themeColors.primary} />
+                  <Icon name="thumb-up-off-alt" size={20} color={subTextColor} />
                   <Text style={[styles.actionLabel, { color: textColor }]}> Like</Text>
                 </>
               )}
             </TouchableOpacity>
             {showReactions && (
-              <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> {/* Reaction popup */}
-                <TouchableOpacity onPress={() => handleSelectReaction('like')}>
-                  <Text style={[reactType === 'like' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>👍</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleSelectReaction('love')}>
-                  <Text style={[reactType === 'love' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>❤️</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleSelectReaction('haha')}>
-                  <Text style={[reactType === 'haha' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😂</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleSelectReaction('sad')}>
-                  <Text style={[reactType === 'sad' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😢</Text>
-                </TouchableOpacity>
+              <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
+                <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> 
+                  <TouchableOpacity onPress={() => handleSelectReaction('like')} style={styles.reactionButton} activeOpacity={0.7}>
+                    <Text style={[reactType === 'like' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>👍</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleSelectReaction('love')} style={styles.reactionButton} activeOpacity={0.7}>
+                    <Text style={[reactType === 'love' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>❤️</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleSelectReaction('haha')} style={styles.reactionButton} activeOpacity={0.7}>
+                    <Text style={[reactType === 'haha' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😂</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => handleSelectReaction('sad')} style={styles.reactionButton} activeOpacity={0.7}>
+                    <Text style={[reactType === 'sad' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😢</Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.reactionCaret, { backgroundColor: cardBg, borderColor }]} />
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={handleCommentPress} style={styles.actionButton}>
-            <Icon name="comment" size={28} color={themeColors.primary} />
+          <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem] }>
+            <Icon name="comment" size={20} color={subTextColor} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Comment</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsShareModal(true)} style={styles.actionButton}>
-            <Icon name="share" size={28} color={themeColors.primary} />
+          <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem] }>
+            <Icon name="share" size={20} color={subTextColor} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Share</Text>
           </TouchableOpacity>
         </View>
@@ -815,6 +821,22 @@ const styles = StyleSheet.create({
     marginTop: 8,
     gap: 5
   },
+  actionBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 6,
+    borderColor: '#eee',
+    borderRadius: 12,
+    overflow: 'visible'
+  },
+  actionBarItem: {
+    flex: 1,
+    justifyContent: 'center',
+    paddingVertical: 5,
+    marginVertical: 6,
+    paddingHorizontal: 18,
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
@@ -903,20 +925,62 @@ const styles = StyleSheet.create({
   },
   reactionPopup: {
     flexDirection: 'row',
-    position: 'absolute',
-    bottom: 35,
-    left: 0,
     backgroundColor: '#fff',
-    borderRadius: 20,
-    padding: 8,
-    elevation: 5,
-    zIndex: 10,
+    borderRadius: 24,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    elevation: 8,
+    zIndex: 20,
+    borderWidth: 1,
+    borderColor: '#e6e6e6',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  reactionPopupWrapper: {
+    position: 'absolute',
+    bottom: 42,
+    left: '50%',
+    transform: [{ translateX: -100 }],
+    zIndex: 40,
+    alignItems: 'center',
+  },
+  reactionCaret: {
+    width: 16,
+    height: 16,
+    borderLeftWidth: 1,
+    borderBottomWidth: 1,
+    transform: [{ rotate: '45deg' }],
+    marginTop: -8,
+    backgroundColor: '#fff',
+    borderColor: '#e6e6e6',
+  },
+  reactionButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginHorizontal: 2,
   },
   countsRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 20,
+    paddingVertical: 8,
+    borderTopWidth: 1,
+  },
+  countsRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  countItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
   reactsCountLeft: {
     flexDirection: 'row',
@@ -1036,6 +1100,10 @@ const styles = StyleSheet.create({
     color: '#333',
     fontWeight: '500',
   },
+  actionEmoji: {
+    fontSize: 18,
+    marginRight: 6,
+  },
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1044,8 +1112,8 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   reactionIcon: {
-    fontSize: 32,
-    marginHorizontal: 4,
+    fontSize: 28,
+    marginHorizontal: 0,
   },
   likeEmoji: {
     fontSize: 22,

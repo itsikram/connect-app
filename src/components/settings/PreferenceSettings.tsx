@@ -11,6 +11,7 @@ import { Picker } from '@react-native-picker/picker';
 import { colors } from '../../theme/colors';
 import { useTheme } from '../../contexts/ThemeContext';
 import { themes, ThemeType } from '../../theme/colors';
+import { useToast } from '../../contexts/ToastContext';
 
 interface PreferenceSettings {
   themeMode: ThemeType;
@@ -24,6 +25,7 @@ const PreferenceSettings = () => {
   const { currentTheme, setTheme, colors: themeColors } = useTheme();
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
+  const { showSuccess } = useToast();
   
   const [preferences, setPreferences] = useState<PreferenceSettings>({
     themeMode: currentTheme,
@@ -80,6 +82,7 @@ const PreferenceSettings = () => {
   const handleSave = () => {
     // Here you would typically make an API call to save the preference settings
     console.log('Preference settings:', preferences);
+    showSuccess('Preference settings saved');
   };
 
   const renderPicker = (

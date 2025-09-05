@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 
 interface AccountData {
   userEmail: string;
@@ -20,6 +21,7 @@ interface AccountData {
 
 const AccountSettings = () => {
   const { colors: themeColors } = useTheme();
+  const { showSuccess, showError } = useToast();
   
   const [accountData, setAccountData] = useState<AccountData>({
     userEmail: 'user@example.com',
@@ -43,21 +45,21 @@ const AccountSettings = () => {
 
   const handleSubmit = () => {
     if (accountData.newPassword && accountData.newPassword.length < 6) {
-      Alert.alert('Error', 'New password must be at least 6 characters long');
+      showError('New password must be at least 6 characters long');
       return;
     }
 
     if (accountData.newPassword !== accountData.confirmPassword) {
-      Alert.alert('Error', 'New password and confirm password do not match');
+      showError('New password and confirm password do not match');
       return;
     }
 
     if (accountData.newPassword && !accountData.currentPassword) {
-      Alert.alert('Error', 'Current password is required to change password');
+      showError('Current password is required to change password');
       return;
     }
 
-    Alert.alert('Success', 'Account settings updated successfully!');
+    showSuccess('Account settings updated successfully!');
     
     setAccountData(prev => ({
       ...prev,
@@ -77,7 +79,7 @@ const AccountSettings = () => {
           text: 'Delete',
           style: 'destructive',
           onPress: () => {
-            Alert.alert('Account Deleted', 'Your account has been deleted successfully.');
+            showSuccess('Your account has been deleted successfully.');
           },
         },
       ]

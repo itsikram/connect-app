@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,11 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
+  Image,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useToast } from '../../contexts/ToastContext';
 
 interface MessageSettings {
   showTyping: boolean;
@@ -16,10 +19,42 @@ interface MessageSettings {
   typingIndicators: boolean;
   messagePreview: boolean;
   autoSaveDrafts: boolean;
+  chatBackground: string | null;
 }
+
+type BooleanSettingKey = Exclude<keyof MessageSettings, 'chatBackground'>;
 
 const MessageSettings = () => {
   const { colors: themeColors } = useTheme();
+  const CHAT_BG_STORAGE_KEY = '@chat_background_image';
+  const { showSuccess, showError } = useToast();
+  
+  const defaultBackgrounds: { id: string; uri: string }[] = [
+    {
+      id: 'bg-1',
+      uri: 'https://images.unsplash.com/photo-1529070538774-1843cb3265df?auto=format&fit=crop&w=800&q=60',
+    },
+    {
+      id: 'bg-2',
+      uri: 'https://images.unsplash.com/photo-1521295121783-8a321d551ad2?auto=format&fit=crop&w=800&q=60',
+    },
+    {
+      id: 'bg-3',
+      uri: 'https://images.unsplash.com/photo-1476231682828-37e571bc172f?auto=format&fit=crop&w=800&q=60',
+    },
+    {
+      id: 'bg-4',
+      uri: 'https://images.unsplash.com/photo-1522199710521-72d69614c702?auto=format&fit=crop&w=800&q=60',
+    },
+    {
+      id: 'bg-5',
+      uri: 'https://images.unsplash.com/photo-1496307042754-b4aa456c4a2d?auto=format&fit=crop&w=800&q=60',
+    },
+    {
+      id: 'bg-6',
+      uri: 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=800&q=60',
+    },
+  ];
   
   const [messageSettings, setMessageSettings] = useState<MessageSettings>({
     showTyping: true,
@@ -28,21 +63,47 @@ const MessageSettings = () => {
     typingIndicators: true,
     messagePreview: true,
     autoSaveDrafts: true,
+    chatBackground: null,
   });
 
-  const handleToggle = (key: keyof MessageSettings) => {
+  useEffect(() => {
+    const loadSavedBackground = async () => {
+      try {
+        const saved = await AsyncStorage.getItem(CHAT_BG_STORAGE_KEY);
+        if (saved && saved.length > 0) {
+          setMessageSettings(prev => ({ ...prev, chatBackground: saved }));
+        }
+      } catch (e) {
+        console.log('Failed to load chat background:', e);
+      }
+    };
+    loadSavedBackground();
+  }, []);
+
+  const handleToggle = (key: BooleanSettingKey) => {
     setMessageSettings(prev => ({
       ...prev,
       [key]: !prev[key],
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('Message settings:', messageSettings);
+    try {
+      if (messageSettings.chatBackground) {
+        await AsyncStorage.setItem(CHAT_BG_STORAGE_KEY, messageSettings.chatBackground);
+      } else {
+        await AsyncStorage.removeItem(CHAT_BG_STORAGE_KEY);
+      }
+      showSuccess('Messaging settings saved');
+    } catch (e) {
+      console.log('Failed to save chat background:', e);
+      showError('Failed to save settings');
+    }
   };
 
   const renderSwitchSetting = (
-    key: keyof MessageSettings,
+    key: BooleanSettingKey,
     label: string,
     description: string
   ) => (
@@ -158,6 +219,37 @@ const MessageSettings = () => {
         </View>
       </View>
 
+      {/* Chat Background */}
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Chat Background</Text>
+        <Text style={[styles.switchDescription, { color: themeColors.text.secondary, marginBottom: 12 }]}>
+          Choose a background for your chat screen
+        </Text>
+        <View style={styles.backgroundGrid}>
+          {defaultBackgrounds.map(bg => {
+            const isSelected = messageSettings.chatBackground === bg.uri;
+            return (
+              <TouchableOpacity
+                key={bg.id}
+                activeOpacity={0.8}
+                onPress={() => setMessageSettings(prev => ({ ...prev, chatBackground: bg.uri }))}
+                style={[styles.backgroundItem, { borderColor: isSelected ? themeColors.primary : themeColors.border.primary }]}
+              >
+                <Image source={{ uri: bg.uri }} style={styles.backgroundThumb} />
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        {messageSettings.chatBackground && (
+          <TouchableOpacity
+            onPress={() => setMessageSettings(prev => ({ ...prev, chatBackground: null }))}
+            style={[styles.clearButton, { borderColor: themeColors.border.primary }]}
+          >
+            <Text style={{ color: themeColors.text.primary }}>Remove background</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
       {/* Save Button */}
       <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
         <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Message Settings</Text>
@@ -220,6 +312,30 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     borderWidth: 1,
+  },
+  backgroundGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  backgroundItem: {
+    width: '31%',
+    aspectRatio: 1,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 2,
+  },
+  backgroundThumb: {
+    width: '100%',
+    height: '100%',
+  },
+  clearButton: {
+    marginTop: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    alignSelf: 'flex-start',
   },
   infoTitle: {
     fontSize: 16,

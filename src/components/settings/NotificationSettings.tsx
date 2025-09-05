@@ -8,6 +8,7 @@ import {
   Switch,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 
 interface NotificationSettings {
   friendRequestReceived: boolean;
@@ -27,6 +28,7 @@ interface NotificationSettings {
 
 const NotificationSettings = () => {
   const { colors: themeColors } = useTheme();
+  const { showSuccess } = useToast();
   
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     friendRequestReceived: true,
@@ -52,6 +54,7 @@ const NotificationSettings = () => {
 
   const handleSave = () => {
     console.log('Notification settings:', notificationSettings);
+    showSuccess('Notification settings saved');
   };
 
   const renderSwitchSetting = (

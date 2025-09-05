@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useToast } from '../../contexts/ToastContext';
 
 interface PrivacySettings {
   postVisibility: string;
@@ -17,6 +18,7 @@ interface PrivacySettings {
 
 const PrivacySettings = () => {
   const { colors: themeColors } = useTheme();
+  const { showSuccess } = useToast();
   
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
     postVisibility: 'public',
@@ -32,6 +34,7 @@ const PrivacySettings = () => {
 
   const handleSave = () => {
     console.log('Privacy settings:', privacySettings);
+    showSuccess('Privacy settings saved');
   };
 
   const renderPicker = (
