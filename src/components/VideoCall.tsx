@@ -24,6 +24,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useNavigation } from '@react-navigation/native';
 
 const { width, height } = Dimensions.get('window');
 
@@ -43,9 +44,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const { on, off, answerVideoCall, endVideoCall, applyVideoFilter } = useSocket();
   const { minimizeCall, restoreCall, endMinimizedCall, updateMinimizedCall } = useCallMinimize();
   const myProfile = useSelector((state: RootState) => state.profile);
+  const navigation = useNavigation();
 
   const [isVideoCall, setIsVideoCall] = useState(false);
-  const [receivingCall, setReceivingCall] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [currentChannel, setCurrentChannel] = useState<string | null>(null);
@@ -56,18 +57,74 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [errorShown, setErrorShown] = useState(false);
+  const [tokenRefreshAttempts, setTokenRefreshAttempts] = useState(0);
+  const [isAudioMode, setIsAudioMode] = useState(false);
 
   const engineRef = useRef<RtcEngine | null>(null);
+  const localUidRef = useRef<number | null>(null);
+  const isJoiningRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
   const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Refresh token when needed
+  const refreshToken = async () => {
+    if (!currentChannel) return;
+    
+    try {
+      console.log('Refreshing Agora token for channel:', currentChannel);
+      // Always refresh token for the actual joined UID
+      const fallbackUid = getStableNumericUid(myId);
+      const uidForToken = localUidRef.current ?? fallbackUid;
+      const { token } = await getToken(currentChannel, uidForToken);
+      
+      if (engineRef.current && token) {
+        await engineRef.current.renewToken(token);
+        console.log('Token refreshed successfully');
+        // Reset error flag and refresh counter after successful refresh
+        setErrorShown(false);
+        setTokenRefreshAttempts(0);
+      }
+    } catch (error) {
+      console.error('Failed to refresh token:', error);
+    }
+  };
 
   // Get Agora token
   const getToken = async (channelName: string, uid: number = 0) => {
     try {
-      const { data } = await api.post('/agora/token', { channelName, uid });
+      console.log('Requesting Agora token for video channel:', channelName, 'uid:', uid);
+      const { data } = await api.post('agora/token', { channelName, uid });
+      
+      if (!data || !data.appId || !data.token) {
+        throw new Error('Invalid token response from server');
+      }
+      
+      console.log('Video token received successfully:', { 
+        appId: data.appId, 
+        hasToken: !!data.token, 
+        channelName: data.channelName 
+      });
       return data; // { appId, token }
-    } catch (error) {
-      console.error('Failed to get Agora token:', error);
+    } catch (error: any) {
+      console.error('Failed to get Agora video token:', error);
+      
+      // Handle specific error cases
+      if (error.response?.status === 500) {
+        const errorMsg = error.response?.data?.error || 'Server configuration error';
+        if (errorMsg.includes('agora-access-token')) {
+          Alert.alert('Setup Error', 'Server is missing Agora SDK. Please contact support.');
+        } else if (errorMsg.includes('AGORA_APP_ID') || errorMsg.includes('AGORA_APP_CERTIFICATE')) {
+          Alert.alert('Configuration Error', 'Agora credentials are not configured on the server. Please contact support.');
+        } else {
+          Alert.alert('Server Error', 'Failed to generate video call token. Please try again.');
+        }
+      } else if (error.response?.status === 400) {
+        Alert.alert('Invalid Request', 'Invalid video call parameters. Please try again.');
+      } else {
+        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection.');
+      }
+      
       throw error;
     }
   };
@@ -76,15 +133,36 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const initializeEngine = useCallback(async () => {
     try {
       if (engineRef.current) {
-        return engineRef.current;
+        console.log('Video engine already exists, checking state...');
+        // Ensure engine is in a good state
+        try {
+          // Test if engine is still valid by checking a simple property
+          await engineRef.current.enableAudio();
+          console.log('Existing engine is valid, reusing...');
+          return engineRef.current;
+        } catch (e) {
+          console.warn('Existing engine is invalid, creating new one:', e);
+          // Clean up invalid engine
+          try {
+            await engineRef.current.destroy();
+          } catch (cleanupError) {
+            console.warn('Error cleaning up invalid engine:', cleanupError);
+          }
+          engineRef.current = null;
+        }
       }
 
-
-
+      console.log('Initializing Agora video engine...');
       const { appId } = await getToken('test', 0); // Get appId from server
+      
+      if (!appId) {
+        throw new Error('No App ID received from server');
+      }
+      
+      console.log('Creating Agora video engine with App ID:', appId);
        const engine = await RtcEngine.create(appId);
       
-      // Enable video
+      // Enable video and audio
       await engine.enableVideo();
       await engine.enableAudio();
       
@@ -93,34 +171,173 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
       // Add event listeners
       engine.addListener('UserJoined', (uid: number) => {
-        console.log('Remote user joined:', uid);
+        console.log('Remote video user joined:', uid);
         setRemoteUid(uid);
       });
 
       engine.addListener('UserOffline', (uid: number) => {
-        console.log('Remote user left:', uid);
+        console.log('Remote video user left:', uid);
         setRemoteUid(null);
       });
 
       engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
-        console.log('Joined channel successfully:', channel, uid);
+        console.log('Joined video channel successfully:', channel, uid);
+        localUidRef.current = uid;
         setIsConnected(true);
       });
 
       engine.addListener('LeaveChannel', () => {
-        console.log('Left channel');
+        console.log('Left video channel');
         setIsConnected(false);
         setRemoteUid(null);
       });
 
-      engine.addListener('Error', (error: any) => {
-        console.error('Agora error:', error);
+      // Proactively handle token lifecycle
+      engine.addListener('TokenPrivilegeWillExpire', async () => {
+        console.log('Token will expire soon – refreshing...');
+        try {
+          await refreshToken();
+        } catch (e) {
+          console.warn('Token refresh (will expire) failed:', e);
+        }
       });
 
+      engine.addListener('RequestToken', async () => {
+        console.log('Engine requested a new token – refreshing...');
+        try {
+          await refreshToken();
+        } catch (e) {
+          console.warn('Token refresh (request) failed:', e);
+        }
+      });
+
+      // engine.addListener('Error', (errorCode: number, errorMsg?: string) => {
+      //   console.error('Agora video error:', { 
+      //     errorCode, 
+      //     errorMsg, 
+      //     channelState: currentChannel,
+      //     isConnected,
+      //     callAccepted,
+      //     remoteUid,
+      //     timestamp: new Date().toISOString()
+      //   });
+        
+      //   // Prevent multiple alerts for the same error
+      //   if (errorShown) {
+      //     console.warn('Suppressing duplicate error alert for code:', errorCode);
+      //     return;
+      //   }
+        
+      //   // Handle specific error codes
+      //   switch (errorCode) {
+      //     case 1027:
+      //       // Limit token refresh attempts to prevent infinite loops
+      //       if (tokenRefreshAttempts >= 3) {
+      //         console.error('Maximum token refresh attempts reached');
+      //         setErrorShown(true);
+      //         Alert.alert(
+      //           'Authentication Error',
+      //           'Unable to maintain video call connection. Please restart the call.',
+      //           [{ text: 'OK', onPress: () => endCall() }]
+      //         );
+      //         return;
+      //       }
+            
+      //       setTokenRefreshAttempts(prev => prev + 1);
+      //       console.log(`Attempting token refresh (attempt ${tokenRefreshAttempts + 1}/3)...`);
+            
+      //       // Try to refresh token first
+      //       refreshToken().then(() => {
+      //         console.log('Token refresh completed');
+      //       }).catch(() => {
+      //         // If refresh fails, show error
+      //         setErrorShown(true);
+      //         Alert.alert(
+      //           'Authentication Error',
+      //           'The video call token has expired or is invalid. Please try starting the call again.',
+      //           [{ text: 'OK', onPress: () => endCall() }]
+      //         );
+      //       });
+      //       break;
+      //     case 1501:
+      //       // If we're already connected and get 1501, it might be a spurious error
+      //       if (isConnected && callAccepted) {
+      //         console.warn('Received 1501 error but call is already connected - ignoring');
+      //         return;
+      //       }
+      //       // Also ignore if a join is in progress to avoid duplicate alerts
+      //       if (isJoiningRef.current) {
+      //         console.warn('Received 1501 while a join is in progress - ignoring');
+      //         return;
+      //       }
+            
+      //       setErrorShown(true);
+      //       Alert.alert(
+      //         'Channel Join Failed',
+      //         'Unable to join the video call. The channel may be full or no longer available. Please try again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 17:
+      //       Alert.alert(
+      //         'Network Error',
+      //         'Unable to connect to Agora servers. Please check your internet connection and try again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 2:
+      //       Alert.alert(
+      //         'Invalid Parameters',
+      //         'Invalid video call parameters. Please try starting the call again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 3:
+      //       Alert.alert(
+      //         'Not Ready',
+      //         'Video call service is not ready. Please wait a moment and try again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 109:
+      //       setErrorShown(true);
+      //       Alert.alert(
+      //         'Token Expired',
+      //         'Your video call session has expired. Please start a new call.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     default:
+      //       console.error('Unhandled Agora video error:', errorCode, errorMsg);
+      //       Alert.alert(
+      //         'Video Call Error',
+      //         `An error occurred during the video call (Code: ${errorCode}). Please try again.`,
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //   }
+      // });
+
       engineRef.current = engine;
+      console.log('Agora video engine initialized successfully');
       return engine;
-    } catch (error) {
-      console.error('Failed to initialize Agora engine:', error);
+    } catch (error: any) {
+      console.error('Failed to initialize Agora video engine:', error);
+      
+      // Handle initialization errors
+      if (error.message?.includes('App ID')) {
+        Alert.alert(
+          'Configuration Error',
+          'Invalid App ID. The video call service is not properly configured.',
+          [{ text: 'OK', onPress: () => endCall() }]
+        );
+      } else {
+        Alert.alert(
+          'Initialization Error',
+          'Failed to initialize the video call service. Please try again.',
+          [{ text: 'OK', onPress: () => endCall() }]
+        );
+      }
+      
       throw error;
     }
   }, [myId]);
@@ -128,47 +345,113 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Join channel
   const joinChannel = useCallback(async (channelName: string) => {
     try {
+      console.log('Attempting to join video channel:', channelName);
+      // Guard against duplicate joins
+      if (isJoiningRef.current) {
+        console.log('Join already in progress, skipping duplicate join');
+        return;
+      }
+      if (currentChannel === channelName && isConnected) {
+        console.log('Already connected to this channel, skipping join');
+        return;
+      }
+      isJoiningRef.current = true;
       const engine = await initializeEngine();
-      const numericUid = Number.isFinite(Number(myId)) ? Number(myId) : 0;
+      const numericUid = getStableNumericUid(myId);
+      
+      console.log('Getting token for video channel:', channelName, 'uid:', numericUid);
       const { token } = await getToken(channelName, numericUid);
       
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+      
+      console.log('Video token received, joining channel...');
       // Join channel
       await engine.joinChannel(token, channelName, null, numericUid);
-      console.log('Joining channel:', channelName);
+      console.log('Successfully requested to join video channel:', channelName);
       
       setCallAccepted(true);
       setCurrentChannel(channelName);
+      setIsVideoCall(true);
       
       // Set call start time for duration tracking
       if (!callStartTime.current) {
         callStartTime.current = Date.now();
       }
-    } catch (error) {
-      console.error('Failed to join channel:', error);
-      Alert.alert('Call Failed', 'Unable to join the call. Please try again.');
+    } catch (error: any) {
+      console.error('Failed to join video channel:', error);
+      
+      // Don't show additional alert if token request already showed one
+      if (!error.response) {
+        Alert.alert(
+          'Video Call Failed', 
+          'Unable to join the video call. Please check your connection and try again.',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      // Reset call state
       setIsVideoCall(false);
       setCallAccepted(false);
+      setCurrentChannel(null);
+      
+      // Clean up engine if it was created
+      if (engineRef.current) {
+        try {
+          await engineRef.current.destroy();
+          engineRef.current = null;
+        } catch (cleanupError) {
+          console.warn('Error cleaning up video engine:', cleanupError);
+        }
+      }
+    }
+    finally {
+      isJoiningRef.current = false;
     }
   }, [initializeEngine, myId]);
 
   // Leave channel
   const leaveChannel = useCallback(async () => {
     try {
+      console.log('Attempting to leave video channel...');
+      
       if (engineRef.current) {
-        await engineRef.current.leaveChannel();
-        await engineRef.current.destroy();
-        engineRef.current = null;
+        try {
+          // Check if engine is still valid before calling methods
+          console.log('Leaving video channel...');
+          await engineRef.current.leaveChannel();
+          console.log('Video channel left successfully');
+        } catch (leaveError: any) {
+          console.warn('Error leaving video channel:', leaveError);
+          // Continue with cleanup even if leave fails
+        }
+        
+        try {
+          console.log('Destroying video engine...');
+          await engineRef.current.destroy();
+          console.log('Video engine destroyed successfully');
+        } catch (destroyError: any) {
+          console.warn('Error destroying video engine:', destroyError);
+          // Continue with cleanup even if destroy fails
+        } finally {
+          engineRef.current = null;
+        }
       }
       
+      // Reset all state regardless of engine cleanup success
       setCallAccepted(false);
       setIsVideoCall(false);
       setCurrentChannel(null);
-      setReceivingCall(false);
       setIncomingCall(null);
       setIsMinimized(false);
       setCallDuration(0);
       setRemoteUid(null);
       setIsConnected(false);
+      setErrorShown(false);
+      setTokenRefreshAttempts(0);
+      localUidRef.current = null;
+      isJoiningRef.current = false;
       callStartTime.current = null;
       
       // Clear duration interval
@@ -176,8 +459,25 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         clearInterval(minimizedDurationInterval.current);
         minimizedDurationInterval.current = null;
       }
+      
+      console.log('Video call cleanup completed');
     } catch (error) {
-      console.error('Failed to leave channel:', error);
+      console.error('Failed to leave video channel:', error);
+      // Even if cleanup fails, reset the state to prevent UI issues
+      setCallAccepted(false);
+      setIsVideoCall(false);
+      setCurrentChannel(null);
+      setIncomingCall(null);
+      setIsMinimized(false);
+      setCallDuration(0);
+      setRemoteUid(null);
+      setIsConnected(false);
+      setErrorShown(false);
+      setTokenRefreshAttempts(0);
+      localUidRef.current = null;
+      isJoiningRef.current = false;
+      callStartTime.current = null;
+      engineRef.current = null;
     }
   }, []);
 
@@ -188,7 +488,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     console.log('Answering video call');
     answerVideoCall(incomingCall.from, incomingCall.channelName);
     await joinChannel(incomingCall.channelName);
-    setReceivingCall(false);
   }, [incomingCall, answerVideoCall, joinChannel]);
 
   // End call
@@ -200,7 +499,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     
     endVideoCall(incomingCall?.from || '');
     await leaveChannel();
-  }, [currentChannel, incomingCall, endVideoCall, leaveChannel, endMinimizedCall]);
+    try {
+      (navigation as any).navigate('Home', { screen: 'HomeMain' });
+    } catch (e) {}
+  }, [currentChannel, incomingCall, endVideoCall, leaveChannel, endMinimizedCall, navigation]);
 
   // Toggle mute
   const toggleMute = useCallback(async () => {
@@ -301,26 +603,56 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   // Socket event listeners
   useEffect(() => {
-    const handleIncomingCall = ({ from, channelName, isAudio, callerName, callerProfilePic }: any) => {
-      // Only handle video calls
+    // Remove incoming call handling - this is now handled by IncomingCall screen
+    // const handleIncomingCall = ({ from, channelName, isAudio, callerName, callerProfilePic }: any) => {
+    //   // Only handle video calls
+    //   if (!isAudio) {
+    //     console.log('Incoming video call from', from, 'channel:', channelName);
+    //     setIncomingCall({
+    //       from,
+    //       channelName,
+    //       name: callerName || 'Unknown Caller',
+    //       profilePic: callerProfilePic || ''
+    //     });
+    //     setIsVideoCall(true);
+    //     setReceivingCall(true);
+    //     setCurrentChannel(channelName);
+    //   }
+    // };
+
+    const handleCallAccepted = ({ channelName, isAudio, callerName, callerProfilePic, callerId }: any) => {
+      console.log('VideoCall: Call accepted event received:', { channelName, isAudio, callerName, callerProfilePic });
+      
+      // Handle both video and audio call acceptance
       if (!isAudio) {
-        console.log('Incoming video call from', from, 'channel:', channelName);
+        console.log('VideoCall: Video call accepted, joining channel:', channelName);
+        // Set up call information for video calls
         setIncomingCall({
-          from,
+          from: callerId || 'caller',
+          channelName,
+          name: callerName || 'Video Call',
+          profilePic: callerProfilePic || ''
+        });
+        setIsVideoCall(true);
+        setIsCameraOn(true); // Enable camera for video calls
+        setCurrentChannel(channelName);
+        setCallAccepted(true); // Important: mark call as accepted
+        setIsAudioMode(false);
+        joinChannel(channelName);
+      } else {
+        console.log('VideoCall: Audio call accepted, rendering profile placeholder:', channelName);
+        // Use caller name and profile for audio calls; avoid remote video surface
+        setIncomingCall({
+          from: callerId || 'caller',
           channelName,
           name: callerName || 'Unknown Caller',
           profilePic: callerProfilePic || ''
         });
         setIsVideoCall(true);
-        setReceivingCall(true);
+        setIsCameraOn(false); // Camera off for audio calls
         setCurrentChannel(channelName);
-      }
-    };
-
-    const handleCallAccepted = ({ channelName, isAudio }: any) => {
-      // Only handle video call acceptance
-      if (!isAudio) {
-        console.log('Video call accepted, joining channel:', channelName);
+        setCallAccepted(true);
+        setIsAudioMode(true);
         joinChannel(channelName);
       }
     };
@@ -329,12 +661,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       endCall();
     };
 
-    on('agora-incoming-video-call', handleIncomingCall);
+    // Removed: on('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
     on('agora-call-accepted', handleCallAccepted);
     on('videoCallEnd', handleCallEnd);
 
     return () => {
-      off('agora-incoming-video-call', handleIncomingCall);
+      // Removed: off('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
       off('agora-call-accepted', handleCallAccepted);
       off('videoCallEnd', handleCallEnd);
     };
@@ -370,7 +702,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         {/* Header */}
         <View style={[styles.header, { backgroundColor: themeColors.surface.header }]}>
           <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>
-            Video Call - {incomingCall?.name || 'Unknown'}
+            {isAudioMode ? 'Audio Call' : 'Video Call'} - {incomingCall?.name || 'Unknown'}
           </Text>
           {callAccepted && (
             <Text style={[styles.duration, { color: themeColors.text.secondary }]}>
@@ -382,7 +714,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         {/* Video Container */}
         <View style={styles.videoContainer}>
           {/* Remote Video */}
-          {callAccepted && remoteUid ? (
+          {callAccepted && remoteUid && !isAudioMode ? (
             <RtcRemoteView.SurfaceView
               style={styles.remoteVideo}
               uid={remoteUid}
@@ -398,13 +730,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
                 <Icon name="person" size={80} color={themeColors.text.secondary} />
               )}
               <Text style={[styles.waitingText, { color: themeColors.text.secondary }]}>
-                {receivingCall ? `${incomingCall?.name} is calling...` : 'Connecting...'}
+                Connecting...
               </Text>
             </View>
           )}
 
           {/* Local Video */}
-          {(isVideoCall || receivingCall) && isCameraOn && (
+          {isVideoCall && isCameraOn && !isAudioMode && (
             <RtcLocalView.SurfaceView
               style={styles.localVideo}
               channelId={currentChannel || ''}
@@ -448,17 +780,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
             </>
           )}
 
-          {/* Answer/Decline for incoming calls */}
-          {!callAccepted && receivingCall && (
-            <>
-              <TouchableOpacity
-                style={[styles.controlButton, styles.answerButton, { backgroundColor: themeColors.status.success }]}
-                onPress={answerCall}
-              >
-                <Icon name="call" size={24} color="white" />
-              </TouchableOpacity>
-            </>
-          )}
+          {/* Answer/Decline buttons removed - handled by IncomingCall screen */}
 
           {/* End call button */}
           <TouchableOpacity
@@ -545,3 +867,20 @@ const styles = StyleSheet.create({
 });
 
 export default VideoCall;
+
+// Helpers
+function getStableNumericUid(id: string): number {
+  const asNum = Number(id);
+  if (Number.isFinite(asNum) && asNum > 0 && asNum < 4294967295) {
+    return Math.floor(asNum);
+  }
+  // Fallback: generate a stable 32-bit unsigned hash from the string
+  let hash = 2166136261; // FNV-1a 32-bit offset basis
+  for (let i = 0; i < id.length; i++) {
+    hash ^= id.charCodeAt(i);
+    hash = Math.imul(hash, 16777619) >>> 0; // FNV prime
+  }
+  // Ensure non-zero and within Agora valid range
+  const uid = hash % 4000000000;
+  return uid === 0 ? 1 : uid;
+}

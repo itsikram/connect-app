@@ -20,9 +20,12 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useNavigation } from '@react-navigation/native';
 
 interface AudioCallProps {
   myId: string;
+  peerName?: string;
+  peerProfilePic?: string;
 }
 
 interface IncomingCall {
@@ -32,14 +35,14 @@ interface IncomingCall {
   profilePic: string;
 }
 
-const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
+const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const { on, off, answerAudioCall, endAudioCall } = useSocket();
   const { minimizeCall, restoreCall, endMinimizedCall, updateMinimizedCall } = useCallMinimize();
   const myProfile = useSelector((state: RootState) => state.profile);
+  const navigation = useNavigation();
 
   const [isAudioCall, setIsAudioCall] = useState(false);
-  const [receivingCall, setReceivingCall] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [currentChannel, setCurrentChannel] = useState<string | null>(null);
@@ -49,6 +52,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [errorShown, setErrorShown] = useState(false);
 
   const engineRef = useRef<RtcEngine | null>(null);
   const callStartTime = useRef<number | null>(null);
@@ -57,10 +61,38 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   // Get Agora token
   const getToken = async (channelName: string, uid: number = 0) => {
     try {
-      const { data } = await api.post('/agora/token', { channelName, uid });
+      console.log('Requesting Agora token for channel:', channelName, 'uid:', uid);
+      const { data } = await api.post('agora/token', { channelName, uid });
+      
+      if (!data || !data.appId || !data.token) {
+        throw new Error('Invalid token response from server');
+      }
+      
+      console.log('Token received successfully:', { 
+        appId: data.appId, 
+        hasToken: !!data.token, 
+        channelName: data.channelName 
+      });
       return data; // { appId, token }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to get Agora token:', error);
+      
+      // Handle specific error cases
+      if (error.response?.status === 500) {
+        const errorMsg = error.response?.data?.error || 'Server configuration error';
+        if (errorMsg.includes('agora-access-token')) {
+          Alert.alert('Setup Error', 'Server is missing Agora SDK. Please contact support.');
+        } else if (errorMsg.includes('AGORA_APP_ID') || errorMsg.includes('AGORA_APP_CERTIFICATE')) {
+          Alert.alert('Configuration Error', 'Agora credentials are not configured on the server. Please contact support.');
+        } else {
+          Alert.alert('Server Error', 'Failed to generate call token. Please try again.');
+        }
+      } else if (error.response?.status === 400) {
+        Alert.alert('Invalid Request', 'Invalid call parameters. Please try again.');
+      } else {
+        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection.');
+      }
+      
       throw error;
     }
   };
@@ -72,7 +104,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         return engineRef.current;
       }
 
+      console.log('Initializing Agora engine...');
       const { appId } = await getToken('test', 0); // Get appId from server
+      
+      if (!appId) {
+        throw new Error('No App ID received from server');
+      }
+      
+      console.log('Creating Agora engine with App ID:', appId);
       const engine = await RtcEngine.create(appId);
       
       // Disable video for audio-only call
@@ -104,14 +143,85 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         setRemoteUid(null);
       });
 
-      engine.addListener('Error', (error: any) => {
-        console.error('Agora error:', error);
-      });
+      // engine.addListener('Error', (errorCode: number, errorMsg?: string) => {
+      //   console.error('Agora audio error:', { errorCode, errorMsg });
+        
+      //   // Prevent multiple alerts for the same error
+      //   if (errorShown) {
+      //     console.warn('Suppressing duplicate audio error alert for code:', errorCode);
+      //     return;
+      //   }
+        
+      //   // Handle specific error codes
+      //   switch (errorCode) {
+      //     case 1027:
+      //       setErrorShown(true);
+      //       Alert.alert(
+      //         'Authentication Error',
+      //         'The audio call token has expired or is invalid. Please try starting the call again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 17:
+      //       Alert.alert(
+      //         'Network Error',
+      //         'Unable to connect to Agora servers. Please check your internet connection and try again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 2:
+      //       Alert.alert(
+      //         'Invalid Parameters',
+      //         'Invalid call parameters. Please try starting the call again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 3:
+      //       Alert.alert(
+      //         'Not Ready',
+      //         'Call service is not ready. Please wait a moment and try again.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     case 109:
+      //       setErrorShown(true);
+      //       Alert.alert(
+      //         'Token Expired',
+      //         'Your call session has expired. Please start a new call.',
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //       break;
+      //     default:
+      //       console.error('Unhandled Agora error:', errorCode, errorMsg);
+      //       Alert.alert(
+      //         'Call Error',
+      //         `An error occurred during the call (Code: ${errorCode}). Please try again.`,
+      //         [{ text: 'OK', onPress: () => endCall() }]
+      //       );
+      //   }
+      // });
 
       engineRef.current = engine;
+      console.log('Agora engine initialized successfully');
       return engine;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to initialize Agora engine:', error);
+      
+      // Handle initialization errors
+      if (error.message?.includes('App ID')) {
+        Alert.alert(
+          'Configuration Error',
+          'Invalid App ID. The call service is not properly configured.',
+          [{ text: 'OK', onPress: () => endCall() }]
+        );
+      } else {
+        Alert.alert(
+          'Initialization Error',
+          'Failed to initialize the call service. Please try again.',
+          [{ text: 'OK', onPress: () => endCall() }]
+        );
+      }
+      
       throw error;
     }
   }, [myId]);
@@ -119,26 +229,56 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   // Join channel
   const joinChannel = useCallback(async (channelName: string) => {
     try {
+      console.log('Attempting to join audio channel:', channelName);
       const engine = await initializeEngine();
       const numericUid = Number.isFinite(Number(myId)) ? Number(myId) : 0;
+      
+      console.log('Getting token for channel:', channelName, 'uid:', numericUid);
       const { token } = await getToken(channelName, numericUid);
       
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+      
+      console.log('Token received, joining channel...');
       // Join channel
       await engine.joinChannel(token, channelName, null, numericUid);
-      console.log('Joining audio channel:', channelName);
+      console.log('Successfully requested to join audio channel:', channelName);
       
       setCallAccepted(true);
       setCurrentChannel(channelName);
+      setIsAudioCall(true);
       
       // Set call start time for duration tracking
       if (!callStartTime.current) {
         callStartTime.current = Date.now();
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to join audio channel:', error);
-      Alert.alert('Call Failed', 'Unable to join the call. Please try again.');
+      
+      // Don't show additional alert if token request already showed one
+      if (!error.response) {
+        Alert.alert(
+          'Call Failed', 
+          'Unable to join the call. Please check your connection and try again.',
+          [{ text: 'OK' }]
+        );
+      }
+      
+      // Reset call state
       setIsAudioCall(false);
       setCallAccepted(false);
+      setCurrentChannel(null);
+      
+      // Clean up engine if it was created
+      if (engineRef.current) {
+        try {
+          await engineRef.current.destroy();
+          engineRef.current = null;
+        } catch (cleanupError) {
+          console.warn('Error cleaning up engine:', cleanupError);
+        }
+      }
     }
   }, [initializeEngine, myId]);
 
@@ -154,12 +294,12 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       setCallAccepted(false);
       setIsAudioCall(false);
       setCurrentChannel(null);
-      setReceivingCall(false);
       setIncomingCall(null);
       setIsMinimized(false);
       setCallDuration(0);
       setRemoteUid(null);
       setIsConnected(false);
+      setErrorShown(false);
       callStartTime.current = null;
       
       // Clear duration interval
@@ -179,7 +319,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     console.log('Answering audio call');
     answerAudioCall(incomingCall.from, incomingCall.channelName);
     await joinChannel(incomingCall.channelName);
-    setReceivingCall(false);
   }, [incomingCall, answerAudioCall, joinChannel]);
 
   // End call
@@ -191,7 +330,10 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     
     endAudioCall(incomingCall?.from || '');
     await leaveChannel();
-  }, [currentChannel, incomingCall, endAudioCall, leaveChannel, endMinimizedCall]);
+    try {
+      (navigation as any).navigate('Home', { screen: 'HomeMain' });
+    } catch (e) {}
+  }, [currentChannel, incomingCall, endAudioCall, leaveChannel, endMinimizedCall, navigation]);
 
   // Toggle mute
   const toggleMute = useCallback(async () => {
@@ -280,27 +422,29 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
 
   // Socket event listeners
   useEffect(() => {
-    const handleIncomingCall = ({ from, channelName, isAudio, callerName, callerProfilePic }: any) => {
-      // Only handle audio calls
-      if (isAudio) {
-        console.log('Incoming audio call from', from, 'channel:', channelName);
-        setIncomingCall({
-          from,
-          channelName,
-          name: callerName || 'Unknown Caller',
-          profilePic: callerProfilePic || ''
-        });
-        setIsAudioCall(true);
-        setReceivingCall(true);
-        setCurrentChannel(channelName);
-      }
-    };
+    // Remove incoming call handling - this is now handled by IncomingCall screen
+    // const handleIncomingCall = ({ from, channelName, isAudio, callerName, callerProfilePic }: any) => {
+    //   // Only handle audio calls
+    //   if (isAudio) {
+    //     console.log('Incoming audio call from', from, 'channel:', channelName);
+    //     setIncomingCall({
+    //       from,
+    //       channelName,
+    //       name: callerName || 'Unknown Caller',
+    //       profilePic: callerProfilePic || ''
+    //     });
+    //     setCurrentChannel(channelName);
+    //   }
+    // };
 
-    const handleCallAccepted = ({ channelName, isAudio }: any) => {
-      // Only handle audio call acceptance
+    const handleCallAccepted = ({ channelName, isAudio, callerName, callerProfilePic, callerId }: any) => {
+      // Don't handle call acceptance here - let VideoCall component handle all acceptances
+      // This prevents conflict between AudioCall and VideoCall components
+      console.log('AudioCall: Call accepted event received, but VideoCall component will handle it:', { channelName, isAudio, callerName });
+      
+      // Ensure AudioCall modal is hidden when call is accepted
       if (isAudio) {
-        console.log('Audio call accepted, joining channel:', channelName);
-        joinChannel(channelName);
+        setIsAudioCall(false);
       }
     };
 
@@ -308,12 +452,12 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       endCall();
     };
 
-    on('agora-incoming-audio-call', handleIncomingCall);
+    // Removed: on('agora-incoming-audio-call', handleIncomingCall); - handled by IncomingCall screen
     on('agora-call-accepted', handleCallAccepted);
     on('audioCallEnd', handleCallEnd);
 
     return () => {
-      off('agora-incoming-audio-call', handleIncomingCall);
+      // Removed: off('agora-incoming-audio-call', handleIncomingCall); - handled by IncomingCall screen
       off('agora-call-accepted', handleCallAccepted);
       off('audioCallEnd', handleCallEnd);
     };
@@ -336,6 +480,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   if (!isAudioCall || isMinimized) {
     return null;
   }
+
+  const displayName = incomingCall?.name || peerName || 'Unknown Caller';
+  const displayPic = incomingCall?.profilePic || peerProfilePic || '';
 
   return (
     <Modal
@@ -362,20 +509,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         <View style={styles.audioContainer}>
           {/* Profile Picture */}
           <View style={styles.profileContainer}>
-            {incomingCall?.profilePic ? (
-              <Image source={{ uri: incomingCall.profilePic }} style={styles.profileImage} />
+            {displayPic ? (
+              <Image source={{ uri: displayPic }} style={styles.profileImage} />
             ) : (
-              <View style={[styles.profilePlaceholder, { backgroundColor: themeColors.gray[600] }]}>
+              <View style={[styles.profilePlaceholder, { backgroundColor: themeColors.gray[700] }]}>
                 <Icon name="person" size={80} color={themeColors.text.secondary} />
               </View>
             )}
             
             <Text style={[styles.callerName, { color: themeColors.text.primary }]}>
-              {incomingCall?.name || 'Unknown Caller'}
+              {displayName}
             </Text>
             
             <Text style={[styles.callStatus, { color: themeColors.text.secondary }]}>
-              {receivingCall ? 'Incoming call...' : callAccepted ? `Connected • ${formatDuration(callDuration)}` : 'Connecting...'}
+              {callAccepted ? `Connected • ${formatDuration(callDuration)}` : 'Connecting...'}
             </Text>
           </View>
 
@@ -388,7 +535,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
                     key={i}
                     style={[
                       styles.audioWave,
-                      { backgroundColor: themeColors.primary, height: Math.random() * 30 + 10 }
+                      { backgroundColor: themeColors.primary, height: Math.random() * 26 + 14 }
                     ]}
                   />
                 ))}
@@ -424,17 +571,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
             </>
           )}
 
-          {/* Answer/Decline for incoming calls */}
-          {!callAccepted && receivingCall && (
-            <>
-              <TouchableOpacity
-                style={[styles.controlButton, styles.answerButton, { backgroundColor: themeColors.status.success }]}
-                onPress={answerCall}
-              >
-                <Icon name="call" size={24} color="white" />
-              </TouchableOpacity>
-            </>
-          )}
+          {/* Answer/Decline buttons removed - handled by IncomingCall screen */}
 
           {/* End call button */}
           <TouchableOpacity
@@ -454,13 +591,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 20,
     alignItems: 'center',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 20,
+    fontWeight: '700',
   },
   duration: {
     fontSize: 14,
@@ -470,34 +607,34 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 40,
+    paddingHorizontal: 32,
   },
   profileContainer: {
     alignItems: 'center',
-    marginBottom: 60,
+    marginBottom: 48,
   },
   profileImage: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    marginBottom: 24,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    marginBottom: 20,
   },
   profilePlaceholder: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    marginBottom: 24,
+    width: 160,
+    height: 160,
+    borderRadius: 80,
+    marginBottom: 20,
     justifyContent: 'center',
     alignItems: 'center',
   },
   callerName: {
-    fontSize: 24,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 22,
+    fontWeight: '700',
+    marginBottom: 6,
     textAlign: 'center',
   },
   callStatus: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: 'center',
   },
   audioStatusContainer: {
@@ -506,24 +643,24 @@ const styles = StyleSheet.create({
   audioWaves: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    height: 40,
+    height: 44,
   },
   audioWave: {
-    width: 4,
-    marginHorizontal: 2,
-    borderRadius: 2,
+    width: 5,
+    marginHorizontal: 3,
+    borderRadius: 3,
   },
   controls: {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 24,
   },
   controlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     justifyContent: 'center',
     alignItems: 'center',
   },

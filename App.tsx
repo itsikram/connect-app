@@ -32,6 +32,10 @@ import { useProfileData } from './src/hooks/useProfileData';
 import SingleMessage from './src/screens/SingleMessage';
 import FriendProfile from './src/screens/FriendProfile';
 import Videos from './src/screens/Videos';
+import IncomingCall from './src/screens/IncomingCall';
+import OutgoingCall from './src/screens/OutgoingCall';
+import VideoCall from './src/components/VideoCall';
+import AudioCall from './src/components/AudioCall';
 // Socket context
 import { SocketProvider, useSocket } from './src/contexts/SocketContext';
 import { ToastProvider, useToast } from './src/contexts/ToastContext';
@@ -47,6 +51,7 @@ import MinimizedCallBar from './src/components/MinimizedCallBar';
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
 import api, { userAPI } from './src/lib/api';
+import { listenNotificationEvents } from './src/lib/push';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -58,6 +63,8 @@ function MessageStack() {
       <Stack.Screen name="MessageList" component={Message} />
       <Stack.Screen name="SingleMessage" component={SingleMessage} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="IncomingCall" component={IncomingCall} />
+      <Stack.Screen name="OutgoingCall" component={OutgoingCall} />
     </Stack.Navigator>
   );
 }
@@ -120,6 +127,16 @@ function AppContent() {
     return unsubscribe;
   }, [navigation]);
 
+  // Wire notification tap handler to open IncomingCall from full-screen notifications
+  React.useEffect(() => {
+    const unsub = listenNotificationEvents((screen: string, params?: any) => {
+      try {
+        (navigation as any).navigate('Message', { screen, params });
+      } catch (e) {}
+    });
+    return () => { try { unsub && (unsub as any)(); } catch (e) {} };
+  }, [navigation]);
+
   // Connect to socket when component mounts
   React.useEffect(() => {
     if (myProfile?._id && !isConnected) {
@@ -166,6 +183,35 @@ function AppContent() {
     }
 
     on('bumpUser', handleBumpUser)
+
+    // Navigate to IncomingCall screen on incoming video/audio call events
+    const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
+      (navigation as any).navigate('Message', {
+        screen: 'IncomingCall',
+        params: {
+          callerId: from,
+          callerName: callerName || 'Unknown',
+          callerProfilePic: callerProfilePic,
+          channelName,
+          isAudio: false,
+        }
+      });
+    };
+    const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
+      (navigation as any).navigate('Message', {
+        screen: 'IncomingCall',
+        params: {
+          callerId: from,
+          callerName: callerName || 'Unknown',
+          callerProfilePic: callerProfilePic,
+          channelName,
+          isAudio: true,
+        }
+      });
+    };
+
+    on('agora-incoming-video-call', handleIncomingVideo);
+    on('agora-incoming-audio-call', handleIncomingAudio);
 
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
@@ -235,6 +281,8 @@ function AppContent() {
       off('newMessageToUser',handleNewMessage)
       off('newNotification', handleNewNotification)
       off('speak_message', handleSpeakMessage)
+      off('agora-incoming-video-call', handleIncomingVideo)
+      off('agora-incoming-audio-call', handleIncomingAudio)
     }
   }, [isConnected,on,off,screen])
 
@@ -248,7 +296,16 @@ function AppContent() {
         }
         const { user, isLoading } = ctx;
         return (
-          <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
+          <>
+            <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
+            {/* Global call components - rendered everywhere */}
+            {myProfile?._id && (
+              <>
+                <VideoCall myId={myProfile._id} />
+                <AudioCall myId={myProfile._id} />
+              </>
+            )}
+          </>
         );
       }}
     </AuthContext.Consumer>

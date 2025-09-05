@@ -29,8 +29,7 @@ import moment from 'moment';
 import { launchImageLibrary } from 'react-native-image-picker';
 import api from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import VideoCall from '../components/VideoCall';
-import AudioCall from '../components/AudioCall';
+// VideoCall and AudioCall components moved to App.tsx for global rendering
 
 interface Message {
     _id: string;
@@ -522,8 +521,16 @@ const SingleMessage = () => {
         }
         
         const channelName = `${myProfile._id}-${friend._id}`;
-        console.log('Starting video call with channel:', channelName);
-        startVideoCall(friend._id, channelName);
+        navigation.navigate('Message', {
+            screen: 'OutgoingCall',
+            params: {
+                calleeId: friend._id,
+                calleeName: friend.fullName,
+                calleeProfilePic: friend.profilePic,
+                channelName,
+                isAudio: false,
+            }
+        });
     };
 
     // Handle audio call
@@ -534,8 +541,16 @@ const SingleMessage = () => {
         }
         
         const channelName = `${myProfile._id}-${friend._id}`;
-        console.log('Starting audio call with channel:', channelName);
-        startAudioCall(friend._id, channelName);
+        navigation.navigate('Message', {
+            screen: 'OutgoingCall',
+            params: {
+                calleeId: friend._id,
+                calleeName: friend.fullName,
+                calleeProfilePic: friend.profilePic,
+                channelName,
+                isAudio: true,
+            }
+        });
     };
 
     const handleAttachmentPress = async () => {
@@ -1723,8 +1738,7 @@ const SingleMessage = () => {
             </KeyboardAvoidingView>
 
             {/* Video and Audio Call Components */}
-            <VideoCall myId={myProfile?._id || ''} />
-            <AudioCall myId={myProfile?._id || ''} />
+            {/* VideoCall and AudioCall components now rendered globally in App.tsx */}
         </SafeAreaView>
     );
 };

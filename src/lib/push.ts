@@ -1,5 +1,5 @@
 import messaging from '@react-native-firebase/messaging';
-import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidVisibility, AndroidCategory, EventType } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
 
@@ -57,6 +57,13 @@ export async function configureNotificationsChannel() {
     visibility: AndroidVisibility.PUBLIC,
     sound: 'default',
   });
+  await notifee.createChannel({
+    id: 'calls',
+    name: 'Calls',
+    importance: AndroidImportance.HIGH,
+    visibility: AndroidVisibility.PUBLIC,
+    sound: 'default',
+  });
 }
 
 export async function displayLocalNotification(title: string, body: string, data: Record<string, string> = {}) {
@@ -70,6 +77,65 @@ export async function displayLocalNotification(title: string, body: string, data
       pressAction: { id: 'default' },
     },
     data,
+  });
+}
+
+// Show a full-screen incoming call notification that opens the IncomingCall screen
+export async function displayIncomingCallNotification(payload: {
+  callerName: string;
+  callerProfilePic?: string;
+  channelName: string;
+  isAudio: boolean;
+  callerId: string;
+}) {
+  await configureNotificationsChannel();
+  await notifee.displayNotification({
+    title: payload.isAudio ? 'Incoming Audio Call' : 'Incoming Video Call',
+    body: payload.callerName,
+    android: {
+      channelId: 'calls',
+      category: AndroidCategory.CALL,
+      colorized: true,
+      fullScreenAction: {
+        id: 'default',
+        // Opening the app with deep link to show IncomingCall
+        mainComponent: 'default',
+      },
+      // Ensure heads-up and lockscreen visibility
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      smallIcon: 'ic_launcher',
+      pressAction: {
+        id: 'open-incoming',
+        launchActivity: 'default',
+      },
+    },
+    data: {
+      type: 'incoming_call',
+      callerId: payload.callerId,
+      callerName: payload.callerName,
+      callerProfilePic: payload.callerProfilePic || '',
+      channelName: payload.channelName,
+      isAudio: String(payload.isAudio),
+    },
+  });
+}
+
+// Handle notification events (foreground)
+export function listenNotificationEvents(navigate: (screen: string, params?: any) => void) {
+  return notifee.onForegroundEvent(async ({ type, detail }) => {
+    if (type === EventType.PRESS) {
+      const data = detail.notification?.data || {} as any;
+      if (data.type === 'incoming_call') {
+        navigate('IncomingCall', {
+          callerId: data.callerId,
+          callerName: data.callerName,
+          callerProfilePic: data.callerProfilePic,
+          channelName: data.channelName,
+          isAudio: data.isAudio === 'true',
+        });
+      }
+    }
   });
 }
 
