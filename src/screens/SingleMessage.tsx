@@ -38,6 +38,8 @@ interface Message {
     timestamp: Date;
     isSeen: boolean;
     parent?: any | null;
+    tempId?: string;
+    reacts?: string[];
 }
 
 // Function to validate if a string is a valid image URL
@@ -61,6 +63,9 @@ const SingleMessage = () => {
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
     const [selectedMessage, setSelectedMessage] = useState<Message | null>(null);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+    const [contextMenuUseBottom, setContextMenuUseBottom] = useState(false);
+    const [contextMenuBottom, setContextMenuBottom] = useState(20);
+    const [isReactedByMe, setIsReactedByMe] = useState<boolean>(false);
 
     // Add state for image modal
     const [imageModalVisible, setImageModalVisible] = useState(false);
@@ -72,6 +77,8 @@ const SingleMessage = () => {
     const [pendingAttachmentLocal, setPendingAttachmentLocal] = useState<string | null>(null);
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+    const swipeableRefs = useRef<Map<string, any>>(new Map());
+    const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
     
     // Add state for info menu
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
@@ -122,9 +129,10 @@ const SingleMessage = () => {
             // Add the new message to the messages state
             const newMessage: Message = {
                 _id: updatedMessage._id || Date.now().toString(),
-                message: updatedMessage.message || 'No message',
+                message: updatedMessage.message || '',
                 receiverId: updatedMessage.receiverId,
                 senderId: updatedMessage.senderId,
+                tempId: updatedMessage.tempId,
                 timestamp: new Date(updatedMessage.timestamp || Date.now()),
                 isSeen: false,
                 room,
@@ -133,7 +141,24 @@ const SingleMessage = () => {
             };
 
             if (messageData.chatPage === true) {
-                setMessages(prev => [...prev, newMessage]);
+
+                setMessages(prev => {
+                    // If a message with the same tempId exists, replace it with the new message
+                    const tempId = newMessage.tempId;
+                    if (tempId) {
+                        const index = prev.findIndex(msg => msg.tempId && msg.tempId === tempId);
+                        if (index !== -1) {
+                            // Replace the message at the found index
+                            const updated = [...prev];
+                            updated[index] = newMessage;
+                            return updated;
+                        }
+                    }
+                    // Otherwise, append as new
+                    return [...prev, newMessage];
+                });
+
+                // setMessages(prev => [...prev, newMessage]);
             }
         };
 
@@ -282,6 +307,7 @@ const SingleMessage = () => {
                 message: inputText.trim(),
                 attachment: pendingAttachment || undefined,
                 parent: replyingTo?._id || false,
+                tempId: Date.now().toString(),
                 timestamp: new Date().toISOString()
             });
 
@@ -291,6 +317,11 @@ const SingleMessage = () => {
             setUploadProgress(null);
             setIsUploading(false);
             setReplyingTo(null);
+            if (activeSwipeId) {
+                const ref = swipeableRefs.current.get(activeSwipeId);
+                try { ref?.close && ref.close(); } catch (e) {}
+                setActiveSwipeId(null);
+            }
         }
     };
 
@@ -322,11 +353,26 @@ const SingleMessage = () => {
     // Add function to handle long press
     const handleMessageLongPress = (message: Message, event: any) => {
         setSelectedMessage(message);
+        setIsReactedByMe(message?.reacts?.includes(myProfile?._id) || false);
         setContextMenuVisible(true);
 
-        // Get position for context menu (you might need to adjust this based on your layout)
         const { pageY } = event.nativeEvent;
-        setContextMenuPosition({ x: 20, y: pageY - 100 });
+        const screenHeight = Dimensions.get('window').height;
+        const CONTEXT_MENU_HEIGHT = 360; // approximate menu height (safer)
+        const TOP_MARGIN = 20;
+        // If opening near bottom, anchor using bottom so it stays fully visible
+        if (pageY + 20 + CONTEXT_MENU_HEIGHT > screenHeight) {
+            setContextMenuUseBottom(true);
+            setContextMenuBottom(20);
+            setContextMenuPosition({ x: 20, y: 0 });
+        } else {
+            const y = Math.max(
+                TOP_MARGIN,
+                Math.min(pageY - 100, screenHeight - CONTEXT_MENU_HEIGHT - TOP_MARGIN)
+            );
+            setContextMenuUseBottom(false);
+            setContextMenuPosition({ x: 20, y });
+        }
     };
 
     const playSound = () => {
@@ -378,6 +424,26 @@ const SingleMessage = () => {
                 ]
             );
         }
+    };
+
+    const likeOrUnlikeMessage = () => {
+        if (!selectedMessage) return;
+        const messageId = selectedMessage._id;
+        if (isReactedByMe) {
+            emit('removeReactMessage', { messageId, profileId: myProfile?._id });
+            setIsReactedByMe(false);
+        } else {
+            emit('reactMessage', { messageId, profileId: myProfile?._id });
+            setIsReactedByMe(true);
+        }
+        setContextMenuVisible(false);
+    };
+
+    const viewImage = () => {
+        if (selectedMessage?.attachment && isValidImageUrl(selectedMessage.attachment)) {
+            openImageModal(selectedMessage.attachment);
+        }
+        setContextMenuVisible(false);
     };
 
     // Add function to forward message
@@ -488,89 +554,131 @@ const SingleMessage = () => {
         setTimeout(() => inputRef.current?.focus(), 100);
     };
 
+    const scrollToMessage = (messageId: string) => {
+        const index = messages.findIndex(m => m._id === messageId);
+        if (index !== -1) {
+            setHighlightedMessageId(messageId);
+            try {
+                flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
+            } catch (e) {
+                // Fallback handled by onScrollToIndexFailed
+            }
+            setTimeout(() => setHighlightedMessageId(null), 2000);
+        } else {
+            Alert.alert('Not found', 'Original message is not loaded.');
+        }
+    };
+
+    const renderLeftReplyAction = () => (
+        <View style={{ width: 64, justifyContent: 'center', alignItems: 'center' }}>
+            <View style={{ backgroundColor: themeColors.gray[200], borderRadius: 20, padding: 8 }}>
+                <Icon name="reply" size={20} color={themeColors.primary} />
+            </View>
+        </View>
+    );
+
     const renderMessage = ({ item }: { item: Message }) => (
-        <View key={item._id} style={{
-            marginBottom: 8,
-            alignItems: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
-        }}>
-            <View style={{
-                backgroundColor: item.senderId === myProfile?._id ? themeColors.primary : themeColors.gray[200],
-                paddingHorizontal: 12,
-                paddingVertical: 6,
-                borderRadius: 20,
-                maxWidth: '80%',
-                borderBottomLeftRadius: item.senderId === myProfile._id ? 20 : 4,
-                borderBottomRightRadius: item.senderId === myProfile._id ? 4 : 20,
-                borderWidth: highlightedMessageId === item._id ? 2 : 0,
-                borderColor: highlightedMessageId === item._id ? themeColors.primary : 'transparent',
-            }}>
-                {item.parent && (
+        <Swipeable
+            ref={(ref) => {
+                if (ref) {
+                    swipeableRefs.current.set(item._id, ref);
+                } else {
+                    swipeableRefs.current.delete(item._id);
+                }
+            }}
+            renderLeftActions={() => (item.senderId !== myProfile?._id ? renderLeftReplyAction() : null)}
+            onSwipeableOpen={(direction) => {
+                if (direction === 'left' && item.senderId !== myProfile?._id) {
+                    startReply(item);
+                    setActiveSwipeId(item._id);
+                }
+            }}
+        >
+            <Pressable onLongPress={(event) => handleMessageLongPress(item, event)} delayLongPress={250}>
+                <View key={item._id} style={{
+                    marginBottom: 8,
+                    alignItems: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
+                }}>
                     <View style={{
-                        marginBottom: 8,
-                        padding: 8,
-                        borderLeftWidth: 3,
-                        borderLeftColor: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.primary,
-                        backgroundColor: item.senderId === myProfile?._id ? 'rgba(255,255,255,0.12)' : themeColors.gray[300],
-                        borderRadius: 6
+                        backgroundColor: item.senderId === myProfile?._id ? themeColors.primary : themeColors.gray[200],
+                        paddingHorizontal: 12,
+                        paddingVertical: 6,
+                        borderRadius: 20,
+                        maxWidth: '80%',
+                        borderBottomLeftRadius: item.senderId === myProfile._id ? 20 : 4,
+                        borderBottomRightRadius: item.senderId === myProfile._id ? 4 : 20,
+                        borderWidth: highlightedMessageId === item._id ? 2 : 0,
+                        borderColor: highlightedMessageId === item._id ? themeColors.primary : 'transparent',
                     }}>
+                        {item.parent && (
+                            <TouchableOpacity onPress={() => item.parent?._id && scrollToMessage(item.parent._id)} style={{
+                                marginBottom: 8,
+                                padding: 8,
+                                borderLeftWidth: 3,
+                                borderLeftColor: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.primary,
+                                backgroundColor: item.senderId === myProfile?._id ? 'rgba(255,255,255,0.12)' : themeColors.gray[300],
+                                borderRadius: 6
+                            }}>
+                                <Text style={{
+                                    color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
+                                    opacity: 0.8,
+                                    fontSize: 12,
+                                    fontStyle: 'italic',
+                                }}>
+                                    {item.parent.message || 'Message'}
+                                </Text>
+                            </TouchableOpacity>
+                        )}
                         <Text style={{
                             color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
-                            opacity: 0.8,
-                            fontSize: 12,
-                            fontStyle: 'italic',
+                            fontSize: 16,
+                            lineHeight: 20,
                         }}>
-                            {item.parent.message || 'Message'}
+                            {item.message}
                         </Text>
+                        {item.attachment && isValidImageUrl(item.attachment) && (
+                            <Image
+                                source={{ uri: item.attachment }}
+                                style={{ width: 200, height: 200, borderRadius: 8, marginTop: 8 }}
+                                resizeMode="cover"
+                            />
+                        )}
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'flex-end',
+                            marginTop: 4,
+                        }}>
+                            <Icon
+                                name={item.isSeen ? 'done-all' : 'check'}
+                                size={16}
+                                color={item.isSeen ? themeColors.text.primary : themeColors.text.inverse}
+                                style={{ marginLeft: 4 }}
+                            />
+                            <Text style={{
+                                color: themeColors.text.primary,
+                                fontSize: 12,
+                                opacity: 0.7,
+                                marginLeft: 4,
+                            }}>
+                                {moment(item.timestamp).format('HH:mm')}
+                            </Text>
+                        </View>
                     </View>
-                )}
-                <Text style={{
-                    color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
-                    fontSize: 16,
-                    lineHeight: 20,
-                }}>
-                    {item.message}
-                </Text>
-                {item.attachment && isValidImageUrl(item.attachment) && (
-                    <Image
-                        source={{ uri: item.attachment }}
-                        style={{ width: 200, height: 200, borderRadius: 8, marginTop: 8 }}
-                        resizeMode="cover"
-                    />
-                )}
-                <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    marginTop: 4,
-                }}>
-                    <Icon
-                        name={item.isSeen ? 'done-all' : 'check'}
-                        size={16}
-                        color={item.isSeen ? themeColors.text.primary : themeColors.text.inverse}
-                        style={{ marginLeft: 4 }}
-                    />
-                    <Text style={{
-                        color: themeColors.text.primary,
-                        fontSize: 12,
-                        opacity: 0.7,
-                        marginLeft: 4,
-                    }}>
-                        {moment(item.timestamp).format('HH:mm')}
-                    </Text>
+                    {item.senderId !== myProfile?._id && (
+                        <Text style={{
+                            color: item.senderId === myProfile?._id ? themeColors.primary : themeColors.text.secondary,
+                            fontSize: 12,
+                            opacity: 0.7,
+                            marginTop: 4,
+                            marginLeft: 8,
+                        }}>
+                            {moment(item.timestamp).fromNow()}
+                        </Text>
+                    )}
                 </View>
-            </View>
-            {item.senderId !== myProfile?._id && (
-                <Text style={{
-                    color: item.senderId === myProfile?._id ? themeColors.primary : themeColors.text.secondary,
-                    fontSize: 12,
-                    opacity: 0.7,
-                    marginTop: 4,
-                    marginLeft: 8,
-                }}>
-                    {moment(item.timestamp).fromNow()}
-                </Text>
-            )}
-        </View>
+            </Pressable>
+        </Swipeable>
     );
 
     const renderTypingIndicator = () => {
@@ -585,7 +693,7 @@ const SingleMessage = () => {
                 flexDirection: 'row',
                 gap: 8,
             }}>
-                <UserPP image={friend?.profilePic} isActive={true} size={30} />
+                <UserPP image={friend?.profilePic} isActive={false} size={30} />
 
                 <View style={{
                     backgroundColor: themeColors.gray[200],
@@ -664,7 +772,7 @@ const SingleMessage = () => {
 
                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
 
-                        <UserPP image={friend?.profilePic} isActive={friend?.isActive} size={35} />
+                        <UserPP image={friend?.profilePic} isActive={false} size={35} />
 
 
                         <View style={{ flex: 1 }}>
@@ -773,6 +881,12 @@ const SingleMessage = () => {
                 contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
                 showsVerticalScrollIndicator={false}
                 ListFooterComponent={renderTypingIndicator}
+                onScrollToIndexFailed={(info) => {
+                    const wait = new Promise(resolve => setTimeout(resolve, 200));
+                    wait.then(() => {
+                        flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                    });
+                }}
             />
 
 
@@ -793,7 +907,8 @@ const SingleMessage = () => {
                         style={{
                             position: 'absolute',
                             left: contextMenuPosition.x,
-                            top: contextMenuPosition.y,
+                            top: contextMenuUseBottom ? undefined : contextMenuPosition.y,
+                            bottom: contextMenuUseBottom ? contextMenuBottom : undefined,
                             backgroundColor: themeColors.surface.primary,
                             borderRadius: 12,
                             paddingVertical: 8,
@@ -806,11 +921,11 @@ const SingleMessage = () => {
                             shadowOpacity: 0.25,
                             shadowRadius: 3.84,
                             elevation: 5,
-                            minWidth: 150,
+                            minWidth: 160,
+                            maxHeight: Dimensions.get('window').height - 80,
                         }}
                     >
-
-
+                        
                         {selectedMessage?.senderId === myProfile?._id && (
                             <TouchableOpacity
                                 style={{
@@ -834,6 +949,20 @@ const SingleMessage = () => {
                                 paddingVertical: 12,
                                 paddingHorizontal: 16,
                             }}
+                            onPress={likeOrUnlikeMessage}
+                        >
+                            <Icon name={isReactedByMe ? 'thumb-down' : 'thumb-up'} size={20} color={themeColors.text.primary} />
+                            <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
+                                {isReactedByMe ? 'Unlike' : 'Like'}
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingVertical: 12,
+                                paddingHorizontal: 16,
+                            }}
                             onPress={copyMessage}
                         >
                             <Icon name="content-copy" size={20} color={themeColors.text.primary} />
@@ -841,6 +970,22 @@ const SingleMessage = () => {
                                 Copy
                             </Text>
                         </TouchableOpacity>
+                        {selectedMessage?.attachment && isValidImageUrl(selectedMessage.attachment) && (
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 12,
+                                    paddingHorizontal: 16,
+                                }}
+                                onPress={viewImage}
+                            >
+                                <Icon name="photo" size={20} color={themeColors.text.primary} />
+                                <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
+                                    View Image
+                                </Text>
+                            </TouchableOpacity>
+                        )}
 
                         <TouchableOpacity
                             style={{

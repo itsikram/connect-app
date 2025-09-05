@@ -154,14 +154,21 @@ export const authAPI = {
 };
 
 export const userAPI = {
-  getProfile: (profileId: string): Promise<AxiosResponse> => 
-    api.get(`/profile/?profileId=${profileId}`),
+  getProfile: (profileOrUser: any): Promise<AxiosResponse> => {
+    const profileId = typeof profileOrUser === 'string'
+      ? profileOrUser
+      : (profileOrUser?._id || profileOrUser?.profile?._id);
+
+    return api.get(`profile/?profileId=${profileId}`);
+  },
+  // checkProfile: (profileId: string): Promise<AxiosResponse> => 
+  //   api.post(`profile/check`, { profileId }),
 
   updateProfile: (userData: any): Promise<AxiosResponse> => 
-    api.post('/profile', userData),
+    api.post('profile', userData),
 
   changePassword: (passwordData: PasswordChangeData): Promise<AxiosResponse> =>
-    api.post('/user/change-password', passwordData),
+    api.post('user/change-password', passwordData),
 };
 
 export const chatAPI = {

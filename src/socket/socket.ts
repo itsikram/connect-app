@@ -48,16 +48,21 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
     }
 
     try {
-        const user = await getUserData();
-        console.log('User data for socket:', user);
+        // Prefer the explicitly provided profileId; fall back to stored user if needed
+        let effectiveProfileId: string | undefined = profileId;
+        if (!effectiveProfileId) {
+            const user = await getUserData();
+            console.log('Socket: loaded user from storage for fallback:', !!user);
+            effectiveProfileId = user?.profile?._id;
+        }
 
-        if (!user || !user.profile?._id) {
-            throw new Error('User data or profileId not available');
+        if (!effectiveProfileId) {
+            throw new Error('initializeSocket: profileId is missing');
         }
 
         socket = io(config.SOCKET_BASE_URL, {
             transports: ['websocket', 'polling'],
-            query: { profile: user.profile?._id },
+            query: { profile: effectiveProfileId },
             timeout: 20000,
             forceNew: true,
         });

@@ -3,6 +3,8 @@ import { initializeSocket, getSocket, disconnectSocket } from '../socket/socket'
 class SocketService {
   private socket: any = null;
   private isConnecting: boolean = false;
+  private pendingEmits: { event: string; data: any }[] = [];
+  private pendingListeners: { event: string; callback: (...args: any[]) => void }[] = [];
 
   async connect(profileId: string): Promise<void> {
     if (this.socket && this.socket.connected) {
@@ -19,6 +21,30 @@ class SocketService {
       this.isConnecting = true;
       this.socket = await initializeSocket(profileId);
       console.log('Socket connected successfully');
+
+      // Flush any queued listeners first
+      if (this.pendingListeners.length > 0) {
+        this.pendingListeners.forEach(({ event, callback }) => {
+          try {
+            this.socket.on(event, callback);
+          } catch (e) {
+            console.warn('Failed to attach pending listener for event:', event, e);
+          }
+        });
+        this.pendingListeners = [];
+      }
+
+      // Then flush any queued emits
+      if (this.pendingEmits.length > 0) {
+        this.pendingEmits.forEach(({ event, data }) => {
+          try {
+            this.socket.emit(event, data);
+          } catch (e) {
+            console.warn('Failed to emit pending event:', event, e);
+          }
+        });
+        this.pendingEmits = [];
+      }
     } catch (error) {
       console.error('Failed to connect socket:', error);
       throw error;
@@ -33,22 +59,42 @@ class SocketService {
       this.socket = null;
       console.log('Socket disconnected');
     }
+    // Clear any queues on explicit disconnect
+    this.pendingEmits = [];
+    this.pendingListeners = [];
   }
 
   emit(event: string, data: any): void {
     if (this.socket && this.socket.connected) {
       this.socket.emit(event, data);
-    } else {
-      console.warn('Socket not connected, cannot emit event:', event);
+      return;
+    }
+
+    // Queue the emit and attempt to flush on next connect
+    this.pendingEmits.push({ event, data });
+    if (this.socket) {
+      this.socket.once('connect', () => {
+        const toFlush = [...this.pendingEmits];
+        this.pendingEmits = [];
+        toFlush.forEach(({ event: ev, data: payload }) => {
+          try {
+            this.socket.emit(ev, payload);
+          } catch (e) {
+            console.warn('Failed to emit queued event:', ev, e);
+          }
+        });
+      });
     }
   }
 
   on(event: string, callback: (...args: any[]) => void): void {
     if (this.socket) {
       this.socket.on(event, callback);
-    } else {
-      console.warn('Socket not available, cannot listen to event:', event);
+      return;
     }
+
+    // Queue listener to attach when socket is available
+    this.pendingListeners.push({ event, callback });
   }
 
   off(event: string, callback?: (...args: any[]) => void): void {

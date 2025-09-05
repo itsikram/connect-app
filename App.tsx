@@ -43,7 +43,7 @@ import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
-import api from './src/lib/api';
+import api, { userAPI } from './src/lib/api';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -103,7 +103,7 @@ function AppContent() {
   React.useEffect(() => {
     // Optional: set default language and speech rate
     Tts.setDefaultLanguage('en-US');
-    Tts.setDefaultRate(0.7); // speed: 0.1 - 1.0
+    Tts.setDefaultRate(0.5); // speed: 0.1 - 1.0
     Tts.voices().then(voices => console.log(voices));
   }, []);
 
@@ -219,7 +219,7 @@ function AppContent() {
 
     let handleSpeakMessage = (message: any) => {
 
-      Tts.speak('lorem ipsum'+message);
+      Tts.speak(message);
       console.log('message', message)
     }
 
@@ -239,19 +239,23 @@ function AppContent() {
 
   return (
     <AuthContext.Consumer>
-      {({ user, isLoading }) => (
-        <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
-      )}
+      {(ctx: any) => {
+        if (!ctx) {
+          return null;
+        }
+        const { user, isLoading } = ctx;
+        return (
+          <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
+        );
+      }}
     </AuthContext.Consumer>
   );
 }
 
 // Inner component that can use hooks
 function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading: boolean, isDarkMode: boolean }) {
-  // Use the profile data hook when user is available
-  if (user && !isLoading) {
-    useProfileData(user.user_id);
-  }
+  // Always call hooks unconditionally; the hook internally no-ops without a valid id
+  useProfileData(user?.profile || null);
 
   return (
     <ThemeContext.Consumer>

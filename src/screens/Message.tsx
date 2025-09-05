@@ -56,16 +56,14 @@ const Message = () => {
 
   useEffect(() => {
     if (profileData?._id) {
-      // Debug auth storage first
+      // Debug auth storage (optional)
       debugAuth().then(({ user, token }) => {
         console.log('🔍 Auth debug result:', { hasUser: !!user, hasToken: !!token });
       });
 
-      dispatch(fetchChatList(profileData?._id));
-
-
+      dispatch(fetchChatList(profileData._id));
     }
-  }, [dispatch, profileData]);
+  }, [dispatch, profileData?._id]);
 
   const navigation = useNavigation();
 

@@ -68,9 +68,12 @@ export const AuthProvider = ({ children }) => {
 
       setUser(userData);
       
-      // Fetch fresh profile data after login
-      console.log('📥 Fetching profile data for profile ID:', profile);
-      await fetchProfileData(profile);
+      // Fetch fresh profile data after login (ensure it is an ID)
+      const profileId = typeof profile === 'string' ? profile : profile?._id;
+      if (profileId) {
+        console.log('📥 Fetching profile data for profile ID:', profileId);
+        await fetchProfileData(profileId);
+      }
       
       return { success: true, user: userData };
     } catch (error) {
@@ -138,9 +141,10 @@ export const AuthProvider = ({ children }) => {
         setUser(parsedUser);
         
         // Fetch fresh profile data when app starts with existing user
-        if (parsedUser.user_id) {
-          console.log('📥 Fetching fresh profile data for user:', parsedUser.user_id);
-          await fetchProfileData(parsedUser.user_id);
+        const profileId = typeof parsedUser.profile === 'string' ? parsedUser.profile : parsedUser.profile?._id || parsedUser.user_id;
+        if (profileId) {
+          console.log('📥 Fetching fresh profile data for profile:', profileId);
+          await fetchProfileData(profileId);
         }
       } else {
         console.log('ℹ️ No existing user session found');
