@@ -36,6 +36,7 @@ import Videos from './src/screens/Videos';
 import { SocketProvider, useSocket } from './src/contexts/SocketContext';
 import { ToastProvider, useToast } from './src/contexts/ToastContext';
 import { UserToastProvider, useUserToast } from './src/contexts/UserToastContext';
+import { SettingsProvider } from './src/contexts/SettingsContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
@@ -399,11 +400,13 @@ function App() {
                 <SocketProvider>
                   <ToastProvider>
                     <UserToastProvider>
-                      <HeaderVisibilityProvider>
-                        <NavigationContainer>
-                          <AppContent />
-                        </NavigationContainer>
-                      </HeaderVisibilityProvider>
+                      <SettingsProvider>
+                        <HeaderVisibilityProvider>
+                          <NavigationContainer>
+                            <AppContent />
+                          </NavigationContainer>
+                        </HeaderVisibilityProvider>
+                      </SettingsProvider>
                     </UserToastProvider>
                   </ToastProvider>
                 </SocketProvider>

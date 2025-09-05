@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 
 interface PrivacySettings {
@@ -18,13 +19,22 @@ interface PrivacySettings {
 
 const PrivacySettings = () => {
   const { colors: themeColors } = useTheme();
-  const { showSuccess } = useToast();
+  const { settings, updateSettings } = useSettings();
+  const { showSuccess, showError } = useToast();
   
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
-    postVisibility: 'public',
-    friendRequestVisibility: 'public',
-    timelinePostVisibility: 'public',
+    postVisibility: settings.postVisibility ?? 'public',
+    friendRequestVisibility: settings.friendRequestVisibility ?? 'public',
+    timelinePostVisibility: settings.timelinePostVisibility ?? 'public',
   });
+
+  React.useEffect(() => {
+    setPrivacySettings({
+      postVisibility: settings.postVisibility ?? 'public',
+      friendRequestVisibility: settings.friendRequestVisibility ?? 'public',
+      timelinePostVisibility: settings.timelinePostVisibility ?? 'public',
+    });
+  }, [settings]);
 
   const visibilityOptions = [
     { label: 'Only Me', value: 'only-me' },
@@ -32,9 +42,19 @@ const PrivacySettings = () => {
     { label: 'Public', value: 'public' },
   ];
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('Privacy settings:', privacySettings);
-    showSuccess('Privacy settings saved');
+    try {
+      const success = await updateSettings(privacySettings);
+      if (success) {
+        showSuccess('Privacy settings saved');
+      } else {
+        showError('Failed to save privacy settings');
+      }
+    } catch (error) {
+      console.error('Error saving privacy settings:', error);
+      showError('Failed to save privacy settings');
+    }
   };
 
   const renderPicker = (

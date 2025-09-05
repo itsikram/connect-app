@@ -8,6 +8,7 @@ import {
   Switch,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 
 interface NotificationSettings {
@@ -28,22 +29,40 @@ interface NotificationSettings {
 
 const NotificationSettings = () => {
   const { colors: themeColors } = useTheme();
-  const { showSuccess } = useToast();
+  const { settings, updateSettings } = useSettings();
+  const { showSuccess, showError } = useToast();
   
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
-    friendRequestReceived: true,
-    friendRequestAccepted: true,
-    newMessageReceived: true,
-    newFriendPost: true,
-    newFriendStory: true,
-    newFriendWatch: true,
-    friendRequestReceivedEmail: false,
-    friendRequestAcceptedEmail: false,
-    newMessageReceivedEmail: false,
-    newFriendPostEmail: false,
-    newFriendStoryEmail: false,
-    newFriendWatchEmail: false,
+    friendRequestReceived: settings.friendRequestReceived ?? true,
+    friendRequestAccepted: settings.friendRequestAccepted ?? true,
+    newMessageReceived: settings.newMessageReceived ?? true,
+    newFriendPost: settings.newFriendPost ?? true,
+    newFriendStory: settings.newFriendStory ?? true,
+    newFriendWatch: settings.newFriendWatch ?? true,
+    friendRequestReceivedEmail: settings.friendRequestReceivedEmail ?? false,
+    friendRequestAcceptedEmail: settings.friendRequestAcceptedEmail ?? false,
+    newMessageReceivedEmail: settings.newMessageReceivedEmail ?? false,
+    newFriendPostEmail: settings.newFriendPostEmail ?? false,
+    newFriendStoryEmail: settings.newFriendStoryEmail ?? false,
+    newFriendWatchEmail: settings.newFriendWatchEmail ?? false,
   });
+
+  React.useEffect(() => {
+    setNotificationSettings({
+      friendRequestReceived: settings.friendRequestReceived ?? true,
+      friendRequestAccepted: settings.friendRequestAccepted ?? true,
+      newMessageReceived: settings.newMessageReceived ?? true,
+      newFriendPost: settings.newFriendPost ?? true,
+      newFriendStory: settings.newFriendStory ?? true,
+      newFriendWatch: settings.newFriendWatch ?? true,
+      friendRequestReceivedEmail: settings.friendRequestReceivedEmail ?? false,
+      friendRequestAcceptedEmail: settings.friendRequestAcceptedEmail ?? false,
+      newMessageReceivedEmail: settings.newMessageReceivedEmail ?? false,
+      newFriendPostEmail: settings.newFriendPostEmail ?? false,
+      newFriendStoryEmail: settings.newFriendStoryEmail ?? false,
+      newFriendWatchEmail: settings.newFriendWatchEmail ?? false,
+    });
+  }, [settings]);
 
   const handleToggle = (key: keyof NotificationSettings) => {
     setNotificationSettings(prev => ({
@@ -52,9 +71,19 @@ const NotificationSettings = () => {
     }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('Notification settings:', notificationSettings);
-    showSuccess('Notification settings saved');
+    try {
+      const success = await updateSettings(notificationSettings);
+      if (success) {
+        showSuccess('Notification settings saved');
+      } else {
+        showError('Failed to save notification settings');
+      }
+    } catch (error) {
+      console.error('Error saving notification settings:', error);
+      showError('Failed to save notification settings');
+    }
   };
 
   const renderSwitchSetting = (

@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 
 interface AccountData {
@@ -21,6 +22,7 @@ interface AccountData {
 
 const AccountSettings = () => {
   const { colors: themeColors } = useTheme();
+  const { settings, updateSettings } = useSettings();
   const { showSuccess, showError } = useToast();
   
   const [accountData, setAccountData] = useState<AccountData>({

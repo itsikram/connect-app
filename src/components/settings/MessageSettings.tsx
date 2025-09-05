@@ -9,6 +9,7 @@ import {
   Image,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -26,6 +27,7 @@ type BooleanSettingKey = Exclude<keyof MessageSettings, 'chatBackground'>;
 
 const MessageSettings = () => {
   const { colors: themeColors } = useTheme();
+  const { settings, updateSettings, loading } = useSettings();
   const CHAT_BG_STORAGE_KEY = '@chat_background_image';
   const { showSuccess, showError } = useToast();
   
@@ -57,28 +59,26 @@ const MessageSettings = () => {
   ];
   
   const [messageSettings, setMessageSettings] = useState<MessageSettings>({
-    showTyping: true,
-    isShareEmotion: false,
-    readReceipts: true,
-    typingIndicators: true,
-    messagePreview: true,
-    autoSaveDrafts: true,
-    chatBackground: null,
+    showTyping: settings.showTyping ?? true,
+    isShareEmotion: settings.isShareEmotion ?? false,
+    readReceipts: settings.readReceipts ?? true,
+    typingIndicators: settings.typingIndicators ?? true,
+    messagePreview: settings.messagePreview ?? true,
+    autoSaveDrafts: settings.autoSaveDrafts ?? true,
+    chatBackground: settings.chatBackground ?? null,
   });
 
   useEffect(() => {
-    const loadSavedBackground = async () => {
-      try {
-        const saved = await AsyncStorage.getItem(CHAT_BG_STORAGE_KEY);
-        if (saved && saved.length > 0) {
-          setMessageSettings(prev => ({ ...prev, chatBackground: saved }));
-        }
-      } catch (e) {
-        console.log('Failed to load chat background:', e);
-      }
-    };
-    loadSavedBackground();
-  }, []);
+    setMessageSettings({
+      showTyping: settings.showTyping ?? true,
+      isShareEmotion: settings.isShareEmotion ?? false,
+      readReceipts: settings.readReceipts ?? true,
+      typingIndicators: settings.typingIndicators ?? true,
+      messagePreview: settings.messagePreview ?? true,
+      autoSaveDrafts: settings.autoSaveDrafts ?? true,
+      chatBackground: settings.chatBackground ?? null,
+    });
+  }, [settings]);
 
   const handleToggle = (key: BooleanSettingKey) => {
     setMessageSettings(prev => ({
@@ -90,14 +90,23 @@ const MessageSettings = () => {
   const handleSave = async () => {
     console.log('Message settings:', messageSettings);
     try {
+      // Save to settings context (which handles server sync)
+      const success = await updateSettings(messageSettings);
+      
+      // Also save chat background to AsyncStorage for immediate access
       if (messageSettings.chatBackground) {
         await AsyncStorage.setItem(CHAT_BG_STORAGE_KEY, messageSettings.chatBackground);
       } else {
         await AsyncStorage.removeItem(CHAT_BG_STORAGE_KEY);
       }
-      showSuccess('Messaging settings saved');
+      
+      if (success) {
+        showSuccess('Messaging settings saved');
+      } else {
+        showError('Failed to save settings');
+      }
     } catch (e) {
-      console.log('Failed to save chat background:', e);
+      console.log('Failed to save settings:', e);
       showError('Failed to save settings');
     }
   };

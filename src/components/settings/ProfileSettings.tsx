@@ -16,6 +16,8 @@ import { setProfile } from '../../reducers/profileReducer';
 import { AuthContext } from '../../contexts/AuthContext';
 import { useProfileData } from '../../hooks/useProfileData';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
+import { useToast } from '../../contexts/ToastContext';
 import api from '../../lib/api';
 
 interface ProfileData {
@@ -33,6 +35,8 @@ interface ProfileData {
 
 const ProfileSettings = () => {
   const { colors: themeColors } = useTheme();
+  const { updateSettings } = useSettings();
+  const { showSuccess, showError } = useToast();
   const dispatch = useDispatch();
   const { user } = useContext(AuthContext);
   
@@ -236,13 +240,15 @@ const ProfileSettings = () => {
       if (response.status === 200) {
         // Update Redux store with the response data
         dispatch(setProfile(response.data));
-        Alert.alert('Success', 'Profile settings saved successfully!');
+        // Update settings context
+        await updateSettings(filteredData);
+        showSuccess('Profile settings saved successfully!');
       } else {
-        Alert.alert('Error', 'Failed to save profile settings. Please try again.');
+        showError('Failed to save profile settings. Please try again.');
       }
     } catch (error) {
       console.error('Error saving profile:', error);
-      Alert.alert('Error', 'Failed to save profile settings. Please check your connection and try again.');
+      showError('Failed to save profile settings. Please check your connection and try again.');
     } finally {
       setIsSaving(false);
     }

@@ -10,6 +10,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import { colors } from '../../theme/colors';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { themes, ThemeType } from '../../theme/colors';
 import { useToast } from '../../contexts/ToastContext';
 
@@ -23,17 +24,28 @@ interface PreferenceSettings {
 
 const PreferenceSettings = () => {
   const { currentTheme, setTheme, colors: themeColors } = useTheme();
+  const { settings, updateSettings } = useSettings();
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
-  const { showSuccess } = useToast();
+  const { showSuccess, showError } = useToast();
   
   const [preferences, setPreferences] = useState<PreferenceSettings>({
-    themeMode: currentTheme,
-    language: 'en',
-    timezone: 'UTC',
-    dateFormat: 'MM/DD/YYYY',
-    timeFormat: '12h',
+    themeMode: (settings.themeMode as ThemeType) ?? currentTheme,
+    language: settings.language ?? 'en',
+    timezone: settings.timezone ?? 'UTC',
+    dateFormat: settings.dateFormat ?? 'MM/DD/YYYY',
+    timeFormat: settings.timeFormat ?? '12h',
   });
+
+  React.useEffect(() => {
+    setPreferences({
+      themeMode: (settings.themeMode as ThemeType) ?? currentTheme,
+      language: settings.language ?? 'en',
+      timezone: settings.timezone ?? 'UTC',
+      dateFormat: settings.dateFormat ?? 'MM/DD/YYYY',
+      timeFormat: settings.timeFormat ?? '12h',
+    });
+  }, [settings, currentTheme]);
 
   const themeOptions = [
     { label: 'Default (System)', value: 'default' },
@@ -79,10 +91,20 @@ const PreferenceSettings = () => {
     setTheme(theme);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     // Here you would typically make an API call to save the preference settings
     console.log('Preference settings:', preferences);
-    showSuccess('Preference settings saved');
+    try {
+      const success = await updateSettings(preferences);
+      if (success) {
+        showSuccess('Preference settings saved');
+      } else {
+        showError('Failed to save preference settings');
+      }
+    } catch (error) {
+      console.error('Error saving preference settings:', error);
+      showError('Failed to save preference settings');
+    }
   };
 
   const renderPicker = (

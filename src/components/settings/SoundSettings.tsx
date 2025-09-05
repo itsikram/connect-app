@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../../contexts/ThemeContext';
+import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
 
 interface SoundSettings {
@@ -22,16 +23,28 @@ interface SoundSettings {
 
 const SoundSettings = () => {
   const { colors: themeColors } = useTheme();
-  const { showSuccess } = useToast();
+  const { settings, updateSettings } = useSettings();
+  const { showSuccess, showError } = useToast();
   
   const [soundSettings, setSoundSettings] = useState<SoundSettings>({
-    ringtone: '1',
-    notificationSound: '1',
-    messageSound: '1',
-    vibrationEnabled: true,
-    silentMode: false,
-    volumeLevel: 80,
+    ringtone: settings.ringtone ?? '1',
+    notificationSound: settings.notificationSound ?? '1',
+    messageSound: settings.messageSound ?? '1',
+    vibrationEnabled: settings.vibrationEnabled ?? true,
+    silentMode: settings.silentMode ?? false,
+    volumeLevel: settings.volumeLevel ?? 80,
   });
+
+  React.useEffect(() => {
+    setSoundSettings({
+      ringtone: settings.ringtone ?? '1',
+      notificationSound: settings.notificationSound ?? '1',
+      messageSound: settings.messageSound ?? '1',
+      vibrationEnabled: settings.vibrationEnabled ?? true,
+      silentMode: settings.silentMode ?? false,
+      volumeLevel: settings.volumeLevel ?? 80,
+    });
+  }, [settings]);
 
   const ringtones = [
     { id: '1', name: 'Default Ringtone' },
@@ -58,9 +71,19 @@ const SoundSettings = () => {
     { id: '4', name: 'Quick Alert' },
   ];
 
-  const handleSave = () => {
+  const handleSave = async () => {
     console.log('Sound settings:', soundSettings);
-    showSuccess('Sound settings saved');
+    try {
+      const success = await updateSettings(soundSettings);
+      if (success) {
+        showSuccess('Sound settings saved');
+      } else {
+        showError('Failed to save sound settings');
+      }
+    } catch (error) {
+      console.error('Error saving sound settings:', error);
+      showError('Failed to save sound settings');
+    }
   };
 
   const renderPicker = (

@@ -82,7 +82,7 @@ const SingleMessage = () => {
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const swipeableRefs = useRef<Map<string, any>>(new Map());
     const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
-    
+
     // Add state for info menu
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
     const [chatBackground, setChatBackground] = useState<string | null>(null);
@@ -229,7 +229,7 @@ const SingleMessage = () => {
                 const parent = navigation.getParent();
                 if (parent) {
                     parent.setOptions({
-                        tabBarStyle: { 
+                        tabBarStyle: {
                             height: 0,
                             overflow: 'hidden',
                             position: 'absolute',
@@ -262,7 +262,7 @@ const SingleMessage = () => {
                         });
                     }
                 };
-                
+
                 // Small delay to ensure navigation transition is complete
                 setTimeout(showTabBar, 100);
             };
@@ -339,7 +339,7 @@ const SingleMessage = () => {
             setReplyingTo(null);
             if (activeSwipeId) {
                 const ref = swipeableRefs.current.get(activeSwipeId);
-                try { ref?.close && ref.close(); } catch (e) {}
+                try { ref?.close && ref.close(); } catch (e) { }
                 setActiveSwipeId(null);
             }
         }
@@ -663,27 +663,33 @@ const SingleMessage = () => {
                                 resizeMode="cover"
                             />
                         )}
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            justifyContent: 'flex-end',
-                            marginTop: 4,
-                        }}>
-                            <Icon
-                                name={item.isSeen ? 'done-all' : 'check'}
-                                size={16}
-                                color={item.isSeen ? themeColors.text.primary : themeColors.text.inverse}
-                                style={{ marginLeft: 4 }}
-                            />
-                            <Text style={{
-                                color: themeColors.text.primary,
-                                fontSize: 12,
-                                opacity: 0.7,
-                                marginLeft: 4,
+
+
+                        {item.senderId == myProfile?._id && <>
+                            <View style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'flex-end',
+                                marginTop: 4,
                             }}>
-                                {moment(item.timestamp).format('HH:mm')}
-                            </Text>
-                        </View>
+                                <Icon
+                                    name={item.isSeen ? 'done-all' : 'check'}
+                                    size={16}
+                                    color={item.isSeen ? themeColors.text.primary : themeColors.text.inverse}
+                                    style={{ marginLeft: 4 }}
+                                />
+                                <Text style={{
+                                    color: themeColors.text.primary,
+                                    fontSize: 12,
+                                    opacity: 0.7,
+                                    marginLeft: 4,
+                                }}>
+                                    {moment(item.timestamp).format('hh:mm')}
+                                </Text>
+                            </View>
+                        </>}
+
+
                     </View>
                     {item.senderId !== myProfile?._id && (
                         <Text style={{
@@ -970,7 +976,7 @@ const SingleMessage = () => {
                             maxHeight: Dimensions.get('window').height - 80,
                         }}
                     >
-                        
+
                         {selectedMessage?.senderId === myProfile?._id && (
                             <TouchableOpacity
                                 style={{
@@ -1215,7 +1221,7 @@ const SingleMessage = () => {
                 animationType="slide"
                 onRequestClose={() => setInfoMenuVisible(false)}
             >
-                <TouchableOpacity 
+                <TouchableOpacity
                     style={{
                         flex: 1,
                         backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -1241,7 +1247,7 @@ const SingleMessage = () => {
                             borderRadius: 2,
                             marginBottom: 20,
                         }} />
-                        
+
                         <View style={{
                             flexDirection: 'row',
                             alignItems: 'center',
@@ -1266,270 +1272,274 @@ const SingleMessage = () => {
                             </View>
                         </View>
 
-                        <ScrollView 
+                        <ScrollView
                             style={{ flex: 1 }}
                             contentContainerStyle={{ paddingBottom: 40 }}
                             showsVerticalScrollIndicator={false}
                         >
-                        <TouchableOpacity
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 15,
-                                borderBottomWidth: 1,
-                                borderBottomColor: themeColors.border.primary,
-                            }}
-                            onPress={() => {
-                                setInfoMenuVisible(false);
-                                navigation.navigate('FriendProfile', { friendId: friend?._id });
-                            }}
-                        >
-                            <View style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: themeColors.primary + '15',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: 15,
-                            }}>
-                                <Icon name="person" size={20} color={themeColors.primary} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '500',
-                                    color: themeColors.text.primary,
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setInfoMenuVisible(false);
+                                    navigation.navigate('FriendProfile', { friendId: friend?._id });
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.primary + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
                                 }}>
-                                    View Profile
-                                </Text>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: themeColors.text.secondary,
-                                    marginTop: 2,
-                                }}>
-                                    See {friend?.fullName?.split(' ')[0]}'s profile
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                    <Icon name="person" size={20} color={themeColors.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        View Profile
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        See {friend?.fullName?.split(' ')[0]}'s profile
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 15,
-                                borderBottomWidth: 1,
-                                borderBottomColor: themeColors.border.primary,
-                            }}
-                            onPress={() => {
-                                setInfoMenuVisible(false);
-                                Alert.alert('Search', 'Search in conversation feature coming soon!');
-                            }}
-                        >
-                            <View style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: themeColors.primary + '15',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: 15,
-                            }}>
-                                <Icon name="search" size={20} color={themeColors.primary} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '500',
-                                    color: themeColors.text.primary,
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setInfoMenuVisible(false);
+                                    Alert.alert('Search', 'Search in conversation feature coming soon!');
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.primary + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
                                 }}>
-                                    Search in Conversation
-                                </Text>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: themeColors.text.secondary,
-                                    marginTop: 2,
-                                }}>
-                                    Find messages in this chat
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                    <Icon name="search" size={20} color={themeColors.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        Search in Conversation
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        Find messages in this chat
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 15,
-                                borderBottomWidth: 1,
-                                borderBottomColor: themeColors.border.primary,
-                            }}
-                            onPress={() => {
-                                setInfoMenuVisible(false);
-                                Alert.alert('Media', 'View shared media feature coming soon!');
-                            }}
-                        >
-                            <View style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: themeColors.primary + '15',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: 15,
-                            }}>
-                                <Icon name="photo-library" size={20} color={themeColors.primary} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '500',
-                                    color: themeColors.text.primary,
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setInfoMenuVisible(false);
+                                    Alert.alert('Media', 'View shared media feature coming soon!');
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.primary + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
                                 }}>
-                                    Media & Files
-                                </Text>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: themeColors.text.secondary,
-                                    marginTop: 2,
-                                }}>
-                                    View shared photos and files
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                    <Icon name="photo-library" size={20} color={themeColors.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        Media & Files
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        View shared photos and files
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 15,
-                                borderBottomWidth: 1,
-                                borderBottomColor: themeColors.border.primary,
-                            }}
-                            onPress={() => {
-                                setInfoMenuVisible(false);
-                                Alert.alert('Mute', 'Mute conversation feature coming soon!');
-                            }}
-                        >
-                            <View style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: '#FFA50015',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: 15,
-                            }}>
-                                <Icon name="volume-off" size={20} color="#FFA500" />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '500',
-                                    color: themeColors.text.primary,
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setInfoMenuVisible(false);
+                                    Alert.alert('Mute', 'Mute conversation feature coming soon!');
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: '#FFA50015',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
                                 }}>
-                                    Mute Notifications
-                                </Text>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: themeColors.text.secondary,
-                                    marginTop: 2,
-                                }}>
-                                    Stop getting notifications from this chat
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                    <Icon name="volume-off" size={20} color="#FFA500" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        Mute Notifications
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        Stop getting notifications from this chat
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 15,
-                                borderBottomWidth: 1,
-                                borderBottomColor: themeColors.border.primary,
-                            }}
-                            onPress={() => {
-                                setInfoMenuVisible(false);
-                                Alert.alert('Block', `Are you sure you want to block ${friend?.fullName}?`, [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    { text: 'Block', style: 'destructive', onPress: () => {
-                                        Alert.alert('Block', 'Block user feature coming soon!');
-                                    }}
-                                ]);
-                            }}
-                        >
-                            <View style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: themeColors.status.error + '15',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: 15,
-                            }}>
-                                <Icon name="block" size={20} color={themeColors.status.error} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '500',
-                                    color: themeColors.status.error,
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setInfoMenuVisible(false);
+                                    Alert.alert('Block', `Are you sure you want to block ${friend?.fullName}?`, [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                            text: 'Block', style: 'destructive', onPress: () => {
+                                                Alert.alert('Block', 'Block user feature coming soon!');
+                                            }
+                                        }
+                                    ]);
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.status.error + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
                                 }}>
-                                    Block User
-                                </Text>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: themeColors.status.error + '80',
-                                    marginTop: 2,
-                                }}>
-                                    Block and report this user
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                    <Icon name="block" size={20} color={themeColors.status.error} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.status.error,
+                                    }}>
+                                        Block User
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.status.error + '80',
+                                        marginTop: 2,
+                                    }}>
+                                        Block and report this user
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
 
-                        <TouchableOpacity
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 15,
-                            }}
-                            onPress={() => {
-                                setInfoMenuVisible(false);
-                                Alert.alert('Report', `Report ${friend?.fullName}?`, [
-                                    { text: 'Cancel', style: 'cancel' },
-                                    { text: 'Report', style: 'destructive', onPress: () => {
-                                        Alert.alert('Report', 'Report user feature coming soon!');
-                                    }}
-                                ]);
-                            }}
-                        >
-                            <View style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 20,
-                                backgroundColor: themeColors.status.error + '15',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: 15,
-                            }}>
-                                <Icon name="flag" size={20} color={themeColors.status.error} />
-                            </View>
-                            <View style={{ flex: 1 }}>
-                                <Text style={{
-                                    fontSize: 16,
-                                    fontWeight: '500',
-                                    color: themeColors.status.error,
+                            <TouchableOpacity
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                }}
+                                onPress={() => {
+                                    setInfoMenuVisible(false);
+                                    Alert.alert('Report', `Report ${friend?.fullName}?`, [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                            text: 'Report', style: 'destructive', onPress: () => {
+                                                Alert.alert('Report', 'Report user feature coming soon!');
+                                            }
+                                        }
+                                    ]);
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.status.error + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
                                 }}>
-                                    Report User
-                                </Text>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: themeColors.status.error + '80',
-                                    marginTop: 2,
-                                }}>
-                                    Report inappropriate behavior
-                                </Text>
-                            </View>
-                        </TouchableOpacity>
+                                    <Icon name="flag" size={20} color={themeColors.status.error} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.status.error,
+                                    }}>
+                                        Report User
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.status.error + '80',
+                                        marginTop: 2,
+                                    }}>
+                                        Report inappropriate behavior
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
                         </ScrollView>
                     </View>
                 </TouchableOpacity>
@@ -1570,7 +1580,7 @@ const SingleMessage = () => {
                         </TouchableOpacity>
                     </View>
                 )}
-                { (isUploading || pendingAttachmentLocal || pendingAttachment) && (
+                {(isUploading || pendingAttachmentLocal || pendingAttachment) && (
                     <View style={{
                         marginBottom: 8,
                         marginHorizontal: 0,
@@ -1580,7 +1590,7 @@ const SingleMessage = () => {
                         flexDirection: 'row',
                         alignItems: 'center'
                     }}>
-                        { (pendingAttachmentLocal || pendingAttachment) && (
+                        {(pendingAttachmentLocal || pendingAttachment) && (
                             <Image
                                 source={{ uri: pendingAttachmentLocal || pendingAttachment || '' }}
                                 style={{ width: 48, height: 48, borderRadius: 8, marginRight: 8 }}
