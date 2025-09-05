@@ -42,7 +42,7 @@ const ProfileSettings = () => {
   // Use the profile data hook to fetch data
   const { fetchProfileData } = useProfileData(user?.profile || user?.user_id);
   
-  const [profileData, setProfileData] = useState<ProfileData>({
+  const [profileData, setProfileData] = useState({
     firstName: '',
     surname: '',
     nickname: '',
@@ -55,6 +55,11 @@ const ProfileSettings = () => {
     schools: [{ name: '', degree: '' }],
   });
 
+
+  useEffect(() => {
+    console.log('ProfileSettings: profileData', currentProfile);
+  }, [currentProfile]);
+
   const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Update local state when Redux store changes
@@ -66,8 +71,9 @@ const ProfileSettings = () => {
       console.log('ProfileSettings: Setting profile data from Redux store');
       setProfileData(prev => ({
         ...prev,
-        firstName: currentProfile.firstName || currentProfile.first_name || '',
-        surname: currentProfile.surname || currentProfile.last_name || '',
+        user: {
+          ...currentProfile.user,
+        },
         nickname: currentProfile.nickname || '',
         username: currentProfile.username || currentProfile.user_name || '',
         displayName: currentProfile.displayName || currentProfile.display_name || '',
@@ -89,6 +95,9 @@ const ProfileSettings = () => {
       console.log('ProfileSettings: Setting profile data from user.profile');
       setProfileData(prev => ({
         ...prev,
+        user: {
+          ...currentProfile.user,
+        },
         firstName: user.profile.firstName || user.profile.first_name || user.firstName || '',
         surname: user.profile.surname || user.profile.last_name || user.surname || '',
         nickname: user.profile.nickname || '',
@@ -353,7 +362,7 @@ const ProfileSettings = () => {
           Basic Information
         </Text>
         
-        {renderInputField('First Name', profileData.firstName, (text) => handleInputChange('firstName', text), 'Enter First Name')}
+        {renderInputField('First Name', currentProfile.user.firstName, (text) => handleInputChange('firstName', text), 'Enter First Name')}
         {renderInputField('Surname', profileData.surname, (text) => handleInputChange('surname', text), 'Enter Last Name')}
         {renderInputField('Username', profileData.username, (text) => handleInputChange('username', text), 'Enter Username', 'alternate-email')}
         {renderInputField('Nickname', profileData.nickname, (text) => handleInputChange('nickname', text), 'Enter Nickname')}

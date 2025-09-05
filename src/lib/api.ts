@@ -176,6 +176,16 @@ export const chatAPI = {
     api.get(`/message/chatList?profileId=${profileId}`),
 };
 
+// Push notification API methods
+export const pushAPI = {
+  registerToken: (token: string, authToken?: string): Promise<AxiosResponse> =>
+    api.post('/notification/token/register', { token }, authToken ? { headers: { Authorization: authToken } } : {}),
+  unregisterToken: (token: string, authToken?: string): Promise<AxiosResponse> =>
+    api.post('/notification/token/unregister', { token }, authToken ? { headers: { Authorization: authToken } } : {}),
+  sendTest: (payload: { title?: string; body?: string; data?: Record<string, string> }, authToken?: string): Promise<AxiosResponse> =>
+    api.post('/notification/send-test', payload || {}, authToken ? { headers: { Authorization: authToken } } : {}),
+};
+
 
 export const friendAPI = {
   getFriendList: (profileId: string): Promise<AxiosResponse> => 

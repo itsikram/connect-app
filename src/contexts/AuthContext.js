@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, userAPI } from '../lib/api';
+import { registerTokenWithServer, unregisterTokenWithServer, listenForegroundMessages, listenTokenRefresh } from '../lib/push';
 
 export const AuthContext = createContext();
 
@@ -68,6 +69,11 @@ export const AuthProvider = ({ children }) => {
 
       setUser(userData);
       
+      // Register push token after login
+      try {
+        await registerTokenWithServer();
+      } catch (e) { }
+
       // Fetch fresh profile data after login (ensure it is an ID)
       const profileId = typeof profile === 'string' ? profile : profile?._id;
       if (profileId) {
@@ -121,6 +127,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {
+      try { await unregisterTokenWithServer(); } catch (e) {}
       // Clear stored data regardless of API call success
       await AsyncStorage.multiRemove(['user', 'authToken']);
       setUser(null);
@@ -158,6 +165,13 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     checkUser();
+    // push listeners
+    const unsubMsg = listenForegroundMessages();
+    const unsubToken = listenTokenRefresh();
+    return () => {
+      try { unsubMsg && unsubMsg(); } catch (e) {}
+      try { unsubToken && unsubToken(); } catch (e) {}
+    };
   }, []);
 
   const value = {
