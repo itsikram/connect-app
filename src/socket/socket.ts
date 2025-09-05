@@ -14,9 +14,37 @@ const getUserData = async () => {
     }
 }
 
+const waitForConnect = (s: Socket): Promise<Socket> => {
+    return new Promise((resolve, reject) => {
+        if (s.connected) {
+            return resolve(s);
+        }
+        const onConnect = () => {
+            s.off('connect', onConnect);
+            s.off('connect_error', onError);
+            resolve(s);
+        };
+        const onError = (err: any) => {
+            s.off('connect', onConnect);
+            s.off('connect_error', onError);
+            reject(err);
+        };
+        s.on('connect', onConnect);
+        s.on('connect_error', onError);
+        setTimeout(() => {
+            s.off('connect', onConnect);
+            s.off('connect_error', onError);
+            reject(new Error('Socket connect timeout'));
+        }, 20000);
+    });
+}
+
 export const initializeSocket = async (profileId: string): Promise<Socket> => {
     if (socket) {
-        return socket;
+        if (socket.connected) {
+            return socket;
+        }
+        return await waitForConnect(socket);
     }
 
     try {
@@ -47,7 +75,8 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
             console.log('Socket disconnected:', reason);
         });
 
-        return socket;
+        // Wait for actual connection before resolving
+        return await waitForConnect(socket);
     } catch (error) {
         console.error('Failed to initialize socket:', error);
         throw error;

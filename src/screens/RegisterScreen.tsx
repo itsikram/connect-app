@@ -36,92 +36,216 @@ const RegisterScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [error, setError] = useState('');
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [isLoading, setIsLoading] = useState(false);
   const { colors: themeColors } = useTheme();
   const bottomBarBg = themeColors.surface.secondary;
 
-  // Validation per tab
-  const validateTab = () => {
-    if (tab === 0) {
-      if (!formData.firstName) return 'First Name is required';
-      if (!/^[A-Za-z]+$/.test(formData.firstName)) return 'First Name must contain only letters';
-      if (formData.firstName.length < 2) return 'First Name must be at least 2 characters';
-      if (!formData.surname) return 'Surname is required';
-      if (!/^[A-Za-z]+$/.test(formData.surname)) return 'Surname must contain only letters';
-      if (formData.surname.length < 2) return 'Surname must be at least 2 characters';
-    }
-    if (tab === 1) {
-      if (!formData.email) return 'Email is required';
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(formData.email)) return 'Invalid email address';
-      if (!formData.DOB) return 'Date of Birth is required';
-      const now = new Date();
-      const minAge = 13;
-      const dob = formData.DOB;
-      if (dob) {
-        const age = now.getFullYear() - dob.getFullYear() - (now < new Date(dob.setFullYear(now.getFullYear())) ? 1 : 0);
+  // Individual field validation
+  const validateField = (fieldName: string, value: any) => {
+    switch (fieldName) {
+      case 'firstName':
+        if (!value) return 'First Name is required';
+        if (!/^[A-Za-z\s]+$/.test(value)) return 'First Name must contain only letters';
+        if (value.length < 2) return 'First Name must be at least 2 characters';
+        return '';
+      case 'surname':
+        if (!value) return 'Surname is required';
+        if (!/^[A-Za-z\s]+$/.test(value)) return 'Surname must contain only letters';
+        if (value.length < 2) return 'Surname must be at least 2 characters';
+        return '';
+      case 'email':
+        if (!value) return 'Email is required';
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value)) return 'Invalid email address';
+        return '';
+      case 'DOB':
+        if (!value) return 'Date of Birth is required';
+        const now = new Date();
+        const minAge = 13;
+        const birthDate = new Date(value);
+        const currentYear = now.getFullYear();
+        const birthYear = birthDate.getFullYear();
+        
+        // Calculate age properly without mutating the original date
+        let age = currentYear - birthYear;
+        const currentMonth = now.getMonth();
+        const birthMonth = birthDate.getMonth();
+        
+        // Adjust age if birthday hasn't occurred this year
+        if (currentMonth < birthMonth || (currentMonth === birthMonth && now.getDate() < birthDate.getDate())) {
+          age--;
+        }
+        
         if (age < minAge) return 'You must be at least 13 years old';
-      }
-      if (!formData.gender) return 'Gender is required';
-      if (!['male', 'female', 'other'].includes(formData.gender)) return 'Invalid gender selected';
+        return '';
+      case 'gender':
+        if (!value) return 'Gender is required';
+        if (!['male', 'female', 'other'].includes(value)) return 'Invalid gender selected';
+        return '';
+      case 'password':
+        if (!value) return 'Password is required';
+        if (value.length < 8) return 'Password must be at least 8 characters';
+        if (!/[A-Za-z]/.test(value)) return 'Password must contain at least one letter';
+        if (!/[0-9]/.test(value)) return 'Password must contain at least one number';
+        if (!/[!@#$%^&*(),.?":{}|<>]/.test(value)) return 'Password must contain at least one special character';
+        return '';
+      case 'confirmPassword':
+        if (!value) return 'Confirm Password is required';
+        if (value !== formData.password) return 'Passwords do not match';
+        return '';
+      default:
+        return '';
     }
-    if (tab === 2) {
-      if (!formData.password) return 'Password is required';
-      if (formData.password.length < 6) return 'Password must be at least 6 characters';
-      if (!/[A-Za-z]/.test(formData.password) || !/[0-9]/.test(formData.password)) return 'Password must contain at least one letter and one number';
-      if (!formData.confirmPassword) return 'Confirm Password is required';
-      if (formData.password !== formData.confirmPassword) return 'Passwords do not match';
+  };
+
+  // Validation per tab
+  const validateTab = (tabIndex: number = tab) => {
+    const errors: Record<string, string> = {};
+    
+    if (tabIndex === 0) {
+      const firstNameError = validateField('firstName', formData.firstName);
+      const surnameError = validateField('surname', formData.surname);
+      if (firstNameError) errors.firstName = firstNameError;
+      if (surnameError) errors.surname = surnameError;
     }
-    return '';
+    if (tabIndex === 1) {
+      const emailError = validateField('email', formData.email);
+      const dobError = validateField('DOB', formData.DOB);
+      const genderError = validateField('gender', formData.gender);
+      if (emailError) errors.email = emailError;
+      if (dobError) errors.DOB = dobError;
+      if (genderError) errors.gender = genderError;
+    }
+    if (tabIndex === 2) {
+      const passwordError = validateField('password', formData.password);
+      const confirmPasswordError = validateField('confirmPassword', formData.confirmPassword);
+      if (passwordError) errors.password = passwordError;
+      if (confirmPasswordError) errors.confirmPassword = confirmPasswordError;
+    }
+    
+    return errors;
+  };
+
+  // Get first error message from validation errors
+  const getFirstError = (errors: Record<string, string>) => {
+    const errorKeys = Object.keys(errors);
+    return errorKeys.length > 0 ? errors[errorKeys[0]] : '';
+  };
+
+  // Check if tab is completed (valid)
+  const isTabCompleted = (tabIndex: number) => {
+    const errors = validateTab(tabIndex);
+    return Object.keys(errors).length === 0;
   };
 
   const handleTabPress = (idx: number) => {
     setError('');
+    setFieldErrors({});
     setTab(idx);
   };
 
   const handleNext = () => {
-    const err = validateTab();
-    if (err) { setError(err); return; }
+    const errors = validateTab();
+    const firstError = getFirstError(errors);
+    
+    if (firstError) { 
+      setError(firstError);
+      setFieldErrors(errors);
+      return; 
+    }
+    
     setError('');
+    setFieldErrors({});
     setTab(tab + 1);
   };
 
   const handleBack = () => {
     setError('');
+    setFieldErrors({});
     setTab(tab - 1);
   };
 
-  const handleRegister = async () => {
-    for (let i = 0; i < TABS.length; i++) {
-      setTab(i);
-      const err = validateTab();
-      if (err) { setError(err); return; }
+  // Real-time field validation
+  const handleFieldChange = (fieldName: string, value: any) => {
+    setFormData(f => ({ ...f, [fieldName]: value }));
+    
+    // Clear field error when user starts typing
+    if (fieldErrors[fieldName]) {
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[fieldName];
+        return newErrors;
+      });
     }
+    
+    // Clear general error if it exists
+    if (error) {
+      setError('');
+    }
+  };
+
+  const handleRegister = async () => {
+    setIsLoading(true);
+    
+    // Validate all tabs
+    let allErrors: Record<string, string> = {};
+    let firstInvalidTab = -1;
+    
+    for (let i = 0; i < TABS.length; i++) {
+      const tabErrors = validateTab(i);
+      allErrors = { ...allErrors, ...tabErrors };
+      
+      if (Object.keys(tabErrors).length > 0 && firstInvalidTab === -1) {
+        firstInvalidTab = i;
+      }
+    }
+    
+    if (Object.keys(allErrors).length > 0) {
+      const firstError = getFirstError(allErrors);
+      setError(firstError);
+      setFieldErrors(allErrors);
+      setTab(firstInvalidTab); // Navigate to first invalid tab
+      setIsLoading(false);
+      return;
+    }
+    
     setError('');
+    setFieldErrors({});
+    
     try {
       const body = {
-        firstName: formData.firstName,
-        surname: formData.surname,
-        email: formData.email,
+        firstName: formData.firstName.trim(),
+        surname: formData.surname.trim(),
+        email: formData.email.toLowerCase().trim(),
         DOB: formData.DOB,
         gender: formData.gender,
         password: formData.password,
       };
+      
       let signupResponse = await authAPI.signup(body);
-      console.log('Registration successful!',signupResponse);
+      console.log('Registration successful!', signupResponse);
+      
       if (signupResponse?.status === 201) {
         Toast.show({
           type: 'success',
-          text1: 'Account creation successful'
+          text1: 'Account created successfully!',
+          text2: 'Please sign in with your new account'
         });
         navigation.navigate('Login');
       }
     } catch (e) {
       const err = e as any;
       let errorMsg = err?.response?.data?.message || err?.message || 'Registration failed. Please try again.';
+      
       Toast.show({
         type: 'error',
-        text1: errorMsg
+        text1: 'Registration Failed',
+        text2: errorMsg
       });
+      
+      setError(errorMsg);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -132,16 +256,34 @@ const RegisterScreen = () => {
       {/* Tab headers - fixed width, centered, pill/rounded style */}
       <View style={styles.tabHeaderContainerOuter}>
         <View style={[styles.tabHeaderContainer, { backgroundColor: bottomBarBg }]}>
-          {TABS.map((t, idx) => (
-            <TouchableOpacity
-              key={t.key}
-              style={[styles.tabHeaderPill, tab === idx && [styles.tabHeaderPillActive, { backgroundColor: themeColors.primary }]]}
-              onPress={() => handleTabPress(idx)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.tabHeaderText, { color: themeColors.primary }, tab === idx && styles.tabHeaderTextActive, tab === idx && { color: '#fff' }]}>{t.label}</Text>
-            </TouchableOpacity>
-          ))}
+          {TABS.map((t, idx) => {
+            const isActive = tab === idx;
+            const isCompleted = isTabCompleted(idx);
+            const pillStyle = [
+              styles.tabHeaderPill,
+              isActive && [styles.tabHeaderPillActive, { backgroundColor: themeColors.primary }],
+              !isActive && isCompleted && [styles.tabHeaderPillCompleted, { backgroundColor: '#4CAF50' }]
+            ];
+            const textStyle = [
+              styles.tabHeaderText, 
+              { color: themeColors.primary }, 
+              (isActive || isCompleted) && styles.tabHeaderTextActive, 
+              (isActive || isCompleted) && { color: '#fff' }
+            ];
+            
+            return (
+              <TouchableOpacity
+                key={t.key}
+                style={pillStyle}
+                onPress={() => handleTabPress(idx)}
+                activeOpacity={0.8}
+              >
+                <Text style={textStyle}>
+                  {isCompleted && !isActive ? '✓ ' : ''}{t.label}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
       </View>
       {error ? <Text style={styles.error}>{error}</Text> : null}
@@ -152,21 +294,36 @@ const RegisterScreen = () => {
             mode="outlined"
             label="First Name"
             value={formData.firstName}
-            onChangeText={v => setFormData(f => ({ ...f, firstName: v }))}
+            onChangeText={v => handleFieldChange('firstName', v)}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
-            error={!!error && error.toLowerCase().includes('first name')}
+            error={!!fieldErrors.firstName}
             theme={{ colors: { primary: themeColors.primary } }}
+            autoCapitalize="words"
           />
+          {fieldErrors.firstName && (
+            <Text style={styles.fieldError}>{fieldErrors.firstName}</Text>
+          )}
+          
           <PaperTextInput
             mode="outlined"
             label="Surname"
             value={formData.surname}
-            onChangeText={v => setFormData(f => ({ ...f, surname: v }))}
+            onChangeText={v => handleFieldChange('surname', v)}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
-            error={!!error && error.toLowerCase().includes('surname')}
+            error={!!fieldErrors.surname}
             theme={{ colors: { primary: themeColors.primary } }}
+            autoCapitalize="words"
           />
-          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
+          {fieldErrors.surname && (
+            <Text style={styles.fieldError}>{fieldErrors.surname}</Text>
+          )}
+          
+          <Button 
+            mode="contained" 
+            onPress={handleNext} 
+            style={[styles.button, { backgroundColor: themeColors.primary }]} 
+            labelStyle={{ color: '#fff' }}
+          >
             <Text style={{ color: '#fff' }}>Next</Text>
           </Button>
         </View>
@@ -175,20 +332,41 @@ const RegisterScreen = () => {
         <View style={styles.tabContent}>
           <PaperTextInput
             mode="outlined"
-            label="Email"
+            label="Email Address"
             value={formData.email}
-            onChangeText={v => setFormData(f => ({ ...f, email: v }))}
+            onChangeText={v => handleFieldChange('email', v)}
             autoCapitalize="none"
             keyboardType="email-address"
             style={[styles.input, { backgroundColor: bottomBarBg }]}
-            error={!!error && error.toLowerCase().includes('email')}
+            error={!!fieldErrors.email}
             theme={{ colors: { primary: themeColors.primary } }}
           />
-          <Button mode="outlined" color={themeColors.primary} onPress={() => setShowDatePicker(true)} style={[styles.input, { backgroundColor: bottomBarBg, borderColor: themeColors.primary, borderWidth: 1 }]} labelStyle={{ color: themeColors.primary }}>
-            <Text style={{ color: themeColors.primary }}>
+          {fieldErrors.email && (
+            <Text style={styles.fieldError}>{fieldErrors.email}</Text>
+          )}
+          
+          <TouchableOpacity
+            onPress={() => setShowDatePicker(true)}
+            style={[
+              styles.datePickerButton, 
+              { 
+                backgroundColor: bottomBarBg, 
+                borderColor: fieldErrors.DOB ? '#ff0000' : themeColors.primary,
+                borderWidth: fieldErrors.DOB ? 2 : 1
+              }
+            ]}
+          >
+            <Text style={[
+              styles.datePickerText, 
+              { color: formData.DOB ? themeColors.text.primary : themeColors.text.secondary }
+            ]}>
               {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
             </Text>
-          </Button>
+          </TouchableOpacity>
+          {fieldErrors.DOB && (
+            <Text style={styles.fieldError}>{fieldErrors.DOB}</Text>
+          )}
+          
           {showDatePicker && (
             <DateTimePicker
               value={formData.DOB || new Date(2000, 0, 1)}
@@ -196,28 +374,52 @@ const RegisterScreen = () => {
               display="default"
               onChange={(_, date) => {
                 setShowDatePicker(false);
-                if (date) setFormData(f => ({ ...f, DOB: date }));
+                if (date) handleFieldChange('DOB', date);
               }}
               maximumDate={new Date()}
             />
           )}
-          <View style={styles.radioGroup}>
-            <Text style={[styles.radioLabel, { color: themeColors.text.secondary }]}>Gender:</Text>
+          
+          <View style={[styles.radioGroup, fieldErrors.gender && styles.radioGroupError]}>
+            <Text style={[styles.radioLabel, { color: themeColors.text.primary }]}>Gender:</Text>
             <RadioButton.Group
-              onValueChange={v => setFormData(f => ({ ...f, gender: v }))}
+              onValueChange={v => handleFieldChange('gender', v)}
               value={formData.gender}
             >
               <View style={styles.radioRow}>
-                <RadioButton value="male" /><Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Male</Text>
-                <RadioButton value="female" /><Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Female</Text>
-                <RadioButton value="other" /><Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Other</Text>
+                <View style={styles.radioOption}>
+                  <RadioButton value="male" />
+                  <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Male</Text>
+                </View>
+                <View style={styles.radioOption}>
+                  <RadioButton value="female" />
+                  <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Female</Text>
+                </View>
+                <View style={styles.radioOption}>
+                  <RadioButton value="other" />
+                  <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Other</Text>
+                </View>
               </View>
             </RadioButton.Group>
           </View>
-          <Button mode="contained" onPress={handleNext} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
+          {fieldErrors.gender && (
+            <Text style={styles.fieldError}>{fieldErrors.gender}</Text>
+          )}
+          
+          <Button 
+            mode="contained" 
+            onPress={handleNext} 
+            style={[styles.button, { backgroundColor: themeColors.primary }]} 
+            labelStyle={{ color: '#fff' }}
+          >
             <Text style={{ color: '#fff' }}>Next</Text>
           </Button>
-          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
+          <Button 
+            mode="text" 
+            onPress={handleBack} 
+            style={[styles.button, { backgroundColor: 'transparent' }]} 
+            labelStyle={{ color: themeColors.primary }}
+          >
             <Text style={{ color: themeColors.primary }}>Back</Text>
           </Button>
         </View>
@@ -228,28 +430,86 @@ const RegisterScreen = () => {
             mode="outlined"
             label="Password"
             value={formData.password}
-            onChangeText={v => setFormData(f => ({ ...f, password: v }))}
+            onChangeText={v => handleFieldChange('password', v)}
             secureTextEntry={!showPassword}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
-            error={!!error && error.toLowerCase().includes('password') && !error.toLowerCase().includes('confirm')}
+            error={!!fieldErrors.password}
             theme={{ colors: { primary: themeColors.primary } }}
             right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
           />
+          {fieldErrors.password && (
+            <Text style={styles.fieldError}>{fieldErrors.password}</Text>
+          )}
+          
           <PaperTextInput
             mode="outlined"
             label="Confirm Password"
             value={formData.confirmPassword}
-            onChangeText={v => setFormData(f => ({ ...f, confirmPassword: v }))}
+            onChangeText={v => handleFieldChange('confirmPassword', v)}
             secureTextEntry={!showConfirmPassword}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
-            error={!!error && error.toLowerCase().includes('confirm')}
+            error={!!fieldErrors.confirmPassword}
             theme={{ colors: { primary: themeColors.primary } }}
             right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword(v => !v)} />}
           />
-          <Button mode="contained" onPress={handleRegister} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
-            <Text style={{ color: '#fff' }}>Register</Text>
+          {fieldErrors.confirmPassword && (
+            <Text style={styles.fieldError}>{fieldErrors.confirmPassword}</Text>
+          )}
+          
+          {/* Password strength indicator */}
+          {formData.password && (
+            <View style={styles.passwordStrength}>
+              <Text style={[styles.passwordStrengthTitle, { color: themeColors.text.secondary }]}>
+                Password Requirements:
+              </Text>
+              <View style={styles.passwordRequirements}>
+                <Text style={[
+                  styles.passwordRequirement, 
+                  { color: formData.password.length >= 8 ? '#4CAF50' : themeColors.text.secondary }
+                ]}>
+                  ✓ At least 8 characters
+                </Text>
+                <Text style={[
+                  styles.passwordRequirement, 
+                  { color: /[A-Za-z]/.test(formData.password) ? '#4CAF50' : themeColors.text.secondary }
+                ]}>
+                  ✓ Contains letters
+                </Text>
+                <Text style={[
+                  styles.passwordRequirement, 
+                  { color: /[0-9]/.test(formData.password) ? '#4CAF50' : themeColors.text.secondary }
+                ]}>
+                  ✓ Contains numbers
+                </Text>
+                <Text style={[
+                  styles.passwordRequirement, 
+                  { color: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? '#4CAF50' : themeColors.text.secondary }
+                ]}>
+                  ✓ Contains special characters
+                </Text>
+              </View>
+            </View>
+          )}
+          
+          <Button 
+            mode="contained" 
+            onPress={handleRegister} 
+            loading={isLoading}
+            disabled={isLoading}
+            style={[styles.button, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]} 
+            labelStyle={{ color: '#fff' }}
+          >
+            <Text style={{ color: '#fff' }}>
+              {isLoading ? 'Creating Account...' : 'Register'}
+            </Text>
           </Button>
-          <Button mode="text" onPress={handleBack} style={[styles.button, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
+          <Button 
+            mode="text" 
+            onPress={handleBack} 
+            disabled={isLoading}
+            style={[styles.button, { backgroundColor: 'transparent' }]} 
+            labelStyle={{ color: themeColors.primary }}
+          >
             <Text style={{ color: themeColors.primary }}>Back</Text>
           </Button>
         </View>
@@ -303,6 +563,9 @@ const styles = StyleSheet.create({
   tabHeaderPillActive: {
     backgroundColor: '#29b1a9',
   },
+  tabHeaderPillCompleted: {
+    backgroundColor: '#4CAF50',
+  },
   tabHeaderText: {
     color: '#29b1a9',
     fontSize: 14,
@@ -318,7 +581,7 @@ const styles = StyleSheet.create({
   },
   input: {
     width: 280,
-    marginBottom: 16,
+    marginBottom: 8,
   },
   button: {
     width: 280,
@@ -337,25 +600,78 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     fontSize: 14,
     textAlign: 'center',
+    fontWeight: '500',
+  },
+  fieldError: {
+    color: '#ff0000',
+    fontSize: 12,
+    marginBottom: 16,
+    marginTop: -4,
+    width: 280,
+    textAlign: 'left',
+  },
+  datePickerButton: {
+    width: 280,
+    minHeight: 56,
+    borderRadius: 4,
+    borderWidth: 1,
+    justifyContent: 'center',
+    paddingHorizontal: 12,
+    marginBottom: 8,
+  },
+  datePickerText: {
+    fontSize: 16,
   },
   radioGroup: {
     width: 280,
-    marginBottom: 16,
+    marginBottom: 8,
+  },
+  radioGroupError: {
+    borderColor: '#ff0000',
+    borderWidth: 1,
+    borderRadius: 4,
+    padding: 8,
   },
   radioRow: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 8,
+  },
+  radioOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
   },
   radioLabel: {
     fontSize: 16,
     marginBottom: 4,
-    color: '#29b1a9',
+    fontWeight: '500',
   },
   radioText: {
-    fontSize: 16,
-    marginRight: 16,
-    color: '#29b1a9',
+    fontSize: 14,
+    marginLeft: 4,
+  },
+  passwordStrength: {
+    width: 280,
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  passwordStrengthTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  passwordRequirements: {
+    gap: 4,
+  },
+  passwordRequirement: {
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
 

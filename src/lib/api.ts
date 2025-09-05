@@ -155,7 +155,7 @@ export const authAPI = {
 
 export const userAPI = {
   getProfile: (profileId: string): Promise<AxiosResponse> => 
-    api.get(`/profile?profileId=${profileId}`),
+    api.get(`/profile/?profileId=${profileId}`),
 
   updateProfile: (userData: any): Promise<AxiosResponse> => 
     api.post('/profile', userData),

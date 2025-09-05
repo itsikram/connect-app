@@ -25,7 +25,7 @@ import Settings from './src/screens/Settings';
 import MyProfile from './src/screens/MyProfile';
 import Friends from './src/screens/Friends';
 // Redux Provider and store
-import { Provider, useSelector } from 'react-redux';
+import { Provider, useSelector, useDispatch } from 'react-redux';
 import store, { RootState } from './src/store';
 // Profile data hook
 import { useProfileData } from './src/hooks/useProfileData';
@@ -40,6 +40,10 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
 import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext';
+
+import Tts from 'react-native-tts';
+import { addNotifications } from './src/reducers/notificationReducer';
+import api from './src/lib/api';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -94,6 +98,14 @@ function AppContent() {
   const { showInfo } = useToast();
   const navigation = useNavigation();
   const [screen, setScreen] = React.useState<string>('');
+  const dispatch = useDispatch();
+
+  React.useEffect(() => {
+    // Optional: set default language and speech rate
+    Tts.setDefaultLanguage('en-US');
+    Tts.setDefaultRate(0.7); // speed: 0.1 - 1.0
+    Tts.voices().then(voices => console.log(voices));
+  }, []);
 
   React.useEffect(() => {
     // Use navigation state to get current route
@@ -124,7 +136,11 @@ function AppContent() {
   // Fetch initial notifications
   React.useEffect(() => {
     if (myProfile?._id) {
-      emit('fetchNotifications', myProfile._id);
+      // emit('fetchNotifications', myProfile._id);
+      api.get('/notification/').then((res) => {
+        dispatch(addNotifications(res.data))
+        console.log('notifications', res.data)
+      })
     }
   }, [myProfile?._id, emit]);
 
@@ -201,12 +217,21 @@ function AppContent() {
       }
     }
 
+    let handleSpeakMessage = (message: any) => {
+
+      Tts.speak('lorem ipsum'+message);
+      console.log('message', message)
+    }
+
     on('newNotification', handleNewNotification)
+
+    on('speak_message', handleSpeakMessage)
 
     return () => {
       off('bumpUser',handleBumpUser)
       off('newMessageToUser',handleNewMessage)
       off('newNotification', handleNewNotification)
+      off('speak_message', handleSpeakMessage)
     }
   }, [isConnected,on,off,screen])
 
