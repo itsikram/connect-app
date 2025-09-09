@@ -10,6 +10,7 @@ import { RootState } from '../store';
 import DebugInfo from '../components/DebugInfo';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StorySlider from '../components/StorySlider';
+import PostSkeleton from '../components/skeleton/PostSkeleton';
 
 
 const Home = () => {
@@ -149,10 +150,7 @@ const Home = () => {
                 }
                 renderItem={({ item }) => <Post key={item._id} data={item} onPostDeleted={handlePostDeleted} />}
                 ListEmptyComponent={loading ? (
-                    <View style={{ alignItems: 'center', marginTop: 40 }}>
-                        <ActivityIndicator size="large" color={themeColors.primary} />
-                        <Text style={{ color: textColor, marginTop: 16 }}>Loading posts...</Text>
-                    </View>
+                    <PostSkeleton count={3} />
                 ) : error ? (
                     <View style={{ alignItems: 'center', marginTop: 40 }}>
                         <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
@@ -170,10 +168,7 @@ const Home = () => {
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={loadingMore && !loading ? (
-                    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
-                        <ActivityIndicator size="small" color={themeColors.primary} />
-                        <Text style={{ color: textColor, marginTop: 8 }}>Loading more...</Text>
-                    </View>
+                    <PostSkeleton count={1} />
                 ) : null}
                 refreshControl={
                     <RefreshControl

@@ -21,6 +21,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
+import { ChatHeaderSkeleton, ChatBubblesSkeleton } from '../components/skeleton/ChatSkeleton';
 import UserPP from '../components/UserPP';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -211,13 +212,12 @@ const SingleMessage = () => {
         };
     }, [isConnected, myProfile?._id, on, off]);
 
-    // Early return if required data is not available
+    // Early return with skeletons if required data is not available
     if (!friend?._id || !myProfile?._id) {
         return (
             <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                    <Text>Loading...</Text>
-                </View>
+                <ChatHeaderSkeleton />
+                <ChatBubblesSkeleton count={12} />
             </SafeAreaView>
         );
     }

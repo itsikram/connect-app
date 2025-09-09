@@ -47,6 +47,7 @@ import FacebookHeader from './src/components/FacebookHeader';
 import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext';
 import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
+import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
@@ -96,6 +97,30 @@ function MenuStack() {
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="Settings" component={Settings} />
     </Stack.Navigator>
+  );
+}
+
+// Navigation container wrapper with a global top progress bar
+function AppWithTopProgress() {
+  const progressRef = React.useRef<TopNavigationProgressRef>(null);
+  const readyRef = React.useRef(false);
+
+  return (
+    <NavigationContainer
+      onReady={() => {
+        readyRef.current = true;
+      }}
+      onStateChange={() => {
+        if (readyRef.current) {
+          progressRef.current?.trigger();
+        }
+      }}
+    >
+      <View style={{ flex: 1 }}>
+        <TopNavigationProgress ref={progressRef} />
+        <AppContent />
+      </View>
+    </NavigationContainer>
   );
 }
 
@@ -463,9 +488,7 @@ function App() {
                       <UserToastProvider>
                         <SettingsProvider>
                           <HeaderVisibilityProvider>
-                            <NavigationContainer>
-                              <AppContent />
-                            </NavigationContainer>
+                            <AppWithTopProgress />
                           </HeaderVisibilityProvider>
                         </SettingsProvider>
                       </UserToastProvider>

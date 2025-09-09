@@ -5,6 +5,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { friendAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
+import FriendCardSkeleton from '../components/skeleton/FriendCardSkeleton';
 
 
 const Friends = () => {
@@ -123,6 +124,9 @@ const Friends = () => {
           </TouchableOpacity>
         </View>
         <View style={styles.friendGridContainer}>
+          {friendRequests.length === 0 && (
+            <FriendCardSkeleton count={4} />
+          )}
           {friendRequests.length > 0 && friendRequests.map((friend: any) => (
             <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
@@ -153,6 +157,9 @@ const Friends = () => {
           <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
         </View>
         <View style={styles.friendGridContainer}>
+          {friendSuggestions.length === 0 && (
+            <FriendCardSkeleton count={6} />
+          )}
           {friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
             <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>

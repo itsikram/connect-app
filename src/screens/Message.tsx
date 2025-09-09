@@ -10,6 +10,8 @@ import { useTheme } from '../contexts/ThemeContext';
 // import { useSocket } from '../contexts/SocketContext';
 import { fetchChatList } from '../reducers/chatReducer';
 import moment from 'moment';
+import ListItemSkeleton from '../components/skeleton/ListItemSkeleton';
+import { ChatHeaderSkeleton } from '../components/skeleton/ChatSkeleton';
 
 
 
@@ -98,10 +100,11 @@ const Message = () => {
 
   if (isLoading) {
     return (
-      <View style={[styles.loadingContainer, { backgroundColor: themeColors.background.primary }]}>
-        <ActivityIndicator size="large" color={themeColors.primary} />
-        <Text style={{ color: themeColors.text.primary }}>Loading profile...</Text>
-      </View>
+      <ScrollView style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]} contentContainerStyle={styles.container}>
+        <ChatHeaderSkeleton />
+        <Text style={[styles.heading, { color: themeColors.text.primary, marginTop: 8 }]}>Messages</Text>
+        <ListItemSkeleton count={8} />
+      </ScrollView>
     );
   }
 
@@ -207,11 +210,17 @@ const Message = () => {
       <FlatList
         data={chatList}
         style={styles.contactListContainer}
-        renderItem={({ item }: { item: any }) => {
+        renderItem={({ item, index }: { item: any, index: number }) => {
           const last = item?.messages?.[0];
           return (
             <TouchableOpacity
-              style={[styles.messageItem, { borderBottomColor: themeColors.border.secondary }]}
+              style={[
+                styles.messageItem,
+                {
+                  borderBottomColor: themeColors.border.secondary,
+                  borderBottomWidth: index === ((chatList?.length || 0) - 1) ? 0 : 1,
+                }
+              ]}
               onPress={() => {
                 (navigation as any).navigate('SingleMessage', { friend: item?.person as any });
               }}
@@ -240,6 +249,7 @@ const Message = () => {
           (item?.person?._id && item?.person?._id.toString()) || String(item?.id || Math.random())
         }
         scrollEnabled={false}
+        ListEmptyComponent={<ListItemSkeleton count={8} />}
       />
     </ScrollView>
   );
