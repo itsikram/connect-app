@@ -5,6 +5,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import Video from 'react-native-video';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 interface IncomingCallParams {
   callerId: string;
@@ -20,23 +22,30 @@ const IncomingCall: React.FC = () => {
   const route = useRoute();
   const { answerVideoCall, answerAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [playRingtone, setPlayRingtone] = useState(true);
+  const myProfile = useSelector((state: RootState) => state.profile);
 
   const safeGoBack = () => {
+    console.log('🚪 IncomingCall safeGoBack called for callerId:', callerId);
+    setPlayRingtone(false);
     try {
-      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        (navigation as any).goBack();
-      } else {
-        (navigation as any).navigate('Message', { screen: 'MessageList' });
-      }
-    } catch (e) {}
+      // Always navigate to MessageList instead of going back to ensure clean state
+      (navigation as any).navigate('Message', { 
+        screen: 'MessageList',
+        params: {} // Clear any params
+      });
+    } catch (e) {
+      console.error('Failed to navigate back from IncomingCall:', e);
+    }
   };
 
   const params = route.params as unknown as IncomingCallParams;
   const { callerId, callerName, callerProfilePic, channelName, isAudio } = params || {} as IncomingCallParams;
 
+  // Auto-dismiss if no valid call parameters (prevents showing without actual incoming call)
   useEffect(() => {
     if (!callerId || !channelName) {
-      navigation.goBack();
+      console.log('🚫 IncomingCall: No valid call parameters, navigating to MessageList');
+      (navigation as any).navigate('Message', { screen: 'MessageList' });
     }
   }, [callerId, channelName, navigation]);
 
@@ -73,30 +82,51 @@ const IncomingCall: React.FC = () => {
 
   // Close this screen if the remote cancels/ends before we accept
   useEffect(() => {
-    const handleEnd = () => {
-      setPlayRingtone(false);
-      safeGoBack();
+    // Only close if the event corresponds to the same call (by friendId or channel)
+    const handleEnd = (friendId?: string) => {
+      console.log('📞 IncomingCall handleEnd called:', { friendId, callerId, shouldClose: friendId === callerId });
+      if (!callerId) return;
+      if (friendId === callerId) {
+        console.log('🚪 IncomingCall closing due to call end from caller');
+        setPlayRingtone(false);
+        safeGoBack();
+      }
     };
-    const handleAccepted = () => {
-      setPlayRingtone(false);
-      safeGoBack();
+    const handleAccepted = (payload?: { channelName?: string }) => {
+      console.log('✅ IncomingCall handleAccepted called:', { payloadChannel: payload?.channelName, currentChannel: channelName, shouldClose: payload?.channelName === channelName });
+      if (!channelName) return;
+      if (payload?.channelName === channelName) {
+        console.log('🚪 IncomingCall closing due to call accepted');
+        setPlayRingtone(false);
+        safeGoBack();
+      }
     };
 
+    console.log('🎧 IncomingCall setting up event listeners for callerId:', callerId, 'channelName:', channelName);
     on('videoCallEnd', handleEnd);
     on('audioCallEnd', handleEnd);
     on('agora-call-accepted', handleAccepted);
 
     return () => {
+      console.log('🧹 IncomingCall cleaning up event listeners for callerId:', callerId);
       off('videoCallEnd', handleEnd);
       off('audioCallEnd', handleEnd);
       off('agora-call-accepted', handleAccepted);
     };
-  }, [on, off, navigation]);
+  }, [on, off, navigation, callerId, channelName]);
 
-  // Ensure ringtone stops on unmount
+  // Ensure ringtone stops on unmount and clean up
   useEffect(() => {
-    return () => setPlayRingtone(false);
+    return () => {
+      console.log('🧹 IncomingCall component unmounting, cleaning up');
+      setPlayRingtone(false);
+    };
   }, []);
+
+  // Don't render anything if no valid call parameters
+  if (!callerId || !channelName) {
+    return null;
+  }
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>

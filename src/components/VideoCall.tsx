@@ -64,8 +64,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const engineRef = useRef<RtcEngine | null>(null);
   const localUidRef = useRef<number | null>(null);
   const isJoiningRef = useRef<boolean>(false);
+  const isLeavingRef = useRef<boolean>(false);
+  const cancelJoinRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
   const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
+  const isEndingCallRef = useRef<boolean>(false);
 
   // Refresh token when needed
   const refreshToken = async () => {
@@ -351,12 +354,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         console.log('Join already in progress, skipping duplicate join');
         return;
       }
+      if (isLeavingRef.current || cancelJoinRef.current) {
+        console.log('Leave/Cancel in progress, skipping join');
+        return;
+      }
       if (currentChannel === channelName && isConnected) {
         console.log('Already connected to this channel, skipping join');
         return;
       }
       isJoiningRef.current = true;
       const engine = await initializeEngine();
+      if (isLeavingRef.current || cancelJoinRef.current) {
+        console.log('Leave/Cancel detected after engine init, aborting join');
+        return;
+      }
       const numericUid = getStableNumericUid(myId);
       
       console.log('Getting token for video channel:', channelName, 'uid:', numericUid);
@@ -397,7 +408,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setCurrentChannel(null);
       
       // Clean up engine if it was created
-      if (engineRef.current) {
+      if (engineRef.current && !isLeavingRef.current) {
         try {
           await engineRef.current.destroy();
           engineRef.current = null;
@@ -414,6 +425,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Leave channel
   const leaveChannel = useCallback(async () => {
     try {
+      if (isLeavingRef.current) {
+        console.log('Leave already in progress, skipping');
+        return;
+      }
+      isLeavingRef.current = true;
+      cancelJoinRef.current = true;
+      // If a join is in progress, wait briefly until it settles to avoid race with destroy
+      while (isJoiningRef.current) {
+        console.log('Join in progress; delaying leave...');
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
       console.log('Attempting to leave video channel...');
       
       if (engineRef.current) {
@@ -429,7 +451,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         
         try {
           console.log('Destroying video engine...');
-          await engineRef.current.destroy();
+          const engine = engineRef.current;
+          await engine.destroy();
           console.log('Video engine destroyed successfully');
         } catch (destroyError: any) {
           console.warn('Error destroying video engine:', destroyError);
@@ -478,6 +501,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       isJoiningRef.current = false;
       callStartTime.current = null;
       engineRef.current = null;
+      isEndingCallRef.current = false;
+    }
+    finally {
+      isLeavingRef.current = false;
+      cancelJoinRef.current = false;
     }
   }, []);
 
@@ -492,6 +520,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   // End call
   const endCall = useCallback(async () => {
+    if (isEndingCallRef.current) {
+      console.log('VideoCall: endCall already in progress, skipping');
+      return;
+    }
+    isEndingCallRef.current = true;
+
+    console.log('VideoCall: Starting endCall process');
     if (currentChannel) {
       const callId = `video-${currentChannel}`;
       endMinimizedCall(callId);
@@ -499,8 +534,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     
     endVideoCall(incomingCall?.from || '');
     await leaveChannel();
+    
+    // Reset the flag after cleanup
+    isEndingCallRef.current = false;
+    
     try {
-      (navigation as any).navigate('Home', { screen: 'HomeMain' });
+      // (navigation as any).navigate('Home', { screen: 'HomeMain' });
     } catch (e) {}
   }, [currentChannel, incomingCall, endVideoCall, leaveChannel, endMinimizedCall, navigation]);
 
@@ -884,3 +923,4 @@ function getStableNumericUid(id: string): number {
   const uid = hash % 4000000000;
   return uid === 0 ? 1 : uid;
 }
+

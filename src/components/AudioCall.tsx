@@ -57,6 +57,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   const engineRef = useRef<RtcEngine | null>(null);
   const callStartTime = useRef<number | null>(null);
   const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
+  const isEndingCallRef = useRef<boolean>(false);
 
   // Get Agora token
   const getToken = async (channelName: string, uid: number = 0) => {
@@ -323,6 +324,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
 
   // End call
   const endCall = useCallback(async () => {
+    if (isEndingCallRef.current) {
+      console.log('AudioCall: endCall already in progress, skipping');
+      return;
+    }
+    isEndingCallRef.current = true;
+
+    console.log('AudioCall: Starting endCall process');
     if (currentChannel) {
       const callId = `audio-${currentChannel}`;
       endMinimizedCall(callId);
@@ -330,6 +338,10 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     
     endAudioCall(incomingCall?.from || '');
     await leaveChannel();
+    
+    // Reset the flag after cleanup
+    isEndingCallRef.current = false;
+    
     try {
       (navigation as any).navigate('Home', { screen: 'HomeMain' });
     } catch (e) {}

@@ -59,7 +59,10 @@ const Stack = createNativeStackNavigator();
 // Stack navigator for Message tab
 function MessageStack() {
   return (
-    <Stack.Navigator screenOptions={{ headerShown: false }}>
+    <Stack.Navigator 
+      screenOptions={{ headerShown: false }}
+      initialRouteName="MessageList"
+    >
       <Stack.Screen name="MessageList" component={Message} />
       <Stack.Screen name="SingleMessage" component={SingleMessage} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
@@ -109,6 +112,7 @@ function AppContent() {
   const navigation = useNavigation();
   const [screen, setScreen] = React.useState<string>('');
   const dispatch = useDispatch();
+  const [currentIncomingCall, setCurrentIncomingCall] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     // Optional: set default language and speech rate
@@ -121,11 +125,18 @@ function AppContent() {
     // Use navigation state to get current route
     const unsubscribe = navigation.addListener('state', () => {
       const currentRoute = navigation.getState()?.routes[navigation.getState()?.index || 0];
-      setScreen(currentRoute?.name || '');
+      const newScreen = currentRoute?.name || '';
+      setScreen(newScreen);
+      
+      // Clear incoming call state when navigating away from Message tab
+      if (newScreen !== 'Message' && currentIncomingCall) {
+        console.log('🔄 Clearing incoming call state due to navigation away from Message tab');
+        setCurrentIncomingCall(null);
+      }
     });
     
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, currentIncomingCall]);
 
   // Wire notification tap handler to open IncomingCall from full-screen notifications
   React.useEffect(() => {
@@ -184,8 +195,21 @@ function AppContent() {
 
     on('bumpUser', handleBumpUser)
 
+    // Clear current incoming call state when call ends or is accepted
+    const handleCallStateChange = () => {
+      console.log('🔄 Clearing current incoming call state');
+      setCurrentIncomingCall(null);
+    };
+
     // Navigate to IncomingCall screen on incoming video/audio call events
     const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
+      console.log('🔔 Incoming video call navigation triggered:', { from, channelName, callerName });
+      const callKey = `${from}-${channelName}`;
+      if (currentIncomingCall === callKey) {
+        console.log('🚫 Duplicate incoming call navigation ignored:', callKey);
+        return;
+      }
+      setCurrentIncomingCall(callKey);
       (navigation as any).navigate('Message', {
         screen: 'IncomingCall',
         params: {
@@ -198,6 +222,13 @@ function AppContent() {
       });
     };
     const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
+      console.log('🔔 Incoming audio call navigation triggered:', { from, channelName, callerName });
+      const callKey = `${from}-${channelName}`;
+      if (currentIncomingCall === callKey) {
+        console.log('🚫 Duplicate incoming call navigation ignored:', callKey);
+        return;
+      }
+      setCurrentIncomingCall(callKey);
       (navigation as any).navigate('Message', {
         screen: 'IncomingCall',
         params: {
@@ -212,6 +243,9 @@ function AppContent() {
 
     on('agora-incoming-video-call', handleIncomingVideo);
     on('agora-incoming-audio-call', handleIncomingAudio);
+    on('agora-call-accepted', handleCallStateChange);
+    on('videoCallEnd', handleCallStateChange);
+    on('audioCallEnd', handleCallStateChange);
 
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
@@ -283,6 +317,9 @@ function AppContent() {
       off('speak_message', handleSpeakMessage)
       off('agora-incoming-video-call', handleIncomingVideo)
       off('agora-incoming-audio-call', handleIncomingAudio)
+      off('agora-call-accepted', handleCallStateChange)
+      off('videoCallEnd', handleCallStateChange)
+      off('audioCallEnd', handleCallStateChange)
     }
   }, [isConnected,on,off,screen])
 

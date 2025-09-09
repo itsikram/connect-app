@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { launchImageLibrary, Asset, ImageLibraryOptions } from 'react-native-image-picker';
 import api from '../lib/api';
+import { UI } from '../lib/config';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -173,8 +174,8 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const borderColor = themeColors.border.primary;
 
   return (
-    <View style={[styles.container, { backgroundColor: cardBg }]}>
-      <View style={styles.topRow}>
+    <View style={[styles.container, { backgroundColor: cardBg }]}> 
+      <View style={styles.topRow}> 
         <View style={styles.profilePicWrapper}>
 
           <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/image/logo.png')} style={styles.profilePic} />
@@ -183,14 +184,14 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           <Text style={[styles.inputPlaceholder, { color: textColor }]}>{textInputPlaceholder}</Text>
         </TouchableOpacity>
       </View>
-        <View style={styles.bottomRow}>
+        <View style={styles.bottomRow}> 
           <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('image'); }}>
-            <Icon name="photo-camera" size={22} color={themeColors.primary} />
-            <Text style={styles.buttonText}>Photo/Video</Text>
+            <Icon name="photo-camera" size={UI.icon.lg} color={themeColors.primary} />
+            <Text style={[styles.buttonText, { color: themeColors.primary }]}>Photo/Video</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
-            <Icon name="videocam" size={22} color={themeColors.primary} />
-            <Text style={styles.buttonText}>Live Video</Text>
+            <Icon name="videocam" size={UI.icon.lg} color={themeColors.primary} />
+            <Text style={[styles.buttonText, { color: themeColors.primary }]}>Live Video</Text>
           </TouchableOpacity>
         </View>
 
@@ -218,7 +219,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
           <TouchableOpacity style={[styles.modalContent, { backgroundColor: modalBg }]} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}> 
               <Text style={[styles.modalTitle, { color: textColor }]}>Create a Post</Text>
               <TouchableOpacity onPress={closeModal} style={[styles.closeButton, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
                 <Icon name="close" size={24} color={textColor} />
@@ -236,8 +237,8 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                     onPress={openFeelingsPicker}
                     style={[styles.input, { backgroundColor: inputBg, borderColor, flexDirection: 'row', alignItems: 'center' }]}
                   >
-                    <Icon name="mood" size={18} color={themeColors.primary} />
-                    <Text style={{ marginLeft: 8, color: inputText }}>
+                    <Icon name="mood" size={UI.icon.md} color={themeColors.primary} />
+                    <Text style={{ marginLeft: UI.spacing.sm, color: inputText }}>
                       {postData.feelings
                         ? defaultFeelings.find(f => f.value === postData.feelings)?.label || postData.feelings
                         : 'Select feeling'}
@@ -267,16 +268,16 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 <Image source={{ uri: postData.urls }} style={styles.attachmentPreview} />
               )}
               {postData.urls && postData.type === 'video' && (
-                <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
+                <Text style={{ color: themeColors.primary, marginVertical: UI.spacing.sm }}>Video selected</Text>
               )}
               <View style={styles.attachmentRow}>
                 <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
-                  <Icon name="photo-camera" size={22} color={themeColors.primary} />
-                  <Text style={styles.attachmentButtonText}>Add Photo</Text>
+                  <Icon name="photo-camera" size={UI.icon.lg} color={themeColors.primary} />
+                  <Text style={[styles.attachmentButtonText, { color: themeColors.primary }]}>Add Photo</Text>
                 </TouchableOpacity>
                 <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
-                  <Icon name="videocam" size={22} color={themeColors.primary} />
-                  <Text style={styles.attachmentButtonText}>Add Video</Text>
+                  <Icon name="videocam" size={UI.icon.lg} color={themeColors.primary} />
+                  <Text style={[styles.attachmentButtonText, { color: themeColors.primary }]}>Add Video</Text>
                 </TouchableOpacity>
               </View>
               <TouchableOpacity
@@ -310,10 +311,10 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => selectFeeling(item.value)}
-                  style={{ paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
+                  style={{ paddingVertical: UI.spacing.sm + 2, flexDirection: 'row', alignItems: 'center' }}
                 >
-                  {item.emoji ? <Text style={{ fontSize: 18, marginRight: 8 }}>{item.emoji}</Text> : null}
-                  <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
+                  {item.emoji ? <Text style={{ fontSize: UI.icon.lg, marginRight: UI.spacing.sm }}>{item.emoji}</Text> : null}
+                  <Text style={{ color: textColor, fontSize: UI.typography.body + 2 }}>{item.label}</Text>
                 </TouchableOpacity>
               )}
               ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
@@ -328,9 +329,9 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#fff',
-    padding: 12,
-    borderRadius: 12,
-    margin: 12,
+    padding: UI.spacing.md,
+    borderRadius: UI.radius.md,
+    margin: UI.spacing.md,
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.1,
@@ -340,10 +341,10 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 3,
+    marginBottom: UI.spacing.xs,
   },
   profilePicWrapper: {
-    marginRight: 10,
+    marginRight: UI.spacing.md,
   },
   profilePic: {
     width: 40,
@@ -354,32 +355,32 @@ const styles = StyleSheet.create({
   inputWrapper: {
     flex: 1,
     backgroundColor: '#F2F2F2',
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    borderRadius: UI.radius.pill,
+    paddingVertical: UI.spacing.sm + 2,
+    paddingHorizontal: UI.spacing.lg,
     justifyContent: 'center',
   },
   inputPlaceholder: {
     color: '#AEAEB2',
-    fontSize: 14,
+    fontSize: UI.typography.body,
   },
   bottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
+    marginTop: UI.spacing.sm,
   },
   button: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F2F2F2',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: UI.radius.pill,
+    paddingVertical: UI.spacing.sm,
+    paddingHorizontal: UI.spacing.lg,
     flex: 0.48,
     justifyContent: 'center',
   },
   buttonText: {
-    marginLeft: 6,
+    marginLeft: UI.spacing.sm - 2,
     color: '#29b1a9',
     fontWeight: 'bold',
   },
@@ -392,118 +393,118 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '95%',
     backgroundColor: '#fff',
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: UI.radius.lg,
+    padding: UI.spacing.lg,
     maxHeight: '90%',
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
-    paddingBottom: 8,
+    marginBottom: UI.spacing.md,
+    paddingBottom: UI.spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: '#E5E5EA',
   },
   modalTitle: {
-    fontSize: 18,
+    fontSize: UI.typography.title,
     fontWeight: 'bold',
   },
   modalBody: {},
   cpmHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: UI.spacing.sm,
   },
   profileName: {
-    marginLeft: 10,
+    marginLeft: UI.spacing.md,
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: UI.typography.body + 2,
   },
   feelingsLocationRow: {
     flexDirection: 'row',
-    marginBottom: 8,
+    marginBottom: UI.spacing.sm,
   },
   feelingsContainer: {
     flex: 1,
-    marginRight: 8,
+    marginRight: UI.spacing.sm,
   },
   locationContainer: {
     flex: 1,
   },
   label: {
-    fontSize: 12,
+    fontSize: UI.typography.caption,
     color: '#8E8E93',
     marginBottom: 2,
   },
   pickerWrapper: {
     borderWidth: 1,
     borderColor: '#D1D1D6',
-    borderRadius: 8,
+    borderRadius: UI.radius.sm,
     backgroundColor: '#F2F2F2',
   },
   input: {
-    padding: 8,
-    borderRadius: 8,
+    padding: UI.spacing.sm,
+    borderRadius: UI.radius.sm,
     backgroundColor: '#F2F2F2',
     borderWidth: 1,
     borderColor: '#D1D1D6',
-    fontSize: 14,
+    fontSize: UI.typography.body,
   },
   captionInput: {
     minHeight: 60,
     borderWidth: 1,
     borderColor: '#D1D1D6',
-    borderRadius: 8,
+    borderRadius: UI.radius.sm,
     backgroundColor: '#F2F2F2',
-    padding: 10,
-    fontSize: 15,
-    marginBottom: 8,
+    padding: UI.spacing.sm + 2,
+    fontSize: UI.typography.body + 1,
+    marginBottom: UI.spacing.sm,
   },
   attachmentPreview: {
     width: '100%',
     height: 180,
-    borderRadius: 8,
-    marginBottom: 8,
+    borderRadius: UI.radius.sm,
+    marginBottom: UI.spacing.sm,
     resizeMode: 'cover',
   },
   attachmentRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: UI.spacing.sm,
   },
   attachmentButton: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#F2F2F2',
-    borderRadius: 20,
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+    borderRadius: UI.radius.pill,
+    paddingVertical: UI.spacing.sm,
+    paddingHorizontal: UI.spacing.lg,
     flex: 0.48,
     justifyContent: 'center',
   },
   attachmentButtonText: {
-    marginLeft: 6,
+    marginLeft: UI.spacing.sm - 2,
     color: '#29b1a9',
     fontWeight: 'bold',
   },
   submitButton: {
     backgroundColor: '#29b1a9',
-    borderRadius: 20,
-    paddingVertical: 12,
+    borderRadius: UI.radius.pill,
+    paddingVertical: UI.spacing.md,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: UI.spacing.sm,
   },
   submitButtonText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 16,
+    fontSize: UI.typography.body + 2,
   },
   actionRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 8,
-    paddingVertical: 8,
+    marginTop: UI.spacing.sm,
+    paddingVertical: UI.spacing.sm,
     borderTopWidth: 1,
     borderBottomWidth: 1,
     borderColor: '#D1D1D6',
@@ -511,21 +512,21 @@ const styles = StyleSheet.create({
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
+    paddingVertical: UI.spacing.sm,
+    paddingHorizontal: UI.spacing.lg,
+    borderRadius: UI.radius.pill,
     flex: 0.48,
     justifyContent: 'center',
   },
   actionButtonText: {
-    marginLeft: 8,
+    marginLeft: UI.spacing.sm,
     color: '#29b1a9',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: UI.typography.body,
   },
   closeButton: {
-    padding: 4,
-    borderRadius: 20,
+    padding: UI.spacing.xs,
+    borderRadius: UI.radius.pill,
   },
 });
 

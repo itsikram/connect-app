@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ActivityIndicator, FlatList, Alert, RefreshControl, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Animated } from 'react-native';
+import { View, Text, ActivityIndicator, FlatList, RefreshControl, TouchableOpacity, StatusBar } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import CreatePost from '../components/CreatePost';
 import api from '../lib/api';
 import Post from '../components/Post';
@@ -10,6 +11,7 @@ import { RootState } from '../store';
 import DebugInfo from '../components/DebugInfo';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StorySlider from '../components/StorySlider';
+import { UI } from '../lib/config';
 
 
 const Home = () => {
@@ -99,25 +101,26 @@ const Home = () => {
     // Show error state
     if (error && !loading && posts.length === 0) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor }}>
-                <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+            <SafeAreaView style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor }}>
+                <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={backgroundColor} />
+                <Text style={{ color: themeColors.status.error, fontSize: UI.typography.title, textAlign: 'center', marginBottom: UI.spacing.md }}>
                     {error}
                 </Text>
-                <Text style={{ color: textColor, fontSize: 14, textAlign: 'center', marginBottom: 24 }}>
+                <Text style={{ color: textColor, fontSize: UI.typography.body, textAlign: 'center', marginBottom: UI.spacing.xl }}>
                     Pull down to refresh or try again later.
                 </Text>
-                <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-            </View>
+            </SafeAreaView>
         );
     }
 
     // Show debug info if debug mode is enabled
     if (debugMode) {
         return (
-            <View style={{ flex: 1, backgroundColor }}>
+            <SafeAreaView style={{ flex: 1, backgroundColor }}>
+                <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={backgroundColor} />
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: themeColors.border.primary }}>
-                    <Text style={{ color: textColor, fontSize: 18, fontWeight: 'bold' }}>Debug Mode</Text>
-                    <TouchableOpacity onPress={() => setDebugMode(false)} style={{ padding: 8 }}>
+                    <Text style={{ color: textColor, fontSize: UI.typography.title, fontWeight: 'bold' }}>Debug Mode</Text>
+                    <TouchableOpacity onPress={() => setDebugMode(false)} style={{ padding: UI.spacing.sm }}>
                         <Icon name="close" size={24} color={textColor} />
                     </TouchableOpacity>
                 </View>
@@ -128,12 +131,13 @@ const Home = () => {
                     posts={posts}
                     profile={myProfile}
                 />
-            </View>
+            </SafeAreaView>
         );
     }
 
     return (
-        <View style={{ flex: 1, backgroundColor }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor }}>
+            <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={backgroundColor} />
 
 
 
@@ -149,30 +153,30 @@ const Home = () => {
                 }
                 renderItem={({ item }) => <Post key={item._id} data={item} onPostDeleted={handlePostDeleted} />}
                 ListEmptyComponent={loading ? (
-                    <View style={{ alignItems: 'center', marginTop: 40 }}>
+                    <View style={{ alignItems: 'center', marginTop: UI.spacing.xl + UI.spacing.lg }}>
                         <ActivityIndicator size="large" color={themeColors.primary} />
-                        <Text style={{ color: textColor, marginTop: 16 }}>Loading posts...</Text>
+                        <Text style={{ color: textColor, marginTop: UI.spacing.md }}>Loading posts...</Text>
                     </View>
                 ) : error ? (
-                    <View style={{ alignItems: 'center', marginTop: 40 }}>
-                        <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+                    <View style={{ alignItems: 'center', marginTop: UI.spacing.xl + UI.spacing.lg }}>
+                        <Text style={{ color: themeColors.status.error, fontSize: UI.typography.title, textAlign: 'center', marginBottom: UI.spacing.md }}>
                             {error}
                         </Text>
-                        <Text style={{ color: textColor, fontSize: 14, textAlign: 'center' }}>
+                        <Text style={{ color: textColor, fontSize: UI.typography.body, textAlign: 'center' }}>
                             Pull down to refresh
                         </Text>
                     </View>
                 ) : (
-                    <View style={{ alignItems: 'center', marginTop: 40 }}>
+                    <View style={{ alignItems: 'center', marginTop: UI.spacing.xl + UI.spacing.lg }}>
                         <Text style={{ color: textColor }}>No posts found.</Text>
                     </View>
                 )}
                 onEndReached={handleLoadMore}
                 onEndReachedThreshold={0.5}
                 ListFooterComponent={loadingMore && !loading ? (
-                    <View style={{ paddingVertical: 16, alignItems: 'center' }}>
+                    <View style={{ paddingVertical: UI.spacing.lg, alignItems: 'center' }}>
                         <ActivityIndicator size="small" color={themeColors.primary} />
-                        <Text style={{ color: textColor, marginTop: 8 }}>Loading more...</Text>
+                        <Text style={{ color: textColor, marginTop: UI.spacing.sm }}>Loading more...</Text>
                     </View>
                 ) : null}
                 refreshControl={
@@ -186,7 +190,7 @@ const Home = () => {
                 style={{ backgroundColor }}
                 contentContainerStyle={{ backgroundColor, flexGrow: 1 }}
             />
-        </View>
+        </SafeAreaView>
     );
 }
 

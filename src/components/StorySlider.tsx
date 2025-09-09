@@ -11,6 +11,7 @@ import {
   Alert,
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
+import { UI } from '../lib/config';
 import { storyAPI } from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StoryModal from './StoryModal';
@@ -108,7 +109,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
 
   if (loading) {
     return (
-      <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+      <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}> 
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="small" color={themeColors.primary} />
           <Text style={[styles.loadingText, { color: themeColors.text.secondary }]}>
@@ -150,7 +151,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
           contentContainerStyle={styles.scrollContent}
           style={styles.scrollView}
         >
-          {stories.map((story, index) => (
+          {stories.length > 0 && stories.map((story, index) => (
             <TouchableOpacity
               key={story._id}
               style={styles.storyItem}
@@ -191,14 +192,14 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
               style={[styles.arrowLeft, { backgroundColor: themeColors.surface.primary }]}
               onPress={scrollLeft}
             >
-              <Icon name="chevron-left" size={20} color={themeColors.text.primary} />
+              <Icon name="chevron-left" size={UI.icon.md} color={themeColors.text.primary} />
             </TouchableOpacity>
             
             <TouchableOpacity
               style={[styles.arrowRight, { backgroundColor: themeColors.surface.primary }]}
               onPress={scrollRight}
             >
-              <Icon name="chevron-right" size={20} color={themeColors.text.primary} />
+              <Icon name="chevron-right" size={UI.icon.md} color={themeColors.text.primary} />
             </TouchableOpacity>
           </>
         )}
@@ -220,7 +221,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 8,
+    marginVertical: UI.spacing.sm,
   },
   storyContainer: {
     position: 'relative',
@@ -230,46 +231,46 @@ const styles = StyleSheet.create({
     height: 140,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: UI.spacing.lg,
+    paddingVertical: UI.spacing.sm,
   },
   loadingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 20,
+    paddingVertical: UI.spacing.lg + UI.spacing.sm,
   },
   loadingText: {
-    marginLeft: 8,
-    fontSize: 14,
+    marginLeft: UI.spacing.sm,
+    fontSize: UI.typography.body,
   },
   errorContainer: {
     alignItems: 'center',
-    paddingVertical: 20,
+    paddingVertical: UI.spacing.lg + UI.spacing.sm,
   },
   errorText: {
-    fontSize: 14,
+    fontSize: UI.typography.body,
     textAlign: 'center',
-    marginBottom: 8,
+    marginBottom: UI.spacing.sm,
   },
   retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingHorizontal: UI.spacing.lg,
+    paddingVertical: UI.spacing.sm,
   },
   retryText: {
-    fontSize: 14,
+    fontSize: UI.typography.body,
     fontWeight: '600',
   },
   storyItem: {
     width: 95,
     height: 120,
-    marginRight: 12,
+    marginRight: UI.spacing.md,
     position: 'relative',
   },
   storyImageContainer: {
     width: 95,
     height: 120,
-    borderRadius: 12,
+    borderRadius: UI.radius.md,
     overflow: 'hidden',
     position: 'relative',
   },
@@ -282,13 +283,13 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: '20%',
+    height: '25%',
     backgroundColor: 'rgba(0,0,0,0.22)',
   },
   profilePicContainer: {
     position: 'absolute',
-    top: 8,
-    left: 8,
+    top: UI.spacing.sm,
+    left: UI.spacing.sm,
     width: 36,
     height: 36,
     borderRadius: 18,
@@ -301,10 +302,10 @@ const styles = StyleSheet.create({
   },
   authorName: {
     position: 'absolute',
-    bottom: 4,
-    left: 4,
-    right: 4,
-    fontSize: 10,
+    bottom: UI.spacing.xs,
+    left: UI.spacing.xs,
+    right: UI.spacing.xs,
+    fontSize: UI.typography.small,
     fontWeight: '600',
     textAlign: 'center',
     textShadowColor: 'rgba(0,0,0,0.6)',
@@ -313,7 +314,7 @@ const styles = StyleSheet.create({
   },
   arrowLeft: {
     position: 'absolute',
-    left: 4,
+    left: UI.spacing.xs,
     top: '50%',
     marginTop: -16,
     width: 32,
@@ -329,7 +330,7 @@ const styles = StyleSheet.create({
   },
   arrowRight: {
     position: 'absolute',
-    right: 4,
+    right: UI.spacing.xs,
     top: '50%',
     marginTop: -16,
     width: 32,
