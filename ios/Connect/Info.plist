@@ -80,5 +80,7 @@
 	<array>
 		<string>audio</string>
 	</array>
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-8953965236531270~4949960103</string>
 </dict>
 </plist>

@@ -5,7 +5,7 @@ import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import Video from 'react-native-video';
+// Use lazy require for react-native-video to avoid crash if the package/linking is missing
 import { useFocusEffect } from '@react-navigation/native';
 import UserPP from '../components/UserPP';
 
@@ -50,18 +50,18 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
   const { colors: themeColors } = useTheme();
   const textColor = themeColors.text.primary;
 
-  // // Lazy require to avoid hard dependency if package is missing
-  // let VideoComp: any = null;
-  // try {
-  //   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  //   VideoComp = require('react-native-video').default;
-  // } catch (_) {
-  //   VideoComp = null;
-  // }
+  // Lazy require to avoid hard dependency if package is missing
+  let VideoComp: any = null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    VideoComp = require('react-native-video').default;
+  } catch (_) {
+    VideoComp = null;
+  }
 
-  // if (!VideoComp) {
-  //   return <VideoPlaceholder textColor={textColor} />;
-  // }
+  if (!VideoComp) {
+    return <VideoPlaceholder textColor={textColor} />;
+  }
 
   const sourceUri = post?.videoUrl || post.photos;
   const overlayTextColor = '#fff';
@@ -85,7 +85,7 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
     <View style={{ height: containerHeight, width: SCREEN_WIDTH, backgroundColor: isDarkMode ? '#000' : '#000', justifyContent: 'center', alignItems: 'center' }}>
       {sourceUri ? (
         <>
-          <Video
+          <VideoComp
             source={{ uri: sourceUri }}
             style={{ height: 400, width: SCREEN_WIDTH }}
             resizeMode="contain"
@@ -96,6 +96,10 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
             repeat
             muted={false}
             useTextureView
+            onError={(err: any) => {
+              // eslint-disable-next-line no-console
+              console.log('Video error', err);
+            }}
           />
           <Pressable onPress={() => setIsManuallyPaused(p => !p)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} />
         </>
@@ -170,19 +174,21 @@ const Videos = () => {
   const fetchFeed = useCallback(async (pageNum = 1, append = false) => {
     if (append) setLoadingMore(true); else setLoading(true);
     try {
-      const res = await api.get(`watch/myWatchs?profile=${myProfile?._id}`);
-      console.log('video res', res)
+      const res = await api.get(`watch/profileWatch?pageNumber=${pageNum}`);
       if (res.status === 200) {
-        setHasMore(Boolean(res.data.hasNewPost));
-        setVideos(res.data);
+        const data = res.data || {};
+        const items: Video[] = Array.isArray(data.watchs) ? data.watchs : Array.isArray(data) ? data : [];
+        const more = typeof data.hasNewWatch === 'boolean' ? data.hasNewWatch : false;
+        setHasMore(more);
+        setVideos(prev => (append ? [...prev, ...items] : items));
       }
     } catch (e) {
       // eslint-disable-next-line no-console
-      console.log(e);
+      console.log('Failed to load videos', e);
     } finally {
       if (append) setLoadingMore(false); else setLoading(false);
     }
-  }, [myProfile?._id]);
+  }, []);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -271,6 +277,11 @@ const Videos = () => {
       onEndReachedThreshold={0.8}
       viewabilityConfig={viewabilityConfig}
       onViewableItemsChanged={onViewableItemsChanged}
+      ListFooterComponent={loadingMore ? (
+        <View style={{ height: 80, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : null}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}

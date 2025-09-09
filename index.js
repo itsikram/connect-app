@@ -10,6 +10,8 @@ import messaging from '@react-native-firebase/messaging';
 import '@react-native-firebase/app';
 import notifee from '@notifee/react-native';
 import { displayIncomingCallNotification, configureNotificationsChannel } from './src/lib/push';
+import mobileAds from 'react-native-google-mobile-ads';
+import { appOpenAdManager } from './src/lib/ads';
 
 // Background handler: show a notification when message received in background/quit
 messaging().setBackgroundMessageHandler(async remoteMessage => {
@@ -42,3 +44,12 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
 });
 
 AppRegistry.registerComponent(appName, () => App);
+
+// Initialize Mobile Ads SDK and show App Open Ad at cold start
+mobileAds()
+  .initialize()
+  .then(() => {
+    try {
+      appOpenAdManager.preloadAndShowOnLoad();
+    } catch (e) {}
+  });
