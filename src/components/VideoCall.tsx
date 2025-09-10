@@ -810,7 +810,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               style={styles.remoteVideo}
               uid={remoteUid}
               channelId={currentChannel || ''}
-              renderMode={VideoRenderMode.Hidden}
+              renderMode={VideoRenderMode.Fit}
               zOrderMediaOverlay={false}
             />
           ) : (
@@ -831,7 +831,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
             <RtcLocalView.SurfaceView
               style={styles.localVideo}
               channelId={currentChannel || ''}
-              renderMode={VideoRenderMode.Hidden}
+              renderMode={VideoRenderMode.Fit}
               zOrderOnTop={true}
             />
           )}
@@ -917,6 +917,8 @@ const styles = StyleSheet.create({
   remoteVideo: {
     flex: 1,
     backgroundColor: '#000',
+    width: '100%',
+    height: '100%',
   },
   localVideo: {
     width: 120,

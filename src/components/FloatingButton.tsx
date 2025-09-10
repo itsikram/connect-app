@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
-import { TouchableOpacity, ViewStyle, StyleSheet, GestureResponderEvent, Image, View, PanResponder, Dimensions } from 'react-native';
+import { TouchableOpacity, ViewStyle, StyleSheet, GestureResponderEvent, Image, View, PanResponder, Dimensions, Text } from 'react-native';
 import FloatingMenu from './FloatingMenu';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 
 type MenuOption = {
   id: string;
@@ -31,7 +32,7 @@ export default function FloatingButton({
 }: Props) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [buttonPosition, setButtonPosition] = useState({ x: 0, y: 0 });
-  const [dragPosition, setDragPosition] = useState({ x: screenWidth - 72, y: screenHeight - 146 }); // Default position (right, bottom)
+  const [dragPosition, setDragPosition] = useState({ x: 20, y: 100 }); // Default position (left, top) for debugging
   const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef<React.ElementRef<typeof TouchableOpacity> | null>(null);
   const panResponder = useRef(
@@ -117,6 +118,9 @@ export default function FloatingButton({
 
   const options = menuOptions.length > 0 ? menuOptions : defaultMenuOptions;
 
+  // Debug logging
+  console.log('FloatingButton render - dragPosition:', dragPosition, 'isDragging:', isDragging);
+
   return (
     <View>
       <View
@@ -128,6 +132,7 @@ export default function FloatingButton({
             top: dragPosition.y,
             opacity: isDragging ? 0.8 : 1,
             transform: [{ scale: isDragging ? 1.1 : 1 }],
+            zIndex: 9999, // Ensure it's on top
           },
           style,
         ]}
@@ -143,7 +148,6 @@ export default function FloatingButton({
           {icon ? icon : (
             <Image
               source={require('../assets/image/logo.png')}
-              style={styles.logo}
               resizeMode="contain"
             />
           )}
@@ -175,15 +179,19 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: '#29B1A9',
+    backgroundColor: '#FF0000', // Bright red for debugging
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
+    borderWidth: 3,
+    borderColor: '#FFFFFF',
   },
-  logo: {
+  iconContainer: {
     width: 48,
     height: 48,
     borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 
