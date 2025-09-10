@@ -237,53 +237,7 @@ const SingleMessage = () => {
         );
     }
 
-    // Hide tab bar when focused
-    useFocusEffect(
-        React.useCallback(() => {
-            // Hide the bottom tab bar when SingleMessage screen is focused
-            const hideTabBar = () => {
-                const parent = navigation.getParent();
-                if (parent) {
-                    parent.setOptions({
-                        tabBarStyle: {
-                            height: 0,
-                            overflow: 'hidden',
-                            position: 'absolute',
-                            bottom: 0,
-                        },
-                        tabBarShowLabel: false,
-                    });
-                }
-            };
-
-            // Small delay to ensure navigation transition is complete
-            const timer = setTimeout(hideTabBar, 100);
-
-            return () => {
-                clearTimeout(timer);
-                // Show the bottom tab bar when leaving SingleMessage screen
-                const showTabBar = () => {
-                    const parent = navigation.getParent();
-                    if (parent) {
-                        parent.setOptions({
-                            tabBarStyle: {
-                                backgroundColor: themeColors.surface.header,
-                                borderTopColor: themeColors.border.primary,
-                                height: 60,
-                                paddingBottom: 8,
-                                paddingTop: 8,
-                                position: 'relative',
-                            },
-                            tabBarShowLabel: true,
-                        });
-                    }
-                };
-
-                // Small delay to ensure navigation transition is complete
-                setTimeout(showTabBar, 100);
-            };
-        }, [navigation, themeColors.surface.header, themeColors.border.primary])
-    );
+    // Tab bar hiding is now handled at the app level in App.tsx
 
     useFocusEffect(
         React.useCallback(() => {

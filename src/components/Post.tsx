@@ -14,6 +14,8 @@ import UserPP from './UserPP';
 
 type RootStackParamList = {
   PostDetail: { postId: string };
+  SinglePost: { postId: string };
+  SingleVideo: { videoId: string };
   FriendProfile: { friendId: string };
 };
 
@@ -492,6 +494,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       </View>
       <View style={styles.body}>
         <Text style={[styles.caption, { color: textColor }]}>{post.caption || 'No caption'}</Text>
+        
+        {/* Navigation to SinglePost */}
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('SinglePost', { postId: post._id })}
+          style={[styles.viewPostButton, { backgroundColor: themeColors.primary + '15', borderColor: themeColors.primary }]}
+        >
+          <Icon name="open-in-new" size={16} color={themeColors.primary} />
+          <Text style={[styles.viewPostButtonText, { color: themeColors.primary }]}>
+            View Full Post
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.attachmentContainer}>
 
@@ -1347,6 +1360,21 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 14,
+  },
+  viewPostButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 1,
+    marginVertical: 8,
+    gap: 8,
+  },
+  viewPostButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 

@@ -10,13 +10,31 @@ export async function requestPushPermission(): Promise<boolean> {
   try {
     if (Platform.OS === 'android') {
       // Android 13+ requires explicit user consent for notifications
-      await notifee.requestPermission();
-      return true;
+      const settings = await notifee.requestPermission({
+        alert: true,
+        announcement: false,
+        badge: true,
+        carPlay: false,
+        criticalAlert: false,
+        provisional: false,
+        sound: true,
+      });
+      
+      if (settings.authorizationStatus === 1) { // AUTHORIZED
+        return true;
+      }
+      
+      // Also request Firebase messaging permission
+      const authStatus = await messaging().requestPermission();
+      const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED || authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+      return enabled;
     }
+    
     const authStatus = await messaging().requestPermission();
     const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED || authStatus === messaging.AuthorizationStatus.PROVISIONAL;
     return enabled;
   } catch (e) {
+    console.error('Error requesting push permission:', e);
     return false;
   }
 }
@@ -60,20 +78,37 @@ export async function unregisterTokenWithServer(): Promise<void> {
 }
 
 export async function configureNotificationsChannel() {
-  await notifee.createChannel({
-    id: 'default',
-    name: 'Default',
-    importance: AndroidImportance.HIGH,
-    visibility: AndroidVisibility.PUBLIC,
-    sound: 'default',
-  });
-  await notifee.createChannel({
-    id: 'calls',
-    name: 'Calls',
-    importance: AndroidImportance.HIGH,
-    visibility: AndroidVisibility.PUBLIC,
-    sound: 'default',
-  });
+  try {
+    // Create default notification channel
+    await notifee.createChannel({
+      id: 'default',
+      name: 'Default Notifications',
+      description: 'General app notifications',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: 'default',
+      vibration: true,
+      vibrationPattern: [300, 500],
+    });
+    
+    // Create calls notification channel with higher priority
+    await notifee.createChannel({
+      id: 'calls',
+      name: 'Incoming Calls',
+      description: 'Incoming call notifications',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: 'default',
+      vibration: true,
+      vibrationPattern: [300, 500, 300, 500],
+      lights: true,
+      lightColor: '#FF0000',
+    });
+    
+    console.log('Notification channels configured successfully');
+  } catch (error) {
+    console.error('Error configuring notification channels:', error);
+  }
 }
 
 export async function displayLocalNotification(title: string, body: string, data: Record<string, string> = {}) {
@@ -98,53 +133,68 @@ export async function displayIncomingCallNotification(payload: {
   isAudio: boolean;
   callerId: string;
 }) {
-  await configureNotificationsChannel();
-  await notifee.displayNotification({
-    title: payload.isAudio ? 'Incoming Audio Call' : 'Incoming Video Call',
-    body: payload.callerName,
-    android: {
-      channelId: 'calls',
-      category: AndroidCategory.CALL,
-      colorized: true,
-      fullScreenAction: {
-        id: 'default',
-        // Opening the app with deep link to show IncomingCall
-        mainComponent: 'default',
-      },
-      // Ensure heads-up and lockscreen visibility
-      importance: AndroidImportance.HIGH,
-      visibility: AndroidVisibility.PUBLIC,
-      smallIcon: 'ic_launcher',
-      pressAction: {
-        id: 'open-incoming',
-        launchActivity: 'default',
-      },
-      actions: [
-        {
-          title: 'Accept',
-          pressAction: {
-            id: 'accept_call',
-            launchActivity: 'default',
-          },
+  try {
+    await configureNotificationsChannel();
+    
+    const notificationId = `incoming_call_${payload.callerId}_${Date.now()}`;
+    
+    await notifee.displayNotification({
+      id: notificationId,
+      title: payload.isAudio ? 'Incoming Audio Call' : 'Incoming Video Call',
+      body: `Call from ${payload.callerName}`,
+      android: {
+        channelId: 'calls',
+        category: AndroidCategory.CALL,
+        colorized: true,
+        fullScreenAction: {
+          id: 'default',
+          launchActivity: 'default',
         },
-        {
-          title: 'Reject',
-          pressAction: {
-            id: 'reject_call',
-            launchActivity: 'default',
-          },
+        // Ensure heads-up and lockscreen visibility
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        smallIcon: 'ic_launcher',
+        largeIcon: payload.callerProfilePic || 'ic_launcher',
+        pressAction: {
+          id: 'open-incoming',
+          launchActivity: 'default',
         },
-      ],
-    },
-    data: {
-      type: 'incoming_call',
-      callerId: payload.callerId,
-      callerName: payload.callerName,
-      callerProfilePic: payload.callerProfilePic || '',
-      channelName: payload.channelName,
-      isAudio: String(payload.isAudio),
-    },
-  });
+        actions: [
+          {
+            title: 'Accept',
+            pressAction: {
+              id: 'accept_call',
+              launchActivity: 'default',
+            },
+          },
+          {
+            title: 'Reject',
+            pressAction: {
+              id: 'reject_call',
+              launchActivity: 'default',
+            },
+          },
+        ],
+        // Auto-cancel after 30 seconds if not answered
+        autoCancel: false,
+        ongoing: true,
+        showTimestamp: true,
+      },
+      data: {
+        type: 'incoming_call',
+        callerId: payload.callerId,
+        callerName: payload.callerName,
+        callerProfilePic: payload.callerProfilePic || '',
+        channelName: payload.channelName,
+        isAudio: String(payload.isAudio),
+        notificationId: notificationId,
+      },
+    });
+    
+    console.log('Incoming call notification displayed:', notificationId);
+  } catch (error) {
+    console.error('Error displaying incoming call notification:', error);
+  }
 }
 
 // Handle notification events (foreground)
@@ -154,26 +204,58 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
       const data = detail.notification?.data || {} as any;
       if (data.type === 'incoming_call') {
         const actionId = detail.pressAction?.id;
+        const notificationId = detail.notification?.id;
+        
         if (actionId === 'accept_call') {
-          navigate('IncomingCall', {
-            callerId: data.callerId,
-            callerName: data.callerName,
-            callerProfilePic: data.callerProfilePic,
-            channelName: data.channelName,
-            isAudio: data.isAudio === 'true',
-            autoAccept: true,
+          // Cancel the notification first
+          if (notificationId) {
+            try { 
+              await notifee.cancelNotification(notificationId); 
+            } catch (e) {
+              console.error('Error canceling notification:', e);
+            }
+          }
+          
+          // Navigate to IncomingCall screen with auto-accept flag
+          navigate('Message', {
+            screen: 'IncomingCall',
+            params: {
+              callerId: data.callerId,
+              callerName: data.callerName,
+              callerProfilePic: data.callerProfilePic,
+              channelName: data.channelName,
+              isAudio: data.isAudio === 'true',
+              autoAccept: true,
+            }
           });
         } else if (actionId === 'reject_call') {
-          // We can emit a socket event to reject if needed; UI navigation optional
-          // For now, just cancel the notification
-          try { await notifee.cancelNotification(detail.notification?.id as string); } catch (e) {}
+          // Cancel the notification
+          if (notificationId) {
+            try { 
+              await notifee.cancelNotification(notificationId); 
+            } catch (e) {
+              console.error('Error canceling notification:', e);
+            }
+          }
+          
+          // Emit socket event to reject the call
+          try {
+            const { emitCallRejection } = await import('./notificationSocketService');
+            emitCallRejection(data.callerId, data.channelName, data.isAudio === 'true');
+          } catch (error) {
+            console.error('Error sending call rejection:', error);
+          }
         } else {
-          navigate('IncomingCall', {
-            callerId: data.callerId,
-            callerName: data.callerName,
-            callerProfilePic: data.callerProfilePic,
-            channelName: data.channelName,
-            isAudio: data.isAudio === 'true',
+          // Default action - just open the IncomingCall screen
+          navigate('Message', {
+            screen: 'IncomingCall',
+            params: {
+              callerId: data.callerId,
+              callerName: data.callerName,
+              callerProfilePic: data.callerProfilePic,
+              channelName: data.channelName,
+              isAudio: data.isAudio === 'true',
+            }
           });
         }
       }
@@ -213,8 +295,54 @@ export function listenTokenRefresh() {
       if (authToken) {
         await pushAPI.registerToken(newToken, authToken);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error refreshing token:', e);
+    }
   });
+}
+
+// Initialize all notification services
+export async function initializeNotifications(): Promise<boolean> {
+  try {
+    console.log('Initializing notifications...');
+    
+    // Configure notification channels first
+    await configureNotificationsChannel();
+    
+    // Request permissions
+    const hasPermission = await requestPushPermission();
+    if (!hasPermission) {
+      console.warn('Notification permission not granted');
+      return false;
+    }
+    
+    // Get and register FCM token
+    const token = await registerTokenWithServer();
+    if (!token) {
+      console.warn('Failed to get FCM token');
+      return false;
+    }
+    
+    console.log('Notifications initialized successfully');
+    return true;
+  } catch (error) {
+    console.error('Error initializing notifications:', error);
+    return false;
+  }
+}
+
+// Cancel all incoming call notifications
+export async function cancelIncomingCallNotifications(): Promise<void> {
+  try {
+    const notifications = await notifee.getDisplayedNotifications();
+    for (const notification of notifications) {
+      if (notification.notification?.data?.type === 'incoming_call' && notification.id) {
+        await notifee.cancelNotification(notification.id);
+      }
+    }
+  } catch (error) {
+    console.error('Error canceling incoming call notifications:', error);
+  }
 }
 
 

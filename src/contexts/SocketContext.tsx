@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import socketService from '../services/socketService';
+import { setGlobalSocketService } from '../lib/notificationSocketService';
 
 interface SocketContextType {
   isConnected: boolean;
@@ -174,6 +175,11 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     endAudioCall,
     applyVideoFilter,
   };
+
+  // Register global socket service for notifications
+  useEffect(() => {
+    setGlobalSocketService(value);
+  }, [value]);
 
   return (
     <SocketContext.Provider value={value}>

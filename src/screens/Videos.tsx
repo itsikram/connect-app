@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
@@ -48,6 +49,7 @@ const VideoPlaceholder = ({ textColor }: { textColor: string }) => (
 
 const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Video; isActive: boolean; isDarkMode: boolean; containerHeight: number }) => {
   const { colors: themeColors } = useTheme();
+  const navigation = useNavigation();
   const textColor = themeColors.text.primary;
 
   // Lazy require to avoid hard dependency if package is missing
@@ -102,6 +104,29 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
             }}
           />
           <Pressable onPress={() => setIsManuallyPaused(p => !p)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} />
+          
+          {/* Navigation to SingleVideo */}
+          <TouchableOpacity
+            onPress={() => navigation.navigate('SingleVideo', { videoId: post._id })}
+            style={{
+              position: 'absolute',
+              top: 20,
+              left: 20,
+              zIndex: 15,
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              borderRadius: 20,
+              paddingHorizontal: 12,
+              paddingVertical: 6,
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: 6,
+            }}
+          >
+            <Icon name="open-outline" size={16} color="#fff" />
+            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
+              View Details
+            </Text>
+          </TouchableOpacity>
         </>
       ) : (
         <VideoPlaceholder textColor={textColor} />

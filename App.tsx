@@ -12,6 +12,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import ProfessionalTabBar from './src/components/ProfessionalTabBar';
 import { colors } from './src/theme/colors';
 import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
 import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
@@ -32,6 +33,8 @@ import { useProfileData } from './src/hooks/useProfileData';
 import SingleMessage from './src/screens/SingleMessage';
 import FriendProfile from './src/screens/FriendProfile';
 import Videos from './src/screens/Videos';
+import SinglePost from './src/screens/SinglePost';
+import SingleVideo from './src/screens/SingleVideo';
 import IncomingCall from './src/screens/IncomingCall';
 import OutgoingCall from './src/screens/OutgoingCall';
 import VideoCall from './src/components/VideoCall';
@@ -49,6 +52,7 @@ import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
+import NotificationSetup from './src/components/NotificationSetup';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
@@ -78,7 +82,18 @@ function HomeStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="HomeMain" component={Home} />
+      <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+    </Stack.Navigator>
+  );
+}
+
+// Stack navigator for Videos tab
+function VideosStack() {
+  return (
+    <Stack.Navigator screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="VideosMain" component={Videos} />
+      <Stack.Screen name="SingleVideo" component={SingleVideo} />
     </Stack.Navigator>
   );
 }
@@ -133,7 +148,7 @@ function AppWithTopProgress() {
         <TopNavigationProgress ref={progressRef} />
         <AppContent />
         <SwipeTabsOverlay navigationRef={navigationRef} />
-        <FloatingButton
+        {/* <FloatingButton
           onPress={() => {
             console.log('Floating button pressed directly');
           }}
@@ -183,7 +198,7 @@ function AppWithTopProgress() {
               color: '#FF5722',
             },
           ]}
-        />
+        /> */}
       </View>
     </NavigationContainer>
   );
@@ -498,6 +513,8 @@ function AppContent() {
         return (
           <>
             <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
+            {/* Initialize notifications */}
+            <NotificationSetup navigation={navigation} />
             {/* Global call components - rendered everywhere */}
             {myProfile?._id && (
               <>
@@ -537,39 +554,28 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
             ) : (
               <Tab.Navigator
                 initialRouteName={user ? 'Home' : 'Login'}
+                tabBar={(props) => {
+                  // Get the current route name to check if we're on screens that should hide tab bar
+                  const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
+                  
+                  // Hide tab bar for specific screens
+                  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo') {
+                    return null;
+                  }
+                  
+                  const tabs = user ? [
+                    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true },
+                    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true },
+                    { name: 'Friends', icon: 'people', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true },
+                    { name: 'Message', icon: 'message', label: 'Message', component: MessageStack, badge: 3, color: '#9C27B0', haptic: true },
+                    { name: 'Menu', icon: 'menu', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true },
+                  ] : [
+                    { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },
+                    { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3' },
+                  ];
+                  return <ProfessionalTabBar {...props} tabs={tabs} />;
+                }}
                 screenOptions={({ route }) => ({
-                  tabBarIcon: ({ color, size }) => {
-                    let iconName: string;
-
-                    if (route.name === 'Home') {
-                      iconName = 'home';
-                    } else if (route.name === 'Videos') {
-                      iconName = 'play-circle';
-                    } else if (route.name === 'Message') {
-                      iconName = 'message';
-                    } else if (route.name === 'Menu') {
-                      iconName = 'menu';
-                    } else if (route.name === 'Login') {
-                      iconName = 'login';
-                    } else if (route.name === 'Register') {
-                      iconName = 'person-add';
-                    } else if (route.name === 'Friends') {
-                      iconName = 'people';
-                    } else {
-                      iconName = 'help';
-                    }
-
-                    return <Icon name={iconName} size={size} color={color} />;
-                  },
-                  tabBarActiveTintColor: themeColors.primary,
-                  tabBarInactiveTintColor: themeColors.gray[500],
-                  tabBarStyle: {
-                    backgroundColor: themeColors.surface.header,
-                    borderTopColor: themeColors.border.primary,
-                    height: 60,
-                    paddingBottom: 8,
-                    paddingTop: 8,
-                  },
                   headerShown: route.name === 'Home',
                   header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
                 })}
@@ -585,7 +591,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                     />
                     <Tab.Screen
                       name="Videos"
-                      component={Videos}
+                      component={VideosStack}
                       options={{
                         tabBarLabel: 'Videos',
                         headerShown: false,

@@ -19,12 +19,31 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
     const data = detail.notification?.data || {};
     if (data?.type === 'incoming_call') {
       const actionId = detail.pressAction?.id;
+      const notificationId = detail.notification?.id;
+      
       if (actionId === 'reject_call') {
-        try { await notifee.cancelNotification(detail.notification?.id); } catch (e) {}
+        // Cancel the notification
+        if (notificationId) {
+          try { 
+            await notifee.cancelNotification(notificationId); 
+          } catch (e) {
+            console.error('Error canceling notification in background:', e);
+          }
+        }
+        
+        // Emit socket event to reject the call
+        try {
+          const { emitCallRejection } = require('./src/lib/notificationSocketService');
+          emitCallRejection(data.callerId, data.channelName, data.isAudio === 'true');
+        } catch (error) {
+          console.error('Error sending call rejection from background:', error);
+        }
       }
       // Accept action from background cannot directly navigate; app open will be handled by foreground listener
     }
-  } catch (e) {}
+  } catch (e) {
+    console.error('Error in background notification handler:', e);
+  }
 });
 
 // Background handler: show a notification when message received in background/quit

@@ -1,7 +1,6 @@
 import React, { useState, useRef } from 'react';
-import { TouchableOpacity, ViewStyle, StyleSheet, GestureResponderEvent, Image, View, PanResponder, Dimensions, Text } from 'react-native';
+import { TouchableOpacity, ViewStyle, StyleSheet, GestureResponderEvent, Image, View, PanResponder, Dimensions } from 'react-native';
 import FloatingMenu from './FloatingMenu';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 
 type MenuOption = {
   id: string;
@@ -32,7 +31,7 @@ export default function FloatingButton({
 }: Props) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [buttonPosition, setButtonPosition] = useState({ x: 0, y: 0 });
-  const [dragPosition, setDragPosition] = useState({ x: 20, y: 100 }); // Default position (left, top) for debugging
+  const [dragPosition, setDragPosition] = useState({ x: screenWidth - 72, y: screenHeight - 146 }); // Default position (right, bottom)
   const [isDragging, setIsDragging] = useState(false);
   const buttonRef = useRef<React.ElementRef<typeof TouchableOpacity> | null>(null);
   const panResponder = useRef(
@@ -67,16 +66,15 @@ export default function FloatingButton({
   ).current;
 
   const handlePress = (e: GestureResponderEvent) => {
-    // Only handle press if not dragging
-    if (isDragging) return;
-    
     if (showMenu && menuOptions.length > 0) {
-      // Use current drag position for menu placement
-      setButtonPosition({
-        x: dragPosition.x + 28, // Center of button (56/2)
-        y: dragPosition.y + 28,
+      // Measure button position for menu placement
+      buttonRef.current?.measure((x: number, y: number, width: number, height: number, pageX: number, pageY: number) => {
+        setButtonPosition({
+          x: pageX + width / 2,
+          y: pageY + height / 2,
+        });
+        setMenuVisible(true);
       });
-      setMenuVisible(true);
     }
     
     // Always call onPress if provided, regardless of menu state
@@ -118,41 +116,24 @@ export default function FloatingButton({
 
   const options = menuOptions.length > 0 ? menuOptions : defaultMenuOptions;
 
-  // Debug logging
-  console.log('FloatingButton render - dragPosition:', dragPosition, 'isDragging:', isDragging);
-
   return (
     <View>
-      <View
-        {...panResponder.panHandlers}
-        style={[
-          styles.container,
-          {
-            left: dragPosition.x,
-            top: dragPosition.y,
-            opacity: isDragging ? 0.8 : 1,
-            transform: [{ scale: isDragging ? 1.1 : 1 }],
-            zIndex: 9999, // Ensure it's on top
-          },
-          style,
-        ]}
+      <TouchableOpacity
+        ref={buttonRef}
+        activeOpacity={0.85}
+        onPress={handlePress}
+        style={[styles.container, style]}
+        accessibilityRole="button"
+        accessibilityLabel={label || 'Floating button'}
       >
-        <TouchableOpacity
-          ref={buttonRef}
-          activeOpacity={0.85}
-          onPress={handlePress}
-          style={styles.button}
-          accessibilityRole="button"
-          accessibilityLabel={label || 'Floating button'}
-        >
-          {icon ? icon : (
-            <Image
-              source={require('../assets/image/logo.png')}
-              resizeMode="contain"
-            />
-          )}
-        </TouchableOpacity>
-      </View>
+        {icon ? icon : (
+          <Image
+            source={require('../assets/image/logo.png')}
+            style={styles.logo}
+            resizeMode="contain"
+          />
+        )}
+      </TouchableOpacity>
       
       <FloatingMenu
         visible={menuVisible}
@@ -167,31 +148,25 @@ export default function FloatingButton({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
+    right: 16,
+    bottom: 200,
     width: 56,
     height: 56,
+    borderRadius: 28,
+    backgroundColor: '#29B1A9',
+    alignItems: 'center',
+    justifyContent: 'center',
     elevation: 6,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
-  },
-  button: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#FF0000', // Bright red for debugging
-    alignItems: 'center',
-    justifyContent: 'center',
     overflow: 'hidden',
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
   },
-  iconContainer: {
+  logo: {
     width: 48,
     height: 48,
     borderRadius: 24,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
 

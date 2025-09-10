@@ -9,13 +9,13 @@ type Environment = 'development' | 'staging' | 'production';
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
-    API_BASE_URL: 'http://192.168.1.100:4000/api/',
-    SOCKET_BASE_URL: 'http://192.168.1.100:4000',
+    API_BASE_URL: 'http://192.168.1.103:4000/api/',
+    SOCKET_BASE_URL: 'http://192.168.1.103:4000',
     API_TIMEOUT: 10000,
   },
   staging: {
-    API_BASE_URL: 'http://192.168.1.100:4000/api/',
-    SOCKET_BASE_URL: 'http://192.168.1.100:4000',
+    API_BASE_URL: 'http://192.168.1.103:4000/api/',
+    SOCKET_BASE_URL: 'http://192.168.1.103:4000',
     API_TIMEOUT: 15000,
   },
   production: {

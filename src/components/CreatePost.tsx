@@ -194,22 +194,6 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           </TouchableOpacity>
         </View>
 
-        <View style={[styles.actionRow, { borderBottomWidth: 0 }]}>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: inputBg }]} 
-            onPress={() => { openModal(); openFeelingsPicker(); }}
-          >
-            <Icon name="mood" size={20} color={themeColors.primary} />
-            <Text style={styles.actionButtonText}>Feeling</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.actionButton, { backgroundColor: inputBg }]} 
-            onPress={() => { openModal(); }}
-          >
-            <Icon name="location-on" size={20} color={themeColors.primary} />
-            <Text style={styles.buttonText}>Check in</Text>
-          </TouchableOpacity>
-        </View>
       <Modal
         visible={isModalVisible}
         animationType="slide"
@@ -381,8 +365,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     flex: 1,
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: '#E9ECEF',
   },
   buttonText: {
     marginLeft: 8,

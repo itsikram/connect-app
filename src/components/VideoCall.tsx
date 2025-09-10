@@ -62,6 +62,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [isAudioMode, setIsAudioMode] = useState(false);
   const [callEnded, setCallEnded] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [myFilter, setMyFilter] = useState<string>(''); // Filter I apply to my video (affects how others see me)
+  const [remoteFilter, setRemoteFilter] = useState<string>(''); // Filter applied by remote user (affects how I see them)
 
   const engineRef = useRef<RtcEngine | null>(null);
   const localUidRef = useRef<number | null>(null);
@@ -215,113 +217,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         }
       });
 
-      // engine.addListener('Error', (errorCode: number, errorMsg?: string) => {
-      //   console.error('Agora video error:', { 
-      //     errorCode, 
-      //     errorMsg, 
-      //     channelState: currentChannel,
-      //     isConnected,
-      //     callAccepted,
-      //     remoteUid,
-      //     timestamp: new Date().toISOString()
-      //   });
-
-      //   // Prevent multiple alerts for the same error
-      //   if (errorShown) {
-      //     console.warn('Suppressing duplicate error alert for code:', errorCode);
-      //     return;
-      //   }
-
-      //   // Handle specific error codes
-      //   switch (errorCode) {
-      //     case 1027:
-      //       // Limit token refresh attempts to prevent infinite loops
-      //       if (tokenRefreshAttempts >= 3) {
-      //         console.error('Maximum token refresh attempts reached');
-      //         setErrorShown(true);
-      //         Alert.alert(
-      //           'Authentication Error',
-      //           'Unable to maintain video call connection. Please restart the call.',
-      //           [{ text: 'OK', onPress: () => endCall() }]
-      //         );
-      //         return;
-      //       }
-
-      //       setTokenRefreshAttempts(prev => prev + 1);
-      //       console.log(`Attempting token refresh (attempt ${tokenRefreshAttempts + 1}/3)...`);
-
-      //       // Try to refresh token first
-      //       refreshToken().then(() => {
-      //         console.log('Token refresh completed');
-      //       }).catch(() => {
-      //         // If refresh fails, show error
-      //         setErrorShown(true);
-      //         Alert.alert(
-      //           'Authentication Error',
-      //           'The video call token has expired or is invalid. Please try starting the call again.',
-      //           [{ text: 'OK', onPress: () => endCall() }]
-      //         );
-      //       });
-      //       break;
-      //     case 1501:
-      //       // If we're already connected and get 1501, it might be a spurious error
-      //       if (isConnected && callAccepted) {
-      //         console.warn('Received 1501 error but call is already connected - ignoring');
-      //         return;
-      //       }
-      //       // Also ignore if a join is in progress to avoid duplicate alerts
-      //       if (isJoiningRef.current) {
-      //         console.warn('Received 1501 while a join is in progress - ignoring');
-      //         return;
-      //       }
-
-      //       setErrorShown(true);
-      //       Alert.alert(
-      //         'Channel Join Failed',
-      //         'Unable to join the video call. The channel may be full or no longer available. Please try again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 17:
-      //       Alert.alert(
-      //         'Network Error',
-      //         'Unable to connect to Agora servers. Please check your internet connection and try again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 2:
-      //       Alert.alert(
-      //         'Invalid Parameters',
-      //         'Invalid video call parameters. Please try starting the call again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 3:
-      //       Alert.alert(
-      //         'Not Ready',
-      //         'Video call service is not ready. Please wait a moment and try again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 109:
-      //       setErrorShown(true);
-      //       Alert.alert(
-      //         'Token Expired',
-      //         'Your video call session has expired. Please start a new call.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     default:
-      //       console.error('Unhandled Agora video error:', errorCode, errorMsg);
-      //       Alert.alert(
-      //         'Video Call Error',
-      //         `An error occurred during the video call (Code: ${errorCode}). Please try again.`,
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //   }
-      // });
-
-      engineRef.current = engine;
+       engineRef.current = engine;
       console.log('Agora video engine initialized successfully');
       return engine;
     } catch (error: any) {
@@ -465,6 +361,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setTokenRefreshAttempts(0);
       setCallEnded(false); // Reset call ended state
       setIsScreenSharing(false); // Reset screen sharing state
+      setMyFilter(''); // Reset my filter state
+      setRemoteFilter(''); // Reset remote filter state
       localUidRef.current = null;
       isJoiningRef.current = false;
       callStartTime.current = null;
@@ -491,6 +389,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setTokenRefreshAttempts(0);
       setCallEnded(false); // Reset call ended state
       setIsScreenSharing(false); // Reset screen sharing state
+      setMyFilter(''); // Reset my filter state
+      setRemoteFilter(''); // Reset remote filter state
       localUidRef.current = null;
       isJoiningRef.current = false;
       callStartTime.current = null;
@@ -608,6 +508,30 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     }
   }, [isScreenSharing]);
 
+  // Toggle video filter - applies to how others see my video
+  const toggleVideoFilter = useCallback(() => {
+    const filters = ['', 'vivid', 'warm', 'cool', 'dramatic'];
+    const currentIndex = filters.indexOf(myFilter);
+    const nextIndex = (currentIndex + 1) % filters.length;
+    const newFilter = filters[nextIndex];
+    
+    setMyFilter(newFilter);
+    console.log('🎥 My video filter changed to:', newFilter || 'none');
+    
+    // Emit filter change to other participants so they can apply it to their view of me
+    if (incomingCall?.from) {
+      console.log('🎥 Sending filter to other participant:', incomingCall.from, 'filter:', newFilter);
+      applyVideoFilter(incomingCall.from, newFilter);
+    }
+    
+    // Show a brief feedback
+    if (newFilter) {
+      console.log(`Applied ${newFilter} filter to my video (others will see this effect)`);
+    } else {
+      console.log('Removed filter from my video');
+    }
+  }, [myFilter, incomingCall, applyVideoFilter]);
+
   // Minimize call
   const minimizeVideoCall = useCallback(() => {
     if (!callAccepted || !currentChannel || !incomingCall) return;
@@ -624,6 +548,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       isMuted: isMuted,
       isCameraOn: isCameraOn,
       isScreenSharing: isScreenSharing,
+      myFilter: myFilter,
       onRestore: () => {
         setIsMinimized(false);
         setIsVideoCall(true);
@@ -747,16 +672,40 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       endCall();
     };
 
+    const handleVideoFilter = ({ filter }: { filter: string }) => {
+      console.log('🎥 Received video filter from other participant:', filter);
+      console.log('🎥 Setting remoteFilter to:', filter);
+      // This filter should be applied to how I see the remote user's video
+      setRemoteFilter(filter);
+      
+      // Additional logging to track filter application
+      if (filter) {
+        console.log('🎥 Applied remote filter to video:', filter);
+      } else {
+        console.log('🎥 Removed remote filter from video');
+      }
+    };
+
     // Removed: on('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
     on('agora-call-accepted', handleCallAccepted);
     on('videoCallEnd', handleCallEnd);
+    on('agora-apply-video-filter', handleVideoFilter);
 
     return () => {
       // Removed: off('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
       off('agora-call-accepted', handleCallAccepted);
       off('videoCallEnd', handleCallEnd);
+      off('agora-apply-video-filter', handleVideoFilter);
     };
   }, [on, off, joinChannel, endCall]);
+
+  // Track remote filter changes
+  useEffect(() => {
+    console.log('🎥 Remote filter state changed:', remoteFilter);
+    if (remoteFilter) {
+      console.log('🎥 Remote video should now show filter:', remoteFilter);
+    }
+  }, [remoteFilter]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -775,6 +724,53 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Get filter style based on current filter
+  const getFilterStyle = (filter: string) => {
+    switch (filter) {
+      case 'vivid':
+        return styles.filterVivid;
+      case 'warm':
+        return styles.filterWarm;
+      case 'cool':
+        return styles.filterCool;
+      case 'dramatic':
+        return styles.filterDramatic;
+      default:
+        return {};
+    }
+  };
+
+  // Get filter overlay style
+  const getFilterOverlayStyle = (filter: string) => {
+    switch (filter) {
+      case 'vivid':
+        return styles.vividOverlay;
+      case 'warm':
+        return styles.warmOverlay;
+      case 'cool':
+        return styles.coolOverlay;
+      case 'dramatic':
+        return styles.dramaticOverlay;
+      default:
+        return {};
+    }
+  };
+  // Get secondary filter overlay style
+  const getFilterOverlaySecondaryStyle = (filter: string) => {
+    switch (filter) {
+      case 'vivid':
+        return styles.vividOverlaySecondary;
+      case 'warm':
+        return styles.warmOverlaySecondary;
+      case 'cool':
+        return styles.coolOverlaySecondary;
+      case 'dramatic':
+        return styles.dramaticOverlaySecondary;
+      default:
+        return {};
+    }
   };
 
   if (!isVideoCall || isMinimized) {
@@ -800,19 +796,41 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               {formatDuration(callDuration)}
             </Text>
           )}
+          {myFilter && (
+            <Text style={[styles.filterIndicator, { color: themeColors.primary }]}>
+              My Filter: {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
+            </Text>
+          )}
+
         </View>
 
         {/* Video Container */}
         <View style={styles.videoContainer}>
           {/* Remote Video */}
           {callAccepted && remoteUid && !isAudioMode ? (
-            <RtcRemoteView.SurfaceView
-              style={styles.remoteVideo}
-              uid={remoteUid}
-              channelId={currentChannel || ''}
-              renderMode={VideoRenderMode.Fit}
-              zOrderMediaOverlay={false}
-            />
+            <View style={styles.remoteVideo}>
+              <RtcRemoteView.SurfaceView
+                style={[styles.remoteVideo, getFilterStyle(remoteFilter)]}
+                uid={remoteUid}
+                channelId={currentChannel || ''}
+                renderMode={VideoRenderMode.Fit}
+                zOrderMediaOverlay={false}
+              />
+              {remoteFilter && (
+                <>
+                  {/* Primary filter overlay */}
+                  <View style={[styles.filterOverlay, getFilterOverlayStyle(remoteFilter)]} />
+                  {/* Secondary filter overlay for more realistic effect */}
+                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(remoteFilter)]} />
+                </>
+              )}
+              {/* Debug overlay to show filter is applied */}
+              {remoteFilter && (
+                <View style={styles.debugFilterOverlay}>
+                  <Text style={styles.debugFilterText}>Filter: {remoteFilter}</Text>
+                </View>
+              )}
+            </View>
           ) : (
             <View style={[styles.remoteVideo, styles.placeholderVideo, { backgroundColor: themeColors.gray[800] }]}>
               {incomingCall?.profilePic ? (
@@ -826,7 +844,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
             </View>
           )}
 
-          {/* Local Video */}
+          {/* Local Video - No filter applied here as it's for my own view */}
           {isVideoCall && isCameraOn && !isAudioMode && (
             <RtcLocalView.SurfaceView
               style={styles.localVideo}
@@ -842,35 +860,47 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {callAccepted && (
             <>
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isMuted ? themeColors.status.error : themeColors.gray[600] }]}
+                style={[styles.controlButton, { backgroundColor: isMuted ? '#666666' : '#29B1A9' }]}
                 onPress={toggleMute}
               >
                 <Icon name={isMuted ? 'mic-off' : 'mic'} size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isCameraOn ? themeColors.gray[600] : themeColors.status.error }]}
+                style={[styles.controlButton, { backgroundColor: isCameraOn ? '#666666' : '#29B1A9' }]}
                 onPress={toggleCamera}
               >
                 <Icon name={isCameraOn ? 'videocam' : 'videocam-off'} size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: themeColors.gray[600] }]}
+                style={[styles.controlButton, { backgroundColor: '#29B1A9' }]}
                 onPress={switchCamera}
               >
                 <Icon name="flip-camera-android" size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isScreenSharing ? themeColors.primary : themeColors.gray[600] }]}
+                style={[styles.controlButton, { backgroundColor: isScreenSharing ? '#666666' : '#29B1A9' }]}
                 onPress={toggleScreenShare}
               >
                 <Icon name={isScreenSharing ? "stop-screen-share" : "screen-share"} size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: themeColors.gray[600] }]}
+                style={[styles.controlButton, { backgroundColor: myFilter ? '#666666' : '#29B1A9' }]}
+                onPress={toggleVideoFilter}
+              >
+                <Icon name="filter-list" size={24} color="white" />
+                {myFilter && (
+                  <Text style={styles.filterButtonText}>
+                    {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
+                  </Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.controlButton, { backgroundColor: '#29B1A9' }]}
                 onPress={minimizeVideoCall}
               >
                 <Icon name="minimize" size={24} color="white" />
@@ -910,6 +940,11 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
+  filterIndicator: {
+    fontSize: 12,
+    marginTop: 2,
+    fontWeight: '500',
+  },
   videoContainer: {
     flex: 1,
     position: 'relative',
@@ -929,6 +964,105 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#333',
     zIndex: 10,
+  },
+  // Filter styles - Matching web CSS filter effects
+  filterVivid: {
+    // Vivid: contrast(1.2) saturate(1.4) brightness(1.1) hue-rotate(5deg) sepia(0.1)
+    opacity: 1.0,
+    borderWidth: 3,
+    borderColor: '#FFD700', // Gold border for vivid
+    shadowColor: '#FFD700',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  filterWarm: {
+    // Warm: contrast(1.15) saturate(1.3) brightness(1.05) hue-rotate(10deg) sepia(0.15)
+    opacity: 1.0,
+    borderWidth: 3,
+    borderColor: '#FF8C00', // Dark orange border for warm
+    shadowColor: '#FF8C00',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  filterCool: {
+    // Cool: contrast(1.1) saturate(1.2) brightness(1.1) hue-rotate(-5deg) sepia(0.05)
+    opacity: 1.0,
+    borderWidth: 3,
+    borderColor: '#00BFFF', // Deep sky blue border for cool
+    shadowColor: '#00BFFF',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  filterDramatic: {
+    // Dramatic: contrast(1.3) saturate(1.5) brightness(1.05) hue-rotate(8deg) sepia(0.2)
+    opacity: 1.0,
+    borderWidth: 3,
+    borderColor: '#FF4500', // Orange red border for dramatic
+    shadowColor: '#FF4500',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.5,
+    shadowRadius: 10,
+    elevation: 5,
+  },
+  // Filter overlay styles
+  filterOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
+    borderRadius: 8, // Match video border radius
+  },
+  vividOverlay: {
+    // Vivid: contrast(1.2) saturate(1.4) brightness(1.1) hue-rotate(5deg) sepia(0.1)
+    backgroundColor: 'rgba(255, 215, 0, 0.15)', // Gold tint matching web vivid
+  },
+  warmOverlay: {
+    // Warm: contrast(1.15) saturate(1.3) brightness(1.05) hue-rotate(10deg) sepia(0.15)
+    backgroundColor: 'rgba(255, 140, 0, 0.2)', // Dark orange tint matching web warm
+  },
+  coolOverlay: {
+    // Cool: contrast(1.1) saturate(1.2) brightness(1.1) hue-rotate(-5deg) sepia(0.05)
+    backgroundColor: 'rgba(0, 191, 255, 0.15)', // Deep sky blue tint matching web cool
+  },
+  dramaticOverlay: {
+    // Dramatic: contrast(1.3) saturate(1.5) brightness(1.05) hue-rotate(8deg) sepia(0.2)
+    backgroundColor: 'rgba(255, 69, 0, 0.2)', // Orange red tint matching web dramatic
+  },
+  // Additional overlay layers for more realistic filter effects
+  vividOverlaySecondary: {
+    backgroundColor: 'rgba(255, 255, 0, 0.05)', // Additional yellow layer
+  },
+  warmOverlaySecondary: {
+    backgroundColor: 'rgba(255, 165, 0, 0.08)', // Additional orange layer
+  },
+  coolOverlaySecondary: {
+    backgroundColor: 'rgba(0, 150, 255, 0.05)', // Additional blue layer
+  },
+  dramaticOverlaySecondary: {
+    backgroundColor: 'rgba(255, 0, 0, 0.05)', // Additional red layer
+  },
+  // Debug overlay styles
+  debugFilterOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    padding: 8,
+    borderRadius: 4,
+    zIndex: 100,
+  },
+  debugFilterText: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   placeholderVideo: {
     justifyContent: 'center',
@@ -957,6 +1091,12 @@ const styles = StyleSheet.create({
     borderRadius: 28,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  filterButtonText: {
+    color: 'white',
+    fontSize: 8,
+    fontWeight: '600',
+    marginTop: 2,
   },
   answerButton: {
     // Additional styling for answer button if needed
