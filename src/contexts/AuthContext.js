@@ -147,6 +147,9 @@ export const AuthProvider = ({ children }) => {
         console.log('✅ User session found:', parsedUser);
         setUser(parsedUser);
         
+        // Ensure push token is registered even on cold start with existing session
+        try { await registerTokenWithServer(); } catch (e) {}
+
         // Fetch fresh profile data when app starts with existing user
         const profileId = typeof parsedUser.profile === 'string' ? parsedUser.profile : parsedUser.profile?._id || parsedUser.user_id;
         if (profileId) {

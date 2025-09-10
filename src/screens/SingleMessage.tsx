@@ -44,6 +44,9 @@ interface Message {
     parent?: any | null;
     tempId?: string;
     reacts?: string[];
+    messageType?: 'text' | 'call';
+    callType?: 'audio' | 'video';
+    callEvent?: 'missed' | 'ended' | 'declined' | 'started';
 }
 
 // Function to validate if a string is a valid image URL
@@ -88,6 +91,7 @@ const SingleMessage = () => {
     // Add state for info menu
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
     const [chatBackground, setChatBackground] = useState<string | null>(null);
+    const [friendEmotion, setFriendEmotion] = useState<string | null>("");
 
     // Set up room and socket events when both IDs are available
     useEffect(() => {
@@ -144,6 +148,9 @@ const SingleMessage = () => {
                 room,
                 attachment: updatedMessage.attachment,
                 parent: updatedMessage.parent || null,
+                messageType: updatedMessage.messageType,
+                callType: updatedMessage.callType,
+                callEvent: updatedMessage.callEvent,
             };
 
             if (messageData.chatPage === true) {
@@ -191,6 +198,14 @@ const SingleMessage = () => {
                 flatListRef.current?.scrollToEnd({ animated: true });
             }, 100);
         };
+
+
+
+        const handleEmotionChange = (emotion: string) => {
+            setFriendEmotion(emotion);
+        };
+
+        on('emotion_change', handleEmotionChange);
 
         on('seenMessage', handleSeenMessage);
 
@@ -519,7 +534,7 @@ const SingleMessage = () => {
             Alert.alert('Error', 'Unable to start call. Please try again.');
             return;
         }
-        
+
         const channelName = `${myProfile._id}-${friend._id}`;
         navigation.navigate('Message', {
             screen: 'OutgoingCall',
@@ -539,7 +554,7 @@ const SingleMessage = () => {
             Alert.alert('Error', 'Unable to start call. Please try again.');
             return;
         }
-        
+
         const channelName = `${myProfile._id}-${friend._id}`;
         navigation.navigate('Message', {
             screen: 'OutgoingCall',
@@ -661,9 +676,11 @@ const SingleMessage = () => {
                     alignItems: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
                 }}>
                     <View style={{
-                        backgroundColor: item.senderId === myProfile?._id ? themeColors.primary : themeColors.gray[200],
+                        backgroundColor: item.messageType === 'call'
+                            ? (item.callEvent === 'missed' ? (isDarkMode ? '#3a0d12' : '#fee2e2') : (isDarkMode ? '#0f172a' : '#e2e8f0'))
+                            : (item.senderId === myProfile?._id ? themeColors.primary : themeColors.gray[200]),
                         paddingHorizontal: 12,
-                        paddingVertical: 6,
+                        paddingVertical: 8,
                         borderRadius: 20,
                         maxWidth: '80%',
                         borderBottomLeftRadius: item.senderId === myProfile._id ? 20 : 4,
@@ -690,13 +707,30 @@ const SingleMessage = () => {
                                 </Text>
                             </TouchableOpacity>
                         )}
-                        <Text style={{
-                            color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
-                            fontSize: 16,
-                            lineHeight: 20,
-                        }}>
-                            {item.message}
-                        </Text>
+                        {item.messageType === 'call' ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                <Icon
+                                    name={item.callType === 'video' ? 'videocam' : 'call'}
+                                    size={18}
+                                    color={item.callEvent === 'missed' ? '#ef4444' : themeColors.text.primary}
+                                />
+                                <Text style={{
+                                    color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
+                                    fontSize: 16,
+                                    lineHeight: 20,
+                                }}>
+                                    {item.message || (item.callEvent === 'missed' ? (item.callType === 'video' ? 'Missed video call' : 'Missed audio call') : (item.callType === 'video' ? 'Video call' : 'Audio call'))}
+                                </Text>
+                            </View>
+                        ) : (
+                            <Text style={{
+                                color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
+                                fontSize: 16,
+                                lineHeight: 20,
+                            }}>
+                                {item.message}
+                            </Text>
+                        )}
                         {item.attachment && isValidImageUrl(item.attachment) && (
                             <Image
                                 source={{ uri: item.attachment }}
@@ -869,10 +903,18 @@ const SingleMessage = () => {
                                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <View style={{ height: 10, width: 10, borderRadius: 5, backgroundColor: 'green' }}></View>
                                         <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Online</Text>
+                                        {
+                                            friendEmotion && (
+                                                <><Text style={{ fontSize: 12, color: themeColors.text.secondary }}>|</Text><Text style={{ fontSize: 12, color: themeColors.text.secondary }}>{friendEmotion}</Text></>
+                                            )
+                                        }
                                     </View>
                                 ) : (
                                     <Text>Away</Text>
                                 )}
+
+                                {/* <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Last seen {moment(friend?.lastSeen).fromNow()}</Text> */}
+
                             </Text>
                         </View>
                     </View>

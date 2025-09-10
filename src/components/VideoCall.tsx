@@ -499,9 +499,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     
     endVideoCall(incomingCall?.from || '');
     await leaveChannel();
+    
+    // Simply navigate back without complex navigation logic to prevent loops
     try {
-      (navigation as any).navigate('Home', { screen: 'HomeMain' });
-    } catch (e) {}
+      const nav: any = navigation;
+      // Just go back to the previous screen or Message tab
+      if (nav.canGoBack && nav.canGoBack()) {
+        nav.goBack();
+      } else {
+        nav.navigate('Message');
+      }
+    } catch (e) {
+      console.warn('Navigation error after call end:', e);
+    }
   }, [currentChannel, incomingCall, endVideoCall, leaveChannel, endMinimizedCall, navigation]);
 
   // Toggle mute

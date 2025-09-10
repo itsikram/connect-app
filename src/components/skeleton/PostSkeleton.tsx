@@ -25,13 +25,27 @@ const PostSkeleton: React.FC<PostSkeletonProps> = ({ count = 3 }) => {
                     </SkeletonRow>
 
                     <SkeletonColumn style={{ marginTop: 12 }}>
-                        <SkeletonBlock width={'100%'} height={180} borderRadius={10} />
+                        <SkeletonBlock width={'100%'} height={250} borderRadius={10} />
                     </SkeletonColumn>
 
                     <SkeletonRow style={{ marginTop: 12 }}>
                         <SkeletonBlock width={'20%'} height={14} />
                         <SkeletonBlock width={'18%'} height={14} />
                         <SkeletonBlock width={'16%'} height={14} />
+                    </SkeletonRow>
+
+                    {/* Additional content skeleton lines */}
+                    <SkeletonColumn style={{ marginTop: 8 }}>
+                        <SkeletonBlock width={'85%'} height={12} />
+                        <SkeletonBlock width={'70%'} height={12} />
+                        <SkeletonBlock width={'60%'} height={12} />
+                    </SkeletonColumn>
+
+                    {/* Action buttons skeleton */}
+                    <SkeletonRow style={{ marginTop: 12, justifyContent: 'space-between' }}>
+                        <SkeletonBlock width={60} height={16} />
+                        <SkeletonBlock width={60} height={16} />
+                        <SkeletonBlock width={60} height={16} />
                     </SkeletonRow>
                 </View>
             ))}

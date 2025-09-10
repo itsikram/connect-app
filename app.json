@@ -1,4 +1,9 @@
 {
   "name": "Connect",
-  "displayName": "Connect"
+  "displayName": "Connect",
+  "extra": {
+    "eas": {
+      "projectId": "2a966305-cfc3-4728-92c0-552f75c34b52"
+    }
+  }
 }

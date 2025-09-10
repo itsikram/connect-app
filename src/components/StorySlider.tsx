@@ -6,14 +6,16 @@ import {
   TouchableOpacity,
   Image,
   StyleSheet,
-  ActivityIndicator,
   Dimensions,
   Alert,
+  Animated,
+  Platform,
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { storyAPI } from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StoryModal from './StoryModal';
+import StorySliderSkeleton from './skeleton/StorySliderSkeleton';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -43,8 +45,13 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
   const [error, setError] = useState<string | null>(null);
   const [selectedStoryIndex, setSelectedStoryIndex] = useState<number>(-1);
   const [showStoryModal, setShowStoryModal] = useState(false);
+  const [scrollPosition, setScrollPosition] = useState(0);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
   const { colors: themeColors } = useTheme();
   const scrollViewRef = useRef<ScrollView>(null);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
   const fetchStories = async () => {
     try {
@@ -54,6 +61,20 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
       
       if (response.status === 200) {
         setStories(response.data || []);
+        // Animate in the stories
+        Animated.parallel([
+          Animated.timing(fadeAnim, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.spring(scaleAnim, {
+            toValue: 1,
+            tension: 100,
+            friction: 8,
+            useNativeDriver: true,
+          }),
+        ]).start();
       }
     } catch (err: any) {
       console.error('Error fetching stories:', err);
@@ -99,24 +120,24 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
   };
 
   const scrollLeft = () => {
-    scrollViewRef.current?.scrollTo({ x: 0, animated: true });
+    const newPosition = Math.max(0, scrollPosition - 200);
+    scrollViewRef.current?.scrollTo({ x: newPosition, animated: true });
   };
 
   const scrollRight = () => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    const newPosition = scrollPosition + 200;
+    scrollViewRef.current?.scrollTo({ x: newPosition, animated: true });
+  };
+
+  const handleScroll = (event: any) => {
+    const currentPosition = event.nativeEvent.contentOffset.x;
+    setScrollPosition(currentPosition);
+    setCanScrollLeft(currentPosition > 0);
+    setCanScrollRight(currentPosition < event.nativeEvent.contentSize.width - event.nativeEvent.layoutMeasurement.width);
   };
 
   if (loading) {
-    return (
-      <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="small" color={themeColors.primary} />
-          <Text style={[styles.loadingText, { color: themeColors.text.secondary }]}>
-            Loading stories...
-          </Text>
-        </View>
-      </View>
-    );
+    return <StorySliderSkeleton count={5} />;
   }
 
   if (error) {
@@ -141,7 +162,16 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
   }
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+    <Animated.View 
+      style={[
+        styles.container, 
+        { 
+          backgroundColor: themeColors.background.primary,
+          opacity: fadeAnim,
+          transform: [{ scale: scaleAnim }]
+        }
+      ]}
+    >
       <View style={styles.storyContainer}>
         <ScrollView
           ref={scrollViewRef}
@@ -149,29 +179,36 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           style={styles.scrollView}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
         >
           {stories.map((story, index) => (
             <TouchableOpacity
               key={story._id}
               style={styles.storyItem}
               onPress={() => handleStoryPress(story, index)}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <View style={styles.storyImageContainer}>
+              <View style={[styles.storyImageContainer, { shadowColor: '#000' }]}>
                 <Image
                   source={{ uri: story.image }}
                   style={styles.storyImage}
                   resizeMode="cover"
                 />
                 <View style={styles.gradient} />
+                
+                {/* Story ring indicator */}
+                <View style={[styles.storyRing, { borderColor: themeColors.primary }]} />
               </View>
               
-              <View style={styles.profilePicContainer}>
+              <View style={[styles.profilePicContainer, { borderColor: themeColors.primary }]}>
                 <Image
                   source={{ uri: story.author.profilePic }}
-                  style={[styles.profilePic, { borderColor: themeColors.primary }]}
+                  style={styles.profilePic}
                   resizeMode="cover"
                 />
+                {/* Online indicator */}
+                <View style={[styles.onlineIndicator, { backgroundColor: themeColors.status.success }]} />
               </View>
               
               <Text 
@@ -184,23 +221,50 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
           ))}
         </ScrollView>
 
-        {/* Navigation arrows for larger screens or when needed */}
+        {/* Enhanced Navigation arrows */}
         {stories.length > 3 && (
           <>
-            <TouchableOpacity
-              style={[styles.arrowLeft, { backgroundColor: themeColors.surface.primary }]}
-              onPress={scrollLeft}
-            >
-              <Icon name="chevron-left" size={20} color={themeColors.text.primary} />
-            </TouchableOpacity>
+            {canScrollLeft && (
+              <Animated.View style={styles.arrowContainer}>
+                <TouchableOpacity
+                  style={[styles.arrowLeft, { backgroundColor: themeColors.surface.primary }]}
+                  onPress={scrollLeft}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="chevron-left" size={20} color={themeColors.text.primary} />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
             
-            <TouchableOpacity
-              style={[styles.arrowRight, { backgroundColor: themeColors.surface.primary }]}
-              onPress={scrollRight}
-            >
-              <Icon name="chevron-right" size={20} color={themeColors.text.primary} />
-            </TouchableOpacity>
+            {canScrollRight && (
+              <Animated.View style={styles.arrowContainer}>
+                <TouchableOpacity
+                  style={[styles.arrowRight, { backgroundColor: themeColors.surface.primary }]}
+                  onPress={scrollRight}
+                  activeOpacity={0.8}
+                >
+                  <Icon name="chevron-right" size={20} color={themeColors.text.primary} />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
           </>
+        )}
+
+        {/* Progress indicator */}
+        {stories.length > 1 && (
+          <View style={styles.progressContainer}>
+            {stories.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.progressDot,
+                  {
+                    backgroundColor: index === Math.floor(scrollPosition / 107) ? themeColors.primary : themeColors.border.primary,
+                  }
+                ]}
+              />
+            ))}
+          </View>
         )}
       </View>
 
@@ -214,34 +278,25 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
         hasNext={selectedStoryIndex < stories.length - 1}
         hasPrevious={selectedStoryIndex > 0}
       />
-    </View>
+    </Animated.View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 8,
+    marginVertical: 12,
+    paddingHorizontal: 4,
   },
   storyContainer: {
     position: 'relative',
-    height: 140,
+    height: 160,
   },
   scrollView: {
-    height: 140,
+    height: 160,
   },
   scrollContent: {
     paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  loadingContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 20,
-  },
-  loadingText: {
-    marginLeft: 8,
-    fontSize: 14,
+    paddingVertical: 12,
   },
   errorContainer: {
     alignItems: 'center',
@@ -255,23 +310,35 @@ const styles = StyleSheet.create({
   retryButton: {
     paddingHorizontal: 16,
     paddingVertical: 8,
+    borderRadius: 8,
   },
   retryText: {
     fontSize: 14,
     fontWeight: '600',
   },
   storyItem: {
-    width: 95,
-    height: 120,
-    marginRight: 12,
+    width: 100,
+    height: 140,
+    marginRight: 16,
     position: 'relative',
   },
   storyImageContainer: {
-    width: 95,
-    height: 120,
-    borderRadius: 12,
+    width: 100,
+    height: 140,
+    borderRadius: 16,
     overflow: 'hidden',
     position: 'relative',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.15,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   storyImage: {
     width: '100%',
@@ -282,66 +349,123 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: '20%',
-    backgroundColor: 'rgba(0,0,0,0.22)',
+    height: '30%',
+    backgroundColor: 'rgba(0,0,0,0.4)',
+  },
+  storyRing: {
+    position: 'absolute',
+    top: -2,
+    left: -2,
+    right: -2,
+    bottom: -2,
+    borderRadius: 18,
+    borderWidth: 2,
+    backgroundColor: 'transparent',
   },
   profilePicContainer: {
     position: 'absolute',
-    top: 8,
-    left: 8,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    borderWidth: 2,
+    top: 10,
+    left: 10,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 3,
     overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.2,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 4,
+      },
+    }),
   },
   profilePic: {
     width: '100%',
     height: '100%',
   },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 2,
+    right: 2,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
   authorName: {
     position: 'absolute',
-    bottom: 4,
-    left: 4,
-    right: 4,
-    fontSize: 10,
-    fontWeight: '600',
+    bottom: 8,
+    left: 8,
+    right: 8,
+    fontSize: 11,
+    fontWeight: '700',
     textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.6)',
-    textShadowOffset: { width: 0, height: 0.5 },
-    textShadowRadius: 1.5,
+    textShadowColor: 'rgba(0,0,0,0.8)',
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+    letterSpacing: 0.3,
+  },
+  arrowContainer: {
+    position: 'absolute',
+    top: '50%',
+    marginTop: -20,
   },
   arrowLeft: {
-    position: 'absolute',
-    left: 4,
-    top: '50%',
-    marginTop: -16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    left: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
   },
   arrowRight: {
-    position: 'absolute',
-    right: 4,
-    top: '50%',
-    marginTop: -16,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    right: 8,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
-    elevation: 2,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2,
-    shadowRadius: 2,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 8,
+      },
+    }),
+  },
+  progressContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 16,
+  },
+  progressDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    marginHorizontal: 3,
+    opacity: 0.6,
   },
 });
 

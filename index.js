@@ -13,6 +13,20 @@ import { displayIncomingCallNotification, configureNotificationsChannel } from '
 import mobileAds from 'react-native-google-mobile-ads';
 import { appOpenAdManager } from './src/lib/ads';
 
+// Handle Notifee background events (e.g., action presses when app is killed)
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  try {
+    const data = detail.notification?.data || {};
+    if (data?.type === 'incoming_call') {
+      const actionId = detail.pressAction?.id;
+      if (actionId === 'reject_call') {
+        try { await notifee.cancelNotification(detail.notification?.id); } catch (e) {}
+      }
+      // Accept action from background cannot directly navigate; app open will be handled by foreground listener
+    }
+  } catch (e) {}
+});
+
 // Background handler: show a notification when message received in background/quit
 messaging().setBackgroundMessageHandler(async remoteMessage => {
   try {
@@ -53,3 +67,8 @@ mobileAds()
       appOpenAdManager.preloadAndShowOnLoad();
     } catch (e) {}
   });
+
+// Ensure notification channels exist as soon as the JS runtime starts
+(async () => {
+  try { await configureNotificationsChannel(); } catch (e) {}
+})();

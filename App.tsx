@@ -48,11 +48,14 @@ import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext
 import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
+import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
 import api, { userAPI } from './src/lib/api';
 import { listenNotificationEvents } from './src/lib/push';
+import FloatingButton from './src/components/FloatingButton';
+import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -104,9 +107,19 @@ function MenuStack() {
 function AppWithTopProgress() {
   const progressRef = React.useRef<TopNavigationProgressRef>(null);
   const readyRef = React.useRef(false);
+  const navigationRef = React.useRef<any>(null);
+
+  const handleMenuNavigation = (screenName: string, params?: any) => {
+    try {
+      (navigationRef.current as any)?.navigate(screenName, params);
+    } catch (e) {
+      console.warn('Navigation error', e);
+    }
+  };
 
   return (
     <NavigationContainer
+      ref={navigationRef}
       onReady={() => {
         readyRef.current = true;
       }}
@@ -119,6 +132,58 @@ function AppWithTopProgress() {
       <View style={{ flex: 1 }}>
         <TopNavigationProgress ref={progressRef} />
         <AppContent />
+        <SwipeTabsOverlay navigationRef={navigationRef} />
+        <FloatingButton
+          onPress={() => {
+            console.log('Floating button pressed directly');
+          }}
+          menuOptions={[
+            {
+              id: 'home',
+              icon: 'home',
+              label: 'Home',
+              onPress: () => handleMenuNavigation('Home'),
+              color: '#4CAF50',
+            },
+            {
+              id: 'message',
+              icon: 'message',
+              label: 'Messages',
+              onPress: () => handleMenuNavigation('Message'),
+              color: '#2196F3',
+            },
+            {
+              id: 'camera',
+              icon: 'camera-alt',
+              label: 'Camera',
+              onPress: () => handleMenuNavigation('Videos'),
+              color: '#FF9800',
+            },
+            {
+              id: 'profile',
+              icon: 'person',
+              label: 'Profile',
+              onPress: () => handleMenuNavigation('Menu', { screen: 'MyProfile' }),
+              color: '#9C27B0',
+            },
+            {
+              id: 'overlay',
+              icon: 'open-in-new',
+              label: 'System Overlay',
+              onPress: async () => {
+                try {
+                  const granted = await ensureOverlayPermission();
+                  if (granted) {
+                    await startSystemOverlay();
+                  }
+                } catch (e) {
+                  console.warn('Overlay error', e);
+                }
+              },
+              color: '#FF5722',
+            },
+          ]}
+        />
       </View>
     </NavigationContainer>
   );
@@ -133,6 +198,12 @@ function AppContent() {
   const { showInfo } = useToast();
   const navigation = useNavigation();
   const [screen, setScreen] = React.useState<string>('');
+  const [activeIncomingCall, setActiveIncomingCall] = React.useState<{
+    callerId: string;
+    channelName: string;
+    isAudio: boolean;
+  } | null>(null);
+  const incomingCallTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
   const dispatch = useDispatch();
 
   React.useEffect(() => {
@@ -211,32 +282,92 @@ function AppContent() {
 
     // Navigate to IncomingCall screen on incoming video/audio call events
     const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
-      (navigation as any).navigate('Message', {
-        screen: 'IncomingCall',
+      // Check if there's already an active incoming call
+      if (activeIncomingCall) {
+        console.log('🚫 Ignoring incoming video call - already have active incoming call:', activeIncomingCall);
+        return;
+      }
+      
+      console.log('📞 New incoming video call from:', from);
+      setActiveIncomingCall({ callerId: from, channelName, isAudio: false });
+      
+      // Set a timeout to automatically clear the active call state after 30 seconds
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+      }
+      incomingCallTimeoutRef.current = setTimeout(() => {
+        console.log('⏰ Incoming call timeout - clearing active call state');
+        setActiveIncomingCall(null);
+      }, 30000); // 30 seconds timeout
+      
+        (navigation as any).navigate('Message', {
+          screen: 'IncomingCall',
         params: {
-          callerId: from,
-          callerName: callerName || 'Unknown',
-          callerProfilePic: callerProfilePic,
-          channelName,
-          isAudio: false,
+        callerId: from,
+        callerName: callerName || 'Unknown',
+        callerProfilePic: callerProfilePic,
+        channelName,
+        isAudio: false,
         }
       });
     };
     const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
+      // Check if there's already an active incoming call
+      if (activeIncomingCall) {
+        console.log('🚫 Ignoring incoming audio call - already have active incoming call:', activeIncomingCall);
+        return;
+      }
+      
+      console.log('📞 New incoming audio call from:', from);
+      setActiveIncomingCall({ callerId: from, channelName, isAudio: true });
+      
+      // Set a timeout to automatically clear the active call state after 30 seconds
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+      }
+      incomingCallTimeoutRef.current = setTimeout(() => {
+        console.log('⏰ Incoming call timeout - clearing active call state');
+        setActiveIncomingCall(null);
+      }, 30000); // 30 seconds timeout
+      
       (navigation as any).navigate('Message', {
         screen: 'IncomingCall',
         params: {
-          callerId: from,
-          callerName: callerName || 'Unknown',
-          callerProfilePic: callerProfilePic,
-          channelName,
-          isAudio: true,
+        callerId: from,
+        callerName: callerName || 'Unknown',
+        callerProfilePic: callerProfilePic,
+        channelName,
+        isAudio: true,
         }
       });
     };
 
+    // Handle call end events to clear active incoming call state
+    const handleCallEnd = () => {
+      console.log('📞 Call ended, clearing active incoming call state');
+      setActiveIncomingCall(null);
+      // Clear timeout if it exists
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+    };
+
+    const handleCallAccepted = () => {
+      console.log('📞 Call accepted, clearing active incoming call state');
+      setActiveIncomingCall(null);
+      // Clear timeout if it exists
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+    };
+
     on('agora-incoming-video-call', handleIncomingVideo);
     on('agora-incoming-audio-call', handleIncomingAudio);
+    on('videoCallEnd', handleCallEnd);
+    on('audioCallEnd', handleCallEnd);
+    on('agora-call-accepted', handleCallAccepted);
 
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
@@ -308,8 +439,21 @@ function AppContent() {
       off('speak_message', handleSpeakMessage)
       off('agora-incoming-video-call', handleIncomingVideo)
       off('agora-incoming-audio-call', handleIncomingAudio)
+      off('videoCallEnd', handleCallEnd)
+      off('audioCallEnd', handleCallEnd)
+      off('agora-call-accepted', handleCallAccepted)
     }
   }, [isConnected,on,off,screen])
+
+  // Cleanup timeout on unmount
+  React.useEffect(() => {
+    return () => {
+      if (incomingCallTimeoutRef.current) {
+        clearTimeout(incomingCallTimeoutRef.current);
+        incomingCallTimeoutRef.current = null;
+      }
+    };
+  }, []);
 
   const isDarkMode = useColorScheme() === 'dark';
 

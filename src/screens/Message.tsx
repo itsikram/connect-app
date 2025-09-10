@@ -63,6 +63,7 @@ const Message = () => {
         console.log('🔍 Auth debug result:', { hasUser: !!user, hasToken: !!token });
       });
 
+      console.log('📱 Fetching chat list for profile:', profileData._id);
       dispatch(fetchChatList(profileData._id));
     }
   }, [dispatch, profileData?._id]);

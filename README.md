@@ -1,3 +1,15 @@
+## Floating Button (In-app + Android System Overlay)
+
+An in-app floating action button is rendered globally from `App.tsx`. On Android, tapping it will request the overlay permission (if needed) and start a small draggable bubble that floats outside the app.
+
+- In-app button component: `src/components/FloatingButton.tsx`
+- Android native service/module: `android/app/src/main/java/com/connect/overlay/*`
+- JS control helpers: `src/lib/overlay.ts`
+
+Notes:
+- Overlay works on Android only. iOS does not support system-wide overlays; the button remains in-app.
+- If permission dialog opens, return to the app and tap the button again to start the overlay.
+
 This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
 
 # Getting Started

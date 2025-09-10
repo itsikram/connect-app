@@ -1,14 +1,24 @@
 import messaging from '@react-native-firebase/messaging';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidCategory, EventType } from '@notifee/react-native';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
 
 const STORAGE_KEY = 'fcmToken';
 
 export async function requestPushPermission(): Promise<boolean> {
-  const authStatus = await messaging().requestPermission();
-  const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED || authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-  return enabled;
+  try {
+    if (Platform.OS === 'android') {
+      // Android 13+ requires explicit user consent for notifications
+      await notifee.requestPermission();
+      return true;
+    }
+    const authStatus = await messaging().requestPermission();
+    const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED || authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+    return enabled;
+  } catch (e) {
+    return false;
+  }
 }
 
 export async function getOrCreateFcmToken(): Promise<string | null> {
@@ -109,6 +119,22 @@ export async function displayIncomingCallNotification(payload: {
         id: 'open-incoming',
         launchActivity: 'default',
       },
+      actions: [
+        {
+          title: 'Accept',
+          pressAction: {
+            id: 'accept_call',
+            launchActivity: 'default',
+          },
+        },
+        {
+          title: 'Reject',
+          pressAction: {
+            id: 'reject_call',
+            launchActivity: 'default',
+          },
+        },
+      ],
     },
     data: {
       type: 'incoming_call',
@@ -127,13 +153,29 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
     if (type === EventType.PRESS) {
       const data = detail.notification?.data || {} as any;
       if (data.type === 'incoming_call') {
-        navigate('IncomingCall', {
-          callerId: data.callerId,
-          callerName: data.callerName,
-          callerProfilePic: data.callerProfilePic,
-          channelName: data.channelName,
-          isAudio: data.isAudio === 'true',
-        });
+        const actionId = detail.pressAction?.id;
+        if (actionId === 'accept_call') {
+          navigate('IncomingCall', {
+            callerId: data.callerId,
+            callerName: data.callerName,
+            callerProfilePic: data.callerProfilePic,
+            channelName: data.channelName,
+            isAudio: data.isAudio === 'true',
+            autoAccept: true,
+          });
+        } else if (actionId === 'reject_call') {
+          // We can emit a socket event to reject if needed; UI navigation optional
+          // For now, just cancel the notification
+          try { await notifee.cancelNotification(detail.notification?.id as string); } catch (e) {}
+        } else {
+          navigate('IncomingCall', {
+            callerId: data.callerId,
+            callerName: data.callerName,
+            callerProfilePic: data.callerProfilePic,
+            channelName: data.channelName,
+            isAudio: data.isAudio === 'true',
+          });
+        }
       }
     }
   });
@@ -141,9 +183,25 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
 
 export function listenForegroundMessages() {
   return messaging().onMessage(async remoteMessage => {
-    const title = remoteMessage.notification?.title || 'Message';
-    const body = remoteMessage.notification?.body || '';
-    await displayLocalNotification(title, body, (remoteMessage.data || {}) as Record<string, string>);
+    const data = (remoteMessage.data || {}) as Record<string, string>;
+    try {
+      // If this is an incoming call, render the specialized full-screen call notification
+      if (data.type === 'incoming_call') {
+        await displayIncomingCallNotification({
+          callerName: data.callerName || 'Unknown',
+          callerProfilePic: data.callerProfilePic || '',
+          channelName: data.channelName || '',
+          isAudio: String(data.isAudio) === 'true',
+          callerId: data.callerId || data.from || '',
+        });
+        return;
+      }
+
+      // Fallback to standard notification for other message types
+      const title = remoteMessage.notification?.title || 'Message';
+      const body = remoteMessage.notification?.body || '';
+      await displayLocalNotification(title, body, data);
+    } catch (e) {}
   });
 }
 
