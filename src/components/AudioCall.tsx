@@ -55,6 +55,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   const [errorShown, setErrorShown] = useState(false);
 
   const engineRef = useRef<RtcEngine | null>(null);
+  const isLeavingRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
   const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
 
@@ -284,6 +285,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
 
   // Leave channel
   const leaveChannel = useCallback(async () => {
+    // Prevent multiple calls to leaveChannel
+    if (isLeavingRef.current) {
+      console.log('Already leaving audio channel, ignoring duplicate call');
+      return;
+    }
+    
+    isLeavingRef.current = true;
+    
     try {
       if (engineRef.current) {
         await engineRef.current.leaveChannel();
@@ -309,6 +318,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       }
     } catch (error) {
       console.error('Failed to leave audio channel:', error);
+    } finally {
+      isLeavingRef.current = false;
     }
   }, []);
 
@@ -328,7 +339,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       endMinimizedCall(callId);
     }
     
-    endAudioCall(incomingCall?.from || '');
+    // endAudioCall(incomingCall?.from || '');
     await leaveChannel();
     
     // Simply navigate back without complex navigation logic to prevent loops
@@ -459,6 +470,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     };
 
     const handleCallEnd = () => {
+
+      return;
       endCall();
     };
 

@@ -10,10 +10,12 @@ export interface MinimizedCall {
   duration?: number;
   isMuted?: boolean;
   isCameraOn?: boolean;
+  isScreenSharing?: boolean;
   onRestore?: () => void;
   onEnd?: () => void;
   onToggleMute?: () => void;
   onToggleCamera?: () => void;
+  onToggleScreenShare?: () => void;
 }
 
 interface CallMinimizeContextType {

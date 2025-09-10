@@ -204,6 +204,9 @@ function AppContent() {
     isAudio: boolean;
   } | null>(null);
   const incomingCallTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const currentScreenRef = React.useRef<string>('');
+  const callEndDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
+  const isCallEndingRef = React.useRef<boolean>(false);
   const dispatch = useDispatch();
 
   React.useEffect(() => {
@@ -217,7 +220,10 @@ function AppContent() {
     // Use navigation state to get current route
     const unsubscribe = navigation.addListener('state', () => {
       const currentRoute = navigation.getState()?.routes[navigation.getState()?.index || 0];
-      setScreen(currentRoute?.name || '');
+      const screenName = currentRoute?.name || '';
+      console.log('🧭 Navigation state changed to:', screenName);
+      setScreen(screenName);
+      currentScreenRef.current = screenName;
     });
     
     return unsubscribe;
@@ -344,13 +350,34 @@ function AppContent() {
 
     // Handle call end events to clear active incoming call state
     const handleCallEnd = () => {
-      console.log('📞 Call ended, clearing active incoming call state');
-      setActiveIncomingCall(null);
-      // Clear timeout if it exists
-      if (incomingCallTimeoutRef.current) {
-        clearTimeout(incomingCallTimeoutRef.current);
-        incomingCallTimeoutRef.current = null;
+      // Prevent multiple calls to the same cleanup
+      if (isCallEndingRef.current) {
+        console.log('📞 Call end already in progress, ignoring duplicate event');
+        return;
       }
+
+      // Clear any existing debounce timeout
+      if (callEndDebounceRef.current) {
+        clearTimeout(callEndDebounceRef.current);
+      }
+
+      // Debounce the call end handling
+      callEndDebounceRef.current = setTimeout(() => {
+        console.log('📞 Call ended, clearing active incoming call state');
+        isCallEndingRef.current = true;
+        setActiveIncomingCall(null);
+        
+        // Clear timeout if it exists
+        if (incomingCallTimeoutRef.current) {
+          clearTimeout(incomingCallTimeoutRef.current);
+          incomingCallTimeoutRef.current = null;
+        }
+
+        // Reset the flag after a longer delay to prevent rapid re-triggering
+        setTimeout(() => {
+          isCallEndingRef.current = false;
+        }, 3000); // 3 seconds delay
+      }, 500); // 500ms debounce - increased from 100ms
     };
 
     const handleCallAccepted = () => {
@@ -372,7 +399,7 @@ function AppContent() {
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
 
-      if(screen === 'MessageList' || screen === 'SingleMessage'){
+      if(currentScreenRef.current === 'MessageList' || currentScreenRef.current === 'SingleMessage'){
         return;
       }
 
@@ -443,7 +470,7 @@ function AppContent() {
       off('audioCallEnd', handleCallEnd)
       off('agora-call-accepted', handleCallAccepted)
     }
-  }, [isConnected,on,off,screen])
+  }, [isConnected,on,off])
 
   // Cleanup timeout on unmount
   React.useEffect(() => {
@@ -451,6 +478,10 @@ function AppContent() {
       if (incomingCallTimeoutRef.current) {
         clearTimeout(incomingCallTimeoutRef.current);
         incomingCallTimeoutRef.current = null;
+      }
+      if (callEndDebounceRef.current) {
+        clearTimeout(callEndDebounceRef.current);
+        callEndDebounceRef.current = null;
       }
     };
   }, []);
