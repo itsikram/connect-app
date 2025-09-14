@@ -3,6 +3,7 @@ import { Modal, View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, u
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from '../theme/colors';
 import api from '../lib/api';
+import { useNavigation } from '@react-navigation/native';
 
 interface SearchModalProps {
   visible: boolean;
@@ -18,6 +19,7 @@ type SearchResult = {
 const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
+  const navigation = useNavigation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult>({});
   const [loading, setLoading] = useState(false);
@@ -58,17 +60,58 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
   const backgroundColor = isDarkMode ? colors.background.dark : colors.background.light;
   const textColor = isDarkMode ? colors.text.light : colors.text.primary;
 
-  const renderSection = (title: string, data?: any[], keyExtractor?: (item: any, index: number) => string) => {
+  const handleUserPress = (user: any) => {
+    try {
+      (navigation as any).navigate('Home', {
+        screen: 'FriendProfile',
+        params: { friendId: user._id, friendData: user },
+      });
+      onClose();
+    } catch (_) {}
+  };
+
+  const handlePostPress = (post: any) => {
+    try {
+      (navigation as any).navigate('Home', {
+        screen: 'SinglePost',
+        params: { postId: post._id },
+      });
+      onClose();
+    } catch (_) {}
+  };
+
+  const handleVideoPress = (video: any) => {
+    try {
+      (navigation as any).navigate('Videos', {
+        screen: 'SingleVideo',
+        params: { videoId: video._id },
+      });
+      onClose();
+    } catch (_) {}
+  };
+
+  const renderSection = (
+    title: string,
+    data?: any[],
+    keyExtractor?: (item: any, index: number) => string,
+    onItemPress?: (item: any) => void,
+  ) => {
     if (!data || data.length === 0) return null;
     return (
       <View style={styles.section}>
         <Text style={[styles.sectionTitle, { color: textColor }]}>{title}</Text>
         {data.slice(0, 10).map((item, idx) => (
-          <View key={(keyExtractor ? keyExtractor(item, idx) : idx.toString())} style={styles.resultRow}>
+          <TouchableOpacity
+            key={(keyExtractor ? keyExtractor(item, idx) : idx.toString())}
+            style={styles.resultRow}
+            activeOpacity={0.7}
+            onPress={() => onItemPress && onItemPress(item)}
+            accessibilityRole="button"
+          >
             <Text numberOfLines={2} style={[styles.resultText, { color: textColor }]}>
               {item.fullName || item.caption || JSON.stringify(item)}
             </Text>
-          </View>
+          </TouchableOpacity>
         ))}
       </View>
     );
@@ -109,9 +152,9 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
           keyExtractor={() => 'results'}
           renderItem={() => (
             <View>
-              {renderSection('Users', results.users, (item: any) => item._id)}
-              {renderSection('Posts', results.posts, (item: any) => item._id)}
-              {renderSection('Videos', results.videos, (item: any) => item._id)}
+              {renderSection('Users', results.users, (item: any) => item._id, handleUserPress)}
+              {renderSection('Posts', results.posts, (item: any) => item._id, handlePostPress)}
+              {renderSection('Videos', results.videos, (item: any) => item._id, handleVideoPress)}
               {!loading && !error && !results.users && !results.posts && !results.videos && (
                 <Text style={{ color: colors.gray[600], textAlign: 'center', marginTop: 24 }}>Type to start searching</Text>
               )}

@@ -1,4 +1,4 @@
-package com.connect.overlay
+package com.connect.app.overlay
 
 import android.app.Activity
 import android.content.Context
@@ -63,6 +63,3 @@ class FloatingOverlayModule(private val reactContext: ReactApplicationContext) :
     }
   }
 }
-
-
-

@@ -1,4 +1,4 @@
-package com.connect.overlay
+package com.connect.app.overlay
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -15,8 +15,8 @@ import android.view.*
 import android.widget.FrameLayout
 import android.widget.ImageView
 import androidx.core.app.NotificationCompat
-import com.connect.MainActivity
-import com.connect.R
+import com.connect.app.MainActivity
+import com.connect.app.R
 
 class FloatingOverlayService : Service() {
 
@@ -155,6 +155,3 @@ class FloatingOverlayService : Service() {
     windowManager = null
   }
 }
-
-
-

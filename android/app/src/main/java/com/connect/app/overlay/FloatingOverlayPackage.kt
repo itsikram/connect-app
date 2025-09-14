@@ -1,4 +1,4 @@
-package com.connect.overlay
+package com.connect.app.overlay
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule
@@ -12,6 +12,3 @@ class FloatingOverlayPackage : ReactPackage {
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> =
     emptyList()
 }
-
-
-

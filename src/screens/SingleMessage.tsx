@@ -23,8 +23,9 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatHeaderSkeleton, ChatBubblesSkeleton } from '../components/skeleton/ChatSkeleton';
 import UserPP from '../components/UserPP';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState, AppDispatch } from '../store';
+import { markMessagesAsRead, addNewMessage, updateUnreadMessageCount } from '../reducers/chatReducer';
 import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -60,6 +61,7 @@ const isValidImageUrl = (url: string): boolean => {
 const SingleMessage = () => {
     const route = useRoute();
     const navigation: any = useNavigation();
+    const dispatch = useDispatch<AppDispatch>();
     const { friend } = route.params as { friend: any };
     const myProfile = useSelector((state: RootState) => state.profile);
     const [room, setRoom] = useState('');
@@ -171,6 +173,13 @@ const SingleMessage = () => {
                     return [...prev, newMessage];
                 });
 
+                // Dispatch action to update message count in Redux
+                dispatch(addNewMessage({
+                    chatId: friend?._id,
+                    message: newMessage,
+                    currentUserId: myProfile?._id
+                }));
+
                 // setMessages(prev => [...prev, newMessage]);
             }
         };
@@ -251,8 +260,17 @@ const SingleMessage = () => {
                 }
             };
             loadBackground();
+            
+            // Mark messages as read when screen is focused
+            if (friend?._id && myProfile?._id) {
+                dispatch(markMessagesAsRead({
+                    chatId: friend._id,
+                    currentUserId: myProfile._id
+                }));
+            }
+            
             return () => { isActive = false; };
-        }, [])
+        }, [friend?._id, myProfile?._id, dispatch])
     );
 
     const [messages, setMessages] = useState<Message[]>([]);

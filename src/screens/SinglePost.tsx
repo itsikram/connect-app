@@ -14,8 +14,19 @@ import {
     TextInput,
     KeyboardAvoidingView,
     Platform,
+    StatusBar,
+    StyleSheet,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+
+type RootStackParamList = {
+    PostDetail: { postId: string };
+    SinglePost: { postId: string };
+    SingleVideo: { videoId: string };
+    FriendProfile: { friendId: string };
+    EditPost: { postId: string };
+};
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector } from 'react-redux';
@@ -30,8 +41,11 @@ const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 interface Post {
     _id: string;
-    content: string;
-    photos?: string[];
+    caption: string;
+    photos?: string | string[];
+    type?: string;
+    feelings?: string;
+    location?: string;
     author: {
         _id: string;
         fullName: string;
@@ -92,7 +106,7 @@ interface Comment {
 
 const SinglePost = () => {
     const route = useRoute();
-    const navigation = useNavigation();
+    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { postId } = route.params as { postId: string };
     
     const { colors: themeColors, isDarkMode } = useTheme();
@@ -117,6 +131,9 @@ const SinglePost = () => {
     const [totalShares, setTotalShares] = useState(0);
     const [showImageModal, setShowImageModal] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string>('');
+    const [showFullContent, setShowFullContent] = useState(false);
+    const [isPostOption, setIsPostOption] = useState(false);
+    const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
 
     const reactionEmojiMap: Record<string, string> = {
         like: '👍',
@@ -127,10 +144,524 @@ const SinglePost = () => {
         wow: '😮',
     };
 
+    const styles = StyleSheet.create({
+        container: {
+            flex: 1,
+            backgroundColor: themeColors.background.primary,
+        },
+        header: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: themeColors.border.primary,
+            backgroundColor: themeColors.surface.header,
+            elevation: 2,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.1,
+            shadowRadius: 4,
+        },
+        headerTitle: {
+            color: themeColors.text.primary,
+            fontSize: 20,
+            fontWeight: '700',
+            marginLeft: 16,
+        },
+        backButton: {
+            padding: 8,
+            borderRadius: 20,
+            backgroundColor: themeColors.gray[100],
+        },
+        postContainer: {
+            backgroundColor: themeColors.surface.primary,
+            marginBottom: 12,
+            borderRadius: 0,
+        },
+        authorSection: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+        },
+        authorInfo: {
+            flex: 1,
+            marginLeft: 12,
+        },
+        authorName: {
+            color: themeColors.text.primary,
+            fontSize: 16,
+            fontWeight: '600',
+            marginBottom: 2,
+        },
+        metaInline: {
+            fontWeight: '400',
+        },
+        postTime: {
+            color: themeColors.text.secondary,
+            fontSize: 13,
+        },
+        moreButton: {
+            padding: 8,
+            borderRadius: 20,
+            backgroundColor: themeColors.gray[100],
+        },
+        contentSection: {
+            paddingHorizontal: 20,
+            paddingBottom: 16,
+        },
+        postContent: {
+            color: themeColors.text.primary,
+            fontSize: 16,
+            lineHeight: 24,
+            marginBottom: 12,
+        },
+        readMoreButton: {
+            color: themeColors.primary,
+            fontSize: 14,
+            fontWeight: '600',
+            marginTop: 4,
+        },
+        imageContainer: {
+            marginBottom: 12,
+        },
+        singleImage: {
+            width: '100%',
+            height: 300,
+            borderRadius: 12,
+        },
+        multiImageContainer: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 4,
+        },
+        multiImage: {
+            borderRadius: 8,
+        },
+        imageOverlay: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            borderRadius: 8,
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        overlayText: {
+            color: 'white',
+            fontSize: 18,
+            fontWeight: 'bold',
+        },
+        statsSection: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderTopWidth: 1,
+            borderTopColor: themeColors.border.primary,
+        },
+        statsLeft: {
+            flexDirection: 'row',
+            alignItems: 'center',
+        },
+        reactionStats: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginRight: 16,
+        },
+        reactionEmojiSmall: {
+            fontSize: 16,
+            marginRight: 4,
+        },
+        statsText: {
+            color: themeColors.text.secondary,
+            fontSize: 14,
+            fontWeight: '500',
+        },
+        statsRight: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 16,
+        },
+        actionButtons: {
+            flexDirection: 'row',
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderTopWidth: 1,
+            borderTopColor: themeColors.border.primary,
+        },
+        actionButton: {
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            borderRadius: 8,
+            marginHorizontal: 4,
+        },
+        actionButtonActive: {
+            backgroundColor: themeColors.primary + '15',
+        },
+        actionButtonText: {
+            color: themeColors.text.primary,
+            fontSize: 14,
+            fontWeight: '600',
+            marginLeft: 8,
+        },
+        actionButtonTextActive: {
+            color: themeColors.primary,
+        },
+        commentsSection: {
+            backgroundColor: themeColors.surface.primary,
+            borderTopWidth: 1,
+            borderTopColor: themeColors.border.primary,
+        },
+        commentsHeader: {
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+            borderBottomWidth: 1,
+            borderBottomColor: themeColors.border.primary,
+        },
+        commentsTitle: {
+            color: themeColors.text.primary,
+            fontSize: 18,
+            fontWeight: '700',
+        },
+        commentItem: {
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderBottomWidth: 1,
+            borderBottomColor: themeColors.border.primary,
+        },
+        commentHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginBottom: 8,
+        },
+        commentAuthor: {
+            color: themeColors.text.primary,
+            fontSize: 14,
+            fontWeight: '600',
+            marginRight: 8,
+        },
+        commentTime: {
+            color: themeColors.text.secondary,
+            fontSize: 12,
+        },
+        commentContent: {
+            color: themeColors.text.primary,
+            fontSize: 14,
+            lineHeight: 20,
+            marginBottom: 8,
+        },
+        replyButton: {
+            alignSelf: 'flex-start',
+        },
+        replyButtonText: {
+            color: themeColors.primary,
+            fontSize: 12,
+            fontWeight: '600',
+        },
+        commentInput: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingHorizontal: 20,
+            paddingVertical: 16,
+            borderTopWidth: 1,
+            borderTopColor: themeColors.border.primary,
+        },
+        inputContainer: {
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            marginLeft: 12,
+            backgroundColor: themeColors.gray[100],
+            borderRadius: 24,
+            paddingHorizontal: 16,
+            paddingVertical: 8,
+        },
+        textInput: {
+            flex: 1,
+            color: themeColors.text.primary,
+            fontSize: 14,
+            maxHeight: 100,
+        },
+        sendButton: {
+            padding: 8,
+            marginLeft: 8,
+        },
+        loadingContainer: {
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: themeColors.background.primary,
+        },
+        loadingText: {
+            color: themeColors.text.primary,
+            marginTop: 16,
+            fontSize: 16,
+        },
+        errorContainer: {
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor: themeColors.background.primary,
+            padding: 20,
+        },
+        errorText: {
+            color: themeColors.text.primary,
+            fontSize: 18,
+            textAlign: 'center',
+            marginTop: 16,
+            marginBottom: 20,
+        },
+        retryButton: {
+            backgroundColor: themeColors.primary,
+            paddingHorizontal: 24,
+            paddingVertical: 12,
+            borderRadius: 24,
+        },
+        retryButtonText: {
+            color: themeColors.text.inverse,
+            fontWeight: '600',
+            fontSize: 16,
+        },
+        imageModal: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.95)',
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        closeButton: {
+            position: 'absolute',
+            top: 50,
+            right: 20,
+            zIndex: 1000,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            borderRadius: 20,
+            padding: 8,
+        },
+        modalImage: {
+            width: SCREEN_WIDTH * 0.95,
+            height: SCREEN_WIDTH * 0.95,
+            borderRadius: 12,
+        },
+        reactionsModal: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+        },
+        reactionsContainer: {
+            backgroundColor: themeColors.surface.primary,
+            borderRadius: 24,
+            padding: 20,
+            flexDirection: 'row',
+            gap: 16,
+            elevation: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+        },
+        reactionButton: {
+            padding: 12,
+            borderRadius: 20,
+            backgroundColor: 'transparent',
+        },
+        reactionButtonActive: {
+            backgroundColor: themeColors.primary + '20',
+        },
+        reactionEmoji: {
+            fontSize: 28,
+        },
+        // Image styles matching Post component
+        attachmentContainer: {
+            marginTop: 10,
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            gap: 10,
+        },
+        postImage: {
+            width: '100%',
+            aspectRatio: 1,
+            borderRadius: 10,
+            backgroundColor: '#eee',
+            resizeMode: 'contain',
+            alignSelf: 'center',
+        },
+        postProfilePic: {
+            width: 250,
+            height: 250,
+            borderRadius: 175,
+            borderWidth: 2,
+            borderColor: '#eee',
+            marginVertical: 10,
+        },
+        // Option menu styles
+        modalOverlay: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+        },
+        optionMenu: {
+            backgroundColor: '#fff',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            paddingTop: 8,
+            paddingBottom: 34,
+            paddingHorizontal: 0,
+            width: '100%',
+            maxHeight: '70%',
+            borderWidth: 1,
+            borderBottomWidth: 0,
+            shadowColor: '#000',
+            shadowOffset: {
+                width: 0,
+                height: -4,
+            },
+            shadowOpacity: 0.15,
+            shadowRadius: 12,
+            elevation: 8,
+        },
+        optionMenuHeader: {
+            alignItems: 'center',
+            paddingVertical: 12,
+            paddingBottom: 20,
+        },
+        optionMenuHandle: {
+            width: 40,
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: '#E5E5E5',
+        },
+        optionMenuItem: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 16,
+            paddingHorizontal: 20,
+            borderBottomWidth: 1,
+            borderBottomColor: '#F0F0F0',
+            backgroundColor: 'transparent',
+        },
+        optionMenuItemDanger: {
+            borderBottomWidth: 0,
+        },
+        optionMenuIcon: {
+            width: 44,
+            height: 44,
+            borderRadius: 22,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginRight: 16,
+        },
+        optionMenuContent: {
+            flex: 1,
+            justifyContent: 'center',
+        },
+        optionMenuTitle: {
+            fontSize: 16,
+            fontWeight: '600',
+            lineHeight: 20,
+            marginBottom: 2,
+        },
+        optionMenuSubtitle: {
+            fontSize: 13,
+            fontWeight: '400',
+            lineHeight: 16,
+            opacity: 0.8,
+        },
+        // Delete confirmation modal styles
+        deleteConfirmModal: {
+            backgroundColor: '#fff',
+            borderRadius: 20,
+            width: '85%',
+            maxWidth: 380,
+            paddingBottom: 24,
+            borderWidth: 1,
+            shadowColor: '#000',
+            shadowOffset: {
+                width: 0,
+                height: 8,
+            },
+            shadowOpacity: 0.2,
+            shadowRadius: 16,
+            elevation: 12,
+        },
+        deleteConfirmHeader: {
+            alignItems: 'center',
+            paddingTop: 32,
+            paddingHorizontal: 24,
+            paddingBottom: 24,
+        },
+        deleteConfirmIcon: {
+            width: 64,
+            height: 64,
+            borderRadius: 32,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 20,
+        },
+        deleteConfirmTitle: {
+            fontSize: 20,
+            fontWeight: '700',
+            marginBottom: 12,
+            textAlign: 'center',
+        },
+        deleteConfirmMessage: {
+            fontSize: 15,
+            textAlign: 'center',
+            lineHeight: 22,
+            opacity: 0.8,
+        },
+        deleteConfirmButtons: {
+            flexDirection: 'row',
+            paddingHorizontal: 24,
+            gap: 12,
+        },
+        deleteConfirmBtn: {
+            flex: 1,
+            paddingVertical: 14,
+            paddingHorizontal: 20,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'row',
+        },
+        cancelBtn: {
+            backgroundColor: 'transparent',
+            borderWidth: 1.5,
+            borderColor: '#E5E5E5',
+        },
+        deleteBtn: {
+            backgroundColor: '#FF4444',
+            shadowColor: '#FF4444',
+            shadowOffset: {
+                width: 0,
+                height: 4,
+            },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            elevation: 6,
+        },
+        deleteConfirmBtnText: {
+            fontSize: 16,
+            fontWeight: '600',
+        },
+    });
+
     const fetchPost = useCallback(async () => {
         try {
             setError(null);
-            const response = await api.get(`/post/${postId}`);
+            const response = await api.get(`/post/single?postId=${postId}`);
+            console.log('posts data', response.data);
             if (response.status === 200) {
                 const postData = response.data.post || response.data;
                 setPost(postData);
@@ -287,9 +818,10 @@ const SinglePost = () => {
         if (!post || !myProfile?._id) return;
 
         try {
-            await api.post(`/post/${post._id}/share`);
+            return Alert.alert('Success', 'Post shared successfully');
+
+            await api.post(`/post/share`);
             setTotalShares(prev => prev + 1);
-            Alert.alert('Success', 'Post shared successfully');
         } catch (err) {
             console.error('Error sharing post:', err);
             Alert.alert('Error', 'Failed to share post');
@@ -306,23 +838,47 @@ const SinglePost = () => {
         setSelectedImage('');
     };
 
+    // Post option functions
+    const postOptionClick = () => setIsPostOption(!isPostOption);
+
+    const showDeleteConfirm = () => {
+        setIsPostOption(false);
+        setShowDeleteConfirmation(true);
+    };
+
+    const handleDeletePost = async () => {
+        if (!post) return;
+        try {
+            const res = await api.post(`/post/delete`, { postId: post._id, authorId: post.author._id });
+            if (res.status === 200) {
+                // Close the modals
+                setIsPostOption(false);
+                setShowDeleteConfirmation(false);
+                // Navigate back since post is deleted
+                navigation.goBack();
+                console.log('Post deleted successfully');
+            }
+        } catch (error) {
+            console.error('Error deleting post:', error);
+            Alert.alert('Error', 'Failed to delete post');
+        }
+    };
+
     const renderReactionButton = () => (
         <TouchableOpacity
             onPress={() => setShowReactions(!showReactions)}
-            style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingVertical: 8,
-                paddingHorizontal: 12,
-                backgroundColor: isReacted ? themeColors.primary + '20' : themeColors.gray[100],
-                borderRadius: 20,
-                marginRight: 8,
-            }}
+            style={[
+                styles.actionButton,
+                isReacted && styles.actionButtonActive,
+            ]}
         >
-            <Text style={{ fontSize: 16, marginRight: 4 }}>
+            <Text style={styles.reactionEmoji}>
                 {isReacted && reactType ? reactionEmojiMap[reactType] : '👍'}
             </Text>
-            <Text style={{ color: themeColors.text.primary, fontWeight: '500' }}>
+            <Text style={[
+                styles.actionButtonText,
+                isReacted && styles.actionButtonTextActive,
+            ]}>
                 {totalReacts > 0 ? totalReacts : 'Like'}
             </Text>
         </TouchableOpacity>
@@ -336,27 +892,20 @@ const SinglePost = () => {
             onRequestClose={() => setShowReactions(false)}
         >
             <TouchableOpacity
-                style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' }}
+                style={styles.reactionsModal}
                 onPress={() => setShowReactions(false)}
             >
-                <View style={{
-                    backgroundColor: themeColors.surface.primary,
-                    borderRadius: 20,
-                    padding: 20,
-                    flexDirection: 'row',
-                    gap: 16,
-                }}>
+                <View style={styles.reactionsContainer}>
                     {Object.entries(reactionEmojiMap).map(([type, emoji]) => (
                         <TouchableOpacity
                             key={type}
                             onPress={() => handleReaction(type)}
-                            style={{
-                                padding: 12,
-                                borderRadius: 20,
-                                backgroundColor: reactType === type ? themeColors.primary + '20' : 'transparent',
-                            }}
+                            style={[
+                                styles.reactionButton,
+                                reactType === type && styles.reactionButtonActive,
+                            ]}
                         >
-                            <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                            <Text style={styles.reactionEmoji}>{emoji}</Text>
                         </TouchableOpacity>
                     ))}
                 </View>
@@ -365,37 +914,34 @@ const SinglePost = () => {
     );
 
     const renderComment = (comment: Comment, isReply = false) => (
-        <View key={comment._id} style={{
-            marginLeft: isReply ? 20 : 0,
-            marginBottom: 12,
-            paddingBottom: 12,
-            borderBottomWidth: isReply ? 0 : 1,
-            borderBottomColor: themeColors.border.primary,
-        }}>
+        <View key={comment._id} style={[
+            styles.commentItem,
+            isReply && { marginLeft: 20, backgroundColor: themeColors.gray[50] }
+        ]}>
             <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                 <UserPP
                     image={comment.author?.profilePic || ''}
-                    size={32}
+                    size={isReply ? 28 : 32}
                     isActive={false}
                 />
-                <View style={{ flex: 1, marginLeft: 8 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={{ color: themeColors.text.primary, fontWeight: '600', fontSize: 14 }}>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                    <View style={styles.commentHeader}>
+                        <Text style={styles.commentAuthor}>
                             {comment.author?.fullName || 'Unknown User'}
                         </Text>
-                        <Text style={{ color: themeColors.text.secondary, fontSize: 12, marginLeft: 8 }}>
+                        <Text style={styles.commentTime}>
                             {moment(comment.createdAt).fromNow()}
                         </Text>
                     </View>
-                    <Text style={{ color: themeColors.text.primary, fontSize: 14, lineHeight: 20 }}>
+                    <Text style={styles.commentContent}>
                         {comment.content}
                     </Text>
                     {!isReply && (
                         <TouchableOpacity
                             onPress={() => setReplyingTo(comment)}
-                            style={{ marginTop: 4 }}
+                            style={styles.replyButton}
                         >
-                            <Text style={{ color: themeColors.primary, fontSize: 12 }}>
+                            <Text style={styles.replyButtonText}>
                                 Reply
                             </Text>
                         </TouchableOpacity>
@@ -410,10 +956,14 @@ const SinglePost = () => {
 
     if (loading || !myProfile) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <SafeAreaView style={styles.container}>
+                <StatusBar 
+                    barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
+                    backgroundColor={themeColors.surface.header} 
+                />
+                <View style={styles.loadingContainer}>
                     <ActivityIndicator size="large" color={themeColors.primary} />
-                    <Text style={{ color: themeColors.text.primary, marginTop: 16 }}>
+                    <Text style={styles.loadingText}>
                         {!myProfile ? 'Loading user profile...' : 'Loading post...'}
                     </Text>
                 </View>
@@ -423,23 +973,21 @@ const SinglePost = () => {
 
     if (error || !post) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 }}>
-                    <Icon name="error" size={48} color={themeColors.status.error} />
-                    <Text style={{ color: themeColors.text.primary, fontSize: 18, marginTop: 16, textAlign: 'center' }}>
+            <SafeAreaView style={styles.container}>
+                <StatusBar 
+                    barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
+                    backgroundColor={themeColors.surface.header} 
+                />
+                <View style={styles.errorContainer}>
+                    <Icon name="error-outline" size={64} color={themeColors.status.error} />
+                    <Text style={styles.errorText}>
                         {error || 'Post not found'}
                     </Text>
                     <TouchableOpacity
                         onPress={fetchPost}
-                        style={{
-                            backgroundColor: themeColors.primary,
-                            paddingHorizontal: 20,
-                            paddingVertical: 10,
-                            borderRadius: 20,
-                            marginTop: 16,
-                        }}
+                        style={styles.retryButton}
                     >
-                        <Text style={{ color: themeColors.text.inverse, fontWeight: '600' }}>
+                        <Text style={styles.retryButtonText}>
                             Try Again
                         </Text>
                     </TouchableOpacity>
@@ -449,24 +997,21 @@ const SinglePost = () => {
     }
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
+        <SafeAreaView style={styles.container}>
+            <StatusBar 
+                barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
+                backgroundColor={themeColors.surface.header} 
+            />
+            
             {/* Header */}
-            <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 16,
-                paddingVertical: 12,
-                borderBottomWidth: 1,
-                borderBottomColor: themeColors.border.primary,
-                backgroundColor: themeColors.surface.header,
-            }}>
+            <View style={styles.header}>
                 <TouchableOpacity
                     onPress={() => navigation.goBack()}
-                    style={{ marginRight: 16 }}
+                    style={styles.backButton}
                 >
                     <Icon name="arrow-back" size={24} color={themeColors.text.primary} />
                 </TouchableOpacity>
-                <Text style={{ color: themeColors.text.primary, fontSize: 18, fontWeight: '600' }}>
+                <Text style={styles.headerTitle}>
                     Post
                 </Text>
             </View>
@@ -481,171 +1026,130 @@ const SinglePost = () => {
                         tintColor={themeColors.primary}
                     />
                 }
+                showsVerticalScrollIndicator={false}
             >
                 {/* Post Content */}
-                <View style={{
-                    backgroundColor: themeColors.surface.primary,
-                    marginBottom: 8,
-                    paddingVertical: 16,
-                }}>
+                <View style={styles.postContainer}>
                     {/* Author Info */}
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: 16,
-                        marginBottom: 12,
-                    }}>
+                    <View style={styles.authorSection}>
                         <UserPP
                             image={post.author?.profilePic || ''}
-                            size={40}
+                            size={44}
                             isActive={post.author?.isActive || false}
                         />
-                        <View style={{ flex: 1, marginLeft: 12 }}>
-                            <Text style={{ color: themeColors.text.primary, fontWeight: '600', fontSize: 16 }}>
+                        <View style={styles.authorInfo}>
+                            <Text style={styles.authorName}>
                                 {post.author?.fullName || 'Unknown User'}
+                                {post.feelings ? (
+                                    <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}> is feeling {post.feelings}</Text>
+                                ) : null}
+                                {post.location ? (
+                                    <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
+                                        {post.feelings ? ' · ' : ' '}
+                                        at {post.location}
+                                    </Text>
+                                ) : null}
                             </Text>
-                            <Text style={{ color: themeColors.text.secondary, fontSize: 12 }}>
+                            <Text style={styles.postTime}>
                                 {moment(post.createdAt).format('MMM DD, YYYY • hh:mm A')}
                             </Text>
                         </View>
-                        <TouchableOpacity>
+                        <TouchableOpacity onPress={postOptionClick} style={styles.moreButton}>
                             <Icon name="more-vert" size={24} color={themeColors.text.secondary} />
                         </TouchableOpacity>
                     </View>
 
                     {/* Post Content */}
-                    {post.content && (
-                        <Text style={{
-                            color: themeColors.text.primary,
-                            fontSize: 16,
-                            lineHeight: 24,
-                            paddingHorizontal: 16,
-                            marginBottom: 12,
-                        }}>
-                            {post.content}
-                        </Text>
+                    {post?.caption && (
+                        <View style={styles.contentSection}>
+                            <Text style={styles.postContent}>
+                                {showFullContent || post.caption.length <= 200 
+                                    ? post.caption 
+                                    : post.caption.substring(0, 200) + '...'
+                                }
+                            </Text>
+                            {post.caption.length > 200 && (
+                                <TouchableOpacity onPress={() => setShowFullContent(!showFullContent)}>
+                                    <Text style={styles.readMoreButton}>
+                                        {showFullContent ? 'Show less' : 'Read more'}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                        </View>
                     )}
 
-                    {/* Photos */}
-                    {post.photos && post.photos.length > 0 && (
-                        <View style={{ paddingHorizontal: 16, marginBottom: 12 }}>
-                            {post.photos.length === 1 ? (
-                                <TouchableOpacity onPress={() => openImageModal(post.photos![0])}>
+                    {/* Photos - Display exactly like Post component */}
+                    {post.photos && (
+                        <View style={styles.attachmentContainer}>
+                            {(post.type === 'post' || !post.type) && post.photos && (
+                                <TouchableOpacity onPress={() => openImageModal(typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0])}>
                                     <Image
-                                        source={{ uri: post.photos[0] }}
-                                        style={{
-                                            width: '100%',
-                                            height: 300,
-                                            borderRadius: 8,
-                                        }}
-                                        resizeMode="cover"
+                                        source={{ uri: typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0] }}
+                                        style={styles.postImage}
+                                        onError={() => console.log('Failed to load post image')}
                                     />
                                 </TouchableOpacity>
-                            ) : (
-                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 4 }}>
-                                    {post.photos.slice(0, 4).map((photo, index) => (
-                                        <TouchableOpacity
-                                            key={index}
-                                            onPress={() => openImageModal(photo)}
-                                            style={{
-                                                width: post.photos!.length === 2 ? '48%' : '32%',
-                                                height: 120,
-                                            }}
-                                        >
-                                            <Image
-                                                source={{ uri: photo }}
-                                                style={{
-                                                    width: '100%',
-                                                    height: '100%',
-                                                    borderRadius: 8,
-                                                }}
-                                                resizeMode="cover"
-                                            />
-                                            {index === 3 && post.photos!.length > 4 && (
-                                                <View style={{
-                                                    position: 'absolute',
-                                                    top: 0,
-                                                    left: 0,
-                                                    right: 0,
-                                                    bottom: 0,
-                                                    backgroundColor: 'rgba(0,0,0,0.5)',
-                                                    borderRadius: 8,
-                                                    justifyContent: 'center',
-                                                    alignItems: 'center',
-                                                }}>
-                                                    <Text style={{ color: 'white', fontSize: 18, fontWeight: 'bold' }}>
-                                                        +{post.photos!.length - 4}
-                                                    </Text>
-                                                </View>
-                                            )}
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
+                            )}
+                            {post.type === 'profilePic' && post.photos && (
+                                <TouchableOpacity onPress={() => openImageModal(typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0])}>
+                                    <Image
+                                        source={{ uri: typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0] }}
+                                        style={styles.postProfilePic}
+                                        onError={() => console.log('Failed to load profile picture')}
+                                    />
+                                </TouchableOpacity>
                             )}
                         </View>
                     )}
 
                     {/* Stats */}
-                    <View style={{
-                        flexDirection: 'row',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderTopWidth: 1,
-                        borderTopColor: themeColors.border.primary,
-                    }}>
-                        <Text style={{ color: themeColors.text.secondary, fontSize: 14 }}>
-                            {totalReacts > 0 && `${totalReacts} reactions`}
-                        </Text>
-                        <View style={{ flexDirection: 'row', gap: 16 }}>
-                            <Text style={{ color: themeColors.text.secondary, fontSize: 14 }}>
-                                {totalComments} comments
+                    <View style={styles.statsSection}>
+                        <View style={styles.statsLeft}>
+                            {totalReacts > 0 && (
+                                <View style={styles.reactionStats}>
+                                    <Text style={styles.reactionEmojiSmall}>
+                                        {isReacted && reactType ? reactionEmojiMap[reactType] : '👍'}
+                                    </Text>
+                                    <Text style={styles.statsText}>
+                                        {totalReacts} {totalReacts === 1 ? 'reaction' : 'reactions'}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                        <View style={styles.statsRight}>
+                            <Text style={styles.statsText}>
+                                {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
                             </Text>
-                            <Text style={{ color: themeColors.text.secondary, fontSize: 14 }}>
-                                {totalShares} shares
+                            <Text style={styles.statsText}>
+                                {totalShares} {totalShares === 1 ? 'share' : 'shares'}
                             </Text>
                         </View>
                     </View>
 
                     {/* Action Buttons */}
-                    <View style={{
-                        flexDirection: 'row',
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        borderTopWidth: 1,
-                        borderTopColor: themeColors.border.primary,
-                    }}>
+                    <View style={styles.actionButtons}>
                         {renderReactionButton()}
                         <TouchableOpacity
                             onPress={() => setShowComments(!showComments)}
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 8,
-                                paddingHorizontal: 12,
-                                backgroundColor: themeColors.gray[100],
-                                borderRadius: 20,
-                                marginRight: 8,
-                            }}
+                            style={[
+                                styles.actionButton,
+                                showComments && styles.actionButtonActive,
+                            ]}
                         >
-                            <Icon name="comment" size={16} color={themeColors.text.primary} />
-                            <Text style={{ color: themeColors.text.primary, marginLeft: 4 }}>
+                            <Icon name="comment" size={18} color={showComments ? themeColors.primary : themeColors.text.primary} />
+                            <Text style={[
+                                styles.actionButtonText,
+                                showComments && styles.actionButtonTextActive,
+                            ]}>
                                 Comment
                             </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             onPress={handleShare}
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingVertical: 8,
-                                paddingHorizontal: 12,
-                                backgroundColor: themeColors.gray[100],
-                                borderRadius: 20,
-                            }}
+                            style={styles.actionButton}
                         >
-                            <Icon name="share" size={16} color={themeColors.text.primary} />
-                            <Text style={{ color: themeColors.text.primary, marginLeft: 4 }}>
+                            <Icon name="share" size={18} color={themeColors.text.primary} />
+                            <Text style={styles.actionButtonText}>
                                 Share
                             </Text>
                         </TouchableOpacity>
@@ -654,62 +1158,51 @@ const SinglePost = () => {
 
                 {/* Comments Section */}
                 {showComments && (
-                    <View style={{
-                        backgroundColor: themeColors.surface.primary,
-                        paddingVertical: 16,
-                    }}>
-                        <View style={{ paddingHorizontal: 16, marginBottom: 16 }}>
-                            <Text style={{ color: themeColors.text.primary, fontSize: 18, fontWeight: '600' }}>
+                    <View style={styles.commentsSection}>
+                        <View style={styles.commentsHeader}>
+                            <Text style={styles.commentsTitle}>
                                 Comments ({totalComments})
                             </Text>
                         </View>
 
                         {/* Comments List */}
-                        {comments.map(comment => renderComment(comment))}
+                        {comments.length > 0 ? (
+                            comments.map(comment => renderComment(comment))
+                        ) : (
+                            <View style={{ padding: 20, alignItems: 'center' }}>
+                                <Icon name="comment" size={48} color={themeColors.text.secondary} />
+                                <Text style={{ color: themeColors.text.secondary, marginTop: 8, fontSize: 16 }}>
+                                    No comments yet
+                                </Text>
+                                <Text style={{ color: themeColors.text.secondary, fontSize: 14, textAlign: 'center', marginTop: 4 }}>
+                                    Be the first to comment on this post
+                                </Text>
+                            </View>
+                        )}
 
                         {/* Comment Input */}
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingHorizontal: 16,
-                            paddingTop: 16,
-                            borderTopWidth: 1,
-                            borderTopColor: themeColors.border.primary,
-                        }}>
+                        <View style={styles.commentInput}>
                             <UserPP
                                 image={myProfile?.profilePic || ''}
-                                size={32}
+                                size={36}
                                 isActive={false}
                             />
-                            <View style={{
-                                flex: 1,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                marginLeft: 12,
-                                backgroundColor: themeColors.gray[100],
-                                borderRadius: 20,
-                                paddingHorizontal: 12,
-                            }}>
+                            <View style={styles.inputContainer}>
                                 <TextInput
                                     value={commentText}
                                     onChangeText={setCommentText}
                                     placeholder="Write a comment..."
                                     placeholderTextColor={themeColors.text.secondary}
-                                    style={{
-                                        flex: 1,
-                                        color: themeColors.text.primary,
-                                        fontSize: 14,
-                                        paddingVertical: 8,
-                                    }}
+                                    style={styles.textInput}
                                     multiline
                                 />
                                 <TouchableOpacity
                                     onPress={handleComment}
                                     disabled={!commentText.trim()}
-                                    style={{
-                                        padding: 8,
-                                        opacity: commentText.trim() ? 1 : 0.5,
-                                    }}
+                                    style={[
+                                        styles.sendButton,
+                                        { opacity: commentText.trim() ? 1 : 0.5 }
+                                    ]}
                                 >
                                     <Icon name="send" size={20} color={themeColors.primary} />
                                 </TouchableOpacity>
@@ -718,54 +1211,41 @@ const SinglePost = () => {
 
                         {/* Reply Input */}
                         {replyingTo && (
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                paddingHorizontal: 16,
-                                paddingTop: 12,
-                                backgroundColor: themeColors.gray[50],
-                            }}>
+                            <View style={[
+                                styles.commentInput,
+                                { backgroundColor: themeColors.gray[50] }
+                            ]}>
                                 <UserPP
                                     image={myProfile?.profilePic || ''}
-                                    size={28}
+                                    size={32}
                                     isActive={false}
                                 />
-                                <View style={{
-                                    flex: 1,
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    marginLeft: 12,
-                                    backgroundColor: themeColors.gray[100],
-                                    borderRadius: 16,
-                                    paddingHorizontal: 12,
-                                }}>
+                                <View style={[
+                                    styles.inputContainer,
+                                    { borderRadius: 20 }
+                                ]}>
                                     <TextInput
                                         value={replyText}
                                         onChangeText={setReplyText}
                                         placeholder={`Reply to ${replyingTo.author.fullName}...`}
                                         placeholderTextColor={themeColors.text.secondary}
-                                        style={{
-                                            flex: 1,
-                                            color: themeColors.text.primary,
-                                            fontSize: 14,
-                                            paddingVertical: 6,
-                                        }}
+                                        style={styles.textInput}
                                         multiline
                                     />
                                     <TouchableOpacity
                                         onPress={handleReply}
                                         disabled={!replyText.trim()}
-                                        style={{
-                                            padding: 6,
-                                            opacity: replyText.trim() ? 1 : 0.5,
-                                        }}
+                                        style={[
+                                            styles.sendButton,
+                                            { opacity: replyText.trim() ? 1 : 0.5 }
+                                        ]}
                                     >
                                         <Icon name="send" size={18} color={themeColors.primary} />
                                     </TouchableOpacity>
                                 </View>
                                 <TouchableOpacity
                                     onPress={() => setReplyingTo(null)}
-                                    style={{ marginLeft: 8 }}
+                                    style={{ marginLeft: 8, padding: 8 }}
                                 >
                                     <Icon name="close" size={20} color={themeColors.text.secondary} />
                                 </TouchableOpacity>
@@ -782,29 +1262,16 @@ const SinglePost = () => {
                 animationType="fade"
                 onRequestClose={closeImageModal}
             >
-                <View style={{
-                    flex: 1,
-                    backgroundColor: 'rgba(0,0,0,0.9)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                }}>
+                <View style={styles.imageModal}>
                     <TouchableOpacity
                         onPress={closeImageModal}
-                        style={{
-                            position: 'absolute',
-                            top: 50,
-                            right: 20,
-                            zIndex: 1000,
-                        }}
+                        style={styles.closeButton}
                     >
-                        <Icon name="close" size={30} color="white" />
+                        <Icon name="close" size={24} color="white" />
                     </TouchableOpacity>
                     <Image
                         source={{ uri: selectedImage }}
-                        style={{
-                            width: SCREEN_WIDTH * 0.9,
-                            height: SCREEN_WIDTH * 0.9,
-                        }}
+                        style={styles.modalImage}
                         resizeMode="contain"
                     />
                 </View>
@@ -812,6 +1279,161 @@ const SinglePost = () => {
 
             {/* Reactions Modal */}
             {renderReactionsModal()}
+
+            {/* Post Options Modal */}
+            <Modal visible={isPostOption} transparent animationType="slide">
+                <TouchableOpacity 
+                    style={styles.modalOverlay} 
+                    onPress={() => setIsPostOption(false)}
+                    activeOpacity={1}
+                >
+                    <View style={[styles.optionMenu, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.border.primary }]}> 
+                        <View style={styles.optionMenuHeader}>
+                            <View style={[styles.optionMenuHandle, { backgroundColor: themeColors.border.primary }]} />
+                        </View>
+                        
+                        {post.author?._id === myProfile?._id && (
+                            <>
+                                <TouchableOpacity 
+                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
+                                    onPress={() => {
+                                        setIsPostOption(false);
+                                        navigation.navigate('EditPost', { postId: post._id });
+                                    }}
+                                >
+                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                                        <Icon name="edit" size={20} color={themeColors.primary} />
+                                    </View>
+                                    <View style={styles.optionMenuContent}>
+                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Edit Post</Text>
+                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>Make changes to your post</Text>
+                                    </View>
+                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
+                                    onPress={() => {
+                                        setIsPostOption(false);
+                                    }}
+                                >
+                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                                        <Icon name="people" size={20} color={themeColors.primary} />
+                                    </View>
+                                    <View style={styles.optionMenuContent}>
+                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Edit Audience</Text>
+                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>Change who can see this post</Text>
+                                    </View>
+                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                    style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
+                                    onPress={showDeleteConfirm}
+                                >
+                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
+                                        <Icon name="delete" size={20} color={themeColors.status.error} />
+                                    </View>
+                                    <View style={styles.optionMenuContent}>
+                                        <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Delete Post</Text>
+                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Remove this post permanently</Text>
+                                    </View>
+                                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
+                                </TouchableOpacity>
+                            </>
+                        )}
+                        
+                        {post.author?._id !== myProfile?._id && (
+                            <>
+                                <TouchableOpacity 
+                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
+                                    onPress={() => {
+                                        setIsPostOption(false);
+                                    }}
+                                >
+                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                                        <Icon name="bookmark" size={20} color={themeColors.primary} />
+                                    </View>
+                                    <View style={styles.optionMenuContent}>
+                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Save Post</Text>
+                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>Add this to your saved items</Text>
+                                    </View>
+                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
+                                    onPress={() => {
+                                        setIsPostOption(false);
+                                    }}
+                                >
+                                    <View style={[styles.optionMenuIcon, { backgroundColor: '#FFA50015' }]}>
+                                        <Icon name="visibility-off" size={20} color="#FFA500" />
+                                    </View>
+                                    <View style={styles.optionMenuContent}>
+                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Hide Post</Text>
+                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>See fewer posts like this</Text>
+                                    </View>
+                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
+                                </TouchableOpacity>
+                                
+                                <TouchableOpacity 
+                                    style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
+                                    onPress={() => {
+                                        setIsPostOption(false);
+                                    }}
+                                >
+                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
+                                        <Icon name="flag" size={20} color={themeColors.status.error} />
+                                    </View>
+                                    <View style={styles.optionMenuContent}>
+                                        <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Report Post</Text>
+                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Report inappropriate content</Text>
+                                    </View>
+                                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
+                                </TouchableOpacity>
+                            </>
+                        )}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
+            
+            {/* Delete Confirmation Modal */}
+            <Modal visible={showDeleteConfirmation} transparent animationType="fade">
+                <TouchableOpacity 
+                    style={[styles.modalOverlay, { justifyContent: 'center' }]} 
+                    onPress={() => setShowDeleteConfirmation(false)}
+                    activeOpacity={1}
+                >
+                    <View style={[styles.deleteConfirmModal, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.border.primary }]}>
+                        <View style={styles.deleteConfirmHeader}>
+                            <View style={[styles.deleteConfirmIcon, { backgroundColor: themeColors.status.error + '15' }]}>
+                                <Icon name="delete" size={28} color={themeColors.status.error} />
+                            </View>
+                            <Text style={[styles.deleteConfirmTitle, { color: themeColors.text.primary }]}>Delete Post</Text>
+                            <Text style={[styles.deleteConfirmMessage, { color: themeColors.text.secondary }]}>
+                                Are you sure you want to delete this post? This action cannot be undone and the post will be permanently removed.
+                            </Text>
+                        </View>
+                        
+                        <View style={styles.deleteConfirmButtons}>
+                            <TouchableOpacity 
+                                style={[styles.deleteConfirmBtn, styles.cancelBtn, { borderColor: themeColors.border.primary }]} 
+                                onPress={() => setShowDeleteConfirmation(false)}
+                            >
+                                <Text style={[styles.deleteConfirmBtnText, { color: themeColors.text.primary }]}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity 
+                                style={[styles.deleteConfirmBtn, styles.deleteBtn]} 
+                                onPress={handleDeletePost}
+                            >
+                                <Icon name="delete" size={18} color="#fff" style={{ marginRight: 8 }} />
+                                <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>Delete Post</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 };

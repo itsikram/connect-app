@@ -1,8 +1,8 @@
-package com.connect
+package com.connect.app
 
 import android.app.Application
 import com.facebook.react.PackageList
-import com.connect.overlay.FloatingOverlayPackage
+import com.connect.app.overlay.FloatingOverlayPackage
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative

@@ -15,6 +15,16 @@ interface SignupData {
   [key: string]: any;
 }
 
+interface GoogleSignInData {
+  googleId: string;
+  email: string;
+  name: string;
+  photo?: string;
+  familyName?: string;
+  givenName?: string;
+  idToken: string;
+}
+
 interface PasswordChangeData {
   oldPassword: string;
   newPassword: string;
@@ -147,6 +157,9 @@ export const authAPI = {
 
   signup: (userData: SignupData): Promise<AxiosResponse<AuthResponse>> => 
     api.post('/auth/signup', userData),
+
+  googleSignIn: (googleData: GoogleSignInData): Promise<AxiosResponse<AuthResponse>> => 
+    api.post('/auth/google-signin', googleData),
 
   logout: (): Promise<AxiosResponse> => api.post('/auth/logout'),
 

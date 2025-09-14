@@ -2,6 +2,7 @@ import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, userAPI } from '../lib/api';
 import { registerTokenWithServer, unregisterTokenWithServer, listenForegroundMessages, listenTokenRefresh } from '../lib/push';
+import { googleAuthService } from '../services/googleAuth';
 
 export const AuthContext = createContext();
 
@@ -121,13 +122,74 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const googleSignIn = async () => {
+    try {
+      setIsLoading(true);
+      console.log('🔐 Attempting Google sign-in...');
+      
+      const result = await googleAuthService.signIn();
+      
+      if (result.success && result.user) {
+        console.log('✅ Google sign-in successful');
+        
+        const { accessToken: token, firstName, surname, user_id, profile } = result.user;
+        
+        // Defensive: check all required fields
+        if (!firstName || !surname || !user_id || !profile) {
+          console.error('❌ Missing required fields from Google sign-in:', { firstName, surname, user_id, profile });
+          throw new Error('Invalid user data received from server.');
+        }
+        
+        console.log('👤 Google user data extracted:', { firstName, surname, user_id, profile });
+        console.log('🔑 Token received:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
+        
+        const userData = { firstName, surname, user_id, profile };
+        
+        await AsyncStorage.multiSet([
+          ['user', JSON.stringify(userData)],
+          ['authToken', token]
+        ]);
+        
+        console.log('💾 Google user data stored in AsyncStorage successfully');
+        
+        setUser(userData);
+        
+        // Register push token after Google sign-in
+        try {
+          await registerTokenWithServer();
+        } catch (e) { }
+        
+        // Fetch fresh profile data after Google sign-in
+        const profileId = typeof profile === 'string' ? profile : profile?._id;
+        if (profileId) {
+          console.log('📥 Fetching profile data for Google user profile ID:', profileId);
+          await fetchProfileData(profileId);
+        }
+        
+        return { success: true, user: userData };
+      } else {
+        console.error('❌ Google sign-in failed:', result.error);
+        return { success: false, error: result.error || 'Google sign-in failed' };
+      }
+    } catch (error) {
+      console.error('❌ Google sign-in error:', error);
+      const errorMessage = error.message || 'Google sign-in failed. Please try again.';
+      return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       await authAPI.logout();
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {
-      try { await unregisterTokenWithServer(); } catch (e) {}
+      try { 
+        await unregisterTokenWithServer(); 
+        await googleAuthService.signOut(); // Sign out from Google as well
+      } catch (e) {}
       // Clear stored data regardless of API call success
       await AsyncStorage.multiRemove(['user', 'authToken']);
       setUser(null);
@@ -182,6 +244,7 @@ export const AuthProvider = ({ children }) => {
     isLoading,
     login,
     register,
+    googleSignIn,
     logout,
     fetchProfileData,
   };

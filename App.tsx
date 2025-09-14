@@ -35,6 +35,7 @@ import FriendProfile from './src/screens/FriendProfile';
 import Videos from './src/screens/Videos';
 import SinglePost from './src/screens/SinglePost';
 import SingleVideo from './src/screens/SingleVideo';
+import EditPost from './src/screens/EditPost';
 import IncomingCall from './src/screens/IncomingCall';
 import OutgoingCall from './src/screens/OutgoingCall';
 import VideoCall from './src/components/VideoCall';
@@ -83,6 +84,7 @@ function HomeStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="HomeMain" component={Home} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
+      <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
     </Stack.Navigator>
   );
@@ -147,8 +149,8 @@ function AppWithTopProgress() {
       <View style={{ flex: 1 }}>
         <TopNavigationProgress ref={progressRef} />
         <AppContent />
-        <SwipeTabsOverlay navigationRef={navigationRef} />
-        {/* <FloatingButton
+        {/* <SwipeTabsOverlay navigationRef={navigationRef} />
+        <FloatingButton
           onPress={() => {
             console.log('Floating button pressed directly');
           }}
@@ -559,7 +561,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                   const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
                   
                   // Hide tab bar for specific screens
-                  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo') {
+                  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost') {
                     return null;
                   }
                   

@@ -82,5 +82,16 @@
 	</array>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-8953965236531270~4949960103</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>REVERSED_CLIENT_ID</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.560231541864-igg3lvikjeii27kd0qoj6drm7jgkh9u6</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

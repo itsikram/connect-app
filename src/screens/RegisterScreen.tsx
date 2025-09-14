@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -8,6 +8,8 @@ import Logo from '../components/Logo';
 import { useTheme } from '../contexts/ThemeContext';
 import { authAPI } from '../lib/api';
 import Toast from 'react-native-toast-message';
+import { AuthContext } from '../contexts/AuthContext';
+import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
 
 const TABS = [
   { key: 'personal', label: 'Personal' },
@@ -40,6 +42,7 @@ const RegisterScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { colors: themeColors } = useTheme();
   const bottomBarBg = themeColors.surface.secondary;
+  const { googleSignIn } = useContext(AuthContext);
 
   // Individual field validation
   const validateField = (fieldName: string, value: any) => {
@@ -246,6 +249,31 @@ const RegisterScreen = () => {
       setError(errorMsg);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    try {
+      setError('');
+      const result = await googleSignIn();
+      console.log('Google sign-in result:', result);
+      if (result.success) {
+        Toast.show({
+          type: 'success',
+          text1: 'Google sign-in successful!'
+        });
+      } else {
+        Toast.show({
+          type: 'error',
+          text1: result.error || 'Google sign-in failed. Please try again.'
+        });
+      }
+    } catch (error) {
+      console.error('Google sign-in error:', error);
+      Toast.show({
+        type: 'error',
+        text1: 'Google sign-in failed. Please try again.'
+      });
     }
   };
 
@@ -491,6 +519,23 @@ const RegisterScreen = () => {
             </View>
           )}
           
+          {/* Divider */}
+          <View style={styles.divider}>
+            <View style={[styles.dividerLine, { backgroundColor: themeColors.text.secondary }]} />
+            <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text>
+            <View style={[styles.dividerLine, { backgroundColor: themeColors.text.secondary }]} />
+          </View>
+          
+          {/* Google Sign-In Button - Temporarily disabled for debugging */}
+          
+          {/* <GoogleSigninButton
+            style={styles.googleButton}
+            size={GoogleSigninButton.Size.Wide}
+            color={GoogleSigninButton.Color.Dark}
+            onPress={handleGoogleSignIn}
+          /> */}
+         
+          
           <Button 
             mode="contained" 
             onPress={handleRegister} 
@@ -672,6 +717,27 @@ const styles = StyleSheet.create({
   passwordRequirement: {
     fontSize: 12,
     fontWeight: '500',
+  },
+  divider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 20,
+    width: 280,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    opacity: 0.3,
+  },
+  dividerText: {
+    marginHorizontal: 16,
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  googleButton: {
+    width: 280,
+    height: 48,
+    marginBottom: 12,
   },
 });
 

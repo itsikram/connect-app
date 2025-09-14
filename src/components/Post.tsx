@@ -493,18 +493,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         </Modal>
       </View>
       <View style={styles.body}>
-        <Text style={[styles.caption, { color: textColor }]}>{post.caption || 'No caption'}</Text>
+        <Text style={[styles.caption, { color: textColor }]}>{post.caption || ''}</Text>
         
-        {/* Navigation to SinglePost */}
-        <TouchableOpacity 
-          onPress={() => navigation.navigate('SinglePost', { postId: post._id })}
-          style={[styles.viewPostButton, { backgroundColor: themeColors.primary + '15', borderColor: themeColors.primary }]}
-        >
-          <Icon name="open-in-new" size={16} color={themeColors.primary} />
-          <Text style={[styles.viewPostButtonText, { color: themeColors.primary }]}>
-            View Full Post
-          </Text>
-        </TouchableOpacity>
+
 
         <View style={styles.attachmentContainer}>
 
@@ -525,6 +516,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         </View>
 
       </View>
+              {/* Navigation to SinglePost */}
+              <TouchableOpacity 
+          onPress={() => navigation.navigate('SinglePost', { postId: post._id })}
+          style={[styles.viewPostButton, { backgroundColor: themeColors.primary + '15', borderColor: themeColors.primary }]}
+        >
+          <Icon name="open-in-new" size={16} color={themeColors.primary} />
+          <Text style={[styles.viewPostButtonText, { color: themeColors.primary }]}>
+            View Full Post
+          </Text>
+        </TouchableOpacity>
       <View style={styles.footer}>
         <View style={[styles.countsRow, { borderTopColor: borderColor }]}>
           <View style={styles.reactsCountLeft}>

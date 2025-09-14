@@ -8,7 +8,7 @@ import UserPP from '../components/UserPP';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 // import { useSocket } from '../contexts/SocketContext';
-import { fetchChatList } from '../reducers/chatReducer';
+import { fetchChatList, updateUnreadMessageCount } from '../reducers/chatReducer';
 import moment from 'moment';
 import ListItemSkeleton from '../components/skeleton/ListItemSkeleton';
 import { ChatHeaderSkeleton } from '../components/skeleton/ChatSkeleton';
@@ -65,7 +65,10 @@ const Message = () => {
 
       console.log('📱 Message component: Fetching chat list for profile:', profileData._id);
       console.log('📱 Message component: Current chat list length:', chatList?.length || 0);
-      dispatch(fetchChatList(profileData._id));
+      dispatch(fetchChatList(profileData._id)).then(() => {
+        // Update unread message count after fetching chat list
+        dispatch(updateUnreadMessageCount(profileData._id));
+      });
     }
   }, [dispatch, profileData?._id]);
 
@@ -91,7 +94,10 @@ const Message = () => {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (profileData?._id) {
-      dispatch(fetchChatList(profileData._id));
+      dispatch(fetchChatList(profileData._id)).then(() => {
+        // Update unread message count after refreshing chat list
+        dispatch(updateUnreadMessageCount(profileData._id));
+      });
     }
     if (!profileData || Object.keys(profileData).length === 0) {
       await fetchProfile();
@@ -214,6 +220,8 @@ const Message = () => {
         style={styles.contactListContainer}
         renderItem={({ item, index }: { item: any, index: number }) => {
           const last = item?.messages?.[0];
+          console.log('Message item:', item);
+          console.log('Last message:', last);
           return (
             <TouchableOpacity
               style={[
@@ -233,7 +241,12 @@ const Message = () => {
                 <View style={styles.lastMessageContainer}>
                   {last ? (
                     <>
-                      <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={1}>{last?.message}</Text>
+                      <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={2} ellipsizeMode="tail">
+                        {(() => {
+                          const messageText = last?.message || last?.text || last?.content || '';
+                          return messageText.length > 0 ? messageText : 'No message content';
+                        })()}
+                      </Text>
                       <Text style={[styles.lastMessageTime, { color: themeColors.text.tertiary }]}>
                         <Text style={{ color: themeColors.text.tertiary }}> · </Text>
                         {moment(last?.timestamp).fromNow()}

@@ -1,4 +1,4 @@
-package com.connect
+package com.connect.app
 
 import android.os.Bundle
 import com.facebook.react.ReactActivity

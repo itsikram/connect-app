@@ -247,7 +247,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
               >
                 <Icon
                   name={tab.icon}
-                  size={28}
+                  size={24}
                   color={isActive ? (tab.color || themeColors.primary) : themeColors.gray[500]}
                 />
                 
@@ -259,7 +259,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
                       {
                         backgroundColor: themeColors.status.error,
                         shadowColor: themeColors.status.error,
-                        transform: [{ scale: isActive ? 1.15 : 1 }],
+                        transform: [{ scale: isActive ? 1.02 : 1 }],
                       },
                     ]}
                   >
@@ -280,7 +280,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
                 color: isActive ? (tab.color || themeColors.primary) : themeColors.gray[500],
                 opacity: labelOpacity,
                 fontWeight: isActive ? '900' : '600',
-                transform: [{ scale: isActive ? 1.08 : 1 }],
+                transform: [{ scale: isActive ? 1 : 1 }],
               },
             ]}
             numberOfLines={1}
@@ -387,8 +387,8 @@ const styles = StyleSheet.create({
   tabsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 16,
+    paddingTop: 9,
+    paddingBottom: 4,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -396,17 +396,18 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
+    paddingVertical: 10,
     position: 'relative',
-    minHeight: 60,
+    minHeight: 45,
   },
   tabContent: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 25,
+    minHeight: 20,
     borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+    marginVertical: 6,
     position: 'relative',
     overflow: 'hidden',
   },
@@ -435,28 +436,28 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     position: 'relative',
-    marginBottom: 4,
+    marginBottom: 2,
   },
   iconWrapper: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 30,
+    height: 30,
+    borderRadius: 16,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   iconInner: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   badge: {
     position: 'absolute',
-    top: -6,
-    right: -6,
+    top: -5,
+    right: -5,
     minWidth: 18,
     height: 18,
     borderRadius: 9,
@@ -483,7 +484,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   bottomContainer: {
-    height: Platform.OS === 'ios' ? 34 : 0,
+    height: Platform.OS === 'ios' ? 20 : 0,
     borderBottomLeftRadius: 24,
     borderBottomRightRadius: 24,
     overflow: 'hidden',

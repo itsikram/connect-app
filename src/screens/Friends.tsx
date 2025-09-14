@@ -24,11 +24,13 @@ const Friends = () => {
   const [friendRequests, setFriendRequests] = useState<any[]>([]);
   const [friendSuggestions, setFriendSuggestions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const fetchFriendData = useCallback(async () => {
     if (!myProfile?._id) return;
     
     try {
+      setLoading(true);
       const [friendRequestsRes, friendSuggestionsRes] = await Promise.all([
         friendAPI.getFriendRequest(myProfile._id),
         friendAPI.getFriendSuggestions(myProfile._id)
@@ -38,6 +40,8 @@ const Friends = () => {
       setFriendSuggestions(friendSuggestionsRes.data);
     } catch (error) {
       console.error('Error fetching friend data:', error);
+    } finally {
+      setLoading(false);
     }
   }, [myProfile?._id]);
 
@@ -124,10 +128,10 @@ const Friends = () => {
           </TouchableOpacity>
         </View>
         <View style={styles.friendGridContainer}>
-          {friendRequests.length === 0 && (
+          {loading && (
             <FriendCardSkeleton count={4} />
           )}
-          {friendRequests.length > 0 && friendRequests.map((friend: any) => (
+          {!loading && friendRequests.length > 0 && friendRequests.map((friend: any) => (
             <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
                 <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
@@ -145,7 +149,7 @@ const Friends = () => {
               </View>
             </TouchableOpacity>
           ))}
-          {friendRequests.length === 0 && (
+          {!loading && friendRequests.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Request to show</Text>
           )}
         </View>
@@ -157,10 +161,10 @@ const Friends = () => {
           <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
         </View>
         <View style={styles.friendGridContainer}>
-          {friendSuggestions.length === 0 && (
+          {loading && (
             <FriendCardSkeleton count={6} />
           )}
-          {friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
+          {!loading && friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
             <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
                 <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
@@ -178,7 +182,7 @@ const Friends = () => {
               </View>
             </TouchableOpacity>
           ))}
-          {friendSuggestions.length === 0 && (
+          {!loading && friendSuggestions.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Suggestions to show</Text>
           )}
         </View>
