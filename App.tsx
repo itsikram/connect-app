@@ -45,6 +45,7 @@ import { SocketProvider, useSocket } from './src/contexts/SocketContext';
 import { ToastProvider, useToast } from './src/contexts/ToastContext';
 import { UserToastProvider, useUserToast } from './src/contexts/UserToastContext';
 import { SettingsProvider } from './src/contexts/SettingsContext';
+import { LudoGameProvider, useLudoGame } from './src/contexts/LudoGameContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
@@ -118,6 +119,36 @@ function MenuStack() {
       <Stack.Screen name="Settings" component={Settings} />
     </Stack.Navigator>
   );
+}
+
+// Tab bar component that checks for Ludo game state
+function TabBarWithLudoCheck(props: any) {
+  const { isLudoGameActive } = useLudoGame();
+  
+  // Hide tab bar if Ludo game is active
+  if (isLudoGameActive) {
+    return null;
+  }
+  
+  // Get the current route name to check if we're on screens that should hide tab bar
+  const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
+  
+  // Hide tab bar for specific screens
+  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost') {
+    return null;
+  }
+  
+  const tabs = props.user ? [
+    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true },
+    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true },
+    { name: 'Friends', icon: 'people', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true },
+    { name: 'Message', icon: 'message', label: 'Message', component: MessageStack, badge: 3, color: '#9C27B0', haptic: true },
+    { name: 'Menu', icon: 'menu', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true },
+  ] : [
+    { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },
+    { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3' },
+  ];
+  return <ProfessionalTabBar {...props} tabs={tabs} />;
 }
 
 // Navigation container wrapper with a global top progress bar
@@ -556,27 +587,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
             ) : (
               <Tab.Navigator
                 initialRouteName={user ? 'Home' : 'Login'}
-                tabBar={(props) => {
-                  // Get the current route name to check if we're on screens that should hide tab bar
-                  const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
-                  
-                  // Hide tab bar for specific screens
-                  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost') {
-                    return null;
-                  }
-                  
-                  const tabs = user ? [
-                    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true },
-                    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true },
-                    { name: 'Friends', icon: 'people', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true },
-                    { name: 'Message', icon: 'message', label: 'Message', component: MessageStack, badge: 3, color: '#9C27B0', haptic: true },
-                    { name: 'Menu', icon: 'menu', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true },
-                  ] : [
-                    { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },
-                    { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3' },
-                  ];
-                  return <ProfessionalTabBar {...props} tabs={tabs} />;
-                }}
+                tabBar={(props) => <TabBarWithLudoCheck {...props} user={user} />}
                 screenOptions={({ route }) => ({
                   headerShown: route.name === 'Home',
                   header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
@@ -670,9 +681,11 @@ function App() {
                     <ToastProvider>
                       <UserToastProvider>
                         <SettingsProvider>
-                          <HeaderVisibilityProvider>
-                            <AppWithTopProgress />
-                          </HeaderVisibilityProvider>
+                          <LudoGameProvider>
+                            <HeaderVisibilityProvider>
+                              <AppWithTopProgress />
+                            </HeaderVisibilityProvider>
+                          </LudoGameProvider>
                         </SettingsProvider>
                       </UserToastProvider>
                     </ToastProvider>
