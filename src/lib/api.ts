@@ -215,6 +215,10 @@ export const friendAPI = {
     api.post(`/friend/reqDelete`, { profile: profileId }),
   removeFriend: (profileId: string): Promise<AxiosResponse> => 
     api.post(`/friend/removeFriend?profileId=${profileId}`),
+  blockUser: (friendId: string): Promise<AxiosResponse> => 
+    api.post('/friend/block', { friendId }),
+  unblockUser: (friendId: string): Promise<AxiosResponse> => 
+    api.post('/friend/unblock', { friendId }),
 };
 
 export const storyAPI = {

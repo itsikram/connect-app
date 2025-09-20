@@ -1924,6 +1924,11 @@ const LudoGameSVG = () => {
             </View>
           </View>
 
+          {/* App Logo below the board */}
+          <View style={styles.logoContainer}>
+            <Logo size="medium" />
+          </View>
+
           <View style={styles.playersContainer}>
             {/* {players.map((player, index) => renderPlayerArea(player, index))} */}
           </View>
@@ -2263,6 +2268,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
     paddingHorizontal: 20,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingVertical: 10,
   },
   boardWrapper: {
     position: 'relative',

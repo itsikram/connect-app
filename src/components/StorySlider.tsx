@@ -53,6 +53,25 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
+  const getAuthorName = (story: Story) => {
+    if (!story?.author) return 'Unknown User';
+    
+    // Try fullName first
+    if (story.author.fullName) {
+      return story.author.fullName;
+    }
+    
+    // Try to construct from user data
+    if (story.author.user) {
+      const firstName = story.author.user.firstName || '';
+      const surname = story.author.user.surname || '';
+      const fullName = `${firstName} ${surname}`.trim();
+      if (fullName) return fullName;
+    }
+    
+    return 'Unknown User';
+  };
+
   const fetchStories = async () => {
     try {
       setLoading(true);
@@ -215,7 +234,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
                 style={[styles.authorName, { color: themeColors.text.inverse }]}
                 numberOfLines={1}
               >
-                {story.author.fullName || `${story.author.user.firstName} ${story.author.user.surname}`}
+                {getAuthorName(story)}
               </Text>
             </TouchableOpacity>
           ))}

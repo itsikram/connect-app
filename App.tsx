@@ -141,7 +141,7 @@ function TabBarWithLudoCheck(props: any) {
     { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true },
     { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true },
     { name: 'Friends', icon: 'people', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true },
-    { name: 'Message', icon: 'message', label: 'Message', component: MessageStack, badge: 3, color: '#9C27B0', haptic: true },
+    { name: 'Message', icon: 'message', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: true },
     { name: 'Menu', icon: 'menu', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true },
   ] : [
     { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },

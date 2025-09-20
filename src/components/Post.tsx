@@ -150,6 +150,11 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     handleReact(type);
   };
 
+  // Hide reactions when clicking outside
+  const handleOutsidePress = () => {
+    setShowReactions(false);
+  };
+
   // Like button handler for each type
   const handleReact = (type: string) => {
     if (isReacted && reactType === type) {
@@ -273,7 +278,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           parentCommentId: replyingTo._id
         };
         console.log('Processed reply:', newReply);
-        
+
         // Add reply to the parent comment
         setComments((prev) => prev.map(comment => {
           if (comment._id === replyingTo._id) {
@@ -284,7 +289,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           }
           return comment;
         }));
-        
+
         setReplyText('');
         setShowReplyBox(false);
         setReplyingTo(null);
@@ -303,7 +308,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Render
   return (
-    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}> 
+    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}>
       <View style={styles.header}>
         <TouchableOpacity onPress={() => {
           if (post.author?._id && post.author._id !== myProfileId) {
@@ -341,19 +346,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           <Icon name="more-vert" size={24} color={subTextColor} />
         </TouchableOpacity>
         <Modal visible={isPostOption} transparent animationType="slide">
-          <TouchableOpacity 
-            style={styles.modalOverlay} 
+          <TouchableOpacity
+            style={styles.modalOverlay}
             onPress={() => setIsPostOption(false)}
             activeOpacity={1}
           >
-            <View style={[styles.optionMenu, { backgroundColor: cardBg, borderColor }]}> 
+            <View style={[styles.optionMenu, { backgroundColor: cardBg, borderColor }]}>
               <View style={styles.optionMenuHeader}>
                 <View style={[styles.optionMenuHandle, { backgroundColor: borderColor }]} />
               </View>
-              
+
               {post.author?._id === myProfileId && (
                 <>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
@@ -368,8 +373,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
@@ -384,8 +389,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
                     onPress={showDeleteConfirm}
                   >
@@ -400,10 +405,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   </TouchableOpacity>
                 </>
               )}
-              
+
               {post.author?._id !== myProfileId && (
                 <>
-                  <TouchableOpacity 
+                  <TouchableOpacity
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
@@ -418,8 +423,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
                     onPress={() => {
                       setIsPostOption(false);
@@ -434,8 +439,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
-                  
-                  <TouchableOpacity 
+
+                  <TouchableOpacity
                     style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
                     onPress={() => {
                       setIsPostOption(false);
@@ -455,10 +460,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             </View>
           </TouchableOpacity>
         </Modal>
-        
+
         <Modal visible={showDeleteConfirmation} transparent animationType="fade">
-          <TouchableOpacity 
-            style={[styles.modalOverlay, { justifyContent: 'center' }]} 
+          <TouchableOpacity
+            style={[styles.modalOverlay, { justifyContent: 'center' }]}
             onPress={() => setShowDeleteConfirmation(false)}
             activeOpacity={1}
           >
@@ -472,16 +477,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   Are you sure you want to delete this post? This action cannot be undone and the post will be permanently removed.
                 </Text>
               </View>
-              
+
               <View style={styles.deleteConfirmButtons}>
-                <TouchableOpacity 
-                  style={[styles.deleteConfirmBtn, styles.cancelBtn, { borderColor }]} 
+                <TouchableOpacity
+                  style={[styles.deleteConfirmBtn, styles.cancelBtn, { borderColor }]}
                   onPress={() => setShowDeleteConfirmation(false)}
                 >
                   <Text style={[styles.deleteConfirmBtnText, { color: textColor }]}>Cancel</Text>
                 </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.deleteConfirmBtn, styles.deleteBtn]} 
+                <TouchableOpacity
+                  style={[styles.deleteConfirmBtn, styles.deleteBtn]}
                   onPress={handleDeletePost}
                 >
                   <Icon name="delete" size={18} color="#fff" style={{ marginRight: 8 }} />
@@ -494,7 +499,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       </View>
       <View style={styles.body}>
         <Text style={[styles.caption, { color: textColor }]}>{post.caption || ''}</Text>
-        
+
 
 
         <View style={styles.attachmentContainer}>
@@ -516,16 +521,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         </View>
 
       </View>
-              {/* Navigation to SinglePost */}
-              <TouchableOpacity 
-          onPress={() => navigation.navigate('SinglePost', { postId: post._id })}
-          style={[styles.viewPostButton, { backgroundColor: themeColors.primary + '15', borderColor: themeColors.primary }]}
-        >
-          <Icon name="open-in-new" size={16} color={themeColors.primary} />
-          <Text style={[styles.viewPostButtonText, { color: themeColors.primary }]}>
-            View Full Post
-          </Text>
-        </TouchableOpacity>
+      {/* Navigation to SinglePost */}
+      <TouchableOpacity
+        onPress={() => navigation.navigate('SinglePost', { postId: post._id })}
+        style={[styles.viewPostButton, { backgroundColor: themeColors.primary + '15', borderColor: themeColors.primary }]}
+      >
+        <Icon name="open-in-new" size={16} color={themeColors.primary} />
+        <Text style={[styles.viewPostButtonText, { color: themeColors.primary }]}>
+          View Full Post
+        </Text>
+      </TouchableOpacity>
       <View style={styles.footer}>
         <View style={[styles.countsRow, { borderTopColor: borderColor }]}>
           <View style={styles.reactsCountLeft}>
@@ -593,7 +598,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             <Icon name="comment" size={20} color={subTextColor} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Comment</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem] }>
+          <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
             <Icon name="share" size={20} color={subTextColor} />
             <Text style={[styles.actionLabel, { color: textColor }]}> Share</Text>
           </TouchableOpacity>
@@ -619,17 +624,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               {comments.length === 0 ? (
                 <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
               ) : (
-                                 comments.map((c) => (
-                   <View key={c._id || Math.random()} style={styles.commentItem}>
-                     <Image
-                       source={{ uri: c.author?.profilePic || default_pp_src }}
-                       style={styles.commentProfilePic}
-                       onError={() => console.log('Failed to load comment profile picture')}
-                     />
-                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}> 
-                       <Text style={[styles.commentAuthor, { color: textColor }]}>
-                         {c.author?.fullName || 
-                          c.author?.firstName || 
+                comments.map((c) => (
+                  <View key={c._id || Math.random()} style={styles.commentItem}>
+                    <Image
+                      source={{ uri: c.author?.profilePic || default_pp_src }}
+                      style={styles.commentProfilePic}
+                      onError={() => console.log('Failed to load comment profile picture')}
+                    />
+                    <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}>
+                      <Text style={[styles.commentAuthor, { color: textColor }]}>
+                        {c.author?.fullName ||
+                          c.author?.firstName ||
                           c.author?.name ||
                           (c.author?.user
                             ? (
@@ -639,42 +644,42 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                             )
                             : 'Unknown User'
                           )}
-                       </Text>
-                       <Text style={[styles.commentText, { color: textColor }]}>
-                         {c.text || c.body || c.content || c.message || 'No comment text'}
-                       </Text>
-                       {c.image || c.photo || c.attachment ? (
-                         <Image
-                           source={{ uri: c.image || c.photo || c.attachment }}
-                           style={styles.commentAttachment}
-                           onError={() => console.log('Failed to load comment attachment')}
-                         />
-                       ) : null}
-                                               <View style={styles.commentActions}>
-                          <View style={styles.commentMeta}>
-                            <Text style={[styles.commentTime, { color: subTextColor }]}>
-                              {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
-                            </Text>
-                          </View>
-                          <TouchableOpacity onPress={() => handleReplyPress(c)} style={styles.replyButton}>
-                            <Text style={styles.replyButtonText}>Reply</Text>
-                          </TouchableOpacity>
+                      </Text>
+                      <Text style={[styles.commentText, { color: textColor }]}>
+                        {c.text || c.body || c.content || c.message || 'No comment text'}
+                      </Text>
+                      {c.image || c.photo || c.attachment ? (
+                        <Image
+                          source={{ uri: c.image || c.photo || c.attachment }}
+                          style={styles.commentAttachment}
+                          onError={() => console.log('Failed to load comment attachment')}
+                        />
+                      ) : null}
+                      <View style={styles.commentActions}>
+                        <View style={styles.commentMeta}>
+                          <Text style={[styles.commentTime, { color: subTextColor }]}>
+                            {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
+                          </Text>
                         </View>
-                     </View>
-                     
-                     {c.replies && c.replies.length > 0 && (
-                       <View style={styles.repliesContainer}>
-                         {c.replies.map((reply: any) => (
-                           <View key={reply._id || Math.random()} style={styles.replyItem}>
-                             <Image
-                               source={{ uri: reply.author?.profilePic || default_pp_src }}
-                               style={styles.replyProfilePic}
-                               onError={() => console.log('Failed to load reply profile picture')}
-                             />
-                             <View style={[styles.replyBody, { backgroundColor: inputBg, borderColor }]}>
-                               <Text style={[styles.replyAuthor, { color: textColor }]}>
-                                 {reply.author?.fullName || 
-                                  reply.author?.firstName || 
+                        <TouchableOpacity onPress={() => handleReplyPress(c)} style={styles.replyButton}>
+                          <Text style={styles.replyButtonText}>Reply</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+
+                    {c.replies && c.replies.length > 0 && (
+                      <View style={styles.repliesContainer}>
+                        {c.replies.map((reply: any) => (
+                          <View key={reply._id || Math.random()} style={styles.replyItem}>
+                            <Image
+                              source={{ uri: reply.author?.profilePic || default_pp_src }}
+                              style={styles.replyProfilePic}
+                              onError={() => console.log('Failed to load reply profile picture')}
+                            />
+                            <View style={[styles.replyBody, { backgroundColor: inputBg, borderColor }]}>
+                              <Text style={[styles.replyAuthor, { color: textColor }]}>
+                                {reply.author?.fullName ||
+                                  reply.author?.firstName ||
                                   reply.author?.name ||
                                   (reply.author?.user
                                     ? (
@@ -684,53 +689,53 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                                     )
                                     : 'Unknown User'
                                   )}
-                               </Text>
-                               <Text style={[styles.replyText, { color: textColor }]}>
-                                 {reply.text || reply.body || reply.content || reply.message || 'No reply text'}
-                               </Text>
-                               <Text style={[styles.replyTime, { color: subTextColor }]}>
-                                 {reply.createdAt ? moment(reply.createdAt).fromNow() : 'Unknown time'}
-                               </Text>
-                             </View>
-                           </View>
-                         ))}
-                       </View>
-                     )}
-                   </View>
-                 ))
+                              </Text>
+                              <Text style={[styles.replyText, { color: textColor }]}>
+                                {reply.text || reply.body || reply.content || reply.message || 'No reply text'}
+                              </Text>
+                              <Text style={[styles.replyTime, { color: subTextColor }]}>
+                                {reply.createdAt ? moment(reply.createdAt).fromNow() : 'Unknown time'}
+                              </Text>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+                ))
               )}
-                         </View>
-             
-             {showReplyBox && replyingTo && (
-               <View style={styles.replyInputContainer}>
-                 <View style={styles.replyInputHeader}>
-                   <Text style={[styles.replyingToText, { color: subTextColor }]}>
-                     Replying to {replyingTo.author?.fullName || replyingTo.author?.firstName || 'Unknown'}
-                   </Text>
-                   <TouchableOpacity onPress={cancelReply} style={styles.cancelReplyBtn}>
-                     <Icon name="close" size={16} color={subTextColor} />
-                   </TouchableOpacity>
-                 </View>
-                 <View style={styles.replyInputRow}>
-                   <TextInput
-                     style={[styles.replyInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
-                     placeholder="Write a reply..."
-                     placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
-                     value={replyText}
-                     onChangeText={setReplyText}
-                   />
-                   <TouchableOpacity style={styles.replyPostBtn} onPress={handlePostReply}>
-                     <Text style={styles.replyPostBtnText}>Reply</Text>
-                   </TouchableOpacity>
-                 </View>
-               </View>
-             )}
-           </KeyboardAvoidingView>
-         )}
-       </View>
+            </View>
+
+            {showReplyBox && replyingTo && (
+              <View style={styles.replyInputContainer}>
+                <View style={styles.replyInputHeader}>
+                  <Text style={[styles.replyingToText, { color: subTextColor }]}>
+                    Replying to {replyingTo.author?.fullName || replyingTo.author?.firstName || 'Unknown'}
+                  </Text>
+                  <TouchableOpacity onPress={cancelReply} style={styles.cancelReplyBtn}>
+                    <Icon name="close" size={16} color={subTextColor} />
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.replyInputRow}>
+                  <TextInput
+                    style={[styles.replyInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
+                    placeholder="Write a reply..."
+                    placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
+                    value={replyText}
+                    onChangeText={setReplyText}
+                  />
+                  <TouchableOpacity style={styles.replyPostBtn} onPress={handlePostReply}>
+                    <Text style={styles.replyPostBtnText}>Reply</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        )}
+      </View>
       <Modal visible={isShareModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
-          <View style={[styles.shareModal, { backgroundColor: cardBg }]}> 
+          <View style={[styles.shareModal, { backgroundColor: cardBg }]}>
             <Text style={{ color: textColor }}>Share Post</Text>
             <TextInput
               style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
@@ -952,13 +957,21 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
   },
+  reactionOverlayModal: {
+    flex: 1,
+    backgroundColor: 'transparent',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    paddingBottom: 60,
+  },
   reactionPopupWrapper: {
     position: 'absolute',
-    bottom: 42,
+    bottom: 45,
     left: '50%',
-    transform: [{ translateX: -100 }],
+    transform: [{ translateX: -60 }],
     zIndex: 40,
     alignItems: 'center',
+    marginBottom: 10,
   },
   reactionCaret: {
     width: 16,

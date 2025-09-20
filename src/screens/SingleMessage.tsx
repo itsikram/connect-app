@@ -15,6 +15,7 @@ import {
     ImageBackground,
     Dimensions,
     ScrollView,
+    ActivityIndicator,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useRoute, useNavigation } from '@react-navigation/native';
@@ -29,7 +30,7 @@ import { markMessagesAsRead, addNewMessage, updateUnreadMessageCount } from '../
 import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
 import { launchImageLibrary } from 'react-native-image-picker';
-import api from '../lib/api';
+import api, { friendAPI } from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
@@ -94,6 +95,9 @@ const SingleMessage = () => {
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
     const [chatBackground, setChatBackground] = useState<string | null>(null);
     const [friendEmotion, setFriendEmotion] = useState<string | null>("");
+    const [isBlocked, setIsBlocked] = useState<boolean>(false);
+    const [isBlocking, setIsBlocking] = useState<boolean>(false);
+    const [isBlockedByFriend, setIsBlockedByFriend] = useState<boolean>(false);
 
     // Set up room and socket events when both IDs are available
     useEffect(() => {
@@ -122,6 +126,46 @@ const SingleMessage = () => {
         }
     }, [friend?._id, myProfile?._id, isConnected, emit, on, off]);
 
+    // Check if user is blocked when component loads
+    useEffect(() => {
+        const checkBlockStatus = async () => {
+            if (!friend?._id || !myProfile?._id) return;
+
+            try {
+                // Check if the friend is in the blocked users list
+                const response = await api.get(`/profile?profileId=${myProfile._id}`);
+                if (response.status === 200 && response.data?.blockedUsers) {
+                    const isUserBlocked = response.data.blockedUsers.includes(friend._id);
+                    setIsBlocked(isUserBlocked);
+                }
+            } catch (error) {
+                console.error('Error checking block status:', error);
+            }
+        };
+
+        checkBlockStatus();
+    }, [friend?._id, myProfile?._id]);
+
+    // Check if current user is blocked by friend
+    useEffect(() => {
+        const checkIfBlockedByFriend = async () => {
+            if (!friend?._id || !myProfile?._id) return;
+
+            try {
+                // Check if current user is in the friend's blocked users list
+                const response = await api.get(`/profile?profileId=${friend._id}`);
+                if (response.status === 200 && response.data?.blockedUsers) {
+                    const isBlockedByFriend = response.data.blockedUsers.includes(myProfile._id);
+                    setIsBlockedByFriend(isBlockedByFriend);
+                }
+            } catch (error) {
+                console.error('Error checking if blocked by friend:', error);
+            }
+        };
+
+        checkIfBlockedByFriend();
+    }, [friend?._id, myProfile?._id]);
+
     // Listen for incoming messages
     useEffect(() => {
         if (!isConnected) return;
@@ -130,17 +174,36 @@ const SingleMessage = () => {
         emit('fetchMessages', myProfile?._id);
 
         const handlePreviousMessages = (messages: any) => {
-            setMessages(messages);
+            // Ensure all messages have valid IDs and filter out any invalid ones
+            const validMessages = messages.filter((msg: any) => msg && msg._id);
+            setMessages(validMessages);
             setCurrentPage(0);
-            setHasMoreMessages(messages.length === messagesPerPage);
+            setHasMoreMessages(validMessages.length === messagesPerPage);
         }
 
         const handleOldMessages = (oldMessages: any) => {
+            console.log('handleOldMessages received:', oldMessages);
+            
             if (oldMessages && oldMessages.length > 0) {
-                setMessages(prev => [...oldMessages, ...prev]);
+                setMessages(prev => {
+                    // Ensure each message has a unique ID and filter out any duplicates
+                    const validOldMessages = oldMessages.filter((msg: any) => msg && msg._id);
+                    const existingIds = new Set(prev.map(msg => msg._id));
+                    const newMessages = validOldMessages.filter((msg: any) => !existingIds.has(msg._id));
+                    
+                    console.log('Adding old messages:', { 
+                        oldMessagesLength: oldMessages.length, 
+                        validOldMessagesLength: validOldMessages.length,
+                        newMessagesLength: newMessages.length,
+                        existingMessagesLength: prev.length
+                    });
+                    
+                    return [...newMessages, ...prev];
+                });
                 setCurrentPage(prev => prev + 1);
                 setHasMoreMessages(oldMessages.length === messagesPerPage);
             } else {
+                console.log('No more old messages available');
                 setHasMoreMessages(false);
             }
             setIsLoadingOldMessages(false);
@@ -315,6 +378,16 @@ const SingleMessage = () => {
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
     const [currentPage, setCurrentPage] = useState(0);
     const messagesPerPage = 20;
+
+    // Debug pagination state
+    useEffect(() => {
+        console.log('Pagination state changed:', { 
+            isLoadingOldMessages, 
+            hasMoreMessages, 
+            currentPage, 
+            messagesLength: messages.length 
+        });
+    }, [isLoadingOldMessages, hasMoreMessages, currentPage, messages.length]);
 
     useEffect(() => {
         // Scroll to bottom when new messages arrive
@@ -575,6 +648,51 @@ const SingleMessage = () => {
         });
     };
 
+    // Block/Unblock functionality
+    const handleBlockUser = async () => {
+        if (!friend?._id || !myProfile?._id || isBlocking) return;
+
+        try {
+            setIsBlocking(true);
+            const response = await friendAPI.blockUser(friend._id);
+            
+            if (response.status === 200) {
+                setIsBlocked(true);
+                Alert.alert('Success', 'User has been blocked successfully');
+                setInfoMenuVisible(false);
+            } else {
+                Alert.alert('Error', 'Failed to block user. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error blocking user:', error);
+            Alert.alert('Error', 'Failed to block user. Please try again.');
+        } finally {
+            setIsBlocking(false);
+        }
+    };
+
+    const handleUnblockUser = async () => {
+        if (!friend?._id || !myProfile?._id || isBlocking) return;
+
+        try {
+            setIsBlocking(true);
+            const response = await friendAPI.unblockUser(friend._id);
+            
+            if (response.status === 200) {
+                setIsBlocked(false);
+                Alert.alert('Success', 'User has been unblocked successfully');
+                setInfoMenuVisible(false);
+            } else {
+                Alert.alert('Error', 'Failed to unblock user. Please try again.');
+            }
+        } catch (error) {
+            console.error('Error unblocking user:', error);
+            Alert.alert('Error', 'Failed to unblock user. Please try again.');
+        } finally {
+            setIsBlocking(false);
+        }
+    };
+
     const handleAttachmentPress = async () => {
         try {
             if (!isConnected) {
@@ -653,13 +771,24 @@ const SingleMessage = () => {
     };
 
     const loadOldMessages = () => {
-        if (isLoadingOldMessages || !hasMoreMessages || !isConnected) {
+        console.log('loadOldMessages called', { isLoadingOldMessages, hasMoreMessages, isConnected, messagesLength: messages.length });
+        
+        if (isLoadingOldMessages || !hasMoreMessages || !isConnected || !room) {
+            console.log('Load old messages blocked:', { isLoadingOldMessages, hasMoreMessages, isConnected, room });
             return;
         }
 
         setIsLoadingOldMessages(true);
         const oldestMessage = messages[0];
         const lastMessageTimestamp = oldestMessage ? oldestMessage.timestamp : new Date();
+        
+        console.log('Emitting fetchOldMessages with:', {
+            room,
+            userId: myProfile?._id,
+            page: currentPage + 1,
+            limit: messagesPerPage,
+            beforeTimestamp: lastMessageTimestamp.toISOString()
+        });
         
         emit('fetchOldMessages', {
             room,
@@ -668,6 +797,24 @@ const SingleMessage = () => {
             limit: messagesPerPage,
             beforeTimestamp: lastMessageTimestamp.toISOString()
         });
+    };
+
+    const handleScroll = (event: any) => {
+        const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+        const isNearTop = contentOffset.y <= 50; // Within 50px of top
+        
+        console.log('Scroll event:', { 
+            contentOffsetY: contentOffset.y, 
+            isNearTop, 
+            hasMoreMessages, 
+            isLoadingOldMessages,
+            messagesLength: messages.length
+        });
+        
+        if (isNearTop && hasMoreMessages && !isLoadingOldMessages && isConnected && messages.length > 0) {
+            console.log('Triggering loadOldMessages from scroll');
+            loadOldMessages();
+        }
     };
 
     const renderLeftReplyAction = () => (
@@ -908,6 +1055,51 @@ const SingleMessage = () => {
         );
     };
 
+    const renderBlockedMessage = () => {
+        if (!isBlockedByFriend) return null;
+
+        return (
+            <View style={{
+                backgroundColor: themeColors.surface.header,
+                borderTopWidth: 1,
+                borderTopColor: themeColors.border.primary,
+                paddingHorizontal: 16,
+                paddingVertical: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}>
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: themeColors.status.error + '15',
+                    paddingHorizontal: 20,
+                    paddingVertical: 12,
+                    borderRadius: 25,
+                    borderWidth: 1,
+                    borderColor: themeColors.status.error + '30',
+                }}>
+                    <Icon name="block" size={24} color={themeColors.status.error} />
+                    <Text style={{
+                        color: themeColors.status.error,
+                        fontSize: 16,
+                        fontWeight: '600',
+                        marginLeft: 8,
+                    }}>
+                        {friend?.fullName || 'This user'} blocked you
+                    </Text>
+                </View>
+                <Text style={{
+                    color: themeColors.text.secondary,
+                    fontSize: 12,
+                    marginTop: 8,
+                    textAlign: 'center',
+                }}>
+                    You can't send messages to this person
+                </Text>
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
 
@@ -1053,19 +1245,24 @@ const SingleMessage = () => {
                         ref={flatListRef}
                         data={messages}
                         renderItem={renderMessage}
-                        keyExtractor={(item) => item._id}
+                        keyExtractor={(item, index) => item._id || item.tempId || `msg-${index}-${item.timestamp}`}
                         style={{ flex: 1 }}
                         contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
                         showsVerticalScrollIndicator={false}
                         ListHeaderComponent={renderLoadingOldMessages}
                         ListFooterComponent={renderTypingIndicator}
-                        onEndReached={loadOldMessages}
-                        onEndReachedThreshold={0.1}
+                        onScroll={handleScroll}
+                        scrollEventThrottle={16}
                         onScrollToIndexFailed={(info) => {
                             const wait = new Promise(resolve => setTimeout(resolve, 200));
                             wait.then(() => {
                                 flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
                             });
+                        }}
+                        inverted={false}
+                        maintainVisibleContentPosition={{
+                            minIndexForVisible: 0,
+                            autoscrollToTopThreshold: 100
                         }}
                     />
                 </ImageBackground>
@@ -1074,19 +1271,24 @@ const SingleMessage = () => {
                     ref={flatListRef}
                     data={messages}
                     renderItem={renderMessage}
-                    keyExtractor={(item) => item._id}
+                    keyExtractor={(item, index) => item._id || item.tempId || `msg-${index}-${item.timestamp}`}
                     style={{ flex: 1 }}
                     contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
                     showsVerticalScrollIndicator={false}
                     ListHeaderComponent={renderLoadingOldMessages}
                     ListFooterComponent={renderTypingIndicator}
-                    onEndReached={loadOldMessages}
-                    onEndReachedThreshold={0.1}
+                    onScroll={handleScroll}
+                    scrollEventThrottle={16}
                     onScrollToIndexFailed={(info) => {
                         const wait = new Promise(resolve => setTimeout(resolve, 200));
                         wait.then(() => {
                             flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
                         });
+                    }}
+                    inverted={false}
+                    maintainVisibleContentPosition={{
+                        minIndexForVisible: 0,
+                        autoscrollToTopThreshold: 100
                     }}
                 />
             )}
@@ -1612,43 +1814,60 @@ const SingleMessage = () => {
                                 }}
                                 onPress={() => {
                                     setInfoMenuVisible(false);
-                                    Alert.alert('Block', `Are you sure you want to block ${friend?.fullName}?`, [
-                                        { text: 'Cancel', style: 'cancel' },
-                                        {
-                                            text: 'Block', style: 'destructive', onPress: () => {
-                                                Alert.alert('Block', 'Block user feature coming soon!');
+                                    if (isBlocked) {
+                                        Alert.alert('Unblock', `Are you sure you want to unblock ${friend?.fullName}?`, [
+                                            { text: 'Cancel', style: 'cancel' },
+                                            {
+                                                text: 'Unblock', style: 'default', onPress: handleUnblockUser
                                             }
-                                        }
-                                    ]);
+                                        ]);
+                                    } else {
+                                        Alert.alert('Block', `Are you sure you want to block ${friend?.fullName}?`, [
+                                            { text: 'Cancel', style: 'cancel' },
+                                            {
+                                                text: 'Block', style: 'destructive', onPress: handleBlockUser
+                                            }
+                                        ]);
+                                    }
                                 }}
+                                disabled={isBlocking}
                             >
                                 <View style={{
                                     width: 40,
                                     height: 40,
                                     borderRadius: 20,
-                                    backgroundColor: themeColors.status.error + '15',
+                                    backgroundColor: isBlocked ? themeColors.status.success + '15' : themeColors.status.error + '15',
                                     alignItems: 'center',
                                     justifyContent: 'center',
                                     marginRight: 15,
                                 }}>
-                                    <Icon name="block" size={20} color={themeColors.status.error} />
+                                    <Icon 
+                                        name={isBlocked ? "check-circle" : "block"} 
+                                        size={20} 
+                                        color={isBlocked ? themeColors.status.success : themeColors.status.error} 
+                                    />
                                 </View>
                                 <View style={{ flex: 1 }}>
                                     <Text style={{
                                         fontSize: 16,
                                         fontWeight: '500',
-                                        color: themeColors.status.error,
+                                        color: isBlocked ? themeColors.status.success : themeColors.status.error,
                                     }}>
-                                        Block User
+                                        {isBlocked ? 'Unblock User' : 'Block User'}
                                     </Text>
                                     <Text style={{
                                         fontSize: 12,
-                                        color: themeColors.status.error + '80',
+                                        color: (isBlocked ? themeColors.status.success : themeColors.status.error) + '80',
                                         marginTop: 2,
                                     }}>
-                                        Block and report this user
+                                        {isBlocked ? 'Unblock this user' : 'Block and report this user'}
                                     </Text>
                                 </View>
+                                {isBlocking && (
+                                    <View style={{ marginLeft: 10 }}>
+                                        <ActivityIndicator size="small" color={themeColors.primary} />
+                                    </View>
+                                )}
                             </TouchableOpacity>
 
                             <TouchableOpacity
@@ -1703,16 +1922,19 @@ const SingleMessage = () => {
                 </TouchableOpacity>
             </Modal>
 
-            <KeyboardAvoidingView
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                style={{
-                    backgroundColor: themeColors.surface.header,
-                    borderTopWidth: 1,
-                    borderTopColor: themeColors.border.primary,
-                    paddingHorizontal: 16,
-                    paddingVertical: 14
-                }}
-            >
+            {isBlockedByFriend ? (
+                <>{renderBlockedMessage()}</>
+            ) : (
+                <KeyboardAvoidingView
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    style={{
+                        backgroundColor: themeColors.surface.header,
+                        borderTopWidth: 1,
+                        borderTopColor: themeColors.border.primary,
+                        paddingHorizontal: 16,
+                        paddingVertical: 14
+                    }}
+                >
                 {replyingTo && (
                     <View style={{
                         marginBottom: 8,
@@ -1852,7 +2074,8 @@ const SingleMessage = () => {
 
                     </TouchableOpacity>
                 </View>
-            </KeyboardAvoidingView>
+                </KeyboardAvoidingView>
+            )}
 
             {/* Video and Audio Call Components */}
             {/* VideoCall and AudioCall components now rendered globally in App.tsx */}

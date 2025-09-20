@@ -8,7 +8,7 @@ import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { launchImageLibrary } from 'react-native-image-picker'
 import { useDispatch } from 'react-redux'
-import { setProfile } from '../reducers/profileReducer'
+import { setProfile, updateProfilePic, updateCoverPic } from '../reducers/profileReducer'
 import { useNavigation } from '@react-navigation/native'
 
 function formatMonthYear(dateInput: any): string {
@@ -126,6 +126,8 @@ const MyProfile = () => {
         if (!asset || !asset.uri) return
         try {
             setIsUploadingCover(true)
+            // 0) Optimistic update - show the selected image immediately
+            dispatch(updateCoverPic(asset.uri))
             // 1) upload raw image to server/cloud
             const fileName = asset.fileName || `cover_${Date.now()}.jpg`
             const file: any = {
@@ -147,12 +149,15 @@ const MyProfile = () => {
                 headers: { 'Content-Type': 'multipart/form-data' }
             })
             if (res.status === 200) {
-                // 3) refresh profile from backend or optimistically update
-                const updated = { ...myProfile, coverPic: uploadedUrl }
-                dispatch(setProfile(updated as any))
+                // 3) instant update cover pic in Redux store with final URL
+                dispatch(updateCoverPic(uploadedUrl))
             }
         } catch (e) {
             console.log(e)
+            // Revert optimistic update on error
+            if (myProfile?.coverPic) {
+                dispatch(updateCoverPic(myProfile.coverPic))
+            }
         } finally {
             setIsUploadingCover(false)
         }
@@ -164,6 +169,8 @@ const MyProfile = () => {
         if (!asset || !asset.uri) return
         try {
             setIsUploadingPP(true)
+            // Optimistic update - show the selected image immediately
+            dispatch(updateProfilePic(asset.uri))
             const fileName = asset.fileName || `pp_${Date.now()}.jpg`
             const file: any = {
                 uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
@@ -178,11 +185,15 @@ const MyProfile = () => {
 
             const res = await api.post('/profile/update/profilePic', { profilePicUrl: uploadedUrl, type: 'profilePic' })
             if (res.status === 200) {
-                const updated = { ...myProfile, profilePic: uploadedUrl }
-                dispatch(setProfile(updated as any))
+                // Instant update profile pic in Redux store with final URL
+                dispatch(updateProfilePic(uploadedUrl))
             }
         } catch (e) {
             console.log(e)
+            // Revert optimistic update on error
+            if (myProfile?.profilePic) {
+                dispatch(updateProfilePic(myProfile.profilePic))
+            }
         } finally {
             setIsUploadingPP(false)
         }

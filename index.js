@@ -79,13 +79,13 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
 AppRegistry.registerComponent(appName, () => App);
 
 // Initialize Mobile Ads SDK and show App Open Ad at cold start
-mobileAds()
-  .initialize()
-  .then(() => {
-    try {
-      appOpenAdManager.preloadAndShowOnLoad();
-    } catch (e) {}
-  });
+// mobileAds()
+//   .initialize()
+//   .then(() => {
+//     try {
+//       appOpenAdManager.preloadAndShowOnLoad();
+//     } catch (e) {}
+//   });
 
 // Ensure notification channels exist as soon as the JS runtime starts
 (async () => {
