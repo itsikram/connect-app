@@ -6,6 +6,8 @@ export interface AppItem {
   logo?: string;
   color?: string;
   onPress?: () => void;
+  packageName?: string; // For device apps
+  isDeviceApp?: boolean; // Flag to identify device apps
 }
 
 // Sample app data with popular apps and their icons/logos - Modern Android style

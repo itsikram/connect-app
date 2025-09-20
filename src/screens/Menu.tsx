@@ -8,6 +8,8 @@ import { RootState } from '../store';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AppGrid from '../components/AppGrid';
+import DeviceAppsGrid from '../components/DeviceAppsGrid';
+import MixedAppsGrid from '../components/MixedAppsGrid';
 import { sampleApps, AppItem } from '../data/appData';
 import LudoGame from './LudoGame';
 import LudoGameSVG from './LudoGameSVG';
@@ -46,7 +48,12 @@ const Menu = () => {
   }
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+    <ScrollView 
+      style={[styles.container, { backgroundColor: themeColors.background.primary }]}
+      showsVerticalScrollIndicator={true}
+      bounces={true}
+      contentContainerStyle={styles.scrollContent}
+    >
       <Text style={[styles.title, { color: themeColors.text.primary }]}>Menu</Text>
 
       <View style={styles.section}>
@@ -79,19 +86,36 @@ const Menu = () => {
         </TouchableOpacity>
       </View>
 
-      {/* App Grid Section */}
+      <View style={styles.section}>
+        <Button title="Logout" onPress={logout} color={themeColors.status.error} />
+      </View>
+
+      {/* Option 1: Separate sections for custom and device apps */}
       <AppGrid 
         apps={sampleApps.map(app => ({
           ...app,
           onPress: () => handleAppPress(app)
         }))} 
-        title="Quick Apps"
+        title="Connect Apps"
         columns={4}
       />
 
-      <View style={styles.section}>
-        <Button title="Logout" onPress={logout} color={themeColors.status.error} />
-      </View>
+      <DeviceAppsGrid 
+        title="Installed Apps"
+        columns={4}
+      />
+
+      {/* Option 2: Mixed apps with tabs (uncomment to use instead of above) */}
+      {/* 
+      <MixedAppsGrid 
+        title="Apps"
+        columns={4}
+        showCustomApps={true}
+        showDeviceApps={true}
+        maxDeviceApps={24}
+      />
+      */}
+
     </ScrollView>
   );
 };
@@ -99,7 +123,10 @@ const Menu = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  scrollContent: {
     paddingTop: 20,
+    paddingBottom: 40,
   },
   title: {
     fontSize: 24,

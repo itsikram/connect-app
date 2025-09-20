@@ -131,9 +131,23 @@ const SingleMessage = () => {
 
         const handlePreviousMessages = (messages: any) => {
             setMessages(messages);
+            setCurrentPage(0);
+            setHasMoreMessages(messages.length === messagesPerPage);
+        }
+
+        const handleOldMessages = (oldMessages: any) => {
+            if (oldMessages && oldMessages.length > 0) {
+                setMessages(prev => [...oldMessages, ...prev]);
+                setCurrentPage(prev => prev + 1);
+                setHasMoreMessages(oldMessages.length === messagesPerPage);
+            } else {
+                setHasMoreMessages(false);
+            }
+            setIsLoadingOldMessages(false);
         }
 
         on('previousMessages', handlePreviousMessages);
+        on('oldMessages', handleOldMessages);
 
         const handleNewMessage = (messageData: any) => {
             console.log('New message received:', messageData, messages);
@@ -153,6 +167,20 @@ const SingleMessage = () => {
                 messageType: updatedMessage.messageType,
                 callType: updatedMessage.callType,
                 callEvent: updatedMessage.callEvent,
+            };
+
+            // Create a serializable version for Redux
+            const serializableMessage = {
+                _id: newMessage._id,
+                room: newMessage.room,
+                senderId: newMessage.senderId,
+                receiverId: newMessage.receiverId,
+                message: newMessage.message,
+                attachment: newMessage.attachment ? newMessage.attachment : false,
+                reacts: newMessage.reacts || [],
+                isSeen: newMessage.isSeen,
+                timestamp: newMessage.timestamp.toISOString(),
+                __v: 0
             };
 
             if (messageData.chatPage === true) {
@@ -176,7 +204,7 @@ const SingleMessage = () => {
                 // Dispatch action to update message count in Redux
                 dispatch(addNewMessage({
                     chatId: friend?._id,
-                    message: newMessage,
+                    message: serializableMessage,
                     currentUserId: myProfile?._id
                 }));
 
@@ -187,7 +215,7 @@ const SingleMessage = () => {
         const handleReceiveTyping = (typingData: any) => {
             console.log('Typing:', typingData);
             setIsTyping(typingData.isTyping);
-            setTypingMessage(typingData.type);
+            setTypingMessage(typingData.type || '');
 
             setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
@@ -232,6 +260,7 @@ const SingleMessage = () => {
             off('typing', handleReceiveTyping);
             off('seenMessage', handleSeenMessage);
             off('previousMessages', handlePreviousMessages);
+            off('oldMessages', handleOldMessages);
             off('deleteMessage', handleDeleteMessage);
         };
     }, [isConnected, myProfile?._id, on, off]);
@@ -280,6 +309,12 @@ const SingleMessage = () => {
     const [typingMessage, setTypingMessage] = useState('');
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
+
+    // Pagination state for loading old messages
+    const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
+    const [hasMoreMessages, setHasMoreMessages] = useState(true);
+    const [currentPage, setCurrentPage] = useState(0);
+    const messagesPerPage = 20;
 
     useEffect(() => {
         // Scroll to bottom when new messages arrive
@@ -617,6 +652,24 @@ const SingleMessage = () => {
         }
     };
 
+    const loadOldMessages = () => {
+        if (isLoadingOldMessages || !hasMoreMessages || !isConnected) {
+            return;
+        }
+
+        setIsLoadingOldMessages(true);
+        const oldestMessage = messages[0];
+        const lastMessageTimestamp = oldestMessage ? oldestMessage.timestamp : new Date();
+        
+        emit('fetchOldMessages', {
+            room,
+            userId: myProfile?._id,
+            page: currentPage + 1,
+            limit: messagesPerPage,
+            beforeTimestamp: lastMessageTimestamp.toISOString()
+        });
+    };
+
     const renderLeftReplyAction = () => (
         <View style={{ width: 64, justifyContent: 'center', alignItems: 'center' }}>
             <View style={{ backgroundColor: themeColors.gray[200], borderRadius: 20, padding: 8 }}>
@@ -818,6 +871,43 @@ const SingleMessage = () => {
         );
     };
 
+    const renderLoadingOldMessages = () => {
+        if (!isLoadingOldMessages) return null;
+
+        return (
+            <View style={{
+                paddingVertical: 16,
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}>
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: themeColors.gray[200],
+                    paddingHorizontal: 16,
+                    paddingVertical: 8,
+                    borderRadius: 20,
+                }}>
+                    <View style={{
+                        width: 16,
+                        height: 16,
+                        borderRadius: 8,
+                        borderWidth: 2,
+                        borderColor: themeColors.gray[500],
+                        borderTopColor: themeColors.primary,
+                        marginRight: 8,
+                    }} />
+                    <Text style={{
+                        color: themeColors.text.secondary,
+                        fontSize: 14,
+                    }}>
+                        Loading older messages...
+                    </Text>
+                </View>
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
 
@@ -866,7 +956,7 @@ const SingleMessage = () => {
                                 marginTop: -3,
                             }}>
                                 {isTyping ? (
-                                    typingMessage.length > 0 ? (
+                                    typingMessage && typingMessage.length > 0 ? (
                                         <Text>{typingMessage}</Text>
                                     ) : (
                                         <Text>typing...</Text>
@@ -967,7 +1057,10 @@ const SingleMessage = () => {
                         style={{ flex: 1 }}
                         contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
                         showsVerticalScrollIndicator={false}
+                        ListHeaderComponent={renderLoadingOldMessages}
                         ListFooterComponent={renderTypingIndicator}
+                        onEndReached={loadOldMessages}
+                        onEndReachedThreshold={0.1}
                         onScrollToIndexFailed={(info) => {
                             const wait = new Promise(resolve => setTimeout(resolve, 200));
                             wait.then(() => {
@@ -985,7 +1078,10 @@ const SingleMessage = () => {
                     style={{ flex: 1 }}
                     contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
                     showsVerticalScrollIndicator={false}
+                    ListHeaderComponent={renderLoadingOldMessages}
                     ListFooterComponent={renderTypingIndicator}
+                    onEndReached={loadOldMessages}
+                    onEndReachedThreshold={0.1}
                     onScrollToIndexFailed={(info) => {
                         const wait = new Promise(resolve => setTimeout(resolve, 200));
                         wait.then(() => {
@@ -1189,6 +1285,7 @@ const SingleMessage = () => {
                         showsVerticalScrollIndicator={false}
                     >
                         <Image
+                            key={selectedImage}
                             source={{ uri: selectedImage }}
                             style={{
                                 width: Dimensions.get('window').width * imageScale,
@@ -1333,6 +1430,7 @@ const SingleMessage = () => {
                             showsVerticalScrollIndicator={false}
                         >
                             <TouchableOpacity
+                                key="view-profile"
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -1375,6 +1473,7 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="search-conversation"
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -1417,6 +1516,7 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="view-media"
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -1459,6 +1559,7 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="mute-notifications"
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -1501,6 +1602,7 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="block-user"
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
@@ -1550,6 +1652,7 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="report-user"
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',

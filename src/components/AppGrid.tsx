@@ -1,24 +1,70 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Dimensions, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
+import { DeviceAppsService } from '../services/DeviceAppsService';
 
 import { AppItem } from '../data/appData';
 
 const { width: screenWidth } = Dimensions.get('window');
 
 interface AppGridProps {
-  apps: AppItem[];
+  apps?: AppItem[];
   title?: string;
   columns?: number;
+  showDeviceApps?: boolean; // New prop to show device apps
 }
 
 const AppGrid: React.FC<AppGridProps> = ({ 
-  apps, 
+  apps = [], 
   title = "Quick Apps", 
-  columns = 4 
+  columns = 4,
+  showDeviceApps = false
 }) => {
   const { colors: themeColors } = useTheme();
+  const [deviceApps, setDeviceApps] = useState<AppItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasPermission, setHasPermission] = useState(true);
+
+  // Load device apps when showDeviceApps is true
+  useEffect(() => {
+    if (showDeviceApps) {
+      loadDeviceApps();
+    }
+  }, [showDeviceApps]);
+
+  const loadDeviceApps = async () => {
+    setIsLoading(true);
+    try {
+      // Check if the package is available first
+      if (!DeviceAppsService.isPackageAvailable()) {
+        setHasPermission(false);
+        setIsLoading(false);
+        return;
+      }
+
+      const permission = await DeviceAppsService.hasPermission();
+      setHasPermission(permission);
+      
+      if (permission) {
+        const apps = await DeviceAppsService.getDeviceAppsForGrid();
+        setDeviceApps(apps);
+      }
+    } catch (error) {
+      console.error('Error loading device apps:', error);
+      setHasPermission(false);
+      Alert.alert(
+        'Permission Required',
+        'This app needs permission to access installed apps. Please grant the permission in settings.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Use device apps if showDeviceApps is true, otherwise use provided apps
+  const displayApps = showDeviceApps ? deviceApps : apps;
 
   // Calculate item dimensions for modern Android-style grid
   const padding = 16;
@@ -27,6 +73,16 @@ const AppGrid: React.FC<AppGridProps> = ({
   const itemWidth = (availableWidth - (gap * (columns - 1))) / columns;
 
   const renderAppItem = (app: AppItem) => {
+    const handlePress = async () => {
+      if (app.isDeviceApp && app.packageName) {
+        // Launch device app
+        await DeviceAppsService.launchApp(app.packageName);
+      } else if (app.onPress) {
+        // Handle custom app action
+        app.onPress();
+      }
+    };
+
     return (
       <TouchableOpacity
         key={app.id}
@@ -37,7 +93,7 @@ const AppGrid: React.FC<AppGridProps> = ({
             backgroundColor: 'transparent',
           }
         ]}
-        onPress={app.onPress}
+        onPress={handlePress}
         activeOpacity={0.6}
       >
         <View style={[
@@ -77,6 +133,50 @@ const AppGrid: React.FC<AppGridProps> = ({
     );
   };
 
+  // Show loading state
+  if (showDeviceApps && isLoading) {
+    return (
+      <View style={styles.container}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
+          {title}
+        </Text>
+        <View style={styles.loadingContainer}>
+          <Text style={[styles.loadingText, { color: themeColors.text.secondary }]}>
+            Loading device apps...
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Show permission error
+  if (showDeviceApps && !hasPermission) {
+    const isPackageAvailable = DeviceAppsService.isPackageAvailable();
+    return (
+      <View style={styles.container}>
+        <Text style={[styles.title, { color: themeColors.text.primary }]}>
+          {title}
+        </Text>
+        <View style={styles.errorContainer}>
+          <Icon name="error-outline" size={48} color={themeColors.text.secondary} />
+          <Text style={[styles.errorText, { color: themeColors.text.secondary }]}>
+            {isPackageAvailable 
+              ? 'Permission required to access device apps' 
+              : 'Device apps feature not available. Please rebuild the app.'}
+          </Text>
+          {isPackageAvailable && (
+            <TouchableOpacity 
+              style={[styles.retryButton, { backgroundColor: themeColors.primary }]}
+              onPress={loadDeviceApps}
+            >
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.container}>
       {title && (
@@ -91,7 +191,7 @@ const AppGrid: React.FC<AppGridProps> = ({
         contentContainerStyle={styles.scrollContent}
       >
         <View style={[styles.grid, { paddingHorizontal: padding, gap: gap }]}>
-          {apps.map(renderAppItem)}
+          {displayApps.map(renderAppItem)}
         </View>
       </ScrollView>
     </View>
@@ -151,6 +251,38 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     letterSpacing: 0.2,
     maxWidth: 70,
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  loadingText: {
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+    paddingHorizontal: 20,
+  },
+  errorText: {
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+    marginTop: 16,
+    marginBottom: 20,
+  },
+  retryButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

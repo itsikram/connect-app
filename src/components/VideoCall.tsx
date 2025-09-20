@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   StatusBar,
   Image,
+  Platform,
 } from 'react-native';
 import RtcEngine, {
   RtcLocalView,
@@ -25,6 +26,7 @@ import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
+import { request, PERMISSIONS, RESULTS, check } from 'react-native-permissions';
 
 const { width, height } = Dimensions.get('window');
 
@@ -66,6 +68,71 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [remoteFilter, setRemoteFilter] = useState<string>(''); // Filter applied by remote user (affects how I see them)
 
   const engineRef = useRef<RtcEngine | null>(null);
+
+  // Request camera and microphone permissions
+  const requestPermissions = async (): Promise<boolean> => {
+    try {
+      console.log('Requesting camera and microphone permissions...');
+      
+      const cameraPermission = Platform.OS === 'ios' 
+        ? PERMISSIONS.IOS.CAMERA 
+        : PERMISSIONS.ANDROID.CAMERA;
+      
+      const microphonePermission = Platform.OS === 'ios' 
+        ? PERMISSIONS.IOS.MICROPHONE 
+        : PERMISSIONS.ANDROID.RECORD_AUDIO;
+
+      // Check current permissions first
+      const cameraStatus = await check(cameraPermission);
+      const microphoneStatus = await check(microphonePermission);
+
+      console.log('Current permissions:', { cameraStatus, microphoneStatus });
+
+      // Request permissions if not already granted
+      const cameraResult = cameraStatus === RESULTS.GRANTED 
+        ? cameraStatus 
+        : await request(cameraPermission);
+      
+      const microphoneResult = microphoneStatus === RESULTS.GRANTED 
+        ? microphoneStatus 
+        : await request(microphonePermission);
+
+      console.log('Permission results:', { cameraResult, microphoneResult });
+
+      // Check if both permissions are granted
+      const hasPermissions = cameraResult === RESULTS.GRANTED && microphoneResult === RESULTS.GRANTED;
+
+      if (!hasPermissions) {
+        const missingPermissions = [];
+        if (cameraResult !== RESULTS.GRANTED) missingPermissions.push('Camera');
+        if (microphoneResult !== RESULTS.GRANTED) missingPermissions.push('Microphone');
+        
+        Alert.alert(
+          'Permissions Required',
+          `This app needs ${missingPermissions.join(' and ')} permission to make video calls. Please enable them in Settings.`,
+          [
+            { text: 'Cancel', onPress: () => endCall() },
+            { text: 'Settings', onPress: () => {
+              // You could add a function to open app settings here
+              endCall();
+            }}
+          ]
+        );
+        return false;
+      }
+
+      console.log('All permissions granted successfully');
+      return true;
+    } catch (error) {
+      console.error('Error requesting permissions:', error);
+      Alert.alert(
+        'Permission Error',
+        'Failed to request camera and microphone permissions. Please check your device settings.',
+        [{ text: 'OK', onPress: () => endCall() }]
+      );
+      return false;
+    }
+  };
   const localUidRef = useRef<number | null>(null);
   const isJoiningRef = useRef<boolean>(false);
   const isLeavingRef = useRef<boolean>(false);
@@ -138,6 +205,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Initialize Agora Engine
   const initializeEngine = useCallback(async () => {
     try {
+      // Request permissions first
+      const hasPermissions = await requestPermissions();
+      if (!hasPermissions) {
+        throw new Error('Camera and microphone permissions not granted');
+      }
+
       if (engineRef.current) {
         console.log('Video engine already exists, checking state...');
         // Ensure engine is in a good state
@@ -168,7 +241,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       console.log('Creating Agora video engine with App ID:', appId);
       const engine = await RtcEngine.create(appId);
 
-      // Enable video and audio
+      // Enable video and audio (permissions already granted)
+      console.log('Enabling video and audio...');
       await engine.enableVideo();
       await engine.enableAudio();
 

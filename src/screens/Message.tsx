@@ -241,7 +241,7 @@ const Message = () => {
                 <View style={styles.lastMessageContainer}>
                   {last ? (
                     <>
-                      <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={2} ellipsizeMode="tail">
+                      <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={1} ellipsizeMode="tail">
                         {(() => {
                           const messageText = last?.message || last?.text || last?.content || '';
                           return messageText.length > 0 ? messageText : 'No message content';

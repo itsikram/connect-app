@@ -6,6 +6,33 @@ import { pushAPI } from './api';
 
 const STORAGE_KEY = 'fcmToken';
 
+// Notification deduplication
+let notificationCache = new Map<string, number>(); // Cache to prevent duplicate notifications
+const NOTIFICATION_CACHE_DURATION = 5000; // 5 seconds
+
+// Helper function to check if notification was recently shown
+const isNotificationRecentlyShown = (key: string): boolean => {
+  const now = Date.now();
+  const lastShown = notificationCache.get(key);
+  
+  if (lastShown && (now - lastShown) < NOTIFICATION_CACHE_DURATION) {
+    return true;
+  }
+  
+  notificationCache.set(key, now);
+  return false;
+};
+
+// Clean up old cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamp] of notificationCache.entries()) {
+    if (now - timestamp > NOTIFICATION_CACHE_DURATION) {
+      notificationCache.delete(key);
+    }
+  }
+}, 10000); // Clean up every 10 seconds
+
 export async function requestPushPermission(): Promise<boolean> {
   try {
     if (Platform.OS === 'android') {
@@ -112,6 +139,15 @@ export async function configureNotificationsChannel() {
 }
 
 export async function displayLocalNotification(title: string, body: string, data: Record<string, string> = {}) {
+  // Create a unique key for deduplication
+  const notificationKey = `local_${title}_${body}_${JSON.stringify(data)}`;
+  
+  // Check if this notification was recently shown
+  if (isNotificationRecentlyShown(notificationKey)) {
+    console.log('Skipping duplicate local notification:', title);
+    return;
+  }
+  
   await configureNotificationsChannel();
   await notifee.displayNotification({
     title,
@@ -134,6 +170,15 @@ export async function displayIncomingCallNotification(payload: {
   callerId: string;
 }) {
   try {
+    // Create a unique key for deduplication based on caller and call type
+    const notificationKey = `incoming_call_${payload.callerId}_${payload.isAudio ? 'audio' : 'video'}`;
+    
+    // Check if this call notification was recently shown
+    if (isNotificationRecentlyShown(notificationKey)) {
+      console.log('Skipping duplicate incoming call notification for:', payload.callerName);
+      return;
+    }
+    
     await configureNotificationsChannel();
     
     const notificationId = `incoming_call_${payload.callerId}_${Date.now()}`;
@@ -282,8 +327,20 @@ export function listenForegroundMessages() {
       // Fallback to standard notification for other message types
       const title = remoteMessage.notification?.title || 'Message';
       const body = remoteMessage.notification?.body || '';
+      
+      // Create a unique key for FCM message deduplication
+      const messageKey = `fcm_${title}_${body}_${JSON.stringify(data)}`;
+      
+      // Check if this FCM message was recently processed
+      if (isNotificationRecentlyShown(messageKey)) {
+        console.log('Skipping duplicate FCM message:', title);
+        return;
+      }
+      
       await displayLocalNotification(title, body, data);
-    } catch (e) {}
+    } catch (e) {
+      console.error('Error processing FCM message:', e);
+    }
   });
 }
 

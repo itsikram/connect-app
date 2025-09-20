@@ -59,7 +59,6 @@ import NotificationSetup from './src/components/NotificationSetup';
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
 import api, { userAPI } from './src/lib/api';
-import { listenNotificationEvents } from './src/lib/push';
 import FloatingButton from './src/components/FloatingButton';
 import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
 
@@ -277,15 +276,8 @@ function AppContent() {
     return unsubscribe;
   }, [navigation]);
 
-  // Wire notification tap handler to open IncomingCall from full-screen notifications
-  React.useEffect(() => {
-    const unsub = listenNotificationEvents((screen: string, params?: any) => {
-      try {
-        (navigation as any).navigate('Message', { screen, params });
-      } catch (e) {}
-    });
-    return () => { try { unsub && (unsub as any)(); } catch (e) {} };
-  }, [navigation]);
+  // Note: Notification events are now handled by the NotificationSetup component
+  // to avoid duplicate listeners
 
   // Connect to socket when component mounts
   React.useEffect(() => {

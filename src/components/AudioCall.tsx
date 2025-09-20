@@ -9,6 +9,7 @@ import {
   SafeAreaView,
   StatusBar,
   Image,
+  Platform,
 } from 'react-native';
 import RtcEngine, {
   ChannelProfile,
@@ -21,6 +22,7 @@ import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
+import { request, PERMISSIONS, RESULTS, check } from 'react-native-permissions';
 
 interface AudioCallProps {
   myId: string;
@@ -58,6 +60,57 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   const isLeavingRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
   const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
+
+  // Request microphone permission
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    try {
+      console.log('Requesting microphone permission...');
+      
+      const microphonePermission = Platform.OS === 'ios' 
+        ? PERMISSIONS.IOS.MICROPHONE 
+        : PERMISSIONS.ANDROID.RECORD_AUDIO;
+
+      // Check current permission first
+      const microphoneStatus = await check(microphonePermission);
+      console.log('Current microphone permission:', microphoneStatus);
+
+      // Request permission if not already granted
+      const microphoneResult = microphoneStatus === RESULTS.GRANTED 
+        ? microphoneStatus 
+        : await request(microphonePermission);
+
+      console.log('Microphone permission result:', microphoneResult);
+
+      // Check if permission is granted
+      const hasPermission = microphoneResult === RESULTS.GRANTED;
+
+      if (!hasPermission) {
+        Alert.alert(
+          'Microphone Permission Required',
+          'This app needs microphone permission to make audio calls. Please enable it in Settings.',
+          [
+            { text: 'Cancel', onPress: () => endCall() },
+            { text: 'Settings', onPress: () => {
+              // You could add a function to open app settings here
+              endCall();
+            }}
+          ]
+        );
+        return false;
+      }
+
+      console.log('Microphone permission granted successfully');
+      return true;
+    } catch (error) {
+      console.error('Error requesting microphone permission:', error);
+      Alert.alert(
+        'Permission Error',
+        'Failed to request microphone permission. Please check your device settings.',
+        [{ text: 'OK', onPress: () => endCall() }]
+      );
+      return false;
+    }
+  };
 
   // Get Agora token
   const getToken = async (channelName: string, uid: number = 0) => {
@@ -101,6 +154,12 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   // Initialize Agora Engine
   const initializeEngine = useCallback(async () => {
     try {
+      // Request microphone permission first
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        throw new Error('Microphone permission not granted');
+      }
+
       if (engineRef.current) {
         return engineRef.current;
       }
@@ -117,6 +176,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       
       // Disable video for audio-only call
       await engine.disableVideo();
+      // Enable audio (permission already granted)
+      console.log('Enabling audio...');
       await engine.enableAudio();
       
       // Set channel profile
