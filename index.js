@@ -7,11 +7,20 @@ import { AppRegistry } from 'react-native';
 import App from './App';
 import { name as appName } from './app.json';
 import messaging from '@react-native-firebase/messaging';
-import '@react-native-firebase/app';
+import { getApp } from '@react-native-firebase/app';
 import notifee from '@notifee/react-native';
 import { displayIncomingCallNotification, configureNotificationsChannel } from './src/lib/push';
 import mobileAds from 'react-native-google-mobile-ads';
 import { appOpenAdManager } from './src/lib/ads';
+
+// Suppress Firebase deprecation warnings
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  if (args[0] && typeof args[0] === 'string' && args[0].includes('This method is deprecated')) {
+    return; // Suppress Firebase deprecation warnings
+  }
+  originalWarn.apply(console, args);
+};
 
 // Handle Notifee background events (e.g., action presses when app is killed)
 notifee.onBackgroundEvent(async ({ type, detail }) => {

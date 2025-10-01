@@ -124,6 +124,12 @@ function MenuStack() {
 function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
   
+  // Debug navigation state
+  React.useEffect(() => {
+    console.log('🚀 TabBarWithLudoCheck - User state:', props.user ? 'Logged in' : 'Not logged in');
+    console.log('🚀 TabBarWithLudoCheck - Ludo game active:', isLudoGameActive);
+  }, [props.user, isLudoGameActive]);
+  
   // Hide tab bar if Ludo game is active
   if (isLudoGameActive) {
     return null;
@@ -556,6 +562,13 @@ function AppContent() {
 
 // Inner component that can use hooks
 function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading: boolean, isDarkMode: boolean }) {
+  // Debug user state changes
+  React.useEffect(() => {
+    console.log('🔄 AppContentInner - User state changed:', user ? 'User logged in' : 'No user');
+    console.log('🔄 AppContentInner - Loading state:', isLoading);
+    console.log('🔄 AppContentInner - Will render:', isLoading ? 'LoadingScreen' : 'Main App');
+  }, [user, isLoading]);
+
   // Always call hooks unconditionally; the hook internally no-ops without a valid id
   useProfileData(user?.profile || null);
 

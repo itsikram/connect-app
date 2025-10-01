@@ -1,8 +1,18 @@
 import messaging from '@react-native-firebase/messaging';
+import { getApp } from '@react-native-firebase/app';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidCategory, EventType } from '@notifee/react-native';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
+
+// Suppress Firebase deprecation warnings
+const originalWarn = console.warn;
+console.warn = (...args) => {
+  if (args[0] && typeof args[0] === 'string' && args[0].includes('This method is deprecated')) {
+    return; // Suppress Firebase deprecation warnings
+  }
+  originalWarn.apply(console, args);
+};
 
 const STORAGE_KEY = 'fcmToken';
 

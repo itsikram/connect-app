@@ -207,28 +207,61 @@ export const AuthProvider = ({ children }) => {
       if (userData[1] && token[1]) {
         const parsedUser = JSON.parse(userData[1]);
         console.log('✅ User session found:', parsedUser);
+        console.log('🔄 Setting user state...');
         setUser(parsedUser);
+        console.log('✅ User state set successfully');
         
-        // Ensure push token is registered even on cold start with existing session
-        try { await registerTokenWithServer(); } catch (e) {}
-
-        // Fetch fresh profile data when app starts with existing user
-        const profileId = typeof parsedUser.profile === 'string' ? parsedUser.profile : parsedUser.profile?._id || parsedUser.user_id;
-        if (profileId) {
-          console.log('📥 Fetching fresh profile data for profile:', profileId);
-          await fetchProfileData(profileId);
-        }
+        // Set loading to false immediately after setting user
+        console.log('🔄 Setting isLoading to false (user found)...');
+        setIsLoading(false);
+        console.log('✅ isLoading set to false (user found)');
+        
+        // Do async operations in background without blocking
+        Promise.all([
+          // Ensure push token is registered even on cold start with existing session
+          (async () => {
+            try { 
+              console.log('📱 Registering push token...');
+              await registerTokenWithServer(); 
+              console.log('✅ Push token registered successfully');
+            } catch (e) {
+              console.log('⚠️ Push token registration failed:', e.message);
+            }
+          })(),
+          
+          // Fetch fresh profile data when app starts with existing user
+          (async () => {
+            const profileId = typeof parsedUser.profile === 'string' ? parsedUser.profile : parsedUser.profile?._id || parsedUser.user_id;
+            if (profileId) {
+              console.log('📥 Fetching fresh profile data for profile:', profileId);
+              try {
+                await fetchProfileData(profileId);
+                console.log('✅ Profile data fetched successfully');
+              } catch (e) {
+                console.log('⚠️ Profile data fetch failed:', e.message);
+              }
+            }
+          })()
+        ]).catch(e => {
+          console.log('⚠️ Background operations failed:', e.message);
+        });
       } else {
         console.log('ℹ️ No existing user session found');
+        console.log('🔄 Setting isLoading to false (no user)...');
+        setIsLoading(false);
+        console.log('✅ isLoading set to false (no user)');
       }
     } catch (error) {
       console.error('❌ Error checking user:', error);
-    } finally {
+      console.log('🔄 Setting isLoading to false (error)...');
       setIsLoading(false);
+      console.log('✅ isLoading set to false (error)');
     }
   };
 
   useEffect(() => {
+    console.log('🚀 AuthContext useEffect - Starting initialization...');
+    console.log('🚀 AuthContext useEffect - Current isLoading state:', isLoading);
     checkUser();
     // push listeners
     const unsubMsg = listenForegroundMessages();
@@ -248,6 +281,11 @@ export const AuthProvider = ({ children }) => {
     logout,
     fetchProfileData,
   };
+
+  // Debug value changes
+  React.useEffect(() => {
+    console.log('🔄 AuthContext value changed - user:', user ? 'Present' : 'Null', 'isLoading:', isLoading);
+  }, [user, isLoading]);
 
   return (
     <AuthContext.Provider value={value}>
