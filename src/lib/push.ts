@@ -358,34 +358,61 @@ export function listenTokenRefresh() {
   });
 }
 
+// Global initialization guard
+let isInitializing = false;
+let isInitialized = false;
+let initializationPromise: Promise<boolean> | null = null;
+
 // Initialize all notification services
 export async function initializeNotifications(): Promise<boolean> {
-  try {
-    console.log('Initializing notifications...');
-    
-    // Configure notification channels first
-    await configureNotificationsChannel();
-    
-    // Request permissions
-    const hasPermission = await requestPushPermission();
-    if (!hasPermission) {
-      console.warn('Notification permission not granted');
-      return false;
-    }
-    
-    // Get and register FCM token
-    const token = await registerTokenWithServer();
-    if (!token) {
-      console.warn('Failed to get FCM token');
-      return false;
-    }
-    
-    console.log('Notifications initialized successfully');
+  // If already initialized, return true
+  if (isInitialized) {
+    console.log('Notifications already initialized');
     return true;
-  } catch (error) {
-    console.error('Error initializing notifications:', error);
-    return false;
   }
+
+  // If currently initializing, wait for the existing promise
+  if (isInitializing && initializationPromise) {
+    console.log('Notifications initialization already in progress, waiting...');
+    return await initializationPromise;
+  }
+
+  // Start initialization
+  isInitializing = true;
+  console.log('Initializing notifications...');
+
+  initializationPromise = (async () => {
+    try {
+      // Configure notification channels first
+      await configureNotificationsChannel();
+      
+      // Request permissions
+      const hasPermission = await requestPushPermission();
+      if (!hasPermission) {
+        console.warn('Notification permission not granted');
+        return false;
+      }
+      
+      // Get and register FCM token
+      const token = await registerTokenWithServer();
+      if (!token) {
+        console.warn('Failed to get FCM token');
+        return false;
+      }
+      
+      isInitialized = true;
+      console.log('Notifications initialized successfully');
+      return true;
+    } catch (error) {
+      console.error('Error initializing notifications:', error);
+      return false;
+    } finally {
+      isInitializing = false;
+      initializationPromise = null;
+    }
+  })();
+
+  return await initializationPromise;
 }
 
 // Cancel all incoming call notifications

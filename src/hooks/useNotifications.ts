@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import { 
   initializeNotifications, 
@@ -14,12 +14,20 @@ interface UseNotificationsProps {
 
 export const useNotifications = ({ navigate }: UseNotificationsProps) => {
   const unsubscribeRefs = useRef<Array<() => void>>([]);
+  const isInitializedRef = useRef<boolean>(false);
+  const initializationPromiseRef = useRef<Promise<void> | null>(null);
+
+  // Memoize the navigate function to prevent unnecessary re-renders
+  const memoizedNavigate = useCallback(navigate, []);
 
   useEffect(() => {
-    let isInitialized = false;
+    // Prevent multiple initializations
+    if (isInitializedRef.current || initializationPromiseRef.current) {
+      return;
+    }
 
     const initialize = async () => {
-      if (isInitialized) return;
+      if (isInitializedRef.current) return;
       
       try {
         // Initialize notifications
@@ -31,7 +39,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
 
         // Set up listeners
         const unsubscribeForeground = listenForegroundMessages();
-        const unsubscribeEvents = listenNotificationEvents(navigate);
+        const unsubscribeEvents = listenNotificationEvents(memoizedNavigate);
         const unsubscribeTokenRefresh = listenTokenRefresh();
 
         // Store unsubscribe functions
@@ -41,17 +49,21 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
           unsubscribeTokenRefresh,
         ];
 
-        isInitialized = true;
+        isInitializedRef.current = true;
         console.log('Notification listeners set up successfully');
       } catch (error) {
         console.error('Error setting up notifications:', error);
+      } finally {
+        initializationPromiseRef.current = null;
       }
     };
 
     // Initialize when app becomes active
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active') {
-        initialize();
+      if (nextAppState === 'active' && !isInitializedRef.current) {
+        if (!initializationPromiseRef.current) {
+          initializationPromiseRef.current = initialize();
+        }
       } else if (nextAppState === 'background') {
         // Cancel any ongoing call notifications when app goes to background
         cancelIncomingCallNotifications();
@@ -61,8 +73,10 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
     // Set up app state listener
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-    // Initialize immediately
-    initialize();
+    // Initialize immediately if not already initialized
+    if (!initializationPromiseRef.current) {
+      initializationPromiseRef.current = initialize();
+    }
 
     // Cleanup function
     return () => {
@@ -76,7 +90,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       });
       unsubscribeRefs.current = [];
     };
-  }, [navigate]);
+  }, []); // Remove navigate dependency to prevent infinite loop
 
   return {
     cancelIncomingCallNotifications,
