@@ -12,6 +12,7 @@ import { fetchChatList, updateUnreadMessageCount } from '../reducers/chatReducer
 import moment from 'moment';
 import ListItemSkeleton from '../components/skeleton/ListItemSkeleton';
 import { ChatHeaderSkeleton } from '../components/skeleton/ChatSkeleton';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 
 
@@ -28,6 +29,54 @@ const formatTime = (date: Date) => {
     return date.toLocaleDateString();
   }
 };
+
+// AsyncStorage utility functions for chat list
+const CHAT_LIST_STORAGE_KEY = 'chat_list';
+
+const saveChatListToStorage = async (chatList: any[], userId: string) => {
+  try {
+    const storageKey = `${CHAT_LIST_STORAGE_KEY}_${userId}`;
+    const dataToStore = {
+      chatList,
+      timestamp: new Date().toISOString(),
+      userId
+    };
+    await AsyncStorage.setItem(storageKey, JSON.stringify(dataToStore));
+    console.log('💾 Chat list saved to AsyncStorage for user:', userId);
+  } catch (error) {
+    console.error('❌ Error saving chat list to AsyncStorage:', error);
+  }
+};
+
+const loadChatListFromStorage = async (userId: string) => {
+  try {
+    const storageKey = `${CHAT_LIST_STORAGE_KEY}_${userId}`;
+    const storedData = await AsyncStorage.getItem(storageKey);
+    
+    if (storedData) {
+      const parsedData = JSON.parse(storedData);
+      console.log('📱 Chat list loaded from AsyncStorage for user:', userId);
+      return parsedData.chatList || [];
+    }
+    return [];
+  } catch (error) {
+    console.error('❌ Error loading chat list from AsyncStorage:', error);
+    return [];
+  }
+};
+
+const clearChatListFromStorage = async (userId: string) => {
+  try {
+    const storageKey = `${CHAT_LIST_STORAGE_KEY}_${userId}`;
+    await AsyncStorage.removeItem(storageKey);
+    console.log('🗑️ Chat list cleared from AsyncStorage for user:', userId);
+  } catch (error) {
+    console.error('❌ Error clearing chat list from AsyncStorage:', error);
+  }
+};
+
+// Export the clear function for use in other components (e.g., logout)
+export { clearChatListFromStorage };
 
 
 const Message = () => {
@@ -49,12 +98,27 @@ const Message = () => {
 
 
 
+  // Load chat list from AsyncStorage on component mount
+  useEffect(() => {
+    const loadStoredChatList = async () => {
+      if (profileData?._id) {
+        const storedChatList = await loadChatListFromStorage(profileData._id);
+        if (storedChatList.length > 0) {
+          console.log('📱 Loaded stored chat list:', storedChatList.length, 'items');
+          // You might want to dispatch an action to set the stored chat list in Redux
+          // For now, we'll just log it since the main fetch will happen next
+        }
+      }
+    };
+
+    loadStoredChatList();
+  }, [profileData?._id]);
+
   useEffect(() => {
     if (chatList) {
       console.log('Chat list:', chatList);
     }
   }, [chatList]);
-
 
   useEffect(() => {
     if (profileData?._id) {
@@ -71,6 +135,13 @@ const Message = () => {
       });
     }
   }, [dispatch, profileData?._id]);
+
+  // Save chat list to AsyncStorage whenever chatList changes
+  useEffect(() => {
+    if (chatList && chatList.length > 0 && profileData?._id) {
+      saveChatListToStorage(chatList, profileData._id);
+    }
+  }, [chatList, profileData?._id]);
 
   const navigation = useNavigation();
 
@@ -97,6 +168,8 @@ const Message = () => {
       dispatch(fetchChatList(profileData._id)).then(() => {
         // Update unread message count after refreshing chat list
         dispatch(updateUnreadMessageCount(profileData._id));
+        // The chat list will be automatically saved to AsyncStorage via the useEffect
+        console.log('🔄 Chat list refreshed and will be saved to AsyncStorage');
       });
     }
     if (!profileData || Object.keys(profileData).length === 0) {

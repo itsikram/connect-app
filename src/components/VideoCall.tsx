@@ -246,6 +246,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       await engine.enableVideo();
       await engine.enableAudio();
 
+      // Start camera preview to ensure local video works
+      console.log('Starting camera preview...');
+      await engine.startPreview();
+
       // Set channel profile
       await engine.setChannelProfile(ChannelProfile.Communication);
 
@@ -260,10 +264,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         setRemoteUid(null);
       });
 
-      engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
+      engine.addListener('JoinChannelSuccess', async (channel: string, uid: number) => {
         console.log('Joined video channel successfully:', channel, uid);
         localUidRef.current = uid;
         setIsConnected(true);
+        
+        // Ensure local video is visible after joining
+        try {
+          await engine.muteLocalVideoStream(false);
+          console.log('Local video unmuted after joining channel');
+        } catch (error) {
+          console.warn('Failed to unmute local video after joining:', error);
+        }
       });
 
       engine.addListener('LeaveChannel', () => {
@@ -405,6 +417,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           console.log('Leaving video channel...');
           await engineRef.current.leaveChannel();
           console.log('Video channel left successfully');
+          
+          // Stop camera preview when leaving
+          try {
+            await engineRef.current.stopPreview();
+            console.log('Camera preview stopped');
+          } catch (previewError) {
+            console.warn('Error stopping camera preview:', previewError);
+          }
         } catch (leaveError: any) {
           console.warn('Error leaving video channel:', leaveError);
           // Continue with cleanup even if leave fails
@@ -927,6 +947,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               zOrderOnTop={true}
             />
           )}
+          
+          {/* Debug info for local video */}
+          {__DEV__ && (
+            <View style={styles.debugInfo}>
+              <Text style={styles.debugText}>
+                Debug: isVideoCall={isVideoCall.toString()}, isCameraOn={isCameraOn.toString()}, isAudioMode={isAudioMode.toString()}
+              </Text>
+              <Text style={styles.debugText}>
+                Channel: {currentChannel || 'none'}, Connected: {isConnected.toString()}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Controls */}
@@ -1177,6 +1209,20 @@ const styles = StyleSheet.create({
   },
   endButton: {
     // Additional styling for end button if needed
+  },
+  debugInfo: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    padding: 8,
+    borderRadius: 4,
+    zIndex: 100,
+  },
+  debugText: {
+    color: 'white',
+    fontSize: 10,
+    fontFamily: 'monospace',
   },
 });
 

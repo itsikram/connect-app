@@ -14,9 +14,17 @@ const profileSlice = createSlice({
       console.log('🔄 Profile reducer: setProfile called with:', action.payload?._id);
       console.log('🔄 Profile reducer: Previous profile ID:', state?._id);
       
-      // Always update the profile data
-      console.log('🔄 Profile reducer: Updating profile state');
-      return { ...action.payload };
+      // Only update if the profile ID is different or if it's a new profile
+      if (action.payload?._id && action.payload._id !== state?._id) {
+        console.log('🔄 Profile reducer: Updating profile state (different ID)');
+        return { ...action.payload };
+      } else if (!state?._id && action.payload?._id) {
+        console.log('🔄 Profile reducer: Updating profile state (new profile)');
+        return { ...action.payload };
+      } else {
+        console.log('🔄 Profile reducer: Skipping update (same profile ID)');
+        return state;
+      }
     },
     updateProfilePic: (state: Profile, action: PayloadAction<string>) => {
       console.log('🔄 Profile reducer: updateProfilePic called with:', action.payload);

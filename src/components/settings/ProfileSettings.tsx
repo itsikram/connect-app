@@ -14,7 +14,6 @@ import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { setProfile } from '../../reducers/profileReducer';
 import { AuthContext } from '../../contexts/AuthContext';
-import { useProfileData } from '../../hooks/useProfileData';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
@@ -43,9 +42,6 @@ const ProfileSettings = () => {
   // Get current profile data from Redux store
   const currentProfile = useSelector((state: RootState) => state.profile);
   
-  // Use the profile data hook to fetch data
-  const { fetchProfileData } = useProfileData(user?.profile || user?.user_id);
-  
   const [profileData, setProfileData] = useState({
     firstName: '',
     surname: '',
@@ -59,79 +55,65 @@ const ProfileSettings = () => {
     schools: [{ name: '', degree: '' }],
   });
 
-
-  useEffect(() => {
-    console.log('ProfileSettings: profileData', currentProfile);
-  }, [currentProfile]);
-
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [isInitialized, setIsInitialized] = useState<boolean>(false);
 
-  // Update local state when Redux store changes
+  // Fetch profile data when component mounts (only once)
   useEffect(() => {
+    const fetchProfileData = async () => {
+      if (!user?.profile && !user?.user_id) return;
+      
+      try {
+        const profileId = user?.profile || user?.user_id;
+        const response = await api.get(`/profile/${profileId}`);
+        
+        if (response.data) {
+          dispatch(setProfile(response.data));
+        }
+      } catch (error) {
+        console.error('Error fetching profile data:', error);
+      }
+    };
+
+    if (!isInitialized) {
+      fetchProfileData();
+      setIsInitialized(true);
+    }
+  }, [user, dispatch, isInitialized]);
+
+  // Update local state when Redux store changes (only when profile actually changes)
+  useEffect(() => {
+    if (!currentProfile || Object.keys(currentProfile).length === 0) return;
+    
     console.log('ProfileSettings: currentProfile from Redux:', currentProfile);
     console.log('ProfileSettings: user from AuthContext:', user);
     
-    if (currentProfile && Object.keys(currentProfile).length > 0) {
-      console.log('ProfileSettings: Setting profile data from Redux store');
-      setProfileData(prev => ({
-        ...prev,
-        user: {
-          ...currentProfile.user,
-        },
-        nickname: currentProfile.nickname || '',
-        username: currentProfile.username || currentProfile.user_name || '',
-        displayName: currentProfile.displayName || currentProfile.display_name || '',
-        bio: currentProfile.bio || '',
-        presentAddress: currentProfile.presentAddress || currentProfile.present_address || '',
-        permanentAddress: currentProfile.permanentAddress || currentProfile.permanent_address || '',
-        workPlaces: currentProfile.workPlaces && currentProfile.workPlaces.length > 0 
-          ? currentProfile.workPlaces 
-          : currentProfile.workplaces && currentProfile.workplaces.length > 0
-          ? currentProfile.workplaces
-          : [{ name: '', designation: '' }],
-        schools: currentProfile.schools && currentProfile.schools.length > 0 
-          ? currentProfile.schools 
-          : currentProfile.education && currentProfile.education.length > 0
-          ? currentProfile.education
-          : [{ name: '', degree: '' }],
-      }));
-    } else if (user && user.profile) {
-      console.log('ProfileSettings: Setting profile data from user.profile');
-      setProfileData(prev => ({
-        ...prev,
-        user: {
-          ...currentProfile.user,
-        },
-        firstName: user.profile.firstName || user.profile.first_name || user.firstName || '',
-        surname: user.profile.surname || user.profile.last_name || user.surname || '',
-        nickname: user.profile.nickname || '',
-        username: user.profile.username || user.profile.user_name || '',
-        displayName: user.profile.displayName || user.profile.display_name || '',
-        bio: user.profile.bio || '',
-        presentAddress: user.profile.presentAddress || user.profile.present_address || '',
-        permanentAddress: user.profile.permanentAddress || user.profile.permanent_address || '',
-        workPlaces: user.profile.workPlaces && user.profile.workPlaces.length > 0 
-          ? user.profile.workPlaces 
-          : user.profile.workplaces && user.profile.workplaces.length > 0
-          ? user.profile.workplaces
-          : [{ name: '', designation: '' }],
-        schools: user.profile.schools && user.profile.schools.length > 0 
-          ? user.profile.schools 
-          : user.profile.education && user.profile.education.length > 0
-          ? user.profile.education
-          : [{ name: '', degree: '' }],
-      }));
-    } else {
-      console.log('ProfileSettings: No profile data in Redux store or user object');
-    }
-  }, [currentProfile, user]);
-
-  // Fetch profile data when component mounts
-  useEffect(() => {
-    if (user?.profile || user?.user_id) {
-      fetchProfileData();
-    }
-  }, [user, fetchProfileData]);
+    console.log('ProfileSettings: Setting profile data from Redux store');
+    setProfileData(prev => ({
+      ...prev,
+      user: {
+        ...currentProfile.user,
+      },
+      firstName: currentProfile.user?.firstName || currentProfile.user?.first_name || user?.firstName || '',
+      surname: currentProfile.user?.surname || currentProfile.user?.last_name || user?.surname || '',
+      nickname: currentProfile.nickname || '',
+      username: currentProfile.username || currentProfile.user_name || '',
+      displayName: currentProfile.displayName || currentProfile.display_name || '',
+      bio: currentProfile.bio || '',
+      presentAddress: currentProfile.presentAddress || currentProfile.present_address || '',
+      permanentAddress: currentProfile.permanentAddress || currentProfile.permanent_address || '',
+      workPlaces: currentProfile.workPlaces && currentProfile.workPlaces.length > 0 
+        ? currentProfile.workPlaces 
+        : currentProfile.workplaces && currentProfile.workplaces.length > 0
+        ? currentProfile.workplaces
+        : [{ name: '', designation: '' }],
+      schools: currentProfile.schools && currentProfile.schools.length > 0 
+        ? currentProfile.schools 
+        : currentProfile.education && currentProfile.education.length > 0
+        ? currentProfile.education
+        : [{ name: '', degree: '' }],
+    }));
+  }, [currentProfile?._id]); // Only depend on profile ID, not the entire profile object
 
   const handleInputChange = (field: keyof ProfileData, value: string) => {
     setProfileData(prev => ({
