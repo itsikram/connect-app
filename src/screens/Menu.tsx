@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Button, TouchableOpacity, Image, ScrollView } f
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
+import { useChessGame } from '../contexts/ChessGameContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useNavigation } from '@react-navigation/native';
@@ -20,6 +21,7 @@ const Menu = () => {
   const myProfile = useSelector((state: RootState) => state.profile);
   const { colors: themeColors } = useTheme();
   const { isLudoGameActive, setLudoGameActive } = useLudoGame();
+  const { isChessGameActive, setChessGameActive } = useChessGame();
 
   const goToProfile = () => {
     (navigation as any).navigate('MyProfile');
@@ -32,9 +34,13 @@ const Menu = () => {
   const handleAppPress = (app: AppItem) => {
     if (app.id === 'Ludu') {
       setLudoGameActive(true);
-    } else {
-      app.onPress?.();
+      return;
     }
+    if (app.id === 'Chess') {
+      setChessGameActive(true);
+      return;
+    }
+    app.onPress?.();
   };
 
   const closeLudoGame = () => {
@@ -45,6 +51,12 @@ const Menu = () => {
     return (
       <LudoGameSVG />
     );
+  }
+
+  if (isChessGameActive) {
+    // Lazy import to avoid circular deps in RN require cycle
+    const ChessGame = require('./ChessGame').default;
+    return <ChessGame />;
   }
 
   return (
@@ -100,10 +112,6 @@ const Menu = () => {
         columns={4}
       />
 
-      <DeviceAppsGrid 
-        title="Installed Apps"
-        columns={4}
-      />
 
       {/* Option 2: Mixed apps with tabs (uncomment to use instead of above) */}
       {/* 

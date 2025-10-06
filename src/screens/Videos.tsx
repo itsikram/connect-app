@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
@@ -33,6 +34,11 @@ type Video = {
   commentsCount?: number;
 };
 
+type RootStackParamList = {
+  SingleVideo: { videoId: string };
+  [key: string]: any;
+};
+
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const isVideoPost = (post: Video) => {
@@ -49,7 +55,7 @@ const VideoPlaceholder = ({ textColor }: { textColor: string }) => (
 
 const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Video; isActive: boolean; isDarkMode: boolean; containerHeight: number }) => {
   const { colors: themeColors } = useTheme();
-  const navigation = useNavigation();
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const textColor = themeColors.text.primary;
 
   // Lazy require to avoid hard dependency if package is missing

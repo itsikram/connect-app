@@ -68,6 +68,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [remoteFilter, setRemoteFilter] = useState<string>(''); // Filter applied by remote user (affects how I see them)
 
   const engineRef = useRef<RtcEngine | null>(null);
+  const isInitializingRef = useRef<boolean>(false);
+  const callAcceptedRef = useRef<boolean>(false);
+  const lastCallAcceptedTime = useRef<number>(0);
 
   // Request camera and microphone permissions
   const requestPermissions = async (): Promise<boolean> => {
@@ -142,7 +145,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   // Refresh token when needed
   const refreshToken = async () => {
-    if (!currentChannel) return;
+    if (!currentChannel || !engineRef.current) return;
 
     try {
       console.log('Refreshing Agora token for channel:', currentChannel);
@@ -160,6 +163,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
     } catch (error) {
       console.error('Failed to refresh token:', error);
+      // Increment refresh attempts and show error if too many failures
+      setTokenRefreshAttempts(prev => {
+        const newAttempts = prev + 1;
+        if (newAttempts >= 3 && !errorShown) {
+          setErrorShown(true);
+          Alert.alert(
+            'Token Refresh Failed',
+            'Unable to refresh video call token. The call may be interrupted.',
+            [{ text: 'OK' }]
+          );
+        }
+        return newAttempts;
+      });
     }
   };
 
@@ -204,7 +220,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   // Initialize Agora Engine
   const initializeEngine = useCallback(async () => {
+    // Prevent multiple simultaneous initializations
+    if (isInitializingRef.current) {
+      console.log('Engine initialization already in progress, waiting...');
+      // Wait for existing initialization to complete
+      while (isInitializingRef.current) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return engineRef.current;
+    }
+
     try {
+      isInitializingRef.current = true;
+      
       // Request permissions first
       const hasPermissions = await requestPermissions();
       if (!hasPermissions) {
@@ -246,10 +274,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       await engine.enableVideo();
       await engine.enableAudio();
 
-      // Start camera preview to ensure local video works
-      console.log('Starting camera preview...');
-      await engine.startPreview();
-
       // Set channel profile
       await engine.setChannelProfile(ChannelProfile.Communication);
 
@@ -264,18 +288,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         setRemoteUid(null);
       });
 
-      engine.addListener('JoinChannelSuccess', async (channel: string, uid: number) => {
+      engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
         console.log('Joined video channel successfully:', channel, uid);
         localUidRef.current = uid;
         setIsConnected(true);
-        
-        // Ensure local video is visible after joining
-        try {
-          await engine.muteLocalVideoStream(false);
-          console.log('Local video unmuted after joining channel');
-        } catch (error) {
-          console.warn('Failed to unmute local video after joining:', error);
-        }
       });
 
       engine.addListener('LeaveChannel', () => {
@@ -325,6 +341,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
 
       throw error;
+    } finally {
+      isInitializingRef.current = false;
     }
   }, [myId]);
 
@@ -332,16 +350,27 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const joinChannel = useCallback(async (channelName: string) => {
     try {
       console.log('Attempting to join video channel:', channelName);
+      
       // Guard against duplicate joins
       if (isJoiningRef.current) {
         console.log('Join already in progress, skipping duplicate join');
         return;
       }
+      
       if (currentChannel === channelName && isConnected) {
         console.log('Already connected to this channel, skipping join');
         return;
       }
+
+      // Check if call was already accepted to prevent duplicate processing
+      if (callAcceptedRef.current && currentChannel === channelName) {
+        console.log('Call already accepted for this channel, skipping join');
+        return;
+      }
+
       isJoiningRef.current = true;
+      callAcceptedRef.current = true;
+      
       const engine = await initializeEngine();
       const numericUid = getStableNumericUid(myId);
 
@@ -354,6 +383,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
       console.log('Video token received, joining channel...');
       // Join channel
+      if (!engine) {
+        throw new Error('Engine not available for joining channel');
+      }
       await engine.joinChannel(token, channelName, null, numericUid);
       console.log('Successfully requested to join video channel:', channelName);
 
@@ -369,11 +401,22 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     } catch (error: any) {
       console.error('Failed to join video channel:', error);
 
+      // Handle specific error types
+      let errorMessage = 'Unable to join the video call. Please check your connection and try again.';
+      
+      if (error.message?.includes('request to join channel is rejected')) {
+        errorMessage = 'Channel access denied. The call may have ended or you may not have permission to join.';
+      } else if (error.message?.includes('token')) {
+        errorMessage = 'Authentication failed. Please try again.';
+      } else if (error.message?.includes('network') || error.message?.includes('connection')) {
+        errorMessage = 'Network error. Please check your internet connection and try again.';
+      }
+
       // Don't show additional alert if token request already showed one
       if (!error.response) {
         Alert.alert(
           'Video Call Failed',
-          'Unable to join the video call. Please check your connection and try again.',
+          errorMessage,
           [{ text: 'OK' }]
         );
       }
@@ -382,6 +425,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setIsVideoCall(false);
       setCallAccepted(false);
       setCurrentChannel(null);
+      callAcceptedRef.current = false;
 
       // Clean up engine if it was created
       if (engineRef.current) {
@@ -396,7 +440,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     finally {
       isJoiningRef.current = false;
     }
-  }, [initializeEngine, myId]);
+  }, [initializeEngine, myId, currentChannel, isConnected]);
 
   // Leave channel
   const leaveChannel = useCallback(async () => {
@@ -417,14 +461,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           console.log('Leaving video channel...');
           await engineRef.current.leaveChannel();
           console.log('Video channel left successfully');
-          
-          // Stop camera preview when leaving
-          try {
-            await engineRef.current.stopPreview();
-            console.log('Camera preview stopped');
-          } catch (previewError) {
-            console.warn('Error stopping camera preview:', previewError);
-          }
         } catch (leaveError: any) {
           console.warn('Error leaving video channel:', leaveError);
           // Continue with cleanup even if leave fails
@@ -459,6 +495,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setRemoteFilter(''); // Reset remote filter state
       localUidRef.current = null;
       isJoiningRef.current = false;
+      callAcceptedRef.current = false;
       callStartTime.current = null;
 
       // Clear duration interval
@@ -487,6 +524,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setRemoteFilter(''); // Reset remote filter state
       localUidRef.current = null;
       isJoiningRef.current = false;
+      callAcceptedRef.current = false;
       callStartTime.current = null;
       engineRef.current = null;
     } finally {
@@ -534,15 +572,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       // endVideoCall(incomingCall?.from || '');
       await leaveChannel();
 
-      // Simply navigate back without complex navigation logic to prevent loops
+      // Navigate back to MessageList screen specifically
       try {
         const nav: any = navigation;
         // Just go back to the previous screen or Message tab
-        if (nav.canGoBack && nav.canGoBack()) {
-          nav.goBack();
-        } else {
-          nav.navigate('Message');
-        }
+        nav.navigate('Message', { screen: 'MessageList' });
+
+        // if (nav.canGoBack && nav.canGoBack()) {
+        //   nav.goBack();
+        // } else {
+        // }
       } catch (e) {
         console.warn('Navigation error after call end:', e);
       }
@@ -609,22 +648,15 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const nextIndex = (currentIndex + 1) % filters.length;
     const newFilter = filters[nextIndex];
     
+    console.log('🎥 Toggling video filter from', myFilter, 'to', newFilter);
     setMyFilter(newFilter);
-    console.log('🎥 My video filter changed to:', newFilter || 'none');
     
     // Emit filter change to other participants so they can apply it to their view of me
-    if (incomingCall?.from) {
-      console.log('🎥 Sending filter to other participant:', incomingCall.from, 'filter:', newFilter);
-      applyVideoFilter(incomingCall.from, newFilter);
+    if (currentChannel) {
+      console.log('🎥 Emitting filter change to channel:', currentChannel, 'filter:', newFilter);
+      applyVideoFilter(currentChannel, newFilter);
     }
-    
-    // Show a brief feedback
-    if (newFilter) {
-      console.log(`Applied ${newFilter} filter to my video (others will see this effect)`);
-    } else {
-      console.log('Removed filter from my video');
-    }
-  }, [myFilter, incomingCall, applyVideoFilter]);
+  }, [myFilter, currentChannel, applyVideoFilter]);
 
   // Minimize call
   const minimizeVideoCall = useCallback(() => {
@@ -726,6 +758,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const handleCallAccepted = ({ channelName, isAudio, callerName, callerProfilePic, callerId }: any) => {
       console.log('VideoCall: Call accepted event received:', { channelName, isAudio, callerName, callerProfilePic });
 
+      // Debounce rapid-fire events (prevent processing same event within 2 seconds)
+      const now = Date.now();
+      if (now - lastCallAcceptedTime.current < 2000) {
+        console.log('VideoCall: Ignoring rapid-fire call accepted event');
+        return;
+      }
+      lastCallAcceptedTime.current = now;
+
+      // Prevent duplicate processing of the same call
+      if (callAcceptedRef.current && currentChannel === channelName) {
+        console.log('VideoCall: Call already accepted for this channel, ignoring duplicate event');
+        return;
+      }
+
       // Handle both video and audio call acceptance
       if (!isAudio) {
         console.log('VideoCall: Video call accepted, joining channel:', channelName);
@@ -761,23 +807,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     };
 
     const handleCallEnd = async () => {
-
-      return;
-      endCall();
+      console.log('VideoCall: Received call end event from remote user');
+      console.log('VideoCall: Current state - callAccepted:', callAccepted, 'isVideoCall:', isVideoCall);
+      // Only handle call end if we're actually in a call
+      if (callAccepted || isVideoCall) {
+        console.log('VideoCall: Calling endCall()...');
+        endCall();
+      } else {
+        console.log('VideoCall: Ignoring call end event - not in active call state');
+      }
     };
 
     const handleVideoFilter = ({ filter }: { filter: string }) => {
-      console.log('🎥 Received video filter from other participant:', filter);
-      console.log('🎥 Setting remoteFilter to:', filter);
       // This filter should be applied to how I see the remote user's video
       setRemoteFilter(filter);
-      
-      // Additional logging to track filter application
-      if (filter) {
-        console.log('🎥 Applied remote filter to video:', filter);
-      } else {
-        console.log('🎥 Removed remote filter from video');
-      }
     };
 
     // Removed: on('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
@@ -800,6 +843,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       console.log('🎥 Remote video should now show filter:', remoteFilter);
     }
   }, [remoteFilter]);
+
+  // Track my filter changes
+  useEffect(() => {
+    console.log('🎥 My filter state changed:', myFilter);
+    if (myFilter) {
+      console.log('🎥 My video should now show filter:', myFilter);
+    }
+  }, [myFilter]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -880,22 +931,58 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     >
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={themeColors.background.primary} />
       <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-        {/* Header */}
+        {/* Header with Top Controls */}
         <View style={[styles.header, { backgroundColor: themeColors.surface.header }]}>
-          <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>
-            {isAudioMode ? 'Audio Call' : 'Video Call'} - {incomingCall?.name || 'Unknown'}
-          </Text>
-          {callAccepted && (
-            <Text style={[styles.duration, { color: themeColors.text.secondary }]}>
-              {formatDuration(callDuration)}
-            </Text>
-          )}
-          {myFilter && (
-            <Text style={[styles.filterIndicator, { color: themeColors.primary }]}>
-              My Filter: {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
-            </Text>
-          )}
+          {/* Top Row: Action Buttons */}
+          <View style={styles.topControls}>
+            <View style={styles.topLeftControls}>
+              <TouchableOpacity
+                style={[styles.topControlButton, { backgroundColor: 'rgba(0, 0, 0, 0.3)' }]}
+                onPress={minimizeVideoCall}
+              >
+                <Icon name="minimize" size={20} color="white" />
+              </TouchableOpacity>
+            </View>
+            
+            <View style={styles.topCenterInfo}>
+              <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>
+                {isAudioMode ? 'Audio Call' : 'Video Call'} - {incomingCall?.name || 'Unknown'}
+              </Text>
+              {callAccepted && (
+                <Text style={[styles.duration, { color: themeColors.text.secondary }]}>
+                  {formatDuration(callDuration)}
+                </Text>
+              )}
+            </View>
 
+            <View style={styles.topRightControls}>
+              <TouchableOpacity
+                style={[
+                  styles.topControlButton, 
+                  { backgroundColor: myFilter ? 'rgba(41, 177, 169, 0.8)' : 'rgba(0, 0, 0, 0.3)' }
+                ]}
+                onPress={toggleVideoFilter}
+              >
+                <Icon name="filter-list" size={20} color="white" />
+                {myFilter && (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>
+                      {myFilter.charAt(0).toUpperCase()}
+                    </Text>
+                  </View>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          {/* Filter Indicator */}
+          {myFilter && (
+            <View style={styles.filterIndicatorContainer}>
+              <Text style={[styles.filterIndicator, { color: themeColors.primary }]}>
+                My Filter: {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
+              </Text>
+            </View>
+          )}
         </View>
 
         {/* Video Container */}
@@ -918,12 +1005,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
                   <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(remoteFilter)]} />
                 </>
               )}
-              {/* Debug overlay to show filter is applied */}
-              {remoteFilter && (
-                <View style={styles.debugFilterOverlay}>
-                  <Text style={styles.debugFilterText}>Filter: {remoteFilter}</Text>
-                </View>
-              )}
             </View>
           ) : (
             <View style={[styles.remoteVideo, styles.placeholderVideo, { backgroundColor: themeColors.gray[800] }]}>
@@ -938,25 +1019,31 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
             </View>
           )}
 
-          {/* Local Video - No filter applied here as it's for my own view */}
+          {/* Local Video - Show filter preview on my own video */}
           {isVideoCall && isCameraOn && !isAudioMode && (
-            <RtcLocalView.SurfaceView
-              style={styles.localVideo}
-              channelId={currentChannel || ''}
-              renderMode={VideoRenderMode.Fit}
-              zOrderOnTop={true}
-            />
-          )}
-          
-          {/* Debug info for local video */}
-          {__DEV__ && (
-            <View style={styles.debugInfo}>
-              <Text style={styles.debugText}>
-                Debug: isVideoCall={isVideoCall.toString()}, isCameraOn={isCameraOn.toString()}, isAudioMode={isAudioMode.toString()}
-              </Text>
-              <Text style={styles.debugText}>
-                Channel: {currentChannel || 'none'}, Connected: {isConnected.toString()}
-              </Text>
+            <View style={styles.localVideoContainer}>
+              <RtcLocalView.SurfaceView
+                style={[styles.localVideo, getFilterStyle(myFilter)]}
+                channelId={currentChannel || ''}
+                renderMode={VideoRenderMode.Fit}
+                zOrderOnTop={true}
+              />
+              {myFilter && (
+                <>
+                  {/* Primary filter overlay */}
+                  <View style={[styles.filterOverlay, getFilterOverlayStyle(myFilter)]} />
+                  {/* Secondary filter overlay for more realistic effect */}
+                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(myFilter)]} />
+                </>
+              )}
+              {/* Filter indicator on local video */}
+              {myFilter && (
+                <View style={styles.localFilterIndicator}>
+                  <Text style={styles.localFilterText}>
+                    {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
+                  </Text>
+                </View>
+              )}
             </View>
           )}
         </View>
@@ -992,25 +1079,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               >
                 <Icon name={isScreenSharing ? "stop-screen-share" : "screen-share"} size={24} color="white" />
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: myFilter ? '#666666' : '#29B1A9' }]}
-                onPress={toggleVideoFilter}
-              >
-                <Icon name="filter-list" size={24} color="white" />
-                {myFilter && (
-                  <Text style={styles.filterButtonText}>
-                    {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
-                  </Text>
-                )}
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: '#29B1A9' }]}
-                onPress={minimizeVideoCall}
-              >
-                <Icon name="minimize" size={24} color="white" />
-              </TouchableOpacity>
             </>
           )}
 
@@ -1034,21 +1102,76 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   header: {
-    paddingVertical: 16,
-    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+  },
+  topControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  topLeftControls: {
+    flex: 1,
+    alignItems: 'flex-start',
+  },
+  topCenterInfo: {
+    flex: 2,
     alignItems: 'center',
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+  topRightControls: {
+    flex: 1,
+    alignItems: 'flex-end',
   },
-  duration: {
-    fontSize: 14,
+  topControlButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: '#FFD700',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'white',
+  },
+  filterBadgeText: {
+    color: '#000',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+  filterIndicatorContainer: {
+    alignItems: 'center',
     marginTop: 4,
   },
-  filterIndicator: {
+  headerTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  duration: {
     fontSize: 12,
     marginTop: 2,
+    textAlign: 'center',
+  },
+  filterIndicator: {
+    fontSize: 11,
     fontWeight: '500',
   },
   videoContainer: {
@@ -1061,15 +1184,35 @@ const styles = StyleSheet.create({
     width: '100%',
     height: '100%',
   },
-  localVideo: {
-    width: 120,
-    height: 160,
+  localVideoContainer: {
     position: 'absolute',
     top: 20,
     right: 20,
+    width: 120,
+    height: 160,
+    zIndex: 10,
+  },
+  localVideo: {
+    width: 120,
+    height: 160,
     borderRadius: 8,
     backgroundColor: '#333',
-    zIndex: 10,
+  },
+  localFilterIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    left: 4,
+    right: 4,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+  },
+  localFilterText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '600',
   },
   // Filter styles - Matching web CSS filter effects
   filterVivid: {
@@ -1155,21 +1298,6 @@ const styles = StyleSheet.create({
   dramaticOverlaySecondary: {
     backgroundColor: 'rgba(255, 0, 0, 0.05)', // Additional red layer
   },
-  // Debug overlay styles
-  debugFilterOverlay: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    padding: 8,
-    borderRadius: 4,
-    zIndex: 100,
-  },
-  debugFilterText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
   placeholderVideo: {
     justifyContent: 'center',
     alignItems: 'center',
@@ -1210,20 +1338,6 @@ const styles = StyleSheet.create({
   endButton: {
     // Additional styling for end button if needed
   },
-  debugInfo: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    padding: 8,
-    borderRadius: 4,
-    zIndex: 100,
-  },
-  debugText: {
-    color: 'white',
-    fontSize: 10,
-    fontFamily: 'monospace',
-  },
 });
 
 export default VideoCall;
@@ -1240,7 +1354,7 @@ function getStableNumericUid(id: string): number {
     hash ^= id.charCodeAt(i);
     hash = Math.imul(hash, 16777619) >>> 0; // FNV prime
   }
-  // Ensure non-zero and within Agora valid range
+  // Ensure non-zero and within Agora valid rangemove 
   const uid = hash % 4000000000;
   return uid === 0 ? 1 : uid;
 }

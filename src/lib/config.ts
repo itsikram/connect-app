@@ -7,20 +7,23 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
+const serverUrl = "http://192.168.0.104:4000"
+// const serverUrl = "https://connect-server-y1ku.onrender.com"
+
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
-    API_BASE_URL: 'http://192.168.0.110:4000/api/',
-    SOCKET_BASE_URL: 'http://192.168.0.110:4000',
+    API_BASE_URL: `${serverUrl}/api/`,
+    SOCKET_BASE_URL: serverUrl,
     API_TIMEOUT: 10000,
   },
   staging: {
-    API_BASE_URL: 'http://192.168.0.110:4000/api/',
-    SOCKET_BASE_URL: 'http://192.168.0.110:4000',
+    API_BASE_URL: `${serverUrl}/api/`,
+    SOCKET_BASE_URL: serverUrl,
     API_TIMEOUT: 15000,
   },
   production: {
-    API_BASE_URL: 'https://connect-server-y1ku.onrender.com/api/',
-    SOCKET_BASE_URL: 'https://connect-server-y1ku.onrender.com',
+    API_BASE_URL: `${serverUrl}/api/`,
+    SOCKET_BASE_URL: serverUrl,
     API_TIMEOUT: 20000,
   },
 };

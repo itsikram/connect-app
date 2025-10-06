@@ -46,6 +46,7 @@ import { ToastProvider, useToast } from './src/contexts/ToastContext';
 import { UserToastProvider, useUserToast } from './src/contexts/UserToastContext';
 import { SettingsProvider } from './src/contexts/SettingsContext';
 import { LudoGameProvider, useLudoGame } from './src/contexts/LudoGameContext';
+import { ChessGameProvider, useChessGame } from './src/contexts/ChessGameContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
@@ -123,6 +124,7 @@ function MenuStack() {
 // Tab bar component that checks for Ludo game state
 function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
+  const { isChessGameActive } = useChessGame();
   
   // Debug navigation state
   React.useEffect(() => {
@@ -130,8 +132,8 @@ function TabBarWithLudoCheck(props: any) {
     console.log('🚀 TabBarWithLudoCheck - Ludo game active:', isLudoGameActive);
   }, [props.user, isLudoGameActive]);
   
-  // Hide tab bar if Ludo game is active
-  if (isLudoGameActive) {
+  // Hide tab bar if Ludo or Chess game is active
+  if (isLudoGameActive || isChessGameActive) {
     return null;
   }
   
@@ -687,9 +689,11 @@ function App() {
                       <UserToastProvider>
                         <SettingsProvider>
                           <LudoGameProvider>
-                            <HeaderVisibilityProvider>
-                              <AppWithTopProgress />
-                            </HeaderVisibilityProvider>
+                            <ChessGameProvider>
+                              <HeaderVisibilityProvider>
+                                <AppWithTopProgress />
+                              </HeaderVisibilityProvider>
+                            </ChessGameProvider>
                           </LudoGameProvider>
                         </SettingsProvider>
                       </UserToastProvider>

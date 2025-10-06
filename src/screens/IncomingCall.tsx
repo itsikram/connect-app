@@ -23,11 +23,13 @@ const IncomingCall: React.FC = () => {
   const route = useRoute();
   const { answerVideoCall, answerAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [playRingtone, setPlayRingtone] = useState(true);
+  const [callAccepted, setCallAccepted] = useState(false);
   
   // Animation values
   const pulseAnim = useMemo(() => new Animated.Value(1), []);
   const slideAnim = useMemo(() => new Animated.Value(50), []);
   const fadeAnim = useMemo(() => new Animated.Value(0), []);
+  const acceptButtonPulse = useMemo(() => new Animated.Value(1), []);
 
   const safeGoBack = () => {
     try {
@@ -75,8 +77,26 @@ const IncomingCall: React.FC = () => {
     );
     pulseAnimation.start();
 
+    // Accept button pulse animation
+    const acceptButtonAnimation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(acceptButtonPulse, {
+          toValue: 1.05,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(acceptButtonPulse, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    acceptButtonAnimation.start();
+
     return () => {
       pulseAnimation.stop();
+      acceptButtonAnimation.stop();
     };
   }, []);
 
@@ -121,6 +141,7 @@ const IncomingCall: React.FC = () => {
     
     console.log('IncomingCall: Accepting call', { callerId, channelName, isAudio, callerName });
     setPlayRingtone(false);
+    setCallAccepted(true); // Mark call as accepted
     if (isAudio) {
       answerAudioCall(callerId, channelName);
     } else {
@@ -145,11 +166,20 @@ const IncomingCall: React.FC = () => {
   // Close this screen if the remote cancels/ends before we accept
   useEffect(() => {
     const handleEnd = () => {
-      setPlayRingtone(false);
-      safeGoBack();
+      console.log('IncomingCall: Received call end event - playRingtone:', playRingtone, 'callAccepted:', callAccepted);
+      // Only handle call end if we're still in the incoming call state
+      // (i.e., call hasn't been accepted yet and ringtone is still playing)
+      if (playRingtone && !callAccepted) {
+        console.log('IncomingCall: Handling call end - going back');
+        setPlayRingtone(false);
+        safeGoBack();
+      } else {
+        console.log('IncomingCall: Ignoring call end event - call already accepted or not in incoming state');
+      }
     };
     const handleAccepted = () => {
       setPlayRingtone(false);
+      setCallAccepted(true);
       safeGoBack();
     };
 
@@ -162,7 +192,7 @@ const IncomingCall: React.FC = () => {
       off('audioCallEnd', handleEnd);
       off('agora-call-accepted', handleAccepted);
     };
-  }, [on, off, navigation]);
+  }, [on, off, navigation, playRingtone, callAccepted]);
 
   // Ensure ringtone stops on unmount
   useEffect(() => {
@@ -269,19 +299,27 @@ const IncomingCall: React.FC = () => {
             <TouchableOpacity
               onPress={onDecline}
               style={[styles.actionButton, styles.declineButton]}
-              activeOpacity={0.8}
+              activeOpacity={0.7}
             >
-              <Icon name="call-end" size={28} color="white" />
+              <View style={styles.buttonInner}>
+                <Icon name="call-end" size={32} color="white" />
+              </View>
+              <View style={[styles.buttonRing, styles.declineButtonRing]} />
             </TouchableOpacity>
 
             {/* Accept Button */}
-            <TouchableOpacity
-              onPress={onAccept}
-              style={[styles.actionButton, styles.acceptButton]}
-              activeOpacity={0.8}
-            >
-              <Icon name="call" size={28} color="white" />
-            </TouchableOpacity>
+            <Animated.View style={{ transform: [{ scale: acceptButtonPulse }] }}>
+              <TouchableOpacity
+                onPress={onAccept}
+                style={[styles.actionButton, styles.acceptButton]}
+                activeOpacity={0.7}
+              >
+                <View style={styles.buttonInner}>
+                  <Icon name="call" size={32} color="white" />
+                </View>
+                <View style={[styles.buttonRing, styles.acceptButtonRing]} />
+              </TouchableOpacity>
+            </Animated.View>
           </View>
 
           {/* Call Duration (for future use) */}
@@ -391,29 +429,60 @@ const styles = StyleSheet.create({
   },
   buttonContainer: {
     flexDirection: 'row',
-    gap: 40,
+    gap: 50,
     marginBottom: 40,
-  },
-  actionButton: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  actionButton: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOpacity: 0.4,
+    shadowRadius: 16,
+    elevation: 12,
+  },
+  buttonInner: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  buttonRing: {
+    position: 'absolute',
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    borderWidth: 2,
+    zIndex: 1,
   },
   declineButton: {
     backgroundColor: '#FF3B30',
+    shadowColor: '#FF3B30',
+    shadowOpacity: 0.6,
+  },
+  declineButtonRing: {
+    borderColor: 'rgba(255, 59, 48, 0.8)',
+    backgroundColor: 'rgba(255, 59, 48, 0.1)',
   },
   acceptButton: {
     backgroundColor: '#34C759',
+    shadowColor: '#34C759',
+    shadowOpacity: 0.6,
+  },
+  acceptButtonRing: {
+    borderColor: 'rgba(52, 199, 89, 0.8)',
+    backgroundColor: 'rgba(52, 199, 89, 0.1)',
   },
   callDuration: {
     fontSize: 14,

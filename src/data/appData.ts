@@ -23,6 +23,16 @@ export const sampleApps: AppItem[] = [
     },
   },
   {
+    id: 'Chess',
+    name: 'Chess',
+    icon: 'sports-esports',
+    color: '#3F51B5',
+    onPress: () => {
+      // Navigation will be handled by the AppGrid component
+      console.log('Chess pressed - navigation handled by AppGrid');
+    },
+  },
+  {
     id: 'whatsapp',
     name: 'WhatsApp',
     icon: 'message',
