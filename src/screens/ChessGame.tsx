@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useChessGame } from '../contexts/ChessGameContext';
 import { Chess } from 'chess.js';
 import { unicodeForPiece } from '../lib/chessEngine';
+import { Emitter } from 'react-native-particles';
 
 const BOARD_SIZE = 8;
 const FILES = ['a','b','c','d','e','f','g','h'];
@@ -137,15 +138,29 @@ const ChessGame: React.FC = () => {
     );
   };
 
+  const { width, height } = Dimensions.get('window');
+
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
-      style={styles.bg}
-      resizeMode="cover"
-      blurRadius={2}
-      key={`fen-${fenVersion}`}
-    >
-      <View style={styles.overlay} />
+    <View style={styles.bg} key={`fen-${fenVersion}`}>
+      <View style={StyleSheet.absoluteFillObject}>
+        <Emitter
+          numberOfParticles={80}
+          emissionRate={3}
+          interval={150}
+          particleLife={5000}
+          direction={-90}
+          spread={360}
+          speed={3}
+          gravity={0.15}
+          fromPosition={() => ({ x: Math.random() * width, y: height })}
+          infiniteLoop={true}
+          autoStart={true}
+          width={width}
+          height={height}
+        >
+          <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
+        </Emitter>
+      </View>
       <View style={[styles.container]}> 
         <View style={styles.topBar}>
         <Text style={[styles.title, { color: themeColors.text.primary }]}>Chess</Text>
@@ -199,17 +214,14 @@ const ChessGame: React.FC = () => {
           </View>
         </Modal>
       </View>
-    </ImageBackground>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   bg: {
     flex: 1,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)'
+    backgroundColor: '#1a1a2e',
   },
   container: {
     flex: 1,

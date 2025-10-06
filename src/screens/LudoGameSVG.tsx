@@ -11,7 +11,6 @@ import {
   Animated,
   Modal,
   Easing,
-  ImageBackground,
 } from 'react-native';
 import Svg, {
   Rect,
@@ -27,6 +26,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Logo from '../components/Logo';
+import { Emitter } from 'react-native-particles';
 
 const { width, height } = Dimensions.get('window');
 const BOARD_SIZE = Math.min(width * 0.85, height * 0.6);
@@ -186,26 +186,43 @@ const LudoGameSVG = () => {
 
       // Check if player can move any piece
       const currentPlayerData = players[currentPlayer];
-      const canMove = currentPlayerData.pieces.some(piece =>
-        piece.isInPlay || (piece.isHome && value === 6)
-      );
+      const maxSteps = 59;
+      const canMove = currentPlayerData.pieces.some(piece => {
+        if (piece.isHome && value === 6) return true;
+        if (piece.isInPlay && piece.steps + value <= maxSteps) return true;
+        return false;
+      });
 
       if (canMove) {
         // Start stroke animations for movable pieces
         currentPlayerData.pieces.forEach((piece, pieceIndex) => {
           const globalPieceIndex = currentPlayer * 4 + pieceIndex;
-          if (piece.isInPlay || (piece.isHome && value === 6)) {
+          const canMovePiece = (piece.isHome && value === 6) || 
+                               (piece.isInPlay && piece.steps + value <= maxSteps);
+          if (canMovePiece) {
             startTokenStrokeAnimation(globalPieceIndex);
           }
         });
       } else {
+        // No valid moves, automatically pass turn
         setTimeout(() => {
           // Stop stroke animations only for current player's pieces
           currentPlayerData.pieces.forEach((piece, pieceIndex) => {
             const globalPieceIndex = currentPlayer * 4 + pieceIndex;
             stopTokenStrokeAnimation(globalPieceIndex);
           });
-          setCurrentPlayer((prev) => (prev + 1) % selectedPlayerCount);
+          
+          // Find next player who hasn't won
+          let nextPlayer = (currentPlayer + 1) % selectedPlayerCount;
+          let attempts = 0;
+          while (attempts < selectedPlayerCount) {
+            const playerWon = winners.some(w => w.id === nextPlayer);
+            if (!playerWon) break;
+            nextPlayer = (nextPlayer + 1) % selectedPlayerCount;
+            attempts++;
+          }
+          
+          setCurrentPlayer(nextPlayer);
           setDiceValue(0);
           setCanRollDice(true);
         }, 1500);
@@ -396,8 +413,17 @@ const LudoGameSVG = () => {
       confetti.opacity.stopAnimation();
     });
 
-    // Move to next player
-    setCurrentPlayer((prev) => (prev + 1) % selectedPlayerCount);
+    // Find next player who hasn't won
+    let nextPlayer = (currentPlayer + 1) % selectedPlayerCount;
+    let attempts = 0;
+    while (attempts < selectedPlayerCount) {
+      const playerWon = winners.some(w => w.id === nextPlayer);
+      if (!playerWon) break;
+      nextPlayer = (nextPlayer + 1) % selectedPlayerCount;
+      attempts++;
+    }
+
+    setCurrentPlayer(nextPlayer);
     setDiceValue(0);
     setCanRollDice(true);
   };
@@ -468,11 +494,10 @@ const LudoGameSVG = () => {
 
   // Calculate position on the Ludo board path
   const getPositionOnPath = (playerIndex: number, steps: number) => {
-    // Define the path positions for each player
+    // Define the path positions for each player (52 main path + 5 home stretch + 1 finish = 58 total)
     const paths = {
-
-
-      0: [ // Red player path
+      0: [ // Red player path (starting from bottom-left going up)
+        // Starting position and main path (52 steps)
         { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
         { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
         { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
@@ -484,13 +509,13 @@ const LudoGameSVG = () => {
         { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
         { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
         { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
-        { x: 0, y: 8 }, { x: 0, y: 7 },
-        { x: 1, y: 7 }, { x: 2, y: 7 }, { x: 3, y: 7 }, { x: 4, y: 7 }, { x: 5, y: 7 }, { x: 7, y: 7 }
-
-        // Home column
+        { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
+        // Home stretch (6 steps to center)
+        { x: 1, y: 7 }, { x: 2, y: 7 }, { x: 3, y: 7 }, { x: 4, y: 7 }, { x: 5, y: 7 }, { x: 6, y: 7 }, { x: 7, y: 7 }
       ],
 
-      1: [ // Green player path
+      1: [ // Green player path (starting from top-right going down)
+        // Starting position and main path (52 steps)
         { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
         { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
         { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
@@ -499,17 +524,16 @@ const LudoGameSVG = () => {
         { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
         { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
         { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
-
         { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
-
         { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
         { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
-        { x: 6, y: 0 }, { x: 7, y: 0 },
-        // Home column
-        { x: 7, y: 1 }, { x: 7, y: 2 }, { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 7, y: 7 }
+        { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
+        // Home stretch (6 steps to center)
+        { x: 7, y: 1 }, { x: 7, y: 2 }, { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 7, y: 6 }, { x: 7, y: 7 }
       ],
 
-      2: [ // Blue player path
+      2: [ // Blue player path (starting from bottom-left going right)
+        // Starting position and main path (52 steps)
         { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
         { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
         { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
@@ -521,12 +545,13 @@ const LudoGameSVG = () => {
         { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
         { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
         { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
-        { x: 8, y: 14 }, { x: 7, y: 14 },
-        // Home column
-        { x: 7, y: 13 }, { x: 7, y: 12 }, { x: 7, y: 11 }, { x: 7, y: 10 }, { x: 7, y: 9 }, { x: 7, y: 7 }
+        { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
+        // Home stretch (6 steps to center)
+        { x: 7, y: 13 }, { x: 7, y: 12 }, { x: 7, y: 11 }, { x: 7, y: 10 }, { x: 7, y: 9 }, { x: 7, y: 8 }, { x: 7, y: 7 }
       ],
 
-      3: [ // Yellow player path
+      3: [ // Yellow player path (starting from bottom-right going left)
+        // Starting position and main path (52 steps)
         { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
         { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 }, 
         { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
@@ -535,20 +560,18 @@ const LudoGameSVG = () => {
         { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
         { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
         { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 }, 
-        { x: 6, y: 0 },{ x: 7, y: 0 }, { x: 8, y: 0 },
+        { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
         { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
         { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 }, 
-        { x: 14, y: 6 }, { x: 14, y: 7 },
-        // Home column
-        { x: 13, y: 7 }, { x: 12, y: 7 }, { x: 11, y: 7 }, { x: 10, y: 7 }, { x: 9, y: 7 }, { x: 7, y: 7 }
+        { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
+        // Home stretch (6 steps to center)
+        { x: 13, y: 7 }, { x: 12, y: 7 }, { x: 11, y: 7 }, { x: 10, y: 7 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }
       ]
     };
 
-
-
     const path = paths[playerIndex as keyof typeof paths];
-    if (steps <= 0 || steps > path.length) {
-      return { x: 0, y: 0 };
+    if (!path || steps <= 0 || steps > path.length) {
+      return { x: 7, y: 7 }; // Return center position as fallback
     }
 
     return path[steps - 1];
@@ -581,6 +604,9 @@ const LudoGameSVG = () => {
       
       player.pieces.forEach((piece, pieceIndex) => {
         if (piece.isInPlay) {
+          // Pieces in home stretch (last 7 steps) cannot be captured
+          if (piece.steps >= 52) return;
+          
           const piecePosition = getPositionOnPath(playerIndex, piece.steps);
           // Check if positions match (same cell)
           if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
@@ -679,15 +705,23 @@ const LudoGameSVG = () => {
   };
 
   const movePiece = (pieceId: number) => {
-    console.log('movePiece', pieceId);
     if (diceValue === 0) return;
 
     const currentPlayerData = players[currentPlayer];
     const piece = currentPlayerData.pieces[pieceId];
+    const maxSteps = 59;
 
-    // Stop stroke animation for this piece
+    // Validate the move
+    if (piece.isHome && diceValue !== 6) return;
+    if (piece.isInPlay && piece.steps + diceValue > maxSteps) return;
+
+    // Stop stroke animations for ALL current player's pieces
+    currentPlayerData.pieces.forEach((_, pieceIndex) => {
+      const globalIdx = currentPlayer * 4 + pieceIndex;
+      stopTokenStrokeAnimation(globalIdx);
+    });
+
     const globalPieceIndex = currentPlayer * 4 + pieceId;
-    stopTokenStrokeAnimation(globalPieceIndex);
 
     if (piece.isHome && diceValue === 6) {
       // Move piece out of home
@@ -695,25 +729,44 @@ const LudoGameSVG = () => {
       const startX = startPosition.x * CELL_SIZE;
       const startY = startPosition.y * CELL_SIZE;
 
-      // Set initial position for animation
-      tokenPositionAnimations[globalPieceIndex].translateX.setValue(startX);
-      tokenPositionAnimations[globalPieceIndex].translateY.setValue(startY);
+      // Animate piece moving out
+      Animated.parallel([
+        Animated.timing(tokenPositionAnimations[globalPieceIndex].translateX, {
+          toValue: startX,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+        Animated.timing(tokenPositionAnimations[globalPieceIndex].translateY, {
+          toValue: startY,
+          duration: 300,
+          useNativeDriver: false,
+        }),
+      ]).start(() => {
+        const updatedPlayers = [...players];
+        updatedPlayers[currentPlayer].pieces[pieceId] = {
+          ...piece,
+          isHome: false,
+          isInPlay: true,
+          steps: 1,
+        };
+        setPlayers(updatedPlayers);
 
-      const updatedPlayers = [...players];
-      updatedPlayers[currentPlayer].pieces[pieceId] = {
-        ...piece,
-        isHome: false,
-        isInPlay: true,
-        steps: 1,
-      };
-      setPlayers(updatedPlayers);
-      setDiceValue(0);
-      setCanRollDice(true);
+        // Check for captures at starting position
+        const newPosition = getPositionOnPath(currentPlayer, 1);
+        const capturedPieces = checkForCapture(currentPlayer, newPosition);
+        capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
+          captureToken(playerIndex, pieceIndex);
+        });
+
+        setDiceValue(0);
+        setCanRollDice(true);
+        // Keep turn because rolled a 6
+      });
     } else if (piece.isInPlay) {
       // Move piece on board with step-by-step animation
       const oldSteps = piece.steps;
       const newSteps = piece.steps + diceValue;
-      const maxSteps = 57; // Total path length
+      const maxSteps = 59; // Total path length (52 main + 7 home stretch)
 
       if (newSteps <= maxSteps) {
         // Animate the movement step by step
@@ -726,45 +779,69 @@ const LudoGameSVG = () => {
           };
           setPlayers(updatedPlayers);
 
-          // Check for captures after movement
-          const newPosition = getPositionOnPath(currentPlayer, newSteps);
-          const capturedPieces = checkForCapture(currentPlayer, newPosition);
-          
-          // Capture any tokens that were landed on
-          capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
-            captureToken(playerIndex, pieceIndex);
-          });
+          // Check for captures after movement (only if not at finish)
+          if (newSteps < maxSteps) {
+            const newPosition = getPositionOnPath(currentPlayer, newSteps);
+            const capturedPieces = checkForCapture(currentPlayer, newPosition);
+            
+            // Capture any tokens that were landed on
+            capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
+              captureToken(playerIndex, pieceIndex);
+            });
+          }
 
           // Check for win
           if (newSteps === maxSteps) {
-            const newWinners = [...winners, currentPlayerData];
-            setWinners(newWinners);
-            setWinner(currentPlayerData);
-            setShowWinnerModal(true);
-            startWinnerCelebration();
+            // Count how many pieces have finished
+            const finishedCount = updatedPlayers[currentPlayer].pieces.filter(
+              p => p.steps === maxSteps
+            ).length;
             
-            // Check if all players have finished
-            const remainingPlayers = players.filter((_, index) => index < selectedPlayerCount);
-            if (newWinners.length >= remainingPlayers.length - 1) {
-              setGameEnded(true);
+            // Check if all 4 pieces have finished
+            if (finishedCount === 4) {
+              const newWinners = [...winners, currentPlayerData];
+              setWinners(newWinners);
+              setWinner(currentPlayerData);
+              setShowWinnerModal(true);
+              startWinnerCelebration();
+              
+              // Check if game should end
+              const remainingPlayers = players.filter((_, index) => index < selectedPlayerCount);
+              if (newWinners.length >= remainingPlayers.length - 1) {
+                setGameEnded(true);
+              }
+              return;
             }
-          } else {
-            setDiceValue(0);
-            setCanRollDice(true);
           }
+
+          setDiceValue(0);
 
           // If not a 6, pass turn to next player
           if (diceValue !== 6) {
             setTimeout(() => {
-              // Stop stroke animations only for current player's pieces
-              currentPlayerData.pieces.forEach((piece, pieceIndex) => {
-                const globalPieceIndex = currentPlayer * 4 + pieceIndex;
-                stopTokenStrokeAnimation(globalPieceIndex);
+              // Stop stroke animations for all pieces
+              players.forEach((_, playerIndex) => {
+                for (let i = 0; i < 4; i++) {
+                  stopTokenStrokeAnimation(playerIndex * 4 + i);
+                }
               });
-              setCurrentPlayer((prev) => (prev + 1) % selectedPlayerCount);
-              setDiceValue(0);
+              
+              // Find next player who hasn't won
+              let nextPlayer = (currentPlayer + 1) % selectedPlayerCount;
+              let attempts = 0;
+              while (attempts < selectedPlayerCount) {
+                const playerWon = winners.some(w => w.id === nextPlayer);
+                if (!playerWon) break;
+                nextPlayer = (nextPlayer + 1) % selectedPlayerCount;
+                attempts++;
+              }
+              
+              setCurrentPlayer(nextPlayer);
               setCanRollDice(true);
-            }, 1000);
+            }, 500);
+          } else {
+            // Rolled a 6, keep the turn
+            setCanRollDice(true);
           }
         });
       }
@@ -1264,6 +1341,7 @@ const LudoGameSVG = () => {
   };
 
   const renderTokens = () => {
+    const maxSteps = 59;
     return (
       <View style={StyleSheet.absoluteFillObject}>
         {players.map((player, playerIndex) =>
@@ -1272,7 +1350,9 @@ const LudoGameSVG = () => {
             const globalPieceIndex = playerIndex * 4 + pieceIndex;
             const isCurrentPlayer = playerIndex === currentPlayer;
             const isActivePlayer = playerIndex < selectedPlayerCount;
-            const canMove = isCurrentPlayer && diceValue > 0 && (piece.isInPlay || (piece.isHome && diceValue === 6));
+            const canMove = isCurrentPlayer && diceValue > 0 && 
+                           ((piece.isHome && diceValue === 6) || 
+                            (piece.isInPlay && piece.steps + diceValue <= maxSteps));
 
             let staticX = 0;
             let staticY = 0;
@@ -1342,24 +1422,24 @@ const LudoGameSVG = () => {
                         height: tokenSize,
                         borderRadius: tokenSize / 2,
                         backgroundColor: piece.color,
-                        borderWidth: isBeingCaptured ? 6 : 4,
-                        borderColor: isBeingCaptured ? '#FF4444' : '#FFFFFF',
+                        borderWidth: isBeingCaptured ? 6 : piece.steps === maxSteps ? 5 : 4,
+                        borderColor: isBeingCaptured ? '#FF4444' : piece.steps === maxSteps ? '#FFD700' : '#FFFFFF',
                         justifyContent: 'center',
                         alignItems: 'center',
-                        shadowColor: isBeingCaptured ? '#FF4444' : piece.color,
-                        shadowOffset: { width: 0, height: isBeingCaptured ? 8 : 6 },
-                        shadowOpacity: isBeingCaptured ? 0.8 : 0.4,
-                        shadowRadius: isBeingCaptured ? 12 : 8,
-                        elevation: isBeingCaptured ? 12 : 8,
+                        shadowColor: isBeingCaptured ? '#FF4444' : piece.steps === maxSteps ? '#FFD700' : piece.color,
+                        shadowOffset: { width: 0, height: isBeingCaptured ? 8 : piece.steps === maxSteps ? 8 : 6 },
+                        shadowOpacity: isBeingCaptured ? 0.8 : piece.steps === maxSteps ? 1 : 0.4,
+                        shadowRadius: isBeingCaptured ? 12 : piece.steps === maxSteps ? 12 : 8,
+                        elevation: isBeingCaptured ? 12 : piece.steps === maxSteps ? 10 : 8,
                         opacity: isActivePlayer ? 1 : 0.3,
                       }}
                     >
                       <Text style={{
                         color: 'white',
                         fontWeight: 'bold',
-                        fontSize: 16,
+                        fontSize: piece.steps === maxSteps ? 20 : 16,
                       }}>
-                        {pieceIndex + 1}
+                        {piece.steps === maxSteps ? '✓' : pieceIndex + 1}
                       </Text>
                       {isBeingCaptured && (
                         <View style={{
@@ -1494,7 +1574,9 @@ const LudoGameSVG = () => {
             const globalPieceIndex = playerIndex * 4 + pieceIndex;
             const isCurrentPlayer = playerIndex === currentPlayer;
             const isActivePlayer = playerIndex < selectedPlayerCount;
-            const canMove = isCurrentPlayer && diceValue > 0 && (piece.isInPlay || (piece.isHome && diceValue === 6));
+            const canMove = isCurrentPlayer && diceValue > 0 && 
+                           ((piece.isHome && diceValue === 6) || 
+                            (piece.isInPlay && piece.steps + diceValue <= maxSteps));
 
             // Only show stroke animation for current player's movable pieces
             if (!isCurrentPlayer || !canMove || !isActivePlayer) return null;
@@ -1707,13 +1789,26 @@ const LudoGameSVG = () => {
 
   if (gameEnded) {
     return (
-      <ImageBackground
-        source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
-        style={styles.bg}
-        resizeMode="cover"
-        blurRadius={2}
-      >
-        <View style={styles.overlay} />
+      <View style={styles.bg}>
+        <View style={StyleSheet.absoluteFillObject}>
+          <Emitter
+            numberOfParticles={80}
+            emissionRate={3}
+            interval={150}
+            particleLife={5000}
+            direction={-90}
+            spread={360}
+            speed={3}
+            gravity={0.15}
+            fromPosition={() => ({ x: Math.random() * width, y: height })}
+            infiniteLoop={true}
+            autoStart={true}
+            width={width}
+            height={height}
+          >
+            <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
+          </Emitter>
+        </View>
         <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.winnerContainer}>
@@ -1749,19 +1844,32 @@ const LudoGameSVG = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
-      </ImageBackground>
+      </View>
     );
   }
 
   if (showPlayerSelection) {
     return (
-      <ImageBackground
-        source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
-        style={styles.bg}
-        resizeMode="cover"
-        blurRadius={2}
-      >
-        <View style={styles.overlay} />
+      <View style={styles.bg}>
+        <View style={StyleSheet.absoluteFillObject}>
+          <Emitter
+            numberOfParticles={80}
+            emissionRate={3}
+            interval={150}
+            particleLife={5000}
+            direction={-90}
+            spread={360}
+            speed={3}
+            gravity={0.15}
+            fromPosition={() => ({ x: Math.random() * width, y: height })}
+            infiniteLoop={true}
+            autoStart={true}
+            width={width}
+            height={height}
+          >
+            <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
+          </Emitter>
+        </View>
         <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.playerSelectionContainer}>
@@ -1830,18 +1938,31 @@ const LudoGameSVG = () => {
           </View>
         </View>
       </SafeAreaView>
-      </ImageBackground>
+      </View>
     );
   }
 
   return (
-    <ImageBackground
-      source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
-      style={styles.bg}
-      resizeMode="cover"
-      blurRadius={2}
-    >
-      <View style={styles.overlay} />
+    <View style={styles.bg}>
+      <View style={StyleSheet.absoluteFillObject}>
+        <Emitter
+          numberOfParticles={80}
+          emissionRate={3}
+          interval={150}
+          particleLife={5000}
+          direction={-90}
+          spread={360}
+          speed={3}
+          gravity={0.15}
+          fromPosition={() => ({ x: Math.random() * width, y: height })}
+          infiniteLoop={true}
+          autoStart={true}
+          width={width}
+          height={height}
+        >
+          <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
+        </Emitter>
+      </View>
       <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" />
       <View style={styles.backgroundGradient} />
@@ -2042,17 +2163,14 @@ const LudoGameSVG = () => {
         </>
       )}
     </SafeAreaView>
-    </ImageBackground>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   bg: {
     flex: 1,
-  },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.25)'
+    backgroundColor: '#1a1a2e',
   },
   container: {
     flex: 1,
@@ -2077,8 +2195,8 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     paddingHorizontal: 20,
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingTop: 5,
+    paddingBottom: 10,
     backgroundColor: 'rgba(26, 35, 50, 0.9)',
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(255, 215, 0, 0.2)',
@@ -2103,7 +2221,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingVertical: 10,
     backgroundColor: 'transparent',
     elevation: 0,
     shadowColor: 'transparent',
@@ -2187,6 +2305,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   gameInfoContainer: {
+    marginTop: 20,
     marginBottom: 15,
     paddingHorizontal: 20,
   },

@@ -42,8 +42,8 @@ interface ThemeProviderProps {
 
 export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
   const systemColorScheme = useColorScheme();
-  const [currentTheme, setCurrentTheme] = useState<ExtendedThemeType>('default');
-  const [isDarkMode, setIsDarkMode] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<ExtendedThemeType>('dark');
+  const [isDarkMode, setIsDarkMode] = useState(true);
 
   // Load saved theme from storage
   useEffect(() => {

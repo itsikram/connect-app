@@ -57,6 +57,7 @@ import MinimizedCallBar from './src/components/MinimizedCallBar';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
+import PermissionsInitializer from './src/components/PermissionsInitializer';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
@@ -259,9 +260,9 @@ function AppContent() {
     channelName: string;
     isAudio: boolean;
   } | null>(null);
-  const incomingCallTimeoutRef = React.useRef<NodeJS.Timeout | null>(null);
+  const incomingCallTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentScreenRef = React.useRef<string>('');
-  const callEndDebounceRef = React.useRef<NodeJS.Timeout | null>(null);
+  const callEndDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCallEndingRef = React.useRef<boolean>(false);
   const dispatch = useDispatch();
 
@@ -547,6 +548,8 @@ function AppContent() {
             <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
             {/* Initialize notifications */}
             <NotificationSetup navigation={navigation} />
+            {/* Request required permissions on app start */}
+            <PermissionsInitializer user={user} />
             {/* Global call components - rendered everywhere */}
             {myProfile?._id && (
               <>

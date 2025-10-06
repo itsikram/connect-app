@@ -2,6 +2,8 @@
   "extends": "@react-native/typescript-config",
   "compilerOptions": {
     "jsx": "react-native",
-    "allowJs": true
-  }
+    "allowJs": true,
+    "typeRoots": ["./node_modules/@types", "./src/types"]
+  },
+  "include": ["**/*.ts", "**/*.tsx", "**/*.d.ts", "src/types/**/*.d.ts"]
 }
