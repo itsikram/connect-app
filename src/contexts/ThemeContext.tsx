@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { themes, ThemeType } from '../theme/colors';
+import { theme } from '../theme/theme';
 
 // Extended theme type that includes 'default'
 type ExtendedThemeType = ThemeType | 'default';
@@ -12,6 +13,13 @@ interface ThemeContextType {
   isDarkMode: boolean;
   colors: typeof themes.light | typeof themes.dark | typeof themes.blue | typeof themes.green | typeof themes.purple;
   toggleTheme: () => void;
+  // Extended theme properties
+  typography: typeof theme.typography;
+  borderRadius: typeof theme.borderRadius;
+  spacing: typeof theme.spacing;
+  shadows: typeof theme.shadows;
+  animations: typeof theme.animations;
+  gradients: typeof theme.gradients;
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
@@ -99,6 +107,12 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     isDarkMode,
     colors,
     toggleTheme,
+    typography: theme.typography,
+    borderRadius: theme.borderRadius,
+    spacing: theme.spacing,
+    shadows: theme.shadows,
+    animations: theme.animations,
+    gradients: theme.gradients,
   };
 
   return (

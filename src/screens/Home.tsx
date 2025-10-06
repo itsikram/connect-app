@@ -11,6 +11,8 @@ import DebugInfo from '../components/DebugInfo';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StorySlider from '../components/StorySlider';
 import PostSkeleton from '../components/skeleton/PostSkeleton';
+// Modern components
+import { ModernCard, ModernButton, ModernLoading } from '../components/modern';
 
 
 const Home = () => {
@@ -24,7 +26,7 @@ const Home = () => {
     const [debugMode, setDebugMode] = useState(false);
     const { colors: themeColors, isDarkMode } = useTheme();
 
-    const { connect, isConnected } = useSocket();
+    const { isConnected } = useSocket();
     const myProfile = useSelector((state: RootState) => state.profile);
 
     const fetchPosts = useCallback(async (pageNum = 1, append = false) => {
@@ -64,19 +66,7 @@ const Home = () => {
         fetchPosts(1, false);
     }, [fetchPosts]);
 
-    // Connect to socket when component mounts
-    useEffect(() => {
-        if (myProfile?._id && !isConnected) {
-            connect(myProfile._id)
-                .then(() => {
-                    console.log('Socket connected successfully in Home component');
-                })
-                .catch((error) => {
-                    console.error('Failed to connect socket in Home component:', error);
-                    // Don't show alert for socket connection issues as they're not critical
-                });
-        }
-    }, [myProfile?._id, isConnected, connect]);
+    // Home should not trigger socket connect; connection is managed globally in App
 
     const handleLoadMore = () => {
         if (!loadingMore && hasMore && !error) {

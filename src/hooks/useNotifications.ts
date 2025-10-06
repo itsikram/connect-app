@@ -1,5 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+import notifee, { EventType } from '@notifee/react-native';
+import messaging from '@react-native-firebase/messaging';
 import { 
   initializeNotifications, 
   listenForegroundMessages, 
@@ -51,6 +53,45 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
 
         isInitializedRef.current = true;
         console.log('Notification listeners set up successfully');
+
+        // Handle cold start (app opened by tapping a call notification)
+        try {
+          // 1) Notifee initial notification (actions and presses)
+          const initial = await notifee.getInitialNotification();
+          if (initial?.notification?.data && (initial.notification.data as any).type === 'incoming_call') {
+            const data = initial.notification.data as any;
+            const actionId = initial.pressAction?.id;
+            memoizedNavigate('Message', {
+              screen: 'IncomingCall',
+              params: {
+                callerId: data.callerId,
+                callerName: data.callerName,
+                callerProfilePic: data.callerProfilePic,
+                channelName: data.channelName,
+                isAudio: String(data.isAudio) === 'true',
+                autoAccept: actionId === 'accept_call',
+              },
+            });
+          }
+
+          // 2) FCM initial notification (if app launched from system tray)
+          const initialMsg = await messaging().getInitialNotification();
+          const initialData = (initialMsg?.data || {}) as Record<string, string>;
+          if (initialData.type === 'incoming_call') {
+            memoizedNavigate('Message', {
+              screen: 'IncomingCall',
+              params: {
+                callerId: initialData.callerId || initialData.from || '',
+                callerName: initialData.callerName || 'Unknown',
+                callerProfilePic: initialData.callerProfilePic || '',
+                channelName: initialData.channelName || '',
+                isAudio: String(initialData.isAudio) === 'true',
+              },
+            });
+          }
+        } catch (e) {
+          console.error('Error handling initial notification:', e);
+        }
       } catch (error) {
         console.error('Error setting up notifications:', error);
       } finally {

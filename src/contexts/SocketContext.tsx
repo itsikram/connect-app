@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback, useMemo } from 'react';
 import socketService from '../services/socketService';
 import { setGlobalSocketService } from '../lib/notificationSocketService';
 
@@ -61,7 +61,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     };
   }, []);
 
-  const connect = async (profileId: string) => {
+  const connect = useCallback(async (profileId: string) => {
     try {
       await socketService.connect(profileId);
       setIsConnected(true);
@@ -70,89 +70,89 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       setIsConnected(false);
       throw error;
     }
-  };
+  }, []);
 
-  const disconnect = () => {
+  const disconnect = useCallback(() => {
     socketService.disconnect();
     setIsConnected(false);
-  };
+  }, []);
 
-  const emit = (event: string, data: any) => {
+  const emit = useCallback((event: string, data: any) => {
     socketService.emit(event, data);
-  };
+  }, []);
 
-  const on = (event: string, callback: (...args: any[]) => void) => {
+  const on = useCallback((event: string, callback: (...args: any[]) => void) => {
     socketService.on(event, callback);
-  };
+  }, []);
 
-  const off = (event: string, callback?: (...args: any[]) => void) => {
+  const off = useCallback((event: string, callback?: (...args: any[]) => void) => {
     socketService.off(event, callback);
-  };
+  }, []);
 
-  const joinChat = (user1: string, user2: string) => {
+  const joinChat = useCallback((user1: string, user2: string) => {
     socketService.joinChat(user1, user2);
-  };
+  }, []);
 
-  const sendMessage = (room: string, senderId: string, receiverId: string, message: string, attachment?: any, parent?: string) => {
+  const sendMessage = useCallback((room: string, senderId: string, receiverId: string, message: string, attachment?: any, parent?: string) => {
     socketService.sendMessage(room, senderId, receiverId, message, attachment, parent);
-  };
+  }, []);
 
-  const loadMessages = (myId: string, friendId: string, skip: number) => {
+  const loadMessages = useCallback((myId: string, friendId: string, skip: number) => {
     socketService.loadMessages(myId, friendId, skip);
-  };
+  }, []);
 
-  const markMessageAsSeen = (message: any) => {
+  const markMessageAsSeen = useCallback((message: any) => {
     socketService.markMessageAsSeen(message);
-  };
+  }, []);
 
-  const setTyping = (room: string, isTyping: boolean, type: string, receiverId: string) => {
+  const setTyping = useCallback((room: string, isTyping: boolean, type: string, receiverId: string) => {
     socketService.setTyping(room, isTyping, type, receiverId);
-  };
+  }, []);
 
-  const fetchMessages = (profileId: string) => {
+  const fetchMessages = useCallback((profileId: string) => {
     socketService.fetchMessages(profileId);
-  };
+  }, []);
 
-  const updateLastLogin = (userId: string) => {
+  const updateLastLogin = useCallback((userId: string) => {
     socketService.updateLastLogin(userId);
-  };
+  }, []);
 
-  const checkUserActive = (profileId: string, myId: string) => {
+  const checkUserActive = useCallback((profileId: string, myId: string) => {
     socketService.checkUserActive(profileId, myId);
-  };
+  }, []);
 
   // Video call methods
-  const startVideoCall = (to: string, channelName: string) => {
+  const startVideoCall = useCallback((to: string, channelName: string) => {
     socketService.startVideoCall(to, channelName);
-  };
+  }, []);
 
-  const answerVideoCall = (to: string, channelName: string) => {
+  const answerVideoCall = useCallback((to: string, channelName: string) => {
     socketService.answerVideoCall(to, channelName);
-  };
+  }, []);
 
-  const endVideoCall = (friendId: string) => {
+  const endVideoCall = useCallback((friendId: string) => {
     socketService.endVideoCall(friendId);
-  };
+  }, []);
 
   // Audio call methods
-  const startAudioCall = (to: string, channelName: string) => {
+  const startAudioCall = useCallback((to: string, channelName: string) => {
     socketService.startAudioCall(to, channelName);
-  };
+  }, []);
 
-  const answerAudioCall = (to: string, channelName: string) => {
+  const answerAudioCall = useCallback((to: string, channelName: string) => {
     socketService.answerAudioCall(to, channelName);
-  };
+  }, []);
 
-  const endAudioCall = (friendId: string) => {
+  const endAudioCall = useCallback((friendId: string) => {
     socketService.endAudioCall(friendId);
-  };
+  }, []);
 
   // Filter methods
-  const applyVideoFilter = (to: string, filter: string) => {
+  const applyVideoFilter = useCallback((to: string, filter: string) => {
     socketService.applyVideoFilter(to, filter);
-  };
+  }, []);
 
-  const value: SocketContextType = {
+  const value: SocketContextType = useMemo(() => ({
     isConnected,
     connect,
     disconnect,
@@ -174,7 +174,29 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     answerAudioCall,
     endAudioCall,
     applyVideoFilter,
-  };
+  }), [
+    isConnected,
+    connect,
+    disconnect,
+    emit,
+    on,
+    off,
+    joinChat,
+    sendMessage,
+    loadMessages,
+    markMessageAsSeen,
+    setTyping,
+    fetchMessages,
+    updateLastLogin,
+    checkUserActive,
+    startVideoCall,
+    answerVideoCall,
+    endVideoCall,
+    startAudioCall,
+    answerAudioCall,
+    endAudioCall,
+    applyVideoFilter,
+  ]);
 
   // Register global socket service for notifications
   useEffect(() => {

@@ -60,10 +60,10 @@ const isValidImageUrl = (url: string): boolean => {
 
 
 const SingleMessage = () => {
-    const route = useRoute();
+    const route: any = useRoute();
     const navigation: any = useNavigation();
     const dispatch = useDispatch<AppDispatch>();
-    const { friend } = route.params as { friend: any };
+    const friend: any = (route && route.params && route.params.friend) ? route.params.friend : null;
     const myProfile = useSelector((state: RootState) => state.profile);
     const [room, setRoom] = useState('');
     const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall } = useSocket();

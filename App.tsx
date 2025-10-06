@@ -287,21 +287,19 @@ function AppContent() {
   // Note: Notification events are now handled by the NotificationSetup component
   // to avoid duplicate listeners
 
-  // Connect to socket when component mounts
+  // Connect to socket when profile id becomes available; avoid depending on isConnected to prevent loops
   React.useEffect(() => {
-    if (myProfile?._id && !isConnected) {
-      console.log('myProfile for socket', myProfile?._id)
-      connect(myProfile._id)
-        .then(() => {
-          console.log('Socket connected successfully in SingleMessage component');
-
-        })
-        .catch((error) => {
-          console.error('Failed to connect socket in SingleMessage component:', error);
-          Alert.alert('Connection Error', 'Failed to connect to real-time service');
-        });
-    }
-  }, [myProfile?._id, isConnected, connect]);
+    if (!myProfile?._id) return;
+    console.log('myProfile for socket', myProfile?._id);
+    connect(myProfile._id)
+      .then(() => {
+        console.log('Socket connected successfully in SingleMessage component');
+      })
+      .catch((error) => {
+        console.error('Failed to connect socket in SingleMessage component:', error);
+        Alert.alert('Connection Error', 'Failed to connect to real-time service');
+      });
+  }, [myProfile?._id]);
 
   // Fetch initial notifications
   React.useEffect(() => {

@@ -11,6 +11,7 @@ import {
   Animated,
   Modal,
   Easing,
+  ImageBackground,
 } from 'react-native';
 import Svg, {
   Rect,
@@ -1706,8 +1707,15 @@ const LudoGameSVG = () => {
 
   if (gameEnded) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: '#0f1419' }]}>
-        <StatusBar barStyle="light-content" backgroundColor="#0f1419" />
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
+        style={styles.bg}
+        resizeMode="cover"
+        blurRadius={2}
+      >
+        <View style={styles.overlay} />
+        <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.winnerContainer}>
           <Animated.View style={[styles.winnerIcon, {
             transform: [
@@ -1741,13 +1749,21 @@ const LudoGameSVG = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
   if (showPlayerSelection) {
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: '#0f1419' }]}>
-        <StatusBar barStyle="light-content" backgroundColor="#0f1419" />
+      <ImageBackground
+        source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
+        style={styles.bg}
+        resizeMode="cover"
+        blurRadius={2}
+      >
+        <View style={styles.overlay} />
+        <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
+        <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.playerSelectionContainer}>
           <View style={styles.playerSelectionModal}>
             <View style={styles.modalHeader}>
@@ -1814,12 +1830,20 @@ const LudoGameSVG = () => {
           </View>
         </View>
       </SafeAreaView>
+      </ImageBackground>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="#0f1419" />
+    <ImageBackground
+      source={{ uri: 'https://images.unsplash.com/photo-1518546305927-5a555bb7020d?auto=format&fit=crop&w=1500&q=60' }}
+      style={styles.bg}
+      resizeMode="cover"
+      blurRadius={2}
+    >
+      <View style={styles.overlay} />
+      <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="transparent" />
       <View style={styles.backgroundGradient} />
       <View style={styles.backgroundPattern} />
 
@@ -2018,10 +2042,18 @@ const LudoGameSVG = () => {
         </>
       )}
     </SafeAreaView>
+    </ImageBackground>
   );
 };
 
 const styles = StyleSheet.create({
+  bg: {
+    flex: 1,
+  },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.25)'
+  },
   container: {
     flex: 1,
     backgroundColor: '#0f1419',

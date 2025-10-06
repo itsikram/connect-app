@@ -1,15 +1,15 @@
 export const colors = {
-  // Primary colors
-  primary: '#29b1a9',
-  primaryLight: '#29b1a9',
-  primaryDark: '#29b1a9',
+  // Modern Primary colors - Cyan theme
+  primary: '#00D4FF',
+  primaryLight: '#33E0FF',
+  primaryDark: '#0099CC',
   
   // Secondary colors
   secondary: '#5856D6',
   secondaryLight: '#8A8AFF',
   secondaryDark: '#3A3A8C',
 
-  // input colors
+  // Modern input colors
   inputBackground: '#3A3B3C',
   
   // Neutral colors
@@ -28,36 +28,52 @@ export const colors = {
     900: '#1C1C1E',
   },
   
-  // Status colors
-  success: '#34C759',
-  warning: '#FF9500',
-  error: '#FF3B30',
+  // Modern Status colors
+  success: '#00C851',
+  warning: '#FF8800',
+  error: '#FF4444',
   info: '#007AFF',
   
-  // Background colors
+  // Modern Background colors
   background: {
     light: '#f5f5f5',
-    dark: '#18191A',
+    dark: '#0A0A0B',
+    secondary: '#161718',
+    tertiary: '#1C1D1F',
   },
 
-  // Text colors
+  // Modern Text colors
   text: {
-    primary: '#18191A',
-    secondary: '#8E8E93',
+    primary: '#E4E6EA',
+    secondary: '#B0B3B8',
     light: '#FFFFFF',
+    muted: '#8E8E93',
   },
   
-  // Border colors
+  // Modern Border colors
   border: {
     light: '#E5E5EA',
-    dark: '#38383A',
+    dark: '#2F3031',
+    card: '#2F3031',
+  },
+
+  // Modern Card colors
+  card: {
+    background: '#1E1F20',
+    border: '#2F3031',
+    hover: '#2A2B2C',
+  },
+
+  // Modern Profile colors
+  profile: {
+    background: '#242526',
   },
 } as const;
 
 // Theme definitions
 export const themes = {
   light: {
-    primary: '#29b1a9',
+    primary: '#00D4FF',
     secondary: '#5856D6',
     background: {
       primary: '#FFFFFF',
@@ -79,12 +95,12 @@ export const themes = {
     border: {
       primary: '#E8EAED',
       secondary: '#DADCE0',
-      focus: '#29b1a9',
+      focus: '#00D4FF',
     },
     status: {
-      success: '#34C759',
-      warning: '#FF9500',
-      error: '#FF3B30',
+      success: '#00C851',
+      warning: '#FF8800',
+      error: '#FF4444',
       info: '#007AFF',
     },
     gray: {
@@ -101,34 +117,34 @@ export const themes = {
     },
   },
   dark: {
-    primary: '#29b1a9',
+    primary: '#00D4FF',
     secondary: '#8A8AFF',
     background: {
-      primary: '#0F0F0F',
-      secondary: '#1A1A1A',
-      tertiary: '#2D2D2D',
+      primary: '#0A0A0B',
+      secondary: '#161718',
+      tertiary: '#1C1D1F',
     },
     surface: {
-      primary: '#1A1A1A',
-      secondary: '#2D2D2D',
-      elevated: '#3C3C3C',
-      header: '#242526', // Header background color for dark mode
+      primary: '#1E1F20',
+      secondary: '#242526',
+      elevated: '#2A2B2C',
+      header: '#1E1F20', // Header background color for dark mode
     },
     text: {
-      primary: '#FFFFFF',
-      secondary: '#E8EAED',
-      tertiary: '#9AA0A6',
+      primary: '#E4E6EA',
+      secondary: '#B0B3B8',
+      tertiary: '#8E8E93',
       inverse: '#1A1A1A',
     },
     border: {
-      primary: '#3C4043',
-      secondary: '#5F6368',
-      focus: '#29b1a9',
+      primary: '#2F3031',
+      secondary: '#3A3B3C',
+      focus: '#00D4FF',
     },
     status: {
-      success: '#34C759',
-      warning: '#FF9500',
-      error: '#FF3B30',
+      success: '#00C851',
+      warning: '#FF8800',
+      error: '#FF4444',
       info: '#007AFF',
     },
     gray: {
