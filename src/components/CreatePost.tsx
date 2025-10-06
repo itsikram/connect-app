@@ -5,6 +5,9 @@ import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { launchImageLibrary, Asset, ImageLibraryOptions } from 'react-native-image-picker';
 import api from '../lib/api';
+// Modern components
+import { ModernCard, ModernButton, ModernInput } from './modern';
+import { useModernToast } from '../contexts/ModernToastContext';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -20,6 +23,7 @@ type PostData = {
 const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const { user } = useContext(AuthContext);
   const { colors: themeColors, isDarkMode } = useTheme();
+  const { showToast } = useModernToast();
   
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -71,6 +75,11 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       if (response.didCancel) return;
       if (response.errorCode) {
         console.log('ImagePicker Error: ', response.errorMessage);
+        showToast({
+          type: 'error',
+          title: 'Failed to Select Media',
+          message: response.errorMessage || 'Please try selecting a different file.',
+        });
         return;
       }
       const asset: Asset | undefined = response.assets && response.assets[0];
@@ -152,10 +161,19 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       if (res.status === 200) {
         if (onPostCreated) onPostCreated(res.data.post);
         closeModal();
+        showToast({
+          type: 'success',
+          title: 'Post Created!',
+          message: 'Your post has been shared successfully.',
+        });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.log('Error creating post:', e);
-      // You might want to show an error message to the user here
+      showToast({
+        type: 'error',
+        title: 'Failed to Create Post',
+        message: e?.response?.data?.message || 'Something went wrong. Please try again.',
+      });
     } finally {
       setIsUploading(false);
     }
@@ -173,26 +191,37 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const borderColor = themeColors.border.primary;
 
   return (
-    <View style={[styles.container, { backgroundColor: cardBg }]}>
+    <ModernCard variant="elevated" padding="medium" margin="small">
       <View style={styles.topRow}>
         <View style={styles.profilePicWrapper}>
-
           <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/image/logo.png')} style={styles.profilePic} />
         </View>
-        <TouchableOpacity style={[styles.inputWrapper, { backgroundColor: inputBg }]} onPress={openModal}>
+        <TouchableOpacity 
+          style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: borderColor }]} 
+          onPress={openModal}
+          activeOpacity={0.7}
+        >
           <Text style={[styles.inputPlaceholder, { color: textColor }]}>{textInputPlaceholder}</Text>
         </TouchableOpacity>
       </View>
-        <View style={styles.bottomRow}>
-          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('image'); }}>
-            <Icon name="photo-camera" size={22} color={themeColors.primary} />
-            <Text style={styles.buttonText}>Photo/Video</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.button, { backgroundColor: inputBg }]} onPress={() => { openModal(); pickMedia('video'); }}>
-            <Icon name="videocam" size={22} color={themeColors.primary} />
-            <Text style={styles.buttonText}>Live Video</Text>
-          </TouchableOpacity>
-        </View>
+      <View style={styles.bottomRow}>
+        <ModernButton
+          title="Photo/Video"
+          onPress={() => { openModal(); pickMedia('image'); }}
+          variant="modern"
+          size="small"
+          icon={<Icon name="photo-camera" size={20} color={themeColors.primary} />}
+          style={{ flex: 1, marginRight: 8 }}
+        />
+        <ModernButton
+          title="Live Video"
+          onPress={() => { openModal(); pickMedia('video'); }}
+          variant="modern"
+          size="small"
+          icon={<Icon name="videocam" size={20} color={themeColors.primary} />}
+          style={{ flex: 1 }}
+        />
+      </View>
 
       <Modal
         visible={isModalVisible}
@@ -202,11 +231,16 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
           <TouchableOpacity style={[styles.modalContent, { backgroundColor: modalBg }]} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
-              <Text style={[styles.modalTitle, { color: textColor }]}>Create a Post</Text>
-              <TouchableOpacity onPress={closeModal} style={[styles.closeButton, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)' }]}>
-                <Icon name="close" size={24} color={textColor} />
-              </TouchableOpacity>
+            <View style={[styles.modalHeader, { borderBottomColor: borderColor, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 }]}>
+              <Text style={[styles.modalTitle, { color: textColor, fontSize: 20, fontWeight: '600', fontFamily: 'Inter-SemiBold' }]}>Create a Post</Text>
+              <ModernButton
+                title=""
+                onPress={closeModal}
+                variant="ghost"
+                size="small"
+                icon={<Icon name="close" size={20} color={textColor} />}
+                style={{ width: 40, height: 40, padding: 0 }}
+              />
             </View>
             <View style={styles.modalBody}>
               <View style={styles.cpmHeader}>
@@ -254,26 +288,33 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
               )}
               <View style={styles.attachmentRow}>
-                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('image')}>
-                  <Icon name="photo-camera" size={22} color={themeColors.primary} />
-                  <Text style={styles.attachmentButtonText}>Add Photo</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.attachmentButton, { backgroundColor: inputBg }]} onPress={() => pickMedia('video')}>
-                  <Icon name="videocam" size={22} color={themeColors.primary} />
-                  <Text style={styles.attachmentButtonText}>Add Video</Text>
-                </TouchableOpacity>
+                <ModernButton
+                  title="Add Photo"
+                  onPress={() => pickMedia('image')}
+                  variant="glass"
+                  size="small"
+                  icon={<Icon name="photo-camera" size={18} color={themeColors.primary} />}
+                  style={{ flex: 1, marginRight: 8 }}
+                />
+                <ModernButton
+                  title="Add Video"
+                  onPress={() => pickMedia('video')}
+                  variant="glass"
+                  size="small"
+                  icon={<Icon name="videocam" size={18} color={themeColors.primary} />}
+                  style={{ flex: 1 }}
+                />
               </View>
-              <TouchableOpacity
-                style={[styles.submitButton, isUploading && { backgroundColor: themeColors.gray[400] }]}
+              <ModernButton
+                title={isUploading ? "Posting..." : "Post Now"}
                 onPress={handlePostSubmit}
                 disabled={isUploading}
-              >
-                {isUploading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.submitButtonText}>Post Now</Text>
-                )}
-              </TouchableOpacity>
+                loading={isUploading}
+                variant="primary"
+                fullWidth
+                icon={!isUploading ? <Icon name="send" size={20} color="#FFFFFF" /> : undefined}
+                style={{ marginTop: 16 }}
+              />
             </View>
           </TouchableOpacity>
         </TouchableOpacity>
@@ -305,7 +346,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           </View>
         </TouchableOpacity>
       </Modal>
-    </View>
+    </ModernCard>
   );
 };
 
@@ -344,6 +385,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: '#E9ECEF',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
   inputPlaceholder: {
     color: '#6C757D',
@@ -353,8 +399,11 @@ const styles = StyleSheet.create({
   bottomRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 12,
-    gap: 8,
+    marginTop: 16,
+    gap: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(0,0,0,0.05)',
   },
   button: {
     flexDirection: 'row',

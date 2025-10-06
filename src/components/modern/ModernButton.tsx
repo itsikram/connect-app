@@ -14,7 +14,7 @@ import LinearGradient from 'react-native-linear-gradient';
 interface ModernButtonProps {
   title: string;
   onPress: () => void;
-  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger';
+  variant?: 'primary' | 'secondary' | 'outline' | 'ghost' | 'danger' | 'filled' | 'soft' | 'glass' | 'modern';
   size?: 'small' | 'medium' | 'large';
   disabled?: boolean;
   loading?: boolean;
@@ -42,11 +42,11 @@ const ModernButton: React.FC<ModernButtonProps> = ({
 
   const getButtonStyle = (): ViewStyle => {
     const baseStyle: ViewStyle = {
-      borderRadius: borderRadius.md,
+      borderRadius: borderRadius.lg,
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      ...shadows.small,
+      ...shadows.medium,
     };
 
     // Size styles
@@ -89,6 +89,36 @@ const ModernButton: React.FC<ModernButtonProps> = ({
       danger: {
         backgroundColor: colors.status.error,
       },
+      filled: {
+        backgroundColor: colors.surface.secondary,
+        borderWidth: 1,
+        borderColor: colors.border.primary,
+      },
+      soft: {
+        backgroundColor: `${colors.primary}15`, // 15% opacity
+        borderWidth: 1,
+        borderColor: `${colors.primary}30`, // 30% opacity
+      },
+      glass: {
+        backgroundColor: 'rgba(255, 255, 255, 0.15)',
+        borderWidth: 1,
+        borderColor: 'rgba(255, 255, 255, 0.3)',
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 3,
+      },
+      modern: {
+        backgroundColor: colors.surface.elevated,
+        borderWidth: 1,
+        borderColor: `${colors.primary}20`,
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.15,
+        shadowRadius: 12,
+        elevation: 6,
+      },
     };
 
     return {
@@ -116,6 +146,10 @@ const ModernButton: React.FC<ModernButtonProps> = ({
       outline: { color: colors.primary },
       ghost: { color: colors.primary },
       danger: { color: '#FFFFFF' },
+      filled: { color: colors.text.primary },
+      soft: { color: colors.primary },
+      glass: { color: colors.text.primary },
+      modern: { color: colors.text.primary },
     };
 
     return {
@@ -153,12 +187,16 @@ const ModernButton: React.FC<ModernButtonProps> = ({
     );
   };
 
-  if (variant === 'primary' || variant === 'danger') {
+  if (variant === 'primary' || variant === 'danger' || variant === 'modern') {
+    const gradientColors = variant === 'primary' 
+      ? [colors.primary, '#0099CC']
+      : variant === 'danger'
+      ? [colors.status.error, '#CC0000']
+      : [colors.surface.elevated, colors.surface.secondary];
+      
     return (
       <LinearGradient
-        colors={variant === 'primary' 
-          ? [colors.primary, '#0099CC']
-          : [colors.status.error, '#CC0000']}
+        colors={gradientColors}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[getButtonStyle(), style]}

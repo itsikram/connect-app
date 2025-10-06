@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl, Alert } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -10,6 +10,7 @@ import { launchImageLibrary } from 'react-native-image-picker'
 import { useDispatch } from 'react-redux'
 import { setProfile, updateProfilePic, updateCoverPic } from '../reducers/profileReducer'
 import { useNavigation } from '@react-navigation/native'
+import ImageCropModal from '../components/ImageCropModal'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -51,6 +52,9 @@ const MyProfile = () => {
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
     const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
     const [refreshing, setRefreshing] = React.useState<boolean>(false)
+    const [showProfileCropModal, setShowProfileCropModal] = React.useState<boolean>(false)
+    const [showCoverCropModal, setShowCoverCropModal] = React.useState<boolean>(false)
+    const [uploadProgress, setUploadProgress] = React.useState<number>(0)
 
     const fetchProfileData = React.useCallback(async () => {
         if (!myProfile?._id) return;
@@ -103,83 +107,39 @@ const MyProfile = () => {
     const [isUploadingCover, setIsUploadingCover] = React.useState(false)
     const [isUploadingPP, setIsUploadingPP] = React.useState(false)
 
-    const uploadToServer = async (formData: FormData, path: string) => {
+    const uploadToServer = async (formData: FormData, path: string, onProgress?: (progress: number) => void) => {
         // Requires auth header automatically via api instance
         const res = await api.post(path, formData, {
             headers: {
                 'Content-Type': 'multipart/form-data',
             },
+            onUploadProgress: (progressEvent: any) => {
+                if (progressEvent.total && onProgress) {
+                    const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+                    onProgress(percent)
+                }
+            },
         })
         return res
     }
 
-    const handlePickImage = async (): Promise<any | null> => {
-        const result = await launchImageLibrary({ mediaType: 'photo', quality: 0.8 })
-        if (result.didCancel || !result.assets || result.assets.length === 0) return null
-        const asset = result.assets[0]
-        return asset
-    }
-
-    const onUploadCover = async () => {
+    const handleProfileImageSelected = async (uri: string) => {
         if (!myProfile?._id) return;
-        const asset = await handlePickImage()
-        if (!asset || !asset.uri) return
-        try {
-            setIsUploadingCover(true)
-            // 0) Optimistic update - show the selected image immediately
-            dispatch(updateCoverPic(asset.uri))
-            // 1) upload raw image to server/cloud
-            const fileName = asset.fileName || `cover_${Date.now()}.jpg`
-            const file: any = {
-                uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
-                type: asset.type || 'image/jpeg',
-                name: fileName,
-            }
-            const uploadFd = new FormData()
-            uploadFd.append('image', file)
-            const uploaded = await uploadToServer(uploadFd, '/upload/')
-            const uploadedUrl = uploaded?.data?.secure_url || uploaded?.data?.url
-            if (!uploadedUrl) throw new Error('Upload failed')
-
-            // 2) update profile cover URL (send as multipart/form-data to satisfy multer)
-            const updateFd = new FormData()
-            updateFd.append('profile', String(myProfile._id))
-            updateFd.append('coverPicUrl', String(uploadedUrl))
-            const res = await api.post('/profile/update/coverPic', updateFd, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-            })
-            if (res.status === 200) {
-                // 3) instant update cover pic in Redux store with final URL
-                dispatch(updateCoverPic(uploadedUrl))
-            }
-        } catch (e) {
-            console.log(e)
-            // Revert optimistic update on error
-            if (myProfile?.coverPic) {
-                dispatch(updateCoverPic(myProfile.coverPic))
-            }
-        } finally {
-            setIsUploadingCover(false)
-        }
-    }
-
-    const onUploadProfilePic = async () => {
-        if (!myProfile?._id) return;
-        const asset = await handlePickImage()
-        if (!asset || !asset.uri) return
         try {
             setIsUploadingPP(true)
+            setUploadProgress(0)
             // Optimistic update - show the selected image immediately
-            dispatch(updateProfilePic(asset.uri))
-            const fileName = asset.fileName || `pp_${Date.now()}.jpg`
+            dispatch(updateProfilePic(uri))
+            
+            const fileName = `pp_${Date.now()}.jpg`
             const file: any = {
-                uri: Platform.OS === 'android' ? asset.uri : asset.uri.replace('file://', ''),
-                type: asset.type || 'image/jpeg',
+                uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+                type: 'image/jpeg',
                 name: fileName,
             }
             const uploadFd = new FormData()
             uploadFd.append('image', file)
-            const uploaded = await uploadToServer(uploadFd, '/upload/')
+            const uploaded = await uploadToServer(uploadFd, '/upload/', setUploadProgress)
             const uploadedUrl = uploaded?.data?.secure_url || uploaded?.data?.url
             if (!uploadedUrl) throw new Error('Upload failed')
 
@@ -189,14 +149,76 @@ const MyProfile = () => {
                 dispatch(updateProfilePic(uploadedUrl))
             }
         } catch (e) {
-            console.log(e)
+            console.log('Profile picture upload error:', e)
             // Revert optimistic update on error
             if (myProfile?.profilePic) {
                 dispatch(updateProfilePic(myProfile.profilePic))
             }
+            Alert.alert(
+                'Upload Failed',
+                'Failed to upload profile picture. Please check your internet connection and try again.',
+                [{ text: 'OK' }]
+            )
         } finally {
             setIsUploadingPP(false)
+            setUploadProgress(0)
         }
+    }
+
+    const handleCoverImageSelected = async (uri: string) => {
+        if (!myProfile?._id) return;
+        try {
+            setIsUploadingCover(true)
+            setUploadProgress(0)
+            // Optimistic update - show the selected image immediately
+            dispatch(updateCoverPic(uri))
+            
+            const fileName = `cover_${Date.now()}.jpg`
+            const file: any = {
+                uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
+                type: 'image/jpeg',
+                name: fileName,
+            }
+            const uploadFd = new FormData()
+            uploadFd.append('image', file)
+            const uploaded = await uploadToServer(uploadFd, '/upload/', setUploadProgress)
+            const uploadedUrl = uploaded?.data?.secure_url || uploaded?.data?.url
+            if (!uploadedUrl) throw new Error('Upload failed')
+
+            // Update profile cover URL (send as multipart/form-data to satisfy multer)
+            const updateFd = new FormData()
+            updateFd.append('profile', String(myProfile._id))
+            updateFd.append('coverPicUrl', String(uploadedUrl))
+            const res = await api.post('/profile/update/coverPic', updateFd, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            })
+            if (res.status === 200) {
+                // Instant update cover pic in Redux store with final URL
+                dispatch(updateCoverPic(uploadedUrl))
+            }
+        } catch (e) {
+            console.log('Cover picture upload error:', e)
+            // Revert optimistic update on error
+            if (myProfile?.coverPic) {
+                dispatch(updateCoverPic(myProfile.coverPic))
+            }
+            Alert.alert(
+                'Upload Failed',
+                'Failed to upload cover picture. Please check your internet connection and try again.',
+                [{ text: 'OK' }]
+            )
+        } finally {
+            setIsUploadingCover(false)
+            setUploadProgress(0)
+        }
+    }
+
+    const onUploadCover = () => {
+        setShowCoverCropModal(true)
+    }
+
+    const onUploadProfilePic = () => {
+        setShowProfileCropModal(true)
     }
 
     const tabs: { key: TabKey; label: string; count?: number; render: () => React.ReactNode }[] = [
@@ -427,10 +449,18 @@ const MyProfile = () => {
 
             <View style={[styles.profileHeader, { backgroundColor: themeColors.surface.header }]}>
                 <View style={[styles.coverContainer, { backgroundColor: themeColors.gray[200] }]}>
-                {myProfile?.coverPic ? (
+                    {myProfile?.coverPic ? (
                         <Image source={{ uri: myProfile.coverPic }} style={[styles.cover, { height: coverHeight }]} />
                     ) : (
                         <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight, backgroundColor: themeColors.gray[200] }]} />
+                    )}
+                    {isUploadingCover && (
+                        <View style={[styles.coverUploadOverlay, { height: coverHeight }]}>
+                            <ActivityIndicator size="large" color={themeColors.text.inverse} />
+                            <Text style={[styles.uploadOverlayText, { color: themeColors.text.inverse }]}>
+                                {uploadProgress > 0 ? `${uploadProgress}%` : 'Uploading...'}
+                            </Text>
+                        </View>
                     )}
                     <TouchableOpacity style={[styles.uploadCoverBtn, { backgroundColor: themeColors.surface.secondary }]} onPress={onUploadCover} disabled={isUploadingCover} activeOpacity={0.8} hitSlop={{ top: 12, left: 12, right: 12, bottom: 12 }}>
                         <Icon name="photo-camera" color={themeColors.text.secondary} size={18} />
@@ -446,12 +476,20 @@ const MyProfile = () => {
                             { height: avatarSize, width: avatarSize, borderRadius: avatarSize / 2, borderColor: themeColors.gray[400], backgroundColor: themeColors.surface.secondary },
                             myProfile?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
-                    {myProfile?.profilePic ? (
-                        <Image source={{ uri: myProfile.profilePic }} style={styles.avatar} />
-                    ) : (
-                        <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
-                    )}
-                </View>
+                            {myProfile?.profilePic ? (
+                                <Image source={{ uri: myProfile.profilePic }} style={styles.avatar} />
+                            ) : (
+                                <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
+                            )}
+                            {isUploadingPP && (
+                                <View style={[styles.uploadOverlay, { borderRadius: avatarSize / 2 }]}>
+                                    <ActivityIndicator size="large" color={themeColors.text.inverse} />
+                                    <Text style={[styles.uploadOverlayText, { color: themeColors.text.inverse }]}>
+                                        {uploadProgress > 0 ? `${uploadProgress}%` : 'Uploading...'}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
                         <Pressable style={[styles.uploadPPBtn, { backgroundColor: themeColors.surface.secondary }]} onPress={onUploadProfilePic} disabled={isUploadingPP}>
                             {isUploadingPP ? (
                                 <ActivityIndicator size="small" color={themeColors.text.secondary} />
@@ -541,6 +579,23 @@ const MyProfile = () => {
             <View style={styles.profileContentContainer}>
                 {tabs.find(t => t.key === activeTab)?.render()}
         </View>
+
+        {/* Image Crop Modals */}
+        <ImageCropModal
+            visible={showProfileCropModal}
+            onClose={() => setShowProfileCropModal(false)}
+            onImageSelected={handleProfileImageSelected}
+            type="profile"
+            aspectRatio={[1, 1]}
+        />
+        
+        <ImageCropModal
+            visible={showCoverCropModal}
+            onClose={() => setShowCoverCropModal(false)}
+            onImageSelected={handleCoverImageSelected}
+            type="cover"
+            aspectRatio={[16, 9]}
+        />
         </ScrollView>
     )
 }
@@ -914,6 +969,32 @@ const styles = StyleSheet.create({
         fontSize: 12,
         fontWeight: '600',
         // color will be set dynamically
+    },
+    uploadOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
+    coverUploadOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        zIndex: 10,
+    },
+    uploadOverlayText: {
+        marginTop: 8,
+        fontSize: 14,
+        fontWeight: '600',
     },
 })
 

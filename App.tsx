@@ -44,6 +44,7 @@ import AudioCall from './src/components/AudioCall';
 import { SocketProvider, useSocket } from './src/contexts/SocketContext';
 import { ToastProvider, useToast } from './src/contexts/ToastContext';
 import { UserToastProvider, useUserToast } from './src/contexts/UserToastContext';
+import { ModernToastProvider } from './src/contexts/ModernToastContext';
 import { SettingsProvider } from './src/contexts/SettingsContext';
 import { LudoGameProvider, useLudoGame } from './src/contexts/LudoGameContext';
 import { ChessGameProvider, useChessGame } from './src/contexts/ChessGameContext';
@@ -685,15 +686,17 @@ function App() {
                   <CallMinimizeProvider>
                     <ToastProvider>
                       <UserToastProvider>
-                        <SettingsProvider>
-                          <LudoGameProvider>
-                            <ChessGameProvider>
-                              <HeaderVisibilityProvider>
-                                <AppWithTopProgress />
-                              </HeaderVisibilityProvider>
-                            </ChessGameProvider>
-                          </LudoGameProvider>
-                        </SettingsProvider>
+                        <ModernToastProvider>
+                          <SettingsProvider>
+                            <LudoGameProvider>
+                              <ChessGameProvider>
+                                <HeaderVisibilityProvider>
+                                  <AppWithTopProgress />
+                                </HeaderVisibilityProvider>
+                              </ChessGameProvider>
+                            </LudoGameProvider>
+                          </SettingsProvider>
+                        </ModernToastProvider>
                       </UserToastProvider>
                     </ToastProvider>
                   </CallMinimizeProvider>

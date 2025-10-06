@@ -110,6 +110,18 @@ android {
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
     }
+    packaging {
+        resources {
+            pickFirsts += ['**/libc++_shared.so', '**/libfbjni.so', '**/libjsi.so', '**/libreactnativejni.so']
+            excludes += ['META-INF/DEPENDENCIES', 'META-INF/LICENSE', 'META-INF/LICENSE.txt', 'META-INF/license.txt', 'META-INF/NOTICE', 'META-INF/NOTICE.txt', 'META-INF/notice.txt', 'META-INF/ASL2.0', 'META-INF/*.kotlin_module']
+        }
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+    dexOptions {
+        javaMaxHeapSize "4g"
+    }
 }
 
 dependencies {
