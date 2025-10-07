@@ -3,6 +3,7 @@ package com.connect.app
 import android.app.Application
 import com.facebook.react.PackageList
 import com.connect.app.overlay.FloatingOverlayPackage
+import com.connect.app.CallNotificationPackage
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
@@ -18,6 +19,7 @@ class MainApplication : Application(), ReactApplication {
         override fun getPackages(): List<ReactPackage> =
             PackageList(this).packages.apply {
               add(FloatingOverlayPackage())
+              add(CallNotificationPackage())
             }
 
         override fun getJSMainModuleName(): String = "index"

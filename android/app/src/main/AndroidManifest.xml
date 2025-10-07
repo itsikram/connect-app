@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Allow heads-up/full-screen incoming call notification on Android 10+ -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- Battery optimization exemption for reliable call notifications -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Foreground service permissions for ongoing call controls (best effort across API levels) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
@@ -16,7 +18,6 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
     <!-- Overlay and foreground service for system-wide floating button (Android) -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     
     <!-- Permissions for Agora Video/Audio Calling -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
@@ -30,6 +31,18 @@
     
     <!-- Permission to query installed packages for device apps -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    
+    <!-- Background TTS and notification permissions -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.USE_SIP" />
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
+    
+    <!-- Background processing permissions -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     
     <!-- Camera and microphone features -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
@@ -56,10 +69,26 @@
         android:windowSoftInputMode="adjustResize"
         android:showWhenLocked="true"
         android:turnScreenOn="true"
-        android:exported="true">
+        android:exported="true"
+        android:excludeFromRecents="false"
+        android:taskAffinity=""
+        android:allowTaskReparenting="false">
         <intent-filter>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
+        <!-- Intent filter for incoming call notifications -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <data android:scheme="connect" android:host="incoming_call" />
+        </intent-filter>
+        <!-- Intent filter for full-screen call notifications -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="incoming_call" />
         </intent-filter>
       </activity>
 
@@ -68,5 +97,37 @@
         android:exported="false"
         android:foregroundServiceType="mediaProjection">
       </service>
+
+      <!-- Background TTS Service for push notifications -->
+      <service
+        android:name="com.connect.app.BackgroundTtsService"
+        android:exported="false"
+        android:enabled="true"
+        android:foregroundServiceType="mediaProjection">
+        <intent-filter>
+          <action android:name="android.intent.action.MEDIA_BUTTON" />
+        </intent-filter>
+      </service>
+
+      <!-- Notification Service for push notifications -->
+      <service
+        android:name="com.connect.app.NotificationService"
+        android:exported="false"
+        android:enabled="true"
+        android:foregroundServiceType="mediaProjection">
+      </service>
+
+      <!-- Boot receiver to restart background services -->
+      <receiver
+        android:name="com.connect.app.BootReceiver"
+        android:enabled="true"
+        android:exported="true">
+        <intent-filter android:priority="1000">
+          <action android:name="android.intent.action.BOOT_COMPLETED" />
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+          <action android:name="android.intent.action.PACKAGE_REPLACED" />
+          <data android:scheme="package" />
+        </intent-filter>
+      </receiver>
     </application>
 </manifest>
