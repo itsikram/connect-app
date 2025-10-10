@@ -136,6 +136,10 @@ const UserToast: React.FC<UserToastProps> = ({
 
   const config = getToastConfig(type);
   
+  // Calculate position below header with reduced gap
+  const headerHeight = 50; // FacebookHeader height
+  const gap = 2; // Reduced gap below header for closer positioning
+  const toastTopPosition = headerHeight + gap;
 
   const ToastContent = () => (
     <View style={styles.content}>
@@ -191,7 +195,7 @@ const UserToast: React.FC<UserToastProps> = ({
               translateY: position === 'top' 
                 ? translateY.interpolate({
                     inputRange: [-100, 0],
-                    outputRange: [-100, 0],
+                    outputRange: [-100, toastTopPosition],
                   })
                 : translateY.interpolate({
                     inputRange: [0, 50],
@@ -201,7 +205,7 @@ const UserToast: React.FC<UserToastProps> = ({
             { scale },
           ],
           opacity,
-          top: position === 'top' ? 0 : undefined,
+          top: position === 'top' ? toastTopPosition : undefined,
           bottom: position === 'bottom' ? 0 : undefined,
         },
       ]}

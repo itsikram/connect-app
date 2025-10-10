@@ -58,12 +58,15 @@ import TopNavigationProgress, { TopNavigationProgressRef } from './src/component
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
+import GlobalEmotionDetection from './src/components/GlobalEmotionDetection';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
 import api, { userAPI } from './src/lib/api';
 import FloatingButton from './src/components/FloatingButton';
 import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
+import { backgroundTtsService } from './src/lib/backgroundTtsService';
+import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -267,10 +270,27 @@ function AppContent() {
   const dispatch = useDispatch();
 
   React.useEffect(() => {
-    // Optional: set default language and speech rate
-    Tts.setDefaultLanguage('en-US');
-    Tts.setDefaultRate(0.5); // speed: 0.1 - 1.0
-    Tts.voices().then(voices => console.log(voices));
+    // Initialize both TTS systems
+    const initializeTts = async () => {
+      try {
+        // Initialize main TTS
+        Tts.setDefaultLanguage('en-US');
+        Tts.setDefaultRate(0.5); // speed: 0.1 - 1.0
+        Tts.voices().then(voices => console.log('Available TTS voices:', voices.length));
+        
+        // Initialize background TTS service
+        await backgroundTtsService.initialize();
+        
+        // Initialize background service manager
+        await backgroundServiceManager.initialize();
+        
+        console.log('✅ TTS systems and background services initialized successfully');
+      } catch (error) {
+        console.error('❌ Error initializing TTS systems:', error);
+      }
+    };
+    
+    initializeTts();
   }, []);
 
   React.useEffect(() => {
@@ -428,6 +448,18 @@ function AppContent() {
       }, 500); // 500ms debounce - increased from 100ms
     };
 
+    // Handle audio call end events
+    const handleAudioCallEnd = (friendId: string) => {
+      console.log('📞 Audio call ended from friend:', friendId);
+      handleCallEnd();
+    };
+
+    // Handle video call end events  
+    const handleVideoCallEnd = (friendId: string) => {
+      console.log('📞 Video call ended from friend:', friendId);
+      handleCallEnd();
+    };
+
     const handleCallAccepted = () => {
       console.log('📞 Call accepted, clearing active incoming call state');
       setActiveIncomingCall(null);
@@ -440,9 +472,11 @@ function AppContent() {
 
     on('agora-incoming-video-call', handleIncomingVideo);
     on('agora-incoming-audio-call', handleIncomingAudio);
-    on('videoCallEnd', handleCallEnd);
-    on('audioCallEnd', handleCallEnd);
     on('agora-call-accepted', handleCallAccepted);
+    
+    // Listen to call end events to clear active incoming call state
+    on('audioCallEnd', handleAudioCallEnd);
+    on('videoCallEnd', handleVideoCallEnd);
 
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
@@ -498,9 +532,9 @@ function AppContent() {
     }
 
     let handleSpeakMessage = (message: any) => {
-
-      Tts.speak(message);
-      console.log('message', message)
+      // Use background TTS service for better reliability
+      backgroundTtsService.speakMessage(message, { priority: 'normal', interrupt: false });
+      console.log('🎤 Speaking message via background TTS service:', message)
     }
 
     on('newNotification', handleNewNotification)
@@ -514,9 +548,9 @@ function AppContent() {
       off('speak_message', handleSpeakMessage)
       off('agora-incoming-video-call', handleIncomingVideo)
       off('agora-incoming-audio-call', handleIncomingAudio)
-      off('videoCallEnd', handleCallEnd)
-      off('audioCallEnd', handleCallEnd)
       off('agora-call-accepted', handleCallAccepted)
+      off('audioCallEnd', handleAudioCallEnd)
+      off('videoCallEnd', handleVideoCallEnd)
     }
   }, [isConnected,on,off])
 
@@ -550,6 +584,8 @@ function AppContent() {
             <NotificationSetup navigation={navigation} />
             {/* Request required permissions on app start */}
             <PermissionsInitializer user={user} />
+            {/* Global emotion detection - starts automatically when user is logged in */}
+            <GlobalEmotionDetection />
             {/* Global call components - rendered everywhere */}
             {myProfile?._id && (
               <>

@@ -52,6 +52,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [callAccepted, setCallAccepted] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [currentChannel, setCurrentChannel] = useState<string | null>(null);
+  const [remoteFriendId, setRemoteFriendId] = useState<string | null>(null); // Track the other user's ID
   const [isMinimized, setIsMinimized] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
@@ -66,11 +67,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [myFilter, setMyFilter] = useState<string>(''); // Filter I apply to my video (affects how others see me)
   const [remoteFilter, setRemoteFilter] = useState<string>(''); // Filter applied by remote user (affects how I see them)
+  const [localRemoteFilter, setLocalRemoteFilter] = useState<string>(''); // Local filter I apply to view remote user (doesn't affect them)
 
   const engineRef = useRef<RtcEngine | null>(null);
   const isInitializingRef = useRef<boolean>(false);
   const callAcceptedRef = useRef<boolean>(false);
   const lastCallAcceptedTime = useRef<number>(0);
+  const localPreviewStarted = useRef<boolean>(false);
 
   // Request camera and microphone permissions
   const requestPermissions = async (): Promise<boolean> => {
@@ -140,8 +143,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const isJoiningRef = useRef<boolean>(false);
   const isLeavingRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
-  const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
-  const callEndTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const minimizedDurationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callEndTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastCallEndTime = useRef<number>(0);
+  const isEndingCallRef = useRef<boolean>(false);
 
   // Refresh token when needed
   const refreshToken = async () => {
@@ -225,7 +230,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       console.log('Engine initialization already in progress, waiting...');
       // Wait for existing initialization to complete
       while (isInitializingRef.current) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise<void>(resolve => setTimeout(() => resolve(), 100));
       }
       return engineRef.current;
     }
@@ -273,9 +278,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       console.log('Enabling video and audio...');
       await engine.enableVideo();
       await engine.enableAudio();
+      
+      // Enable local video explicitly
+      await engine.enableLocalVideo(true);
+      console.log('Local video enabled');
 
       // Set channel profile
       await engine.setChannelProfile(ChannelProfile.Communication);
+
+      // Don't start preview here - it will be started after the view is rendered
+      console.log('Engine initialized, preview will start after view renders');
 
       // Add event listeners
       engine.addListener('UserJoined', (uid: number) => {
@@ -292,6 +304,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         console.log('Joined video channel successfully:', channel, uid);
         localUidRef.current = uid;
         setIsConnected(true);
+        console.log('📹 JoinChannelSuccess: Will start preview via useEffect with proper timing');
       });
 
       engine.addListener('LeaveChannel', () => {
@@ -388,6 +401,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
       await engine.joinChannel(token, channelName, null, numericUid);
       console.log('Successfully requested to join video channel:', channelName);
+      console.log('Waiting for JoinChannelSuccess event to start local video...');
 
       setCallAccepted(true);
       setCurrentChannel(channelName);
@@ -457,6 +471,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
       if (engineRef.current) {
         try {
+          // Stop video preview before leaving
+          console.log('Stopping video preview...');
+          await engineRef.current.stopPreview();
+        } catch (previewError: any) {
+          console.warn('Error stopping video preview:', previewError);
+        }
+
+        try {
           // Check if engine is still valid before calling methods
           console.log('Leaving video channel...');
           await engineRef.current.leaveChannel();
@@ -483,6 +505,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setIsVideoCall(false);
       setCurrentChannel(null);
       setIncomingCall(null);
+      setRemoteFriendId(null); // Clear remote friend ID
       setIsMinimized(false);
       setCallDuration(0);
       setRemoteUid(null);
@@ -493,10 +516,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setIsScreenSharing(false); // Reset screen sharing state
       setMyFilter(''); // Reset my filter state
       setRemoteFilter(''); // Reset remote filter state
+      setLocalRemoteFilter(''); // Reset local remote filter state
       localUidRef.current = null;
       isJoiningRef.current = false;
       callAcceptedRef.current = false;
       callStartTime.current = null;
+      localPreviewStarted.current = false; // Reset preview flag
 
       // Clear duration interval
       if (minimizedDurationInterval.current) {
@@ -512,6 +537,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setIsVideoCall(false);
       setCurrentChannel(null);
       setIncomingCall(null);
+      setRemoteFriendId(null); // Clear remote friend ID
       setIsMinimized(false);
       setCallDuration(0);
       setRemoteUid(null);
@@ -522,10 +548,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setIsScreenSharing(false); // Reset screen sharing state
       setMyFilter(''); // Reset my filter state
       setRemoteFilter(''); // Reset remote filter state
+      setLocalRemoteFilter(''); // Reset local remote filter state
       localUidRef.current = null;
       isJoiningRef.current = false;
       callAcceptedRef.current = false;
       callStartTime.current = null;
+      localPreviewStarted.current = false; // Reset preview flag
       engineRef.current = null;
     } finally {
       isLeavingRef.current = false;
@@ -541,52 +569,86 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     await joinChannel(incomingCall.channelName);
   }, [incomingCall, answerVideoCall, joinChannel]);
 
-  // End call
+  // Local cleanup without emitting to server
+  const cleanupCall = useCallback(async () => {
+    console.log('VideoCall: cleanupCall called');
+    
+    if (currentChannel) {
+      const callId = `video-${currentChannel}`;
+      endMinimizedCall(callId);
+    }
+    
+    await leaveChannel();
+
+    // Navigate back to MessageList screen specifically
+    try {
+      const nav: any = navigation;
+      nav.navigate('Message', { screen: 'MessageList' });
+    } catch (e) {
+      console.warn('Navigation error after call end:', e);
+    }
+  }, [currentChannel, leaveChannel, endMinimizedCall, navigation]);
+
+  // End call - called when user clicks end button
   const endCall = useCallback(async () => {
-    // Prevent multiple calls to endCall
+    console.log('VideoCall: endCall called, isEndingCallRef:', isEndingCallRef.current, 'callEnded:', callEnded);
+    
+    // CRITICAL: Use ref for immediate synchronous check (state updates are async!)
+    if (isEndingCallRef.current) {
+      console.log('VideoCall: Already ending call (ref check), ignoring duplicate');
+      return;
+    }
+    
+    // Prevent multiple calls to endCall with both ref and state
     if (callEnded) {
-      console.log('Call already ended, ignoring duplicate endCall');
+      console.log('VideoCall: Call already ended (state check), ignoring duplicate');
       return;
     }
 
-    // Clear any existing timeout
-    if (callEndTimeoutRef.current) {
-      clearTimeout(callEndTimeoutRef.current);
+    // IMPORTANT: Set BOTH ref and state immediately
+    isEndingCallRef.current = true;
+    setCallEnded(true);
+
+    console.log('VideoCall: Ending video call...');
+    console.log('VideoCall: Debug state:', {
+      remoteFriendId,
+      incomingCallFrom: incomingCall?.from,
+      currentChannel,
+      myId,
+      callAccepted,
+      isVideoCall
+    });
+
+    // Emit leaveVideoCall to notify the other user (server will broadcast to both)
+    // Try multiple sources to get the friend ID:
+    // 1. remoteFriendId (set when call is accepted)
+    // 2. incomingCall?.from (person who called us)
+    // 3. Extract from channel name (format: userId1-userId2)
+    let friendIdToNotify = remoteFriendId || incomingCall?.from;
+    
+    // Fallback: Extract friend ID from channel name
+    if (!friendIdToNotify && currentChannel) {
+      const channelParts = currentChannel.split('-');
+      if (channelParts.length === 2) {
+        // Channel format is myId-friendId or friendId-myId
+        friendIdToNotify = channelParts[0] === myId ? channelParts[1] : channelParts[0];
+        console.log('VideoCall: Extracted friend ID from channel name:', friendIdToNotify);
+      }
     }
-
-    // Debounce the end call to prevent rapid-fire calls
-    callEndTimeoutRef.current = setTimeout(async () => {
-      if (callEnded) {
-        console.log('Call already ended in timeout, ignoring');
-        return;
-      }
-
-      setCallEnded(true);
-      console.log('Ending video call...');
-
-      if (currentChannel) {
-        const callId = `video-${currentChannel}`;
-        endMinimizedCall(callId);
-      }
-
-      // endVideoCall(incomingCall?.from || '');
-      await leaveChannel();
-
-      // Navigate back to MessageList screen specifically
-      try {
-        const nav: any = navigation;
-        // Just go back to the previous screen or Message tab
-        nav.navigate('Message', { screen: 'MessageList' });
-
-        // if (nav.canGoBack && nav.canGoBack()) {
-        //   nav.goBack();
-        // } else {
-        // }
-      } catch (e) {
-        console.warn('Navigation error after call end:', e);
-      }
-    }, 200); // 200ms debounce
-  }, [currentChannel, incomingCall, endVideoCall, leaveChannel, endMinimizedCall, navigation, callEnded]);
+    
+    console.log('VideoCall: Friend ID to notify:', friendIdToNotify);
+    
+    if (friendIdToNotify && friendIdToNotify !== myId) {
+      console.log('VideoCall: ✅ Emitting endVideoCall to friend:', friendIdToNotify);
+      endVideoCall(friendIdToNotify);
+    } else {
+      console.error('VideoCall: ❌ ERROR - No valid friend ID to notify! Cannot end call for other user.');
+      console.error('VideoCall: Debug - friendIdToNotify:', friendIdToNotify, ', myId:', myId);
+    }
+    
+    // Do local cleanup
+    await cleanupCall();
+  }, [remoteFriendId, incomingCall, currentChannel, myId, endVideoCall, cleanupCall, callEnded, callAccepted, isVideoCall]);
 
   // Toggle mute
   const toggleMute = useCallback(async () => {
@@ -599,8 +661,32 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Toggle camera
   const toggleCamera = useCallback(async () => {
     if (engineRef.current) {
-      await engineRef.current.muteLocalVideoStream(!isCameraOn);
-      setIsCameraOn(!isCameraOn);
+      try {
+        console.log('Toggling camera from', isCameraOn, 'to', !isCameraOn);
+        
+        if (!isCameraOn) {
+          // Turning camera ON
+          console.log('Starting camera preview...');
+          await engineRef.current.enableLocalVideo(true);
+          await engineRef.current.muteLocalVideoStream(false);
+          await engineRef.current.startPreview();
+          localPreviewStarted.current = true;
+          setIsCameraOn(true);
+        } else {
+          // Turning camera OFF
+          console.log('Stopping camera preview...');
+          await engineRef.current.muteLocalVideoStream(true);
+          await engineRef.current.stopPreview();
+          localPreviewStarted.current = false;
+          setIsCameraOn(false);
+        }
+        
+        console.log('Camera toggled successfully');
+      } catch (error) {
+        console.error('Failed to toggle camera:', error);
+        // Still update state to reflect user intent, but log the error
+        setIsCameraOn(!isCameraOn);
+      }
     }
   }, [isCameraOn]);
 
@@ -641,22 +727,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     }
   }, [isScreenSharing]);
 
-  // Toggle video filter - applies to how others see my video
+  // Toggle video filter - applies LOCAL filter to how I see the remote user
   const toggleVideoFilter = useCallback(() => {
     const filters = ['', 'vivid', 'warm', 'cool', 'dramatic'];
-    const currentIndex = filters.indexOf(myFilter);
+    const currentIndex = filters.indexOf(localRemoteFilter);
     const nextIndex = (currentIndex + 1) % filters.length;
     const newFilter = filters[nextIndex];
     
-    console.log('🎥 Toggling video filter from', myFilter, 'to', newFilter);
-    setMyFilter(newFilter);
-    
-    // Emit filter change to other participants so they can apply it to their view of me
-    if (currentChannel) {
-      console.log('🎥 Emitting filter change to channel:', currentChannel, 'filter:', newFilter);
-      applyVideoFilter(currentChannel, newFilter);
-    }
-  }, [myFilter, currentChannel, applyVideoFilter]);
+    console.log('🎥 Toggling LOCAL remote video filter from', localRemoteFilter, 'to', newFilter);
+    setLocalRemoteFilter(newFilter);
+    console.log('🎥 Filter applied locally - does not affect other user');
+  }, [localRemoteFilter]);
 
   // Minimize call
   const minimizeVideoCall = useCallback(() => {
@@ -700,7 +781,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   // Call duration tracking
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (callAccepted && !isMinimized) {
       if (!callStartTime.current) {
         callStartTime.current = Date.now();
@@ -772,9 +853,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         return;
       }
 
-      // Handle both video and audio call acceptance
+      // Only handle video call acceptance - let AudioCall component handle audio calls
       if (!isAudio) {
         console.log('VideoCall: Video call accepted, joining channel:', channelName);
+        console.log('VideoCall: Setting remote friend ID:', callerId);
+        
         // Set up call information for video calls
         setIncomingCall({
           from: callerId || 'caller',
@@ -782,39 +865,57 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           name: callerName || 'Video Call',
           profilePic: callerProfilePic || ''
         });
+        setRemoteFriendId(callerId || null); // IMPORTANT: Track the other user's ID
         setIsVideoCall(true);
         setIsCameraOn(true); // Enable camera for video calls
         setCurrentChannel(channelName);
         setCallAccepted(true); // Important: mark call as accepted
+        setCallEnded(false); // Reset call ended state for accepted call
         setIsAudioMode(false);
         joinChannel(channelName);
       } else {
-        console.log('VideoCall: Audio call accepted, rendering profile placeholder:', channelName);
-        // Use caller name and profile for audio calls; avoid remote video surface
-        setIncomingCall({
-          from: callerId || 'caller',
-          channelName,
-          name: callerName || 'Unknown Caller',
-          profilePic: callerProfilePic || ''
-        });
-        setIsVideoCall(true);
-        setIsCameraOn(false); // Camera off for audio calls
-        setCurrentChannel(channelName);
-        setCallAccepted(true);
-        setIsAudioMode(true);
-        joinChannel(channelName);
+        console.log('VideoCall: Audio call accepted, but letting AudioCall component handle it:', channelName);
+        // Don't handle audio calls here - let AudioCall component handle them
+        return;
       }
     };
 
     const handleCallEnd = async () => {
-      console.log('VideoCall: Received call end event from remote user');
-      console.log('VideoCall: Current state - callAccepted:', callAccepted, 'isVideoCall:', isVideoCall);
-      // Only handle call end if we're actually in a call
+      console.log('VideoCall: Received videoCallEnd event from server');
+      console.log('VideoCall: Current state - isEndingCallRef:', isEndingCallRef.current, 'callAccepted:', callAccepted, 'isVideoCall:', isVideoCall, 'callEnded:', callEnded);
+      
+      // CRITICAL: Check ref first (synchronous check)
+      if (isEndingCallRef.current) {
+        console.log('VideoCall: Already ending call (ref check), ignoring videoCallEnd event');
+        return;
+      }
+      
+      // Prevent multiple processing with state
+      if (callEnded) {
+        console.log('VideoCall: Call already ended (state check), ignoring duplicate videoCallEnd event');
+        return;
+      }
+      
+      // Debounce rapid-fire call end events (prevent processing same event within 2 seconds)
+      const now = Date.now();
+      if (now - lastCallEndTime.current < 2000) {
+        console.log('VideoCall: Ignoring rapid-fire videoCallEnd event (debounce)');
+        return;
+      }
+      lastCallEndTime.current = now;
+      
+      // Only handle call end if we're actually in a video call
       if (callAccepted || isVideoCall) {
-        console.log('VideoCall: Calling endCall()...');
-        endCall();
+        console.log('VideoCall: Processing videoCallEnd - doing local cleanup only (NO re-emit)');
+        
+        // Set BOTH ref and state
+        isEndingCallRef.current = true;
+        setCallEnded(true);
+        
+        // IMPORTANT: Only do local cleanup, do NOT call endCall() which would re-emit
+        await cleanupCall();
       } else {
-        console.log('VideoCall: Ignoring call end event - not in active call state');
+        console.log('VideoCall: Ignoring videoCallEnd event - not in active video call state');
       }
     };
 
@@ -826,15 +927,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     // Removed: on('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
     on('agora-call-accepted', handleCallAccepted);
     on('videoCallEnd', handleCallEnd);
+    // Removed: audioCallEnd - handled by AudioCall component
     on('agora-apply-video-filter', handleVideoFilter);
 
     return () => {
       // Removed: off('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
       off('agora-call-accepted', handleCallAccepted);
       off('videoCallEnd', handleCallEnd);
+      // Removed: audioCallEnd cleanup - handled by AudioCall component
       off('agora-apply-video-filter', handleVideoFilter);
     };
-  }, [on, off, joinChannel, endCall]);
+  }, [on, off, joinChannel, cleanupCall]);
 
   // Track remote filter changes
   useEffect(() => {
@@ -851,6 +954,72 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       console.log('🎥 My video should now show filter:', myFilter);
     }
   }, [myFilter]);
+
+  // Start local video when all conditions are met and view is ready to render
+  useEffect(() => {
+    const retryTimeouts: ReturnType<typeof setTimeout>[] = [];
+    
+    // Check if the local video view should be rendered (same conditions as in JSX)
+    const shouldRenderLocalVideo = isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
+    
+    if (shouldRenderLocalVideo && engineRef.current && !localPreviewStarted.current) {
+      console.log('📹 Local video view conditions met, starting preview...');
+      
+      // Multiple attempts with increasing delays to ensure it works
+      const startWithRetry = (attempt: number = 1) => {
+        const delay = attempt * 400; // 400ms, 800ms, 1200ms
+        
+        const timeout = setTimeout(async () => {
+          try {
+            console.log(`📹 Attempt ${attempt}: Starting local video preview...`);
+            if (engineRef.current && !localPreviewStarted.current) {
+              await engineRef.current.enableLocalVideo(true);
+              await engineRef.current.muteLocalVideoStream(false);
+              await engineRef.current.startPreview();
+              
+              // CRITICAL FIX: Add a small delay then trigger camera activation
+              // This ensures the camera hardware is properly initialized
+              setTimeout(async () => {
+                try {
+                  if (engineRef.current) {
+                    console.log('📹 Activating camera hardware...');
+                    // Switching camera twice activates the hardware properly
+                    await engineRef.current.switchCamera();
+                    await new Promise<void>(resolve => setTimeout(() => resolve(), 100));
+                    await engineRef.current.switchCamera();
+                    console.log('📹 Camera hardware activated successfully');
+                  }
+                } catch (activationError) {
+                  console.warn('📹 Camera activation warning (non-critical):', activationError);
+                }
+              }, 200);
+              
+              localPreviewStarted.current = true;
+              console.log(`📹 Attempt ${attempt}: Local video preview started successfully! ✅`);
+            }
+          } catch (error) {
+            console.error(`📹 Attempt ${attempt} failed:`, error);
+            if (attempt < 3 && !localPreviewStarted.current) {
+              startWithRetry(attempt + 1);
+            }
+          }
+        }, delay);
+        
+        retryTimeouts.push(timeout);
+      };
+      
+      startWithRetry(1);
+    }
+    
+    // Reset preview flag when camera is turned off
+    if (!isCameraOn) {
+      localPreviewStarted.current = false;
+    }
+    
+    return () => {
+      retryTimeouts.forEach(timeout => clearTimeout(timeout));
+    };
+  }, [isConnected, isVideoCall, isCameraOn, isAudioMode, callAccepted]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -918,6 +1087,36 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     }
   };
 
+  // Debug helper to check video stream status
+  const debugVideoStatus = useCallback(async () => {
+    if (!engineRef.current) {
+      console.log('🔍 Debug: No engine available');
+      return;
+    }
+
+    try {
+      console.log('🔍 Debug: Video stream status check');
+      console.log('🔍 - isVideoCall:', isVideoCall);
+      console.log('🔍 - isCameraOn:', isCameraOn);
+      console.log('🔍 - isAudioMode:', isAudioMode);
+      console.log('🔍 - callAccepted:', callAccepted);
+      console.log('🔍 - currentChannel:', currentChannel);
+      console.log('🔍 - isConnected:', isConnected);
+      console.log('🔍 - localUid:', localUidRef.current);
+      console.log('🔍 - remoteUid:', remoteUid);
+      
+      // Try to force restart preview
+      console.log('🔍 Attempting to restart video preview...');
+      await engineRef.current.enableLocalVideo(true);
+      await engineRef.current.muteLocalVideoStream(false);
+      await engineRef.current.startPreview();
+      console.log('🔍 Video preview restarted successfully');
+      setIsCameraOn(true);
+    } catch (error) {
+      console.error('🔍 Debug: Error checking video status:', error);
+    }
+  }, [isVideoCall, isCameraOn, isAudioMode, callAccepted, currentChannel, isConnected, remoteUid]);
+
   if (!isVideoCall || isMinimized) {
     return null;
   }
@@ -959,27 +1158,35 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               <TouchableOpacity
                 style={[
                   styles.topControlButton, 
-                  { backgroundColor: myFilter ? 'rgba(41, 177, 169, 0.8)' : 'rgba(0, 0, 0, 0.3)' }
+                  { backgroundColor: localRemoteFilter ? 'rgba(41, 177, 169, 0.8)' : 'rgba(0, 0, 0, 0.3)' }
                 ]}
                 onPress={toggleVideoFilter}
               >
                 <Icon name="filter-list" size={20} color="white" />
-                {myFilter && (
+                {localRemoteFilter && (
                   <View style={styles.filterBadge}>
                     <Text style={styles.filterBadgeText}>
-                      {myFilter.charAt(0).toUpperCase()}
+                      {localRemoteFilter.charAt(0).toUpperCase()}
                     </Text>
                   </View>
                 )}
               </TouchableOpacity>
+              
+              {/* Debug button - remove in production */}
+              {/* <TouchableOpacity
+                style={[styles.topControlButton, { backgroundColor: 'rgba(255, 0, 0, 0.3)', marginLeft: 8 }]}
+                onPress={debugVideoStatus}
+              >
+                <Icon name="bug-report" size={16} color="white" />
+              </TouchableOpacity> */}
             </View>
           </View>
 
           {/* Filter Indicator */}
-          {myFilter && (
+          {localRemoteFilter && (
             <View style={styles.filterIndicatorContainer}>
               <Text style={[styles.filterIndicator, { color: themeColors.primary }]}>
-                My Filter: {myFilter.charAt(0).toUpperCase() + myFilter.slice(1)}
+                Filter: {localRemoteFilter.charAt(0).toUpperCase() + localRemoteFilter.slice(1)}
               </Text>
             </View>
           )}
@@ -991,18 +1198,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {callAccepted && remoteUid && !isAudioMode ? (
             <View style={styles.remoteVideo}>
               <RtcRemoteView.SurfaceView
-                style={[styles.remoteVideo, getFilterStyle(remoteFilter)]}
+                style={[styles.remoteVideo, getFilterStyle(localRemoteFilter || remoteFilter)]}
                 uid={remoteUid}
                 channelId={currentChannel || ''}
                 renderMode={VideoRenderMode.Fit}
                 zOrderMediaOverlay={false}
               />
-              {remoteFilter && (
+              {(localRemoteFilter || remoteFilter) && (
                 <>
-                  {/* Primary filter overlay */}
-                  <View style={[styles.filterOverlay, getFilterOverlayStyle(remoteFilter)]} />
+                  {/* Primary filter overlay - prioritize local filter over remote */}
+                  <View style={[styles.filterOverlay, getFilterOverlayStyle(localRemoteFilter || remoteFilter)]} />
                   {/* Secondary filter overlay for more realistic effect */}
-                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(remoteFilter)]} />
+                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(localRemoteFilter || remoteFilter)]} />
                 </>
               )}
             </View>
@@ -1020,22 +1227,27 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           )}
 
           {/* Local Video - Show filter preview on my own video */}
-          {isVideoCall && isCameraOn && !isAudioMode && (
+          {isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current && (
             <View style={styles.localVideoContainer}>
               <RtcLocalView.SurfaceView
-                style={[styles.localVideo, getFilterStyle(myFilter)]}
+                style={styles.localVideo}
                 channelId={currentChannel || ''}
-                renderMode={VideoRenderMode.Fit}
-                zOrderOnTop={true}
+                renderMode={VideoRenderMode.Hidden}
+                zOrderMediaOverlay={true}
+                mirrorMode={1}
               />
               {myFilter && (
                 <>
                   {/* Primary filter overlay */}
-                  <View style={[styles.filterOverlay, getFilterOverlayStyle(myFilter)]} />
+                  <View style={[styles.filterOverlay, getFilterOverlayStyle(myFilter), { pointerEvents: 'none' }]} />
                   {/* Secondary filter overlay for more realistic effect */}
-                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(myFilter)]} />
+                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(myFilter), { pointerEvents: 'none' }]} />
                 </>
               )}
+              {/* Me indicator */}
+              <View style={styles.meIndicator}>
+                <Text style={styles.meIndicatorText}>Me</Text>
+              </View>
               {/* Filter indicator on local video */}
               {myFilter && (
                 <View style={styles.localFilterIndicator}>
@@ -1190,13 +1402,39 @@ const styles = StyleSheet.create({
     right: 20,
     width: 120,
     height: 160,
+    borderRadius: 8,
+    overflow: 'hidden',
     zIndex: 10,
+    backgroundColor: '#1a1a1a',
+    borderWidth: 2,
+    borderColor: '#29B1A9',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 8,
   },
   localVideo: {
-    width: 120,
-    height: 160,
-    borderRadius: 8,
+    width: '100%',
+    height: '100%',
     backgroundColor: '#333',
+  },
+  meIndicator: {
+    position: 'absolute',
+    top: 4,
+    left: 4,
+    backgroundColor: 'rgba(41, 177, 169, 0.9)',
+    borderRadius: 4,
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+  },
+  meIndicatorText: {
+    color: 'white',
+    fontSize: 10,
+    fontWeight: '700',
   },
   localFilterIndicator: {
     position: 'absolute',

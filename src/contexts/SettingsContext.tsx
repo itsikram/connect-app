@@ -91,7 +91,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   const [settings, setSettings] = useState<SettingsData>({
     // Default values
     showTyping: true,
-    isShareEmotion: false,
+    isShareEmotion: true,
     readReceipts: true,
     typingIndicators: true,
     messagePreview: true,
@@ -206,7 +206,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     try {
       const defaultSettings: SettingsData = {
         showTyping: true,
-        isShareEmotion: false,
+        isShareEmotion: true,
         readReceipts: true,
         typingIndicators: true,
         messagePreview: true,

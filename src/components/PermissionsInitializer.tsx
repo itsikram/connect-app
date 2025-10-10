@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestAllPermissionsWithAlerts, PermissionStatus } from '../lib/permissions';
+import { requestBatteryOptimizationExemption } from '../lib/push';
 
 const PERMISSIONS_REQUESTED_KEY = 'permissions_requested';
 
@@ -58,10 +59,18 @@ const PermissionsInitializer: React.FC<PermissionsInitializerProps> = ({
         hasRequestedRef.current = true;
 
         // Add a small delay to ensure UI is fully loaded
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise<void>(resolve => {
+          setTimeout(() => resolve(), 1000);
+        });
 
         // Request all permissions with user-friendly alerts
         const status = await requestAllPermissionsWithAlerts();
+
+        // Request battery optimization exemption for reliable call notifications (Android only)
+        if (Platform.OS === 'android') {
+          console.log('🔋 Requesting battery optimization exemption for reliable calls...');
+          await requestBatteryOptimizationExemption();
+        }
 
         // Mark as requested for future app launches
         await AsyncStorage.setItem(PERMISSIONS_REQUESTED_KEY, 'true');

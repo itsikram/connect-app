@@ -12,6 +12,8 @@ import notifee from '@notifee/react-native';
 import { displayIncomingCallNotification, configureNotificationsChannel } from './src/lib/push';
 import mobileAds from 'react-native-google-mobile-ads';
 import { appOpenAdManager } from './src/lib/ads';
+import { backgroundTtsService } from './src/lib/backgroundTtsService';
+import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
 
 // Suppress Firebase deprecation warnings
 const originalWarn = console.warn;
@@ -58,20 +60,87 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 // Background handler: show a notification when message received in background/quit
 messaging().setBackgroundMessageHandler(async remoteMessage => {
   try {
+    console.log('📱 Background message received:', remoteMessage?.messageId);
+    
     await configureNotificationsChannel();
     const data = remoteMessage?.data || {};
+    
+    // Handle incoming call notifications with highest priority
     if (data.type === 'incoming_call') {
-      await displayIncomingCallNotification({
-        callerName: data.callerName || 'Unknown',
-        callerProfilePic: data.callerProfilePic || '',
-        channelName: data.channelName || '',
-        isAudio: String(data.isAudio) === 'true',
-        callerId: data.callerId || data.from || '',
+      console.log('📞 Processing incoming call in background:', {
+        callerName: data.callerName,
+        isAudio: data.isAudio,
+        callerId: data.callerId || data.from,
       });
+      
+      // Speak incoming call notification
+      try {
+        await backgroundTtsService.speakIncomingCall(
+          data.callerName || 'Unknown Caller',
+          String(data.isAudio) === 'true'
+        );
+      } catch (ttsError) {
+        console.error('❌ Error speaking incoming call:', ttsError);
+      }
+      
+      // Import and use the call notification service
+      try {
+        const { callNotificationService } = require('./src/lib/callNotificationService');
+        await callNotificationService.displayIncomingCallNotification({
+          callerName: data.callerName || 'Unknown Caller',
+          callerProfilePic: data.callerProfilePic || '',
+          channelName: data.channelName || '',
+          isAudio: String(data.isAudio) === 'true',
+          callerId: data.callerId || data.from || '',
+        });
+        
+        console.log('✅ Incoming call notification displayed from background');
+      } catch (error) {
+        console.error('❌ Error displaying incoming call notification from background:', error);
+        // Fallback to original method
+        await displayIncomingCallNotification({
+          callerName: data.callerName || 'Unknown Caller',
+          callerProfilePic: data.callerProfilePic || '',
+          channelName: data.channelName || '',
+          isAudio: String(data.isAudio) === 'true',
+          callerId: data.callerId || data.from || '',
+        });
+      }
+      
       return;
     }
+    
+    // Handle new message notifications
+    if (data.type === 'new_message') {
+      console.log('💬 Processing new message in background:', {
+        senderName: data.senderName,
+        message: data.message?.substring(0, 50) + '...',
+      });
+      
+      // Speak new message notification
+      try {
+        await backgroundTtsService.speakNewMessage(
+          data.senderName || 'Someone',
+          data.message || 'New message received'
+        );
+      } catch (ttsError) {
+        console.error('❌ Error speaking new message:', ttsError);
+      }
+    }
+    
+    // Handle other notification types
     const title = remoteMessage?.notification?.title || 'Message';
     const body = remoteMessage?.notification?.body || '';
+    
+    // Speak general notifications
+    if (data.type === 'notification' || data.type === 'general') {
+      try {
+        await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
+      } catch (ttsError) {
+        console.error('❌ Error speaking notification:', ttsError);
+      }
+    }
+    
     await notifee.displayNotification({
       title,
       body,
@@ -82,7 +151,11 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
       },
       data,
     });
-  } catch (e) {}
+    
+    console.log('✅ Background notification displayed:', title);
+  } catch (e) {
+    console.error('❌ Error in background message handler:', e);
+  }
 });
 
 AppRegistry.registerComponent(appName, () => App);
@@ -98,5 +171,13 @@ AppRegistry.registerComponent(appName, () => App);
 
 // Ensure notification channels exist as soon as the JS runtime starts
 (async () => {
-  try { await configureNotificationsChannel(); } catch (e) {}
+  try { 
+    await configureNotificationsChannel(); 
+    // Initialize background TTS service
+    await backgroundTtsService.initialize();
+    // Initialize background service manager
+    await backgroundServiceManager.initialize();
+  } catch (e) {
+    console.error('Error initializing background services:', e);
+  }
 })();

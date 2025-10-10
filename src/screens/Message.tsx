@@ -371,7 +371,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'flex-start',
     padding: 10,
-
+    paddingBottom: 90,
   },
   contactListContainer: {
     width: '100%',

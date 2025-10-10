@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -24,6 +24,8 @@ const IncomingCall: React.FC = () => {
   const { answerVideoCall, answerAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [playRingtone, setPlayRingtone] = useState(true);
   const [callAccepted, setCallAccepted] = useState(false);
+  const lastCallEndTime = useRef<number>(0);
+  const callEndDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   // Animation values
   const pulseAnim = useMemo(() => new Animated.Value(1), []);
@@ -123,6 +125,60 @@ const IncomingCall: React.FC = () => {
     }
   }, [callerId, channelName, navigation]);
 
+  // Check if call is still active - if not, go back immediately
+  // This effect only handles the case where call ends BEFORE acceptance
+  useEffect(() => {
+    const checkCallActive = () => {
+      // If we don't have the required parameters, exit
+      if (!callerId || !channelName) {
+        console.log('IncomingCall: Missing parameters, exiting');
+        navigation.goBack();
+        return;
+      }
+
+      // Check if call was already ended by listening to call end events
+      const handleCallEnd = () => {
+        // If call was accepted, don't handle here (let VideoCall/AudioCall handle it)
+        if (callAccepted) {
+          console.log('IncomingCall: Call accepted, ignoring early call end check');
+          return;
+        }
+
+        // Debounce rapid-fire call end events (prevent processing same event within 1 second)
+        const now = Date.now();
+        if (now - lastCallEndTime.current < 1000) {
+          console.log('IncomingCall: Ignoring rapid-fire call end event');
+          return;
+        }
+        lastCallEndTime.current = now;
+
+        // Clear any existing debounce timeout
+        if (callEndDebounceTimeout.current) {
+          clearTimeout(callEndDebounceTimeout.current);
+        }
+
+        // Debounce the call end handling
+        callEndDebounceTimeout.current = setTimeout(() => {
+          console.log('IncomingCall: Call ended before user could respond, exiting');
+          navigation.goBack();
+        }, 300); // 300ms debounce
+      };
+
+      // Listen for call end events
+      on('audioCallEnd', handleCallEnd);
+      on('videoCallEnd', handleCallEnd);
+
+      // Cleanup listeners
+      return () => {
+        off('audioCallEnd', handleCallEnd);
+        off('videoCallEnd', handleCallEnd);
+      };
+    };
+
+    const cleanup = checkCallActive();
+    return cleanup;
+  }, [callerId, channelName, navigation, on, off, callAccepted]);
+
   // Auto-accept call if autoAccept flag is set (from notification button)
   useEffect(() => {
     if (autoAccept && callerId && channelName) {
@@ -167,15 +223,35 @@ const IncomingCall: React.FC = () => {
   useEffect(() => {
     const handleEnd = () => {
       console.log('IncomingCall: Received call end event - playRingtone:', playRingtone, 'callAccepted:', callAccepted);
-      // Only handle call end if we're still in the incoming call state
-      // (i.e., call hasn't been accepted yet and ringtone is still playing)
-      if (playRingtone && !callAccepted) {
-        console.log('IncomingCall: Handling call end - going back');
-        setPlayRingtone(false);
-        safeGoBack();
-      } else {
-        console.log('IncomingCall: Ignoring call end event - call already accepted or not in incoming state');
+      
+      // IMPORTANT: If call was already accepted, don't handle call end here
+      // Let VideoCall/AudioCall components handle it instead
+      if (callAccepted) {
+        console.log('IncomingCall: Call was accepted, ignoring call end event (VideoCall/AudioCall will handle it)');
+        return;
       }
+      
+      // Debounce rapid-fire call end events (prevent processing same event within 1 second)
+      const now = Date.now();
+      if (now - lastCallEndTime.current < 1000) {
+        console.log('IncomingCall: Ignoring rapid-fire call end event');
+        return;
+      }
+      lastCallEndTime.current = now;
+
+      // Clear any existing debounce timeout
+      if (callEndDebounceTimeout.current) {
+        clearTimeout(callEndDebounceTimeout.current);
+      }
+
+      // Debounce the call end handling
+      callEndDebounceTimeout.current = setTimeout(() => {
+        // Only handle call end if call wasn't accepted (caller cancelled)
+        console.log('IncomingCall: Handling call end - caller cancelled before acceptance');
+        setPlayRingtone(false);
+        setCallAccepted(false); // Reset call accepted state
+        safeGoBack();
+      }, 300); // 300ms debounce
     };
     const handleAccepted = () => {
       setPlayRingtone(false);
@@ -194,9 +270,14 @@ const IncomingCall: React.FC = () => {
     };
   }, [on, off, navigation, playRingtone, callAccepted]);
 
-  // Ensure ringtone stops on unmount
+  // Ensure ringtone stops on unmount and cleanup debounce timeout
   useEffect(() => {
-    return () => setPlayRingtone(false);
+    return () => {
+      setPlayRingtone(false);
+      if (callEndDebounceTimeout.current) {
+        clearTimeout(callEndDebounceTimeout.current);
+      }
+    };
   }, []);
 
   return (

@@ -1,9 +1,11 @@
 import messaging from '@react-native-firebase/messaging';
 import { getApp } from '@react-native-firebase/app';
 import notifee, { AndroidImportance, AndroidVisibility, AndroidCategory, EventType } from '@notifee/react-native';
-import { Platform } from 'react-native';
+import { Platform, Linking, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
+import { callNotificationService } from './callNotificationService';
+import { backgroundTtsService } from './backgroundTtsService';
 
 // Suppress Firebase deprecation warnings
 const originalWarn = console.warn;
@@ -128,11 +130,11 @@ export async function configureNotificationsChannel() {
       vibrationPattern: [300, 500],
     });
     
-    // Create calls notification channel with higher priority
+    // Create calls notification channel with maximum priority for incoming calls
     await notifee.createChannel({
       id: 'calls',
       name: 'Incoming Calls',
-      description: 'Incoming call notifications',
+      description: 'Incoming call notifications - full screen alerts',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
       sound: 'default',
@@ -140,6 +142,7 @@ export async function configureNotificationsChannel() {
       vibrationPattern: [300, 500, 300, 500],
       lights: true,
       lightColor: '#FF0000',
+      bypassDnd: true, // Bypass Do Not Disturb
     });
     
     console.log('Notification channels configured successfully');
@@ -149,6 +152,13 @@ export async function configureNotificationsChannel() {
 }
 
 export async function displayLocalNotification(title: string, body: string, data: Record<string, string> = {}) {
+  // Check if app is in foreground - if so, skip notification
+  const appState = AppState.currentState;
+  if (appState === 'active') {
+    console.log('📱 App is in foreground - skipping notification:', title);
+    return;
+  }
+  
   // Create a unique key for deduplication
   const notificationKey = `local_${title}_${body}_${JSON.stringify(data)}`;
   
@@ -156,6 +166,13 @@ export async function displayLocalNotification(title: string, body: string, data
   if (isNotificationRecentlyShown(notificationKey)) {
     console.log('Skipping duplicate local notification:', title);
     return;
+  }
+  
+  // Speak the notification if TTS is enabled
+  try {
+    await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
+  } catch (ttsError) {
+    console.error('❌ Error speaking notification:', ttsError);
   }
   
   await configureNotificationsChannel();
@@ -180,75 +197,10 @@ export async function displayIncomingCallNotification(payload: {
   callerId: string;
 }) {
   try {
-    // Create a unique key for deduplication based on caller and call type
-    const notificationKey = `incoming_call_${payload.callerId}_${payload.isAudio ? 'audio' : 'video'}`;
-    
-    // Check if this call notification was recently shown
-    if (isNotificationRecentlyShown(notificationKey)) {
-      console.log('Skipping duplicate incoming call notification for:', payload.callerName);
-      return;
-    }
-    
-    await configureNotificationsChannel();
-    
-    const notificationId = `incoming_call_${payload.callerId}_${Date.now()}`;
-    
-    await notifee.displayNotification({
-      id: notificationId,
-      title: payload.isAudio ? 'Incoming Audio Call' : 'Incoming Video Call',
-      body: `Call from ${payload.callerName}`,
-      android: {
-        channelId: 'calls',
-        category: AndroidCategory.CALL,
-        colorized: true,
-        fullScreenAction: {
-          id: 'default',
-          launchActivity: 'default',
-        },
-        // Ensure heads-up and lockscreen visibility
-        importance: AndroidImportance.HIGH,
-        visibility: AndroidVisibility.PUBLIC,
-        smallIcon: 'ic_launcher',
-        largeIcon: payload.callerProfilePic || 'ic_launcher',
-        pressAction: {
-          id: 'open-incoming',
-          launchActivity: 'default',
-        },
-        actions: [
-          {
-            title: 'Accept',
-            pressAction: {
-              id: 'accept_call',
-              launchActivity: 'default',
-            },
-          },
-          {
-            title: 'Reject',
-            pressAction: {
-              id: 'reject_call',
-              launchActivity: 'default',
-            },
-          },
-        ],
-        // Auto-cancel after 30 seconds if not answered
-        autoCancel: false,
-        ongoing: true,
-        showTimestamp: true,
-      },
-      data: {
-        type: 'incoming_call',
-        callerId: payload.callerId,
-        callerName: payload.callerName,
-        callerProfilePic: payload.callerProfilePic || '',
-        channelName: payload.channelName,
-        isAudio: String(payload.isAudio),
-        notificationId: notificationId,
-      },
-    });
-    
-    console.log('Incoming call notification displayed:', notificationId);
+    // Use the dedicated call notification service
+    await callNotificationService.displayIncomingCallNotification(payload);
   } catch (error) {
-    console.error('Error displaying incoming call notification:', error);
+    console.error('❌ Error displaying incoming call notification:', error);
   }
 }
 
@@ -261,6 +213,8 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
         const actionId = detail.pressAction?.id;
         const notificationId = detail.notification?.id;
         
+        console.log('📞 Notification event received:', { actionId, callerName: data.callerName });
+        
         if (actionId === 'accept_call') {
           // Cancel the notification first
           if (notificationId) {
@@ -272,6 +226,7 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           }
           
           // Navigate to IncomingCall screen with auto-accept flag
+          console.log('📞 Navigating to IncomingCall with auto-accept');
           navigate('Message', {
             screen: 'IncomingCall',
             params: {
@@ -300,8 +255,31 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           } catch (error) {
             console.error('Error sending call rejection:', error);
           }
-        } else {
-          // Default action - just open the IncomingCall screen
+        } else if (actionId === 'incoming_call_fullscreen' || actionId === 'open_incoming_call' || actionId === 'open-incoming') {
+          // Full screen action or default action - open the IncomingCall screen
+          console.log('📞 Opening IncomingCall screen from notification');
+          
+          // Try to use native bridge first for better reliability
+          try {
+            const { openIncomingCallScreen } = await import('./CallNotificationBridge');
+            const success = await openIncomingCallScreen({
+              callerId: data.callerId,
+              callerName: data.callerName,
+              callerProfilePic: data.callerProfilePic,
+              channelName: data.channelName,
+              isAudio: data.isAudio === 'true',
+              autoAccept: false,
+            });
+            
+            if (success) {
+              console.log('✅ Successfully opened incoming call screen via native bridge');
+              return;
+            }
+          } catch (error) {
+            console.warn('Native bridge failed, using navigation fallback:', error);
+          }
+          
+          // Fallback to navigation
           navigate('Message', {
             screen: 'IncomingCall',
             params: {
@@ -322,32 +300,28 @@ export function listenForegroundMessages() {
   return messaging().onMessage(async remoteMessage => {
     const data = (remoteMessage.data || {}) as Record<string, string>;
     try {
-      // If this is an incoming call, render the specialized full-screen call notification
+      // Skip visual notifications when app is in foreground
+      // But still handle TTS for important messages
+      console.log('📱 Message received in foreground - processing TTS only');
+      
+      // Handle TTS for different message types
       if (data.type === 'incoming_call') {
-        await displayIncomingCallNotification({
-          callerName: data.callerName || 'Unknown',
-          callerProfilePic: data.callerProfilePic || '',
-          channelName: data.channelName || '',
-          isAudio: String(data.isAudio) === 'true',
-          callerId: data.callerId || data.from || '',
-        });
-        return;
-      }
-
-      // Fallback to standard notification for other message types
-      const title = remoteMessage.notification?.title || 'Message';
-      const body = remoteMessage.notification?.body || '';
-      
-      // Create a unique key for FCM message deduplication
-      const messageKey = `fcm_${title}_${body}_${JSON.stringify(data)}`;
-      
-      // Check if this FCM message was recently processed
-      if (isNotificationRecentlyShown(messageKey)) {
-        console.log('Skipping duplicate FCM message:', title);
-        return;
+        await backgroundTtsService.speakIncomingCall(
+          data.callerName || 'Unknown Caller',
+          String(data.isAudio) === 'true'
+        );
+      } else if (data.type === 'new_message') {
+        await backgroundTtsService.speakNewMessage(
+          data.senderName || 'Someone',
+          data.message || 'New message received'
+        );
+      } else if (data.type === 'notification' || data.type === 'general') {
+        const title = remoteMessage.notification?.title || 'Notification';
+        const body = remoteMessage.notification?.body || 'You have a new notification';
+        await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
       }
       
-      await displayLocalNotification(title, body, data);
+      return;
     } catch (e) {
       console.error('Error processing FCM message:', e);
     }
@@ -428,14 +402,81 @@ export async function initializeNotifications(): Promise<boolean> {
 // Cancel all incoming call notifications
 export async function cancelIncomingCallNotifications(): Promise<void> {
   try {
-    const notifications = await notifee.getDisplayedNotifications();
-    for (const notification of notifications) {
-      if (notification.notification?.data?.type === 'incoming_call' && notification.id) {
-        await notifee.cancelNotification(notification.id);
-      }
-    }
+    // Use the call notification service to cancel notifications
+    await callNotificationService.cancelIncomingCallNotification();
   } catch (error) {
     console.error('Error canceling incoming call notifications:', error);
+  }
+}
+
+// Request battery optimization exemption for reliable call notifications
+export async function requestBatteryOptimizationExemption(): Promise<boolean> {
+  if (Platform.OS !== 'android') {
+    return true;
+  }
+
+  try {
+    const powerManagerInfo = await notifee.getPowerManagerInfo();
+    if (powerManagerInfo.activity) {
+      // Device has a power manager that may affect notifications
+      console.log('Power manager detected on device');
+      
+      // Check if we should request exemption
+      const hasAsked = await AsyncStorage.getItem('batteryOptimizationAsked');
+      if (hasAsked === 'true') {
+        return true; // Already asked, don't spam the user
+      }
+      
+      Alert.alert(
+        'Enable Reliable Call Notifications',
+        'To receive incoming calls when the app is closed, please disable battery optimization for this app.',
+        [
+          {
+            text: 'Not Now',
+            style: 'cancel',
+            onPress: async () => {
+              await AsyncStorage.setItem('batteryOptimizationAsked', 'true');
+            },
+          },
+          {
+            text: 'Enable',
+            onPress: async () => {
+              try {
+                await notifee.openBatteryOptimizationSettings();
+                await AsyncStorage.setItem('batteryOptimizationAsked', 'true');
+              } catch (e) {
+                console.error('Error opening battery optimization settings:', e);
+              }
+            },
+          },
+        ]
+      );
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Error requesting battery optimization exemption:', error);
+    return false;
+  }
+}
+
+// Request all necessary permissions for incoming calls
+export async function requestIncomingCallPermissions(): Promise<boolean> {
+  try {
+    // Request notification permissions
+    const notifPermission = await requestPushPermission();
+    if (!notifPermission) {
+      console.warn('Notification permission not granted');
+      return false;
+    }
+    
+    // Request battery optimization exemption (non-blocking)
+    await requestBatteryOptimizationExemption();
+    
+    return true;
+  } catch (error) {
+    console.error('Error requesting incoming call permissions:', error);
+    return false;
   }
 }
 

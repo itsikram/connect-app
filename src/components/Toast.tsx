@@ -133,6 +133,9 @@ const Toast: React.FC<ToastProps> = ({
 
   const config = getToastConfig(type);
   const statusBarHeight = StatusBar.currentHeight || 0;
+  const headerHeight = 50; // FacebookHeader height
+  const gap = 2; // Reduced gap below header for closer positioning
+  const toastTopPosition = statusBarHeight + headerHeight + gap;
 
   return (
     <Animated.View
@@ -145,7 +148,7 @@ const Toast: React.FC<ToastProps> = ({
               translateY: position === 'top' 
                 ? translateY.interpolate({
                     inputRange: [-100, 0],
-                    outputRange: [-100, statusBarHeight + 10],
+                    outputRange: [-100, toastTopPosition],
                   })
                 : translateY.interpolate({
                     inputRange: [0, 100],
@@ -155,7 +158,7 @@ const Toast: React.FC<ToastProps> = ({
             { scale },
           ],
           opacity,
-          top: position === 'top' ? 0 : undefined,
+          top: position === 'top' ? toastTopPosition : undefined,
           bottom: position === 'bottom' ? 0 : undefined,
         },
       ]}

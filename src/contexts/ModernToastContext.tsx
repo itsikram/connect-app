@@ -69,7 +69,7 @@ export const ModernToastProvider: React.FC<ModernToastProviderProps> = ({ childr
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 50,
+    top: 52, // Header height (56px) + reduced gap (2px)
     left: 0,
     right: 0,
     zIndex: 9999,

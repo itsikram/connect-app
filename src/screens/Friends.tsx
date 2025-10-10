@@ -196,6 +196,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f7f7f7',
     padding: 12,
+    paddingBottom: 92,
   },
   sectionContainer: {
     backgroundColor: '#fff',

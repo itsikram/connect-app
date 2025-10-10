@@ -169,7 +169,7 @@ const Home = () => {
                     />
                 }
                 style={{ backgroundColor }}
-                contentContainerStyle={{ backgroundColor, flexGrow: 1 }}
+                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: 80 }}
             />
         </View>
     );

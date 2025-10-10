@@ -88,7 +88,7 @@ public class NotificationService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Connect App")
             .setContentText("Notification service is running")
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
@@ -97,3 +97,4 @@ public class NotificationService extends Service {
             .build();
     }
 }
+

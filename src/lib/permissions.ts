@@ -94,7 +94,7 @@ export async function checkNotificationPermission(): Promise<boolean> {
     if (Platform.OS === 'android') {
       // For Android 13+, we need to check POST_NOTIFICATIONS permission
       if (Platform.Version >= 33) {
-        const permission = PERMISSIONS.ANDROID.POST_NOTIFICATIONS;
+        const permission = 'android.permission.POST_NOTIFICATIONS' as Permission;
         const result = await check(permission);
         return result === RESULTS.GRANTED;
       }
@@ -198,7 +198,7 @@ export async function requestAllPermissionsWithAlerts(): Promise<PermissionStatu
     Alert.alert(
       'Permissions Required',
       'This app needs access to your camera, microphone, and notifications to provide the best experience:\n\n' +
-      '• Camera: For video calls and sharing photos\n' +
+      '• Camera: For video calls, sharing photos, and emotion detection\n' +
       '• Microphone: For voice and video calls\n' +
       '• Notifications: To alert you of new messages and calls',
       [

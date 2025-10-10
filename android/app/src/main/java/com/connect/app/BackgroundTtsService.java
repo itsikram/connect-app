@@ -90,7 +90,7 @@ public class BackgroundTtsService extends Service {
         return new NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Connect App")
             .setContentText("Background TTS service is running")
-            .setSmallIcon(R.drawable.ic_launcher)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
@@ -99,3 +99,4 @@ public class BackgroundTtsService extends Service {
             .build();
     }
 }
+

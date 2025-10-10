@@ -7,7 +7,7 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-const serverUrl = "http://192.168.0.104:4000"
+const serverUrl = "http://192.168.0.101:4000"
 // const serverUrl = "https://connect-server-y1ku.onrender.com"
 
 const ENV: Record<Environment, EnvironmentConfig> = {

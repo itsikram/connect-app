@@ -29,17 +29,15 @@ class MainActivity : ReactActivity() {
     // This ensures proper status bar handling with React Native's StatusBar component
   }
 
-  override fun onNewIntent(intent: Intent?) {
+  override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
-    
+
     // Handle incoming call intents
-    intent?.let { 
-      if (it.getStringExtra("action") == "incoming_call") {
-        Log.d("MainActivity", "Received incoming call intent")
-        // The React Native side will handle the navigation
-        // This just ensures the app is brought to foreground
-      }
+    if (intent.getStringExtra("action") == "incoming_call") {
+      Log.d("MainActivity", "Received incoming call intent")
+      // The React Native side will handle the navigation
+      // This just ensures the app is brought to foreground
     }
   }
 }

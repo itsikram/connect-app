@@ -38,8 +38,12 @@ interface IncomingCall {
 }
 
 const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic }) => {
+  console.log('AudioCall: Component mounted with myId:', myId);
+  
   const { colors: themeColors, isDarkMode } = useTheme();
-  const { on, off, answerAudioCall, endAudioCall } = useSocket();
+  const { on, off, answerAudioCall, endAudioCall, isConnected } = useSocket();
+  
+  console.log('AudioCall: Socket connection status:', isConnected);
   const { minimizeCall, restoreCall, endMinimizedCall, updateMinimizedCall } = useCallMinimize();
   const myProfile = useSelector((state: RootState) => state.profile);
   const navigation = useNavigation();
@@ -48,18 +52,30 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   const [callAccepted, setCallAccepted] = useState(false);
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [currentChannel, setCurrentChannel] = useState<string | null>(null);
+  const [remoteFriendId, setRemoteFriendId] = useState<string | null>(null); // Track the other user's ID
   const [isMinimized, setIsMinimized] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(false);
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
-  const [isConnected, setIsConnected] = useState(false);
   const [errorShown, setErrorShown] = useState(false);
 
   const engineRef = useRef<RtcEngine | null>(null);
   const isLeavingRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
-  const minimizedDurationInterval = useRef<NodeJS.Timeout | null>(null);
+  const minimizedDurationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  const lastCallEndTime = useRef<number>(0);
+  const isEndingCallRef = useRef<boolean>(false);
+
+  // Track component lifecycle
+  useEffect(() => {
+    console.log('AudioCall: Component mounted, setting up...');
+    console.log('AudioCall: Socket on/off functions available:', !!on, !!off);
+    
+    return () => {
+      console.log('AudioCall: Component unmounting, cleaning up...');
+    };
+  }, []);
 
   // Request microphone permission
   const requestMicrophonePermission = async (): Promise<boolean> => {
@@ -196,12 +212,12 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
 
       engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
         console.log('Joined channel successfully:', channel, uid);
-        setIsConnected(true);
+        // Note: isConnected is now managed by socket context, not local state
       });
 
       engine.addListener('LeaveChannel', () => {
         console.log('Left channel');
-        setIsConnected(false);
+        // Note: isConnected is now managed by socket context, not local state
         setRemoteUid(null);
       });
 
@@ -365,10 +381,11 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       setIsAudioCall(false);
       setCurrentChannel(null);
       setIncomingCall(null);
+      setRemoteFriendId(null); // Clear remote friend ID
       setIsMinimized(false);
       setCallDuration(0);
       setRemoteUid(null);
-      setIsConnected(false);
+      // Note: isConnected is now managed by socket context, not local state
       setErrorShown(false);
       callStartTime.current = null;
       
@@ -393,29 +410,83 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     await joinChannel(incomingCall.channelName);
   }, [incomingCall, answerAudioCall, joinChannel]);
 
-  // End call
-  const endCall = useCallback(async () => {
+  // Local cleanup without emitting to server
+  const cleanupCall = useCallback(async () => {
+    console.log('AudioCall: cleanupCall called');
+    
     if (currentChannel) {
       const callId = `audio-${currentChannel}`;
       endMinimizedCall(callId);
     }
     
-    // endAudioCall(incomingCall?.from || '');
     await leaveChannel();
     
     // Simply navigate back without complex navigation logic to prevent loops
     try {
       const nav: any = navigation;
-      // Just go back to the previous screen or Message tab
-      if (nav.canGoBack && nav.canGoBack()) {
-        nav.goBack();
-      } else {
-        nav.navigate('Message');
-      }
+      nav.navigate('Message', { screen: 'MessageList' });
     } catch (e) {
       console.warn('Navigation error after call end:', e);
     }
-  }, [currentChannel, incomingCall, endAudioCall, leaveChannel, endMinimizedCall, navigation]);
+  }, [currentChannel, leaveChannel, endMinimizedCall, navigation]);
+
+  // End call - called when user clicks end button
+  const endCall = useCallback(async () => {
+    console.log('AudioCall: endCall called, isEndingCallRef:', isEndingCallRef.current);
+    console.log('AudioCall: Current state - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall, 'channel:', currentChannel);
+    
+    // CRITICAL: Prevent multiple calls with ref (synchronous check)
+    if (isEndingCallRef.current) {
+      console.log('AudioCall: Already ending call (ref check), ignoring duplicate');
+      return;
+    }
+
+    // IMPORTANT: Set flag immediately to prevent race conditions
+    isEndingCallRef.current = true;
+    
+    console.log('AudioCall: Ending audio call...');
+    console.log('AudioCall: Debug state:', {
+      remoteFriendId,
+      incomingCallFrom: incomingCall?.from,
+      currentChannel,
+      myId,
+      callAccepted,
+      isAudioCall
+    });
+    
+    // Emit leaveAudioCall to notify the other user (server will broadcast to both)
+    // Try multiple sources to get the friend ID:
+    // 1. remoteFriendId (set when call is accepted)
+    // 2. incomingCall?.from (person who called us)
+    // 3. Extract from channel name (format: userId1-userId2)
+    let friendIdToNotify = remoteFriendId || incomingCall?.from;
+    
+    // Fallback: Extract friend ID from channel name
+    if (!friendIdToNotify && currentChannel) {
+      const channelParts = currentChannel.split('-');
+      if (channelParts.length === 2) {
+        // Channel format is myId-friendId or friendId-myId
+        friendIdToNotify = channelParts[0] === myId ? channelParts[1] : channelParts[0];
+        console.log('AudioCall: Extracted friend ID from channel name:', friendIdToNotify);
+      }
+    }
+    
+    console.log('AudioCall: Friend ID to notify:', friendIdToNotify);
+    
+    if (friendIdToNotify && friendIdToNotify !== myId) {
+      console.log('AudioCall: ✅ Emitting endAudioCall to friend:', friendIdToNotify);
+      endAudioCall(friendIdToNotify);
+    } else {
+      console.error('AudioCall: ❌ ERROR - No valid friend ID to notify! Cannot end call for other user.');
+      console.error('AudioCall: Debug - friendIdToNotify:', friendIdToNotify, ', myId:', myId);
+    }
+    
+    // Do local cleanup
+    await cleanupCall();
+    
+    // DON'T reset the flag - keep it set to prevent any further calls
+    // isEndingCallRef.current = false;
+  }, [remoteFriendId, callAccepted, isAudioCall, currentChannel, myId, incomingCall, endAudioCall, cleanupCall]);
 
   // Toggle mute
   const toggleMute = useCallback(async () => {
@@ -466,7 +537,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
 
   // Call duration tracking
   useEffect(() => {
-    let interval: NodeJS.Timeout | null = null;
+    let interval: ReturnType<typeof setInterval> | null = null;
     if (callAccepted && !isMinimized) {
       if (!callStartTime.current) {
         callStartTime.current = Date.now();
@@ -502,8 +573,88 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     };
   }, [callAccepted, isMinimized, currentChannel, updateMinimizedCall]);
 
+  // Handle call acceptance
+  const handleCallAccepted = useCallback(({ channelName, isAudio, callerName, callerProfilePic, callerId }: any) => {
+      console.log('AudioCall: Call accepted event received:', { channelName, isAudio, callerName, callerProfilePic });
+      console.log('AudioCall: Current state before handling - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
+      
+      // Only handle audio call acceptance
+      if (isAudio) {
+        console.log('AudioCall: Audio call accepted, joining channel:', channelName);
+        console.log('AudioCall: Setting remote friend ID:', callerId);
+        
+        // Set up call information for audio calls
+        setIncomingCall({
+          from: callerId || 'caller',
+          channelName,
+          name: callerName || 'Audio Call',
+          profilePic: callerProfilePic || ''
+        });
+        setRemoteFriendId(callerId || null); // IMPORTANT: Track the other user's ID
+        setIsAudioCall(true);
+        setCallAccepted(true);
+        setCurrentChannel(channelName);
+        
+        console.log('AudioCall: Set states - isAudioCall: true, callAccepted: true, channel:', channelName);
+        
+        // Join the audio channel
+        joinChannel(channelName);
+        
+        // Log state after setting
+        setTimeout(() => {
+          console.log('AudioCall: State after setting - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
+        }, 100);
+      } else {
+        console.log('AudioCall: Video call accepted, but letting VideoCall component handle it:', channelName);
+        // Don't handle video calls here - let VideoCall component handle them
+        return;
+      }
+    }, [joinChannel]);
+
+  // Handle call end
+  const handleCallEnd = useCallback(() => {
+      console.log('AudioCall: Received audioCallEnd event from server');
+      console.log('AudioCall: Current state - isEndingCallRef:', isEndingCallRef.current, 'callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
+      console.log('AudioCall: Current channel:', currentChannel);
+      console.log('AudioCall: Incoming call:', incomingCall);
+      
+      // CRITICAL: Prevent multiple processing with ref (synchronous)
+      if (isEndingCallRef.current) {
+        console.log('AudioCall: Already ending call (ref check), ignoring duplicate audioCallEnd event');
+        return;
+      }
+      
+      // Debounce rapid-fire call end events (prevent processing same event within 2 seconds)
+      const now = Date.now();
+      if (now - lastCallEndTime.current < 2000) {
+        console.log('AudioCall: Ignoring rapid-fire call end event (debounce)');
+        return;
+      }
+      lastCallEndTime.current = now;
+      
+    // Handle call end if we're in any call state or if we have an active channel
+    if (callAccepted || isAudioCall || currentChannel) {
+      console.log('AudioCall: Processing audioCallEnd - doing local cleanup only (NO re-emit)');
+      isEndingCallRef.current = true;
+      // IMPORTANT: Only do local cleanup, do NOT call endCall() which would re-emit
+      cleanupCall();
+      // DON'T reset the flag - keep it set to prevent any further calls
+    } else {
+      console.log('AudioCall: Ignoring call end event - not in active audio call state');
+      console.log('AudioCall: Debug - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall, 'currentChannel:', currentChannel);
+    }
+    }, [callAccepted, isAudioCall, currentChannel, incomingCall, cleanupCall]);
+
   // Socket event listeners
   useEffect(() => {
+    if (!isConnected) {
+      console.log('AudioCall: Socket not connected, skipping event listener setup');
+      return;
+    }
+    
+    console.log('AudioCall: Setting up socket event listeners');
+    console.log('AudioCall: Dependencies - on:', !!on, 'off:', !!off, 'handleCallAccepted:', !!handleCallAccepted, 'handleCallEnd:', !!handleCallEnd);
+    
     // Remove incoming call handling - this is now handled by IncomingCall screen
     // const handleIncomingCall = ({ from, channelName, isAudio, callerName, callerProfilePic }: any) => {
     //   // Only handle audio calls
@@ -519,33 +670,32 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     //   }
     // };
 
-    const handleCallAccepted = ({ channelName, isAudio, callerName, callerProfilePic, callerId }: any) => {
-      // Don't handle call acceptance here - let VideoCall component handle all acceptances
-      // This prevents conflict between AudioCall and VideoCall components
-      console.log('AudioCall: Call accepted event received, but VideoCall component will handle it:', { channelName, isAudio, callerName });
-      
-      // Ensure AudioCall modal is hidden when call is accepted
-      if (isAudio) {
-        setIsAudioCall(false);
+    // Add a general socket listener to see all events
+    const handleAnyEvent = (eventName: string, ...args: any[]) => {
+      if (eventName === 'audioCallEnd') {
+        console.log('AudioCall: Received audioCallEnd event via general listener:', args);
       }
-    };
-
-    const handleCallEnd = () => {
-
-      return;
-      endCall();
     };
 
     // Removed: on('agora-incoming-audio-call', handleIncomingCall); - handled by IncomingCall screen
     on('agora-call-accepted', handleCallAccepted);
     on('audioCallEnd', handleCallEnd);
+    
+    // Add general event listener for debugging
+    on('audioCallEnd', (...args) => {
+      console.log('AudioCall: Direct audioCallEnd listener triggered:', args);
+      handleAnyEvent('audioCallEnd', ...args);
+    });
 
+    console.log('AudioCall: Socket event listeners set up successfully');
+    
     return () => {
+      console.log('AudioCall: Cleaning up socket event listeners');
       // Removed: off('agora-incoming-audio-call', handleIncomingCall); - handled by IncomingCall screen
       off('agora-call-accepted', handleCallAccepted);
       off('audioCallEnd', handleCallEnd);
     };
-  }, [on, off, joinChannel, endCall]);
+  }, [isConnected, on, off, handleCallAccepted, handleCallEnd]);
 
   // Cleanup on unmount
   useEffect(() => {

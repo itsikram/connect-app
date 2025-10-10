@@ -19,6 +19,8 @@ import AccountSettings from '../components/settings/AccountSettings';
 import PreferenceSettings from '../components/settings/PreferenceSettings';
 import MessageSettings from '../components/settings/MessageSettings';
 import SoundSettings from '../components/settings/SoundSettings';
+import TtsSettings from '../components/settings/TtsSettings';
+import BackgroundNotificationTester from '../components/BackgroundNotificationTester';
 
 const Settings = () => {
   const { colors: themeColors, isDarkMode } = useTheme();
@@ -32,6 +34,8 @@ const Settings = () => {
     { id: 'preference', title: 'Preference', icon: 'settings' },
     { id: 'message', title: 'Messaging', icon: 'message' },
     { id: 'sound', title: 'Sounds', icon: 'volume-up' },
+    { id: 'tts', title: 'TTS', icon: 'record-voice-over' },
+    { id: 'background', title: 'Background', icon: 'background-replacement' },
   ];
 
   const renderTabContent = () => {
@@ -50,6 +54,10 @@ const Settings = () => {
         return <MessageSettings />;
       case 'sound':
         return <SoundSettings />;
+      case 'tts':
+        return <TtsSettings />;
+      case 'background':
+        return <BackgroundNotificationTester />;
       default:
         return <ProfileSettings />;
     }
@@ -154,6 +162,7 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 20,
+    paddingBottom: 80,
   },
 });
 

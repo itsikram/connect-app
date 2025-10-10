@@ -441,7 +441,7 @@ const MyProfile = () => {
     }, [myProfile?._id, posts])
 
     return (
-        <ScrollView style={[styles.container, { backgroundColor: themeColors.background.primary }]} showsVerticalScrollIndicator={false} refreshControl={
+        <ScrollView style={[styles.container, { backgroundColor: themeColors.background.primary }]} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false} refreshControl={
             <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[themeColors.text.secondary]} />
         }>
 
