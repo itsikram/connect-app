@@ -1,17 +1,10 @@
 {
   "name": "Connect",
   "displayName": "Connect",
-  "expo": {
-    "android": {
-      "package": "com.connect.app"
-    },
-    "ios": {
-      "bundleIdentifier": "com.connect.app"
-    }
+  "android": {
+    "package": "com.connect.app"
   },
-  "extra": {
-    "eas": {
-      "projectId": "2a966305-cfc3-4728-92c0-552f75c34b52"
-    }
+  "ios": {
+    "bundleIdentifier": "com.connect.app"
   }
 }

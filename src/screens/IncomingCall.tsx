@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet, Platform } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -36,7 +36,7 @@ const IncomingCall: React.FC = () => {
   const safeGoBack = () => {
     try {
       if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        (navigation as any).goBack();
+        (navigation as any).navigate('Message', { screen: 'Home' });
       } else {
         (navigation as any).navigate('Message', { screen: 'MessageList' });
       }
@@ -102,6 +102,19 @@ const IncomingCall: React.FC = () => {
     };
   }, []);
 
+  // Reset status bar when leaving this screen to avoid translucent persisting globally
+  useEffect(() => {
+    return () => {
+      try {
+        if (Platform.OS === 'android') {
+          StatusBar.setTranslucent(false);
+          StatusBar.setBackgroundColor(themeColors.background.primary);
+        }
+        StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+      } catch (e) {}
+    };
+  }, [isDarkMode, themeColors.background.primary]);
+
   useEffect(() => {
     if(playRingtone) {
       // Trigger incoming call notification when ringtone starts playing
@@ -121,9 +134,16 @@ const IncomingCall: React.FC = () => {
 
   useEffect(() => {
     if (!callerId || !channelName) {
-      navigation.goBack();
+        try {
+          if (Platform.OS === 'android') {
+            StatusBar.setTranslucent(false);
+            StatusBar.setBackgroundColor(themeColors.background.primary);
+          }
+          StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+        } catch (e) {}
+        navigation.navigate('Message', { screen: 'Home' });
     }
-  }, [callerId, channelName, navigation]);
+  }, [callerId, channelName, navigation, isDarkMode, themeColors.background.primary]);
 
   // Check if call is still active - if not, go back immediately
   // This effect only handles the case where call ends BEFORE acceptance
@@ -132,7 +152,7 @@ const IncomingCall: React.FC = () => {
       // If we don't have the required parameters, exit
       if (!callerId || !channelName) {
         console.log('IncomingCall: Missing parameters, exiting');
-        navigation.goBack();
+          navigation.navigate('Message', { screen: 'Home' });
         return;
       }
 
@@ -160,18 +180,26 @@ const IncomingCall: React.FC = () => {
         // Debounce the call end handling
         callEndDebounceTimeout.current = setTimeout(() => {
           console.log('IncomingCall: Call ended before user could respond, exiting');
-          navigation.goBack();
+          // Ensure StatusBar is restored before leaving this screen
+          try {
+            if (Platform.OS === 'android') {
+              StatusBar.setTranslucent(false);
+              StatusBar.setBackgroundColor(themeColors.background.primary);
+            }
+            StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+          } catch (e) {}
+          navigation.navigate('Message', { screen: 'Home' });
         }, 300); // 300ms debounce
       };
 
       // Listen for call end events
-      on('audioCallEnd', handleCallEnd);
-      on('videoCallEnd', handleCallEnd);
+      on('audio-call-ended', handleCallEnd);
+      on('video-call-ended', handleCallEnd);
 
       // Cleanup listeners
       return () => {
-        off('audioCallEnd', handleCallEnd);
-        off('videoCallEnd', handleCallEnd);
+        off('audio-call-ended', handleCallEnd);
+        off('audio-call-ended', handleCallEnd);
       };
     };
 
@@ -198,6 +226,14 @@ const IncomingCall: React.FC = () => {
     console.log('IncomingCall: Accepting call', { callerId, channelName, isAudio, callerName });
     setPlayRingtone(false);
     setCallAccepted(true); // Mark call as accepted
+    // Ensure StatusBar is restored before leaving this screen
+    try {
+      if (Platform.OS === 'android') {
+        StatusBar.setTranslucent(false);
+        StatusBar.setBackgroundColor(themeColors.background.primary);
+      }
+      StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+    } catch (e) {}
     if (isAudio) {
       answerAudioCall(callerId, channelName);
     } else {
@@ -211,6 +247,14 @@ const IncomingCall: React.FC = () => {
   const onDecline = () => {
     if (!callerId) return;
     setPlayRingtone(false);
+    // Ensure StatusBar is restored before leaving this screen
+    try {
+      if (Platform.OS === 'android') {
+        StatusBar.setTranslucent(false);
+        StatusBar.setBackgroundColor(themeColors.background.primary);
+      }
+      StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+    } catch (e) {}
     if (isAudio) {
       endAudioCall(callerId);
     } else {
@@ -250,6 +294,14 @@ const IncomingCall: React.FC = () => {
         console.log('IncomingCall: Handling call end - caller cancelled before acceptance');
         setPlayRingtone(false);
         setCallAccepted(false); // Reset call accepted state
+        // Ensure StatusBar is restored before leaving this screen
+        try {
+          if (Platform.OS === 'android') {
+            StatusBar.setTranslucent(false);
+            StatusBar.setBackgroundColor(themeColors.background.primary);
+          }
+          StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+        } catch (e) {}
         safeGoBack();
       }, 300); // 300ms debounce
     };
@@ -259,14 +311,14 @@ const IncomingCall: React.FC = () => {
       safeGoBack();
     };
 
-    on('videoCallEnd', handleEnd);
-    on('audioCallEnd', handleEnd);
-    on('agora-call-accepted', handleAccepted);
+    on('video-call-ended', handleEnd);
+    on('audio-call-ended', handleEnd);
+    on('call-accepted', handleAccepted);
 
     return () => {
-      off('videoCallEnd', handleEnd);
-      off('audioCallEnd', handleEnd);
-      off('agora-call-accepted', handleAccepted);
+      on('video-call-ended', handleEnd);
+      on('audio-call-ended', handleEnd);
+      off('call-accepted', handleAccepted);
     };
   }, [on, off, navigation, playRingtone, callAccepted]);
 
@@ -282,7 +334,6 @@ const IncomingCall: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
       
       {/* Background with gradient effect */}
       <View style={[

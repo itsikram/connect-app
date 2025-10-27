@@ -4,6 +4,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { launchImageLibrary, Asset, ImageLibraryOptions } from 'react-native-image-picker';
+import { useNavigation } from '@react-navigation/native';
 import api from '../lib/api';
 // Modern components
 import { ModernCard, ModernButton, ModernInput } from './modern';
@@ -24,6 +25,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const { user } = useContext(AuthContext);
   const { colors: themeColors, isDarkMode } = useTheme();
   const { showToast } = useModernToast();
+  const navigation = useNavigation();
   
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -214,6 +216,14 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           style={{ flex: 1, marginRight: 8 }}
         />
         <ModernButton
+          title="Camera"
+          onPress={() => (navigation as any).navigate('Camera')}
+          variant="modern"
+          size="small"
+          icon={<Icon name="camera-alt" size={20} color={themeColors.primary} />}
+          style={{ flex: 1, marginRight: 8 }}
+        />
+        <ModernButton
           title="Live Video"
           onPress={() => { openModal(); pickMedia('video'); }}
           variant="modern"
@@ -297,6 +307,14 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                   style={{ flex: 1, marginRight: 8 }}
                 />
                 <ModernButton
+                  title="Camera"
+                  onPress={() => { closeModal(); (navigation as any).navigate('Camera'); }}
+                  variant="glass"
+                  size="small"
+                  icon={<Icon name="camera-alt" size={18} color={themeColors.primary} />}
+                  style={{ flex: 1, marginRight: 8 }}
+                />
+                <ModernButton
                   title="Add Video"
                   onPress={() => pickMedia('video')}
                   variant="glass"
@@ -365,7 +383,7 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: 2,
   },
   profilePicWrapper: {
     marginRight: 12,

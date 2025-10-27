@@ -1,6 +1,7 @@
 import { Platform, Alert, Linking } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModules } from 'react-native';
+import { pushBackgroundService } from './pushBackgroundService';
 
 interface ServiceStatus {
   backgroundTtsService: boolean;
@@ -138,8 +139,8 @@ class BackgroundServiceManager {
 
   private async startNotificationService(): Promise<void> {
     try {
-      // This would require a native module to start the service
       console.log('🔔 Starting notification service...');
+      await pushBackgroundService.start();
       this.serviceStatus.notificationService = true;
       await this.saveServiceStatus();
     } catch (error) {
@@ -287,7 +288,9 @@ class BackgroundServiceManager {
     try {
       console.log('🛑 Stopping background services...');
       
-      // This would require native modules to stop the services
+      // Stop background actions service
+      try { await pushBackgroundService.stop(); } catch (e) {}
+      
       this.serviceStatus.backgroundTtsService = false;
       this.serviceStatus.notificationService = false;
       

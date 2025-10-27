@@ -70,64 +70,16 @@ export const useEmotionDetection = (options: EmotionDetectionOptions) => {
       // Use the enhanced detection function from our utility
       const detectionResult = await detectEmotionsFromFace(face, emotionDetectionState);
       
-      if (!detectionResult || !detectionResult.validExpressions || detectionResult.validExpressions.length === 0) {
+      if (!detectionResult || !detectionResult.topExpression) {
         return null;
       }
 
-      const { validExpressions, detectionQuality, measurements } = detectionResult;
+      // Use the topExpression directly from detection result (already selected with sophisticated logic)
+      const { topExpression, validExpressions, detectionQuality, confidenceAnalysis } = detectionResult;
       const nowTs = Date.now();
       const lockActive = actionLockRef.current.until > nowTs;
 
-      // Dynamic confidence thresholds based on detection quality
-      const baseConfidenceThreshold = 0.50;
-      const qualityMultiplier = detectionQuality;
-      const dynamicThreshold = Math.max(0.32, baseConfidenceThreshold * qualityMultiplier);
-
-      // Get top expressions with significant confidence gaps
-      const topExpressions = validExpressions.slice(0, 3);
-      const confidenceGap = topExpressions.length > 1 ? 
-        topExpressions[0].confidence - topExpressions[1].confidence : 0;
-
-      // Select the best expression based on confidence and gap
-      let selectedExpression = null;
-      
-      if (topExpressions.length > 0) {
-        const topConfidence = topExpressions[0].confidence;
-        
-        // High confidence with significant gap - very reliable
-        if (topConfidence > 0.8 && confidenceGap > 0.15) {
-          selectedExpression = topExpressions[0];
-        }
-        // Good confidence with moderate gap - reliable
-        else if (topConfidence > 0.7 && confidenceGap > 0.1) {
-          selectedExpression = topExpressions[0];
-        }
-        // Decent confidence with small gap - acceptable
-        else if (topConfidence > dynamicThreshold && confidenceGap > 0.05) {
-          selectedExpression = topExpressions[0];
-        }
-        // Multiple similar confidence - be more conservative
-        else if (topConfidence > dynamicThreshold && confidenceGap <= 0.05) {
-          const currentEmotionName = getEmotionName(currentEmotion || '');
-          const currentInTop3 = topExpressions.find((expr: any) => 
-            expr.name === currentEmotionName
-          );
-          
-          if (currentInTop3 && topConfidence - currentInTop3.confidence < 0.1) {
-            selectedExpression = currentInTop3;
-          } else {
-            selectedExpression = topExpressions[0];
-          }
-        }
-      }
-
-      // Fallback to neutral if no expression meets criteria
-      const topExpression = selectedExpression || {
-        name: 'Neutral',
-        confidence: 0.5
-      };
-
-      // Enhanced temporal smoothing with hysteresis
+      // Enhanced temporal smoothing with hysteresis (exact same as web)
       const confidenceLevel = topExpression.confidence;
       const currentEmotionName = getEmotionName(currentEmotion || '');
 
@@ -146,74 +98,27 @@ export const useEmotionDetection = (options: EmotionDetectionOptions) => {
         consecutiveEmotionCountRef.current[topExpression.name] = 1;
       }
 
-      // Adaptive stability requirement based on confidence and emotion type
-      let stabilityRequirement = 2;
-      if (emotionCategories.transient.includes(topExpression.name)) {
-        stabilityRequirement = confidenceLevel > 0.8 ? 1 : confidenceLevel > 0.65 ? 2 : 3;
-      } else if (emotionCategories.stable.includes(topExpression.name)) {
-        stabilityRequirement = confidenceLevel > 0.8 ? 2 : confidenceLevel > 0.65 ? 2 : 3;
-      } else if (emotionCategories.significant.includes(topExpression.name)) {
-        stabilityRequirement = confidenceLevel > 0.8 ? 2 : confidenceLevel > 0.65 ? 3 : 4;
-      } else if (emotionCategories.suspicious.includes(topExpression.name)) {
-        stabilityRequirement = confidenceLevel > 0.8 ? 3 : confidenceLevel > 0.65 ? 4 : 5;
-      }
-
-      // Track stability
-      if (confidenceLevel > dynamicThreshold) {
-        if (lastStableEmotionRef.current === topExpression.name) {
-          emotionStabilityCountRef.current++;
-        } else {
-          emotionStabilityCountRef.current = 1;
-        }
-      } else {
-        emotionStabilityCountRef.current = Math.max(0, emotionStabilityCountRef.current - 0.5);
-      }
-
-      // Hysteresis: make it harder to switch away from current emotion
-      const isSwitchingEmotion = topExpression.name !== currentEmotionName;
-      const effectiveStability = isSwitchingEmotion ? stabilityRequirement : Math.max(1, stabilityRequirement - 1);
-
-      // Enhanced emotion change decision
+      // Simple check: emit if emotion is different from current (exact same as web)
       const isDifferentFromCurrent = topExpression.name !== currentEmotionName;
       
-      const shouldEmitEmotion = emotionStabilityCountRef.current >= effectiveStability && 
-                               confidenceLevel > dynamicThreshold &&
-                               isDifferentFromCurrent;
-
-      // Only emit if we haven't already emitted this exact emotion recently
-      const minTimeBetweenSameEmotion = 3000;
-      const isSameAsLastEmitted = lastStableEmotionRef.current === topExpression.name;
-      const timeSinceLastChange = Date.now() - lastEmotionTimestampRef.current;
-      const canReEmitSameEmotion = !isSameAsLastEmitted || timeSinceLastChange > minTimeBetweenSameEmotion;
-
-      if (shouldEmitEmotion && !lockActive && canReEmitSameEmotion) {
+      if (isDifferentFromCurrent) {
         const emotionName = topExpression.name;
         const confidence = topExpression.confidence;
         const emoji = emotionEmojiMap[emotionName] || '😐';
 
-        // Set lock duration based on emotion type and confidence
-        const lockDuration = confidence > 0.8 ? 1500 : 1200;
-        actionLockRef.current = { label: `${emoji} ${emotionName}`, until: nowTs + lockDuration };
-
         // Update refs to track this emission
-        lastActivityTimeRef.current = Date.now();
         lastEmotionTimestampRef.current = Date.now();
         lastStableEmotionRef.current = emotionName;
-        emotionStabilityCountRef.current = 1;
 
+        // Enhanced debug logging (exact same as web)
         console.log('🎯 Emotion Change Detected:', {
           emotion: emotionName,
           emoji: emoji,
           confidence: confidence.toFixed(3),
           quality: detectionQuality.toFixed(3),
-          stability: emotionStabilityCountRef.current,
-          stabilityReq: effectiveStability,
           consecutiveCount: consecutiveEmotionCountRef.current[emotionName] || 0,
-          threshold: dynamicThreshold.toFixed(3),
-          top3: validExpressions.slice(0, 3).map((e: any) => `${e.name}:${e.confidence.toFixed(2)}`),
-          confidenceGap: confidenceGap.toFixed(3),
-          wasSmoothed: isSwitchingEmotion,
-          timeSinceLastChange: timeSinceLastChange
+          top3: validExpressions?.slice(0, 3).map((e: any) => `${e.name}:${e.confidence.toFixed(2)}`).join(', ') || 'N/A',
+          reliability: confidenceAnalysis?.reliability || 'N/A'
         });
 
         return {
@@ -223,41 +128,45 @@ export const useEmotionDetection = (options: EmotionDetectionOptions) => {
           confidence: Math.round(confidence * 100) / 100,
           quality: Math.round(detectionQuality * 100) / 100
         };
-      } else if (!lockActive && validExpressions.length === 0 && detectionQuality > 0.3) {
-        // No valid expressions - check for neutral
-        const isNeutral = Math.abs(measurements.mouthCornerRaise) < 0.018 && 
-                        measurements.avgEyeHeightNorm > 0.032 && 
-                        measurements.avgEyeHeightNorm < 0.052 && 
-                        measurements.mouthHeightNorm > 0.018 && 
-                        measurements.mouthHeightNorm < 0.065 &&
-                        Math.abs(measurements.eyebrowRaise) < 0.01;
-        
-        if (isNeutral && currentEmotionName !== 'Neutral') {
-          if (lastStableEmotionRef.current === 'Neutral') {
-            emotionStabilityCountRef.current++;
-          } else {
-            emotionStabilityCountRef.current = 1;
-            lastStableEmotionRef.current = 'Neutral';
-          }
+      } else if (!lockActive && validExpressions && validExpressions.length === 0 && detectionQuality > 0.3) {
+        // No valid expressions - check for neutral (exact same as web)
+        const measurements = detectionResult.measurements;
+        if (measurements) {
+          const isNeutral = Math.abs(measurements.mouthCornerRaise) < 0.018 && 
+                          measurements.avgEyeHeightNorm > 0.032 && 
+                          measurements.avgEyeHeightNorm < 0.052 && 
+                          measurements.mouthHeightNorm > 0.018 && 
+                          measurements.mouthHeightNorm < 0.065 &&
+                          Math.abs(measurements.eyebrowRaise) < 0.01;
           
-          if (emotionStabilityCountRef.current >= 3) {
-            const neutralEmoji = emotionEmojiMap['Neutral'];
-            actionLockRef.current = { label: `${neutralEmoji} Neutral`, until: nowTs + 1800 };
+          if (isNeutral && currentEmotionName !== 'Neutral') {
+            // Need stability for neutral too
+            if (lastStableEmotionRef.current === 'Neutral') {
+              emotionStabilityCountRef.current++;
+            } else {
+              emotionStabilityCountRef.current = 1;
+              lastStableEmotionRef.current = 'Neutral';
+            }
             
-            // Update refs
-            lastEmotionTimestampRef.current = Date.now();
-            lastStableEmotionRef.current = 'Neutral';
-            emotionStabilityCountRef.current = 1;
-            
-            console.log('😐 Neutral detected with stability:', emotionStabilityCountRef.current);
-            
-            return {
-              emotion: `${neutralEmoji} Neutral`,
-              emoji: neutralEmoji,
-              emotionText: 'Neutral',
-              confidence: 0.6,
-              quality: Math.round(detectionQuality * 100) / 100
-            };
+            if (emotionStabilityCountRef.current >= 3) {
+              const neutralEmoji = emotionEmojiMap['Neutral'];
+              actionLockRef.current = { label: `${neutralEmoji} Neutral`, until: nowTs + 1800 };
+              
+              // Update refs
+              lastEmotionTimestampRef.current = Date.now();
+              lastStableEmotionRef.current = 'Neutral';
+              emotionStabilityCountRef.current = 1;
+              
+              console.log('😐 Neutral detected with stability:', emotionStabilityCountRef.current);
+              
+              return {
+                emotion: `${neutralEmoji} Neutral`,
+                emoji: neutralEmoji,
+                emotionText: 'Neutral',
+                confidence: 0.6,
+                quality: Math.round(detectionQuality * 100) / 100
+              };
+            }
           }
         }
       }

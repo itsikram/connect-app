@@ -28,12 +28,6 @@ public class CallNotificationModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void openIncomingCallScreen(ReadableMap params, Promise promise) {
         try {
-            Activity currentActivity = getCurrentActivity();
-            if (currentActivity == null) {
-                promise.reject("NO_ACTIVITY", "No current activity available");
-                return;
-            }
-
             // Create intent to open the app with incoming call screen
             Intent intent = new Intent(reactContext, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
@@ -59,12 +53,6 @@ public class CallNotificationModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void bringAppToForeground(Promise promise) {
         try {
-            Activity currentActivity = getCurrentActivity();
-            if (currentActivity == null) {
-                promise.reject("NO_ACTIVITY", "No current activity available");
-                return;
-            }
-
             // Create intent to bring app to foreground
             Intent intent = new Intent(reactContext, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);

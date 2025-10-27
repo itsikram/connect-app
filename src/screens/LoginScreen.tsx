@@ -99,8 +99,9 @@ const LoginScreen = () => {
         autoCapitalize="none"
         keyboardType="email-address"
         style={[styles.input, { backgroundColor: bottomBarBg }]}
+        textColor={themeColors.text.primary}
         error={!!error && error.toLowerCase().includes('email')}
-        theme={{ colors: { primary: themeColors.primary } }}
+        theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
       />
       <PaperTextInput
         mode="outlined"
@@ -109,8 +110,9 @@ const LoginScreen = () => {
         onChangeText={setPassword}
         secureTextEntry={!showPassword}
         style={[styles.input, { backgroundColor: bottomBarBg }]}
+        textColor={themeColors.text.primary}
         error={!!error && error.toLowerCase().includes('password')}
-        theme={{ colors: { primary: themeColors.primary } }}
+        theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
         right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
       />
       {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
@@ -159,8 +161,8 @@ const styles = StyleSheet.create({
   },
   input: {
     width: 280,
-    marginBottom: 16,
-  },
+    marginBottom: 16, 
+   },
   button: {
     width: 280,
     marginBottom: 12,

@@ -23,6 +23,13 @@ export const sampleApps: AppItem[] = [
     },
   },
   {
+    id: 'mediaPlayer',
+    name: 'Media Player',
+    icon: 'play-circle-filled',
+    color: '#FF9800',
+    onPress: () => console.log('Media Player pressed'),
+  },
+  {
     id: 'Chess',
     name: 'Chess',
     icon: 'sports-esports',
@@ -31,6 +38,31 @@ export const sampleApps: AppItem[] = [
       // Navigation will be handled by the AppGrid component
       console.log('Chess pressed - navigation handled by AppGrid');
     },
+  }
+  ,
+  {
+    id: 'EmotionFaceMesh',
+    name: 'FaceMesh',
+    icon: 'face',
+    color: '#FF6F61',
+    onPress: () => {
+      // Navigation handled in Menu via handleAppPress
+      console.log('FaceMesh demo pressed');
+    },
+  },
+  {
+    id: 'camera',
+    name: 'Camera',
+    icon: 'camera-alt',
+    color: '#607D8B',
+    onPress: () => console.log('Camera pressed'),
+  },
+  {
+    id: 'gallery',
+    name: 'Gallery',
+    icon: 'photo',
+    color: '#E91E63',
+    onPress: () => console.log('Gallery pressed'),
   },
   {
     id: 'whatsapp',
@@ -102,13 +134,7 @@ export const sampleApps: AppItem[] = [
     color: '#FF9800',
     onPress: () => console.log('Music pressed'),
   },
-  {
-    id: 'camera',
-    name: 'Camera',
-    icon: 'camera-alt',
-    color: '#607D8B',
-    onPress: () => console.log('Camera pressed'),
-  },
+
   {
     id: 'calculator',
     name: 'Calculator',
@@ -164,14 +190,7 @@ export const sampleApps: AppItem[] = [
     icon: 'access-time',
     color: '#673AB7',
     onPress: () => console.log('Clock pressed'),
-  },
-  {
-    id: 'gallery',
-    name: 'Gallery',
-    icon: 'photo',
-    color: '#E91E63',
-    onPress: () => console.log('Gallery pressed'),
-  },
+  }
 ];
 
 // App data with external logos (you can replace these with actual logo URLs)

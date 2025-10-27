@@ -324,8 +324,9 @@ const RegisterScreen = () => {
             value={formData.firstName}
             onChangeText={v => handleFieldChange('firstName', v)}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
+            textColor={themeColors.text.primary}
             error={!!fieldErrors.firstName}
-            theme={{ colors: { primary: themeColors.primary } }}
+            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
             autoCapitalize="words"
           />
           {fieldErrors.firstName && (
@@ -338,8 +339,9 @@ const RegisterScreen = () => {
             value={formData.surname}
             onChangeText={v => handleFieldChange('surname', v)}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
+            textColor={themeColors.text.primary}
             error={!!fieldErrors.surname}
-            theme={{ colors: { primary: themeColors.primary } }}
+            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
             autoCapitalize="words"
           />
           {fieldErrors.surname && (
@@ -366,8 +368,9 @@ const RegisterScreen = () => {
             autoCapitalize="none"
             keyboardType="email-address"
             style={[styles.input, { backgroundColor: bottomBarBg }]}
+            textColor={themeColors.text.primary}
             error={!!fieldErrors.email}
-            theme={{ colors: { primary: themeColors.primary } }}
+            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
           />
           {fieldErrors.email && (
             <Text style={styles.fieldError}>{fieldErrors.email}</Text>
@@ -461,8 +464,9 @@ const RegisterScreen = () => {
             onChangeText={v => handleFieldChange('password', v)}
             secureTextEntry={!showPassword}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
+            textColor={themeColors.text.primary}
             error={!!fieldErrors.password}
-            theme={{ colors: { primary: themeColors.primary } }}
+            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
             right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
           />
           {fieldErrors.password && (
@@ -476,8 +480,9 @@ const RegisterScreen = () => {
             onChangeText={v => handleFieldChange('confirmPassword', v)}
             secureTextEntry={!showConfirmPassword}
             style={[styles.input, { backgroundColor: bottomBarBg }]}
+            textColor={themeColors.text.primary}
             error={!!fieldErrors.confirmPassword}
-            theme={{ colors: { primary: themeColors.primary } }}
+            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
             right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword(v => !v)} />}
           />
           {fieldErrors.confirmPassword && (

@@ -15,7 +15,7 @@ class BackgroundTtsService {
   private isSpeaking = false;
   private settings: TtsSettings = {
     enabled: true,
-    language: 'en-US',
+    language: 'bn-IN',
     rate: 0.5,
     volume: 1.0,
     pitch: 1.0,

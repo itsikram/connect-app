@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet, Platform } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -22,6 +22,19 @@ const OutgoingCall: React.FC = () => {
   const { startVideoCall, startAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [callStatus, setCallStatus] = useState('Calling...');
 
+  // Reset status bar when leaving this screen to avoid translucent persisting globally
+  React.useEffect(() => {
+    return () => {
+      try {
+        if (Platform.OS === 'android') {
+          StatusBar.setTranslucent(false);
+          StatusBar.setBackgroundColor(themeColors.background.primary);
+        }
+        StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+      } catch (e) {}
+    };
+  }, [isDarkMode, themeColors.background.primary]);
+
   // Animation values
   const pulseAnim = useMemo(() => new Animated.Value(1), []);
   const slideAnim = useMemo(() => new Animated.Value(50), []);
@@ -31,7 +44,7 @@ const OutgoingCall: React.FC = () => {
   const safeGoBack = () => {
     try {
       if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        (navigation as any).goBack();
+        (navigation as any).navigate('Message', { screen: 'Home' });
       } else {
         (navigation as any).navigate('Message', { screen: 'MessageList' });
       }
@@ -93,7 +106,7 @@ const OutgoingCall: React.FC = () => {
   useEffect(() => {
     if (!calleeId || !channelName) {
       console.warn('OutgoingCall: Missing required parameters', { calleeId, channelName });
-      navigation.goBack();
+      navigation.navigate('Message', { screen: 'Home' });
       return;
     }
     
@@ -117,12 +130,12 @@ const OutgoingCall: React.FC = () => {
       setTimeout(() => safeGoBack(), 1000);
     };
 
-    on('agora-call-accepted', handleAccepted);
-    on(isAudio ? 'audioCallEnd' : 'videoCallEnd', handleEnd);
+    on('call-accepted', handleAccepted);
+    on(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
 
     return () => {
-      off('agora-call-accepted', handleAccepted);
-      off(isAudio ? 'audioCallEnd' : 'videoCallEnd', handleEnd);
+      off('call-accepted', handleAccepted);
+      off(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
     };
   }, [on, off, navigation, isAudio]);
 

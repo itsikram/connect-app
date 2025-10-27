@@ -7,7 +7,7 @@ import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
-// import { useSocket } from '../contexts/SocketContext';
+import { useSocket } from '../contexts/SocketContext';
 import { fetchChatList, updateUnreadMessageCount } from '../reducers/chatReducer';
 import moment from 'moment';
 import ListItemSkeleton from '../components/skeleton/ListItemSkeleton';
@@ -88,13 +88,14 @@ const Message = () => {
   const [friends, setFriends] = React.useState<any[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
+  const [activeFriends, setActiveFriends] = React.useState<string[]>([]);
   const { chats: chatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
     chats: any[];
     loading: boolean;
     error: string | null;
   });
 
-  // const { emit, on, off, isConnected } = useSocket();
+  const { emit, on, off, isConnected, checkUserActive } = useSocket();
 
 
 
@@ -142,6 +143,71 @@ const Message = () => {
       saveChatListToStorage(chatList, profileData._id);
     }
   }, [chatList, profileData?._id]);
+
+  // Listen for real-time friend online/offline updates
+  useEffect(() => {
+    console.log('useEffect', isConnected);
+    if (!isConnected) return;
+
+    const handleFriendOnline = (data: any) => {
+      const friendProfileId = data?.profileId;
+      console.log('handleFriendOnline', friendProfileId);
+      if (friendProfileId) {
+        setActiveFriends(prev => {
+          if (!prev.includes(friendProfileId)) {
+            return [...prev, friendProfileId];
+          }
+          return prev;
+        });
+      }
+    };
+
+    const handleFriendOffline = (data: any) => {
+      const friendProfileId = data?.profileId;
+      console.log('handleFriendOffline', friendProfileId);
+      if (friendProfileId) {
+        setActiveFriends(prev => prev.filter(id => id !== friendProfileId));
+      }
+    };
+
+    on('friend_online', handleFriendOnline);
+    on('friend_offline', handleFriendOffline);
+
+    return () => {
+      off('friend_online', handleFriendOnline);
+      off('friend_offline', handleFriendOffline);
+    };
+  }, [isConnected, on, off]);
+
+  // Initial check for online status when contacts change
+  useEffect(() => {
+    if (!isConnected || !chatList || chatList.length === 0 || !profileData?._id) return;
+
+    chatList.forEach((contact) => {
+      if (!contact?.person?._id) return;
+      
+      // Check if friend is active
+      checkUserActive(contact.person._id, profileData._id);
+      
+      // Listen for is_active response
+      const handleIsActive = (isUserActive: boolean, lastLogin: Date, activeProfileId: string) => {
+        if (isUserActive === true && activeProfileId === contact.person._id) {
+          setActiveFriends(prev => {
+            if (!prev.includes(activeProfileId)) {
+              return [...prev, activeProfileId];
+            }
+            return prev;
+          });
+        }
+      };
+
+      on('is_active', handleIsActive);
+
+      return () => {
+        off('is_active', handleIsActive);
+      };
+    });
+  }, [isConnected, chatList, profileData?._id, checkUserActive, on, off]);
 
   const navigation = useNavigation();
 
@@ -223,7 +289,7 @@ const Message = () => {
                   });
                 }}
               >
-                <UserPP image={friend.profilePic} isActive={friend.isActive} size={50} />
+                <UserPP image={friend.profilePic} isActive={activeFriends.includes(friend._id)} size={50} />
                 <Text style={[styles.friendName, { color: themeColors.text.secondary }]} numberOfLines={1}>
                   {friend.fullName || 'Friend'}
                 </Text>
@@ -308,7 +374,7 @@ const Message = () => {
                 (navigation as any).navigate('SingleMessage', { friend: item?.person as any });
               }}
             >
-              <UserPP image={item?.person?.profilePic} isActive={item?.person?.isActive} size={40} />
+              <UserPP image={item?.person?.profilePic} isActive={activeFriends.includes(item?.person?._id)} size={40} />
               <View style={styles.messageContent}>
                 <Text style={[styles.profileName, { color: themeColors.text.primary }]}>{item?.person?.fullName || 'User'}</Text>
                 <View style={styles.lastMessageContainer}>

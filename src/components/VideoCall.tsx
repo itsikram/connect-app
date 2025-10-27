@@ -295,9 +295,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         setRemoteUid(uid);
       });
 
-      engine.addListener('UserOffline', (uid: number) => {
+      engine.addListener('UserOffline', async (uid: number) => {
         console.log('Remote video user left:', uid);
         setRemoteUid(null);
+        // If the remote leaves, end the call locally to keep both sides in sync
+        if (!isEndingCallRef.current && (callAccepted || isVideoCall)) {
+          try {
+            isEndingCallRef.current = true;
+            setCallEnded(true);
+            await cleanupCall();
+          } catch (e) {
+            console.warn('Cleanup after remote offline failed:', e);
+          }
+        }
       });
 
       engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
@@ -407,6 +417,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setCurrentChannel(channelName);
       setIsVideoCall(true);
       setCallEnded(false); // Reset call ended state for new call
+      isEndingCallRef.current = false;
 
       // Set call start time for duration tracking
       if (!callStartTime.current) {
@@ -529,6 +540,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         minimizedDurationInterval.current = null;
       }
 
+      // Release end-call lock after cleanup completes
+      isEndingCallRef.current = false;
+
       console.log('Video call cleanup completed');
     } catch (error) {
       console.error('Failed to leave video channel:', error);
@@ -555,6 +569,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       callStartTime.current = null;
       localPreviewStarted.current = false; // Reset preview flag
       engineRef.current = null;
+      // Ensure end-call lock is released even on failures
+      isEndingCallRef.current = false;
     } finally {
       isLeavingRef.current = false;
     }
@@ -569,6 +585,19 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     await joinChannel(incomingCall.channelName);
   }, [incomingCall, answerVideoCall, joinChannel]);
 
+  // Reset status bar when leaving this component to avoid translucent persisting globally
+  useEffect(() => {
+    return () => {
+      try {
+        if (Platform.OS === 'android') {
+          StatusBar.setTranslucent(false);
+          StatusBar.setBackgroundColor(themeColors.background.primary);
+        }
+        StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+      } catch (e) {}
+    };
+  }, [isDarkMode, themeColors.background.primary]);
+
   // Local cleanup without emitting to server
   const cleanupCall = useCallback(async () => {
     console.log('VideoCall: cleanupCall called');
@@ -579,6 +608,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     }
     
     await leaveChannel();
+
+    // Ensure status bar is not translucent after closing the call (prevents overlay on header)
+    if (Platform.OS === 'android') {
+      try {
+        StatusBar.setTranslucent(false);
+        StatusBar.setBackgroundColor(themeColors.background.primary);
+      } catch (e) {
+        // no-op
+      }
+    }
 
     // Navigate back to MessageList screen specifically
     try {
@@ -871,6 +910,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         setCurrentChannel(channelName);
         setCallAccepted(true); // Important: mark call as accepted
         setCallEnded(false); // Reset call ended state for accepted call
+        isEndingCallRef.current = false;
         setIsAudioMode(false);
         joinChannel(channelName);
       } else {
@@ -924,18 +964,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setRemoteFilter(filter);
     };
 
-    // Removed: on('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
-    on('agora-call-accepted', handleCallAccepted);
+    // Removed: on('incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
+    on('call-accepted', handleCallAccepted);
     on('videoCallEnd', handleCallEnd);
     // Removed: audioCallEnd - handled by AudioCall component
-    on('agora-apply-video-filter', handleVideoFilter);
+    on('apply-video-filter', handleVideoFilter);
 
     return () => {
-      // Removed: off('agora-incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
-      off('agora-call-accepted', handleCallAccepted);
+      // Removed: off('incoming-video-call', handleIncomingCall); - handled by IncomingCall screen
+      off('call-accepted', handleCallAccepted);
       off('videoCallEnd', handleCallEnd);
       // Removed: audioCallEnd cleanup - handled by AudioCall component
-      off('agora-apply-video-filter', handleVideoFilter);
+      off('apply-video-filter', handleVideoFilter);
     };
   }, [on, off, joinChannel, cleanupCall]);
 
@@ -960,7 +1000,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const retryTimeouts: ReturnType<typeof setTimeout>[] = [];
     
     // Check if the local video view should be rendered (same conditions as in JSX)
-    const shouldRenderLocalVideo = isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
+    const shouldRenderLocalVideo = !isEndingCallRef.current && !callEnded && isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
     
     if (shouldRenderLocalVideo && engineRef.current && !localPreviewStarted.current) {
       console.log('📹 Local video view conditions met, starting preview...');
@@ -1019,7 +1059,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     return () => {
       retryTimeouts.forEach(timeout => clearTimeout(timeout));
     };
-  }, [isConnected, isVideoCall, isCameraOn, isAudioMode, callAccepted]);
+  }, [isConnected, isVideoCall, isCameraOn, isAudioMode, callAccepted, callEnded]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1128,7 +1168,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       presentationStyle="fullScreen"
       onRequestClose={endCall}
     >
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={themeColors.background.primary} />
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={themeColors.background.primary} translucent={false} />
       <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
         {/* Header with Top Controls */}
         <View style={[styles.header, { backgroundColor: themeColors.surface.header }]}>

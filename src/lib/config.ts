@@ -3,11 +3,23 @@ interface EnvironmentConfig {
   API_BASE_URL: string;
   SOCKET_BASE_URL: string;
   API_TIMEOUT: number;
+  MEDIAPIPE_BASE_URL: string;
+  LOGO_URL: string;
+  DEFAULT_PROFILE_URL: string;
+  DEFAULT_COVER_URL: string;
+  DEFAULT_NOTIFICATION_SOUND_URL: string;
+  DEFAULT_RINGTONE_URL: string;
+  CALLING_BEEP_URL: string;
+  REACT_LIKE_URL: string;
+  REACT_LOVE_URL: string;
+  REACT_HAHA_URL: string;
 }
 
 type Environment = 'development' | 'staging' | 'production';
 
-const serverUrl = "http://192.168.0.101:4000"
+// const serverUrl = "http://192.168.0.100:4000"
+const serverUrl = "172.20.10.2:4000"
+const mediapipeServerUrl = "http://192.168.0.100:5000"
 // const serverUrl = "https://connect-server-y1ku.onrender.com"
 
 const ENV: Record<Environment, EnvironmentConfig> = {
@@ -15,16 +27,46 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     API_BASE_URL: `${serverUrl}/api/`,
     SOCKET_BASE_URL: serverUrl,
     API_TIMEOUT: 10000,
+    MEDIAPIPE_BASE_URL: mediapipeServerUrl,
+    LOGO_URL: '/assets/images/logo.png',
+    DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
+    DEFAULT_COVER_URL: '/assets/images/default-cover.png',
+    DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
+    DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
+    CALLING_BEEP_URL: '/assets/audio/calling-beep.mp3',
+    REACT_LIKE_URL: '/assets/images/reacts/reactLike.svg',
+    REACT_LOVE_URL: '/assets/images/reacts/reactLove.svg',
+    REACT_HAHA_URL: '/assets/images/reacts/reactHaha.svg',
   },
   staging: {
     API_BASE_URL: `${serverUrl}/api/`,
     SOCKET_BASE_URL: serverUrl,
     API_TIMEOUT: 15000,
+    MEDIAPIPE_BASE_URL: mediapipeServerUrl,
+    LOGO_URL: '/assets/images/logo.png',
+    DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
+    DEFAULT_COVER_URL: '/assets/images/default-cover.png',
+    DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
+    DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
+    CALLING_BEEP_URL: '/assets/audio/calling-beep.mp3',
+    REACT_LIKE_URL: '/assets/images/reacts/reactLike.svg',
+    REACT_LOVE_URL: '/assets/images/reacts/reactLove.svg',
+    REACT_HAHA_URL: '/assets/images/reacts/reactHaha.svg',
   },
   production: {
     API_BASE_URL: `${serverUrl}/api/`,
     SOCKET_BASE_URL: serverUrl,
     API_TIMEOUT: 20000,
+    MEDIAPIPE_BASE_URL: mediapipeServerUrl,
+    LOGO_URL: '/assets/images/logo.png',
+    DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
+    DEFAULT_COVER_URL: '/assets/images/default-cover.png',
+    DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
+    DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
+    CALLING_BEEP_URL: '/assets/audio/calling-beep.mp3',
+    REACT_LIKE_URL: '/assets/images/reacts/reactLike.svg',
+    REACT_LOVE_URL: '/assets/images/reacts/reactLove.svg',
+    REACT_HAHA_URL: '/assets/images/reacts/reactHaha.svg',
   },
 };
 

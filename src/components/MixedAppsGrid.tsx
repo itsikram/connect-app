@@ -49,16 +49,32 @@ const MixedAppsGrid: React.FC<MixedAppsGridProps> = ({
   };
 
   const getDisplayApps = (): AppItem[] => {
+    const dedupeById = (items: AppItem[]): AppItem[] => {
+      const seen: Record<string, boolean> = {};
+      const unique: AppItem[] = [];
+      for (const item of items) {
+        if (!item?.id) {
+          continue;
+        }
+        if (!seen[item.id]) {
+          seen[item.id] = true;
+          unique.push(item);
+        }
+      }
+      return unique;
+    };
+
     switch (activeTab) {
       case 'custom':
-        return showCustomApps ? sampleApps : [];
+        return dedupeById(showCustomApps ? sampleApps : []);
       case 'device':
-        return showDeviceApps ? deviceApps : [];
+        return dedupeById(showDeviceApps ? deviceApps : []);
       case 'all':
-      default:
+      default: {
         const customApps = showCustomApps ? sampleApps : [];
         const deviceAppsLimited = showDeviceApps ? deviceApps : [];
-        return [...customApps, ...deviceAppsLimited];
+        return dedupeById([...customApps, ...deviceAppsLimited]);
+      }
     }
   };
 

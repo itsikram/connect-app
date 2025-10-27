@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
@@ -9,6 +9,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
+import config from '../lib/config';
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
 
@@ -19,7 +20,7 @@ type RootStackParamList = {
   FriendProfile: { friendId: string };
 };
 
-const default_pp_src = 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png';
+const default_pp_src = config?.DEFAULT_PROFILE_URL;
 
 interface PostProps {
   data: any;
@@ -48,6 +49,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [replyText, setReplyText] = useState<string>('');
   const [showReplyBox, setShowReplyBox] = useState<boolean>(false);
+  const [isPostingComment, setIsPostingComment] = useState<boolean>(false);
+  const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
 
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { colors: themeColors, isDarkMode } = useTheme();
@@ -216,7 +219,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Handle posting a comment
   const handlePostComment = async () => {
-    if (!commentText.trim()) return;
+    if (!commentText.trim() || isPostingComment) return;
+    setIsPostingComment(true);
     try {
       const res = await api.post('/comment/addComment', {
         body: commentText,
@@ -242,6 +246,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       }
     } catch (e) {
       console.log(e);
+    } finally {
+      setIsPostingComment(false);
     }
   };
 
@@ -254,7 +260,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Handle posting a reply
   const handlePostReply = async () => {
-    if (!replyText.trim() || !replyingTo) return;
+    if (!replyText.trim() || !replyingTo || isPostingReply) return;
+    setIsPostingReply(true);
     try {
       const res = await api.post('/comment/addReply', {
         body: replyText,
@@ -296,6 +303,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       }
     } catch (e) {
       console.log(e);
+    } finally {
+      setIsPostingReply(false);
     }
   };
 
@@ -578,17 +587,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
                 <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> 
                   <TouchableOpacity onPress={() => handleSelectReaction('like')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'like' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>👍</Text>
+                    <Text style={[reactType === 'like' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_LIKE_URL }} style={styles.reactionIcon} /></Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleSelectReaction('love')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'love' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>❤️</Text>
+                    <Text style={[reactType === 'love' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_LOVE_URL }} style={styles.reactionIcon} />{config?.REACT_LOVE_URL}</Text>
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleSelectReaction('haha')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'haha' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😂</Text>
+                    <Text style={[reactType === 'haha' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_HAHA_URL }} style={styles.reactionIcon} />{config?.REACT_HAHA_URL}</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleSelectReaction('sad')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'sad' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}>😢</Text>
-                  </TouchableOpacity>
+                  {/* <TouchableOpacity onPress={() => handleSelectReaction('sad')} style={styles.reactionButton} activeOpacity={0.7}>
+                    <Text style={[reactType === 'sad' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_SAD_URL }} style={styles.reactionIcon} />{config?.REACT_SAD_URL}</Text>
+                  </TouchableOpacity> */}
                 </View>
                 <View style={[styles.reactionCaret, { backgroundColor: cardBg, borderColor }]} />
               </View>
@@ -610,16 +619,30 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           >
             <View style={styles.commentInputRow}>
               <TextInput
-                style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
+                style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingComment ? { opacity: 0.6 } : null]}
                 placeholder="Write a comment..."
                 placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
                 value={commentText}
                 onChangeText={setCommentText}
+                editable={!isPostingComment}
               />
-              <TouchableOpacity style={styles.commentPostBtn} onPress={handlePostComment}>
-                <Text style={styles.commentPostBtnText}>Post</Text>
+              <TouchableOpacity style={[styles.commentPostBtn, isPostingComment ? { opacity: 0.7 } : null]} onPress={handlePostComment} disabled={isPostingComment}>
+                {isPostingComment ? (
+                  <View style={styles.btnContentRow}>
+                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                    <Text style={styles.commentPostBtnText}>Posting</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.commentPostBtnText}>Post</Text>
+                )}
               </TouchableOpacity>
             </View>
+            {isPostingComment && (
+              <View style={styles.inlineStatusRow}>
+                <ActivityIndicator size="small" color={themeColors.primary} style={{ marginRight: 8 }} />
+                <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Posting comment…</Text>
+              </View>
+            )}
             <View style={styles.commentsList}>
               {comments.length === 0 ? (
                 <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
@@ -718,16 +741,30 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                 </View>
                 <View style={styles.replyInputRow}>
                   <TextInput
-                    style={[styles.replyInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
+                    style={[styles.replyInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingReply ? { opacity: 0.6 } : null]}
                     placeholder="Write a reply..."
                     placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
                     value={replyText}
                     onChangeText={setReplyText}
+                    editable={!isPostingReply}
                   />
-                  <TouchableOpacity style={styles.replyPostBtn} onPress={handlePostReply}>
-                    <Text style={styles.replyPostBtnText}>Reply</Text>
+                  <TouchableOpacity style={[styles.replyPostBtn, isPostingReply ? { opacity: 0.7 } : null]} onPress={handlePostReply} disabled={isPostingReply}>
+                    {isPostingReply ? (
+                      <View style={styles.btnContentRow}>
+                        <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
+                        <Text style={styles.replyPostBtnText}>Sending</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.replyPostBtnText}>Reply</Text>
+                    )}
                   </TouchableOpacity>
                 </View>
+                {isPostingReply && (
+                  <View style={styles.inlineStatusRow}>
+                    <ActivityIndicator size="small" color={themeColors.primary} style={{ marginRight: 8 }} />
+                    <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Sending reply…</Text>
+                  </View>
+                )}
               </View>
             )}
           </KeyboardAvoidingView>
@@ -1069,6 +1106,11 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 15,
   },
+  btnContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   commentsList: {
     marginTop: 4,
   },
@@ -1374,6 +1416,15 @@ const styles = StyleSheet.create({
     color: '#ffffff',
     fontWeight: '600',
     fontSize: 14,
+  },
+  inlineStatusRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+    paddingVertical: 6,
+  },
+  inlineStatusText: {
+    fontSize: 12,
   },
   viewPostButton: {
     flexDirection: 'row',

@@ -9,19 +9,22 @@ import {
   Platform,
   Vibration,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
+import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import { useTheme } from '../contexts/ThemeContext';
 
 const { width } = Dimensions.get('window');
 
 interface TabItem {
   name: string;
-  icon: string;
+  icon: string; // Material icon name by default
   label: string;
   component: any;
   badge?: number;
   haptic?: boolean;
   color?: string;
+  iconSet?: 'material' | 'fa5'; // choose icon set
+  faStyle?: 'solid' | 'regular'; // for FontAwesome5 (fas/fal-like)
 }
 
 interface ProfessionalTabBarProps {
@@ -39,6 +42,9 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const [isAnimating, setIsAnimating] = useState(false);
+  const UNIFORM_TAB_SCALE = 1.25;
+  const UNIFORM_TRANSLATE_Y = -10;
+  const UNIFORM_ICON_SCALE = 1.15;
   
   const animatedValues = useRef(
     tabs.map(() => new Animated.Value(0))
@@ -139,20 +145,11 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
       ? options.title
       : tab.label;
 
-    const scale = animatedValues[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [1, 1.25],
-    });
+    const scale = UNIFORM_TAB_SCALE;
 
-    const translateY = animatedValues[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, -10],
-    });
+    const translateY = UNIFORM_TRANSLATE_Y;
 
-    const iconScale = animatedValues[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [1, 1.15],
-    });
+    const iconScale = UNIFORM_ICON_SCALE;
 
     const labelOpacity = animatedValues[index].interpolate({
       inputRange: [0, 1],
@@ -161,7 +158,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
 
     const backgroundColor = animatedValues[index].interpolate({
       inputRange: [0, 1],
-      outputRange: ['transparent', (tab.color || themeColors.primary) + '25'],
+      outputRange: ['transparent', themeColors.primary + '18'],
     });
 
     const rippleScale = rippleAnimations[index].interpolate({
@@ -208,7 +205,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
                 {
                   opacity: glowOpacity,
                   transform: [{ scale: glowScale }],
-                  backgroundColor: tab.color || themeColors.primary,
+                  backgroundColor: themeColors.primary,
                 },
               ]}
             />
@@ -221,7 +218,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
               {
                 transform: [{ scale: rippleScale }],
                 opacity: rippleOpacity,
-                backgroundColor: tab.color || themeColors.primary,
+                backgroundColor: themeColors.primary,
               },
             ]}
           />
@@ -232,7 +229,9 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
               style={[
                 styles.iconWrapper,
                 {
-                  backgroundColor: isActive ? (tab.color || themeColors.primary) + '30' : 'transparent',
+                  backgroundColor: isActive ? themeColors.primary + '30' : 'transparent',
+                  borderWidth: isActive ? 1 : 0,
+                  borderColor: isActive ? themeColors.primary + '55' : 'transparent',
                   transform: [{ scale: iconScale }],
                 },
               ]}
@@ -241,52 +240,29 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
                 style={[
                   styles.iconInner,
                   {
-                    backgroundColor: isActive ? (tab.color || themeColors.primary) + '20' : 'transparent',
+                    backgroundColor: isActive ? themeColors.primary + '20' : 'transparent',
                   },
                 ]}
               >
-                <Icon
-                  name={tab.icon}
-                  size={24}
-                  color={isActive ? (tab.color || themeColors.primary) : themeColors.gray[500]}
-                />
-                
-                {/* Badge with pulse animation */}
-                {tab.badge && tab.badge > 0 && (
-                  <Animated.View
-                    style={[
-                      styles.badge,
-                      {
-                        backgroundColor: themeColors.status.error,
-                        shadowColor: themeColors.status.error,
-                        transform: [{ scale: isActive ? 1.02 : 1 }],
-                      },
-                    ]}
-                  >
-                    <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>
-                      {tab.badge > 99 ? '99+' : tab.badge}
-                    </Text>
-                  </Animated.View>
+                {tab.iconSet === 'fa5' ? (
+                  <FAIcon
+                    name={tab.icon as any}
+                    size={22}
+                    solid={tab.faStyle === 'solid' || isActive}
+                    color={isActive ? themeColors.primary : themeColors.gray[500]}
+                  />
+                ) : (
+                  <MaterialIcon
+                    name={tab.icon}
+                    size={24}
+                    color={isActive ? themeColors.primary : themeColors.gray[500]}
+                  />
                 )}
               </Animated.View>
             </Animated.View>
           </View>
 
-          {/* Label */}
-          <Animated.Text
-            style={[
-              styles.tabLabel,
-              {
-                color: isActive ? (tab.color || themeColors.primary) : themeColors.gray[500],
-                opacity: labelOpacity,
-                fontWeight: isActive ? '900' : '600',
-                transform: [{ scale: isActive ? 1 : 1 }],
-              },
-            ]}
-            numberOfLines={1}
-          >
-            {label}
-          </Animated.Text>
+          {/* Hide label to match web header icon-only UI */}
         </Animated.View>
       </TouchableOpacity>
     );
@@ -349,8 +325,8 @@ const styles = StyleSheet.create({
     bottom: -20,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,

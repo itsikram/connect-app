@@ -153,33 +153,33 @@ class SocketService {
 
   // Video call methods
   startVideoCall(to: string, channelName: string): void {
-    this.emit('agora-video-call', { to, channelName, isAudio: false });
+    this.emit('video-call', { to, channelName, isAudio: false });
   }
 
   answerVideoCall(to: string, channelName: string): void {
-    this.emit('agora-answer-call', { to, channelName, isAudio: false });
+    this.emit('answer-call', { to, channelName, isAudio: false });
   }
 
   endVideoCall(friendId: string): void {
-    this.emit('leaveVideoCall', friendId);
+    this.emit('video-call-end', friendId);
   }
 
   // Audio call methods
   startAudioCall(to: string, channelName: string): void {
-    this.emit('agora-audio-call', { to, channelName, isAudio: true });
+    this.emit('audio-call', { to, channelName, isAudio: true });
   }
 
   answerAudioCall(to: string, channelName: string): void {
-    this.emit('agora-answer-call', { to, channelName, isAudio: true });
+    this.emit('answer-call', { to, channelName, isAudio: true });
   }
 
   endAudioCall(friendId: string): void {
-    this.emit('leaveAudioCall', friendId);
+    this.emit('audio-call-end', friendId);
   }
 
   // Filter methods
   applyVideoFilter(to: string, filter: string): void {
-    this.emit('agora-filter-video', { to, filter });
+    this.emit('filter-video', { to, filter });
   }
 }
 

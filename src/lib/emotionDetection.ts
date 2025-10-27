@@ -236,19 +236,19 @@ const createExpressionValidator = (
 ) => {
   return (name: string, confidence: number, measurements: any): boolean => {
     // Minimum thresholds - balanced for accuracy without over-filtering
-    if (confidence < 0.30) return false;
-    if (detectionQualityRef.current < 0.28) return false;
+    if (confidence < 0.32) return false; // Slightly increased for better accuracy
+    if (detectionQualityRef.current < 0.30) return false; // Better quality threshold
     
     // Cross-validation with ML Kit emotions (if available)
     if (measurements?.mlKitSmile !== undefined) {
       // If ML Kit strongly disagrees, increase confidence requirement
-      if (measurements.mlKitSmile > 0.85) {
-        if (['Sad', 'Angry', 'Disgust'].includes(name)) {
-          return confidence > 0.75;
+      if (measurements.mlKitSmile > 0.80) {
+        if (['Sad', 'Angry', 'Disgust', 'Crying', 'Fear'].includes(name)) {
+          return confidence > 0.72; // Need very high confidence to override
         }
-      } else if (measurements.mlKitSmile < 0.15) {
-        if (['Happy', 'Smiling', 'Laughing'].includes(name)) {
-          return confidence > 0.75;
+      } else if (measurements.mlKitSmile < 0.20) {
+        if (['Happy', 'Smiling', 'Laughing', 'Excited'].includes(name)) {
+          return confidence > 0.72;
         }
       }
     }
@@ -259,27 +259,41 @@ const createExpressionValidator = (
       if (!validations[name]()) return false;
     }
     
-    // Improved impossible combination checking
+    // Improved impossible combination checking with comprehensive rules (exact same as web)
     const incompatibleExpressions: Record<string, string[]> = {
-      'Kissing': ['Speaking', 'Yawning', 'Laughing', 'Surprised'],
-      'Yawning': ['Kissing', 'Speaking', 'Smiling', 'Laughing'],
-      'Speaking': ['Kissing', 'Yawning', 'Sleeping', 'Sleepy'],
-      'Laughing': ['Kissing', 'Yawning', 'Sad', 'Angry', 'Fear'],
-      'Smiling': ['Yawning', 'Crying', 'Sleepy'],
+      'Yawning': ['Speaking', 'Smiling', 'Laughing', 'Excited', 'Surprised', 'Fear'],
+      'Speaking': ['Yawning', 'Sleepy', 'Crying'],
+      'Laughing': ['Yawning', 'Sad', 'Angry', 'Fear', 'Crying', 'Sleepy', 'Disgust'],
+      'Smiling': ['Yawning', 'Crying', 'Sleepy', 'Sad', 'Angry', 'Disgust', 'Fear'],
+      'Happy': ['Sad', 'Angry', 'Crying', 'Disgust', 'Fear', 'Sleepy'],
       'Sad': ['Laughing', 'Smiling', 'Happy', 'Excited'],
+      'Angry': ['Laughing', 'Smiling', 'Happy', 'Excited'],
       'Disgust': ['Laughing', 'Smiling', 'Happy', 'Excited'],
-      'Sleepy': ['Excited', 'Surprised', 'Laughing', 'Fear'],
-      'Crying': ['Happy', 'Laughing', 'Smiling', 'Excited']
+      'Crying': ['Happy', 'Laughing', 'Smiling', 'Excited', 'Yawning'],
+      'Sleepy': ['Excited', 'Surprised', 'Laughing', 'Fear', 'Angry', 'Yawning'],
+      'Excited': ['Sleepy', 'Sad', 'Angry', 'Crying', 'Yawning'],
+      'Fear': ['Laughing', 'Happy', 'Excited', 'Sleepy', 'Yawning'],
+      'Surprised': ['Sleepy', 'Yawning', 'Sad', 'Angry'],
+      'Confused': ['Happy', 'Excited', 'Laughing', 'Sleepy'],
+      'Winking': ['Sleepy', 'Crying', 'Sad'],
+      'Flirting': ['Sad', 'Angry', 'Crying', 'Sleepy', 'Fear']
     };
     
+    // Check for incompatible expressions in recent history (last 5 frames)
     if (incompatibleExpressions[name]) {
-      const recentHistory = emotionHistoryRef.current.slice(-3);
+      const recentHistory = emotionHistoryRef.current.slice(-5);
       for (const impossible of incompatibleExpressions[name]) {
         const recentIncompatible = recentHistory.find(h => 
-          h.emotion === impossible.toLowerCase() && h.confidence > 0.5
+          h.emotion === impossible.toLowerCase() && h.confidence > 0.45
         );
-        if (recentIncompatible && confidence < 0.65) {
-          return false;
+        // Require higher confidence to switch between strongly incompatible emotions
+        if (recentIncompatible) {
+          const strongIncompatibility = ['Laughing', 'Sad', 'Happy', 'Angry', 'Crying', 'Excited'].includes(name) &&
+                                       ['Laughing', 'Sad', 'Happy', 'Angry', 'Crying', 'Excited'].includes(impossible);
+          const requiredConfidence = strongIncompatibility ? 0.68 : 0.60;
+          if (confidence < requiredConfidence) {
+            return false; // Need higher confidence to override recent history
+          }
         }
       }
     }
@@ -384,54 +398,153 @@ export const detectEmotionsFromFace = async (
     const nowTs = Date.now();
     const lockActive = actionLockRef.current.until > nowTs;
 
-    // Create validation functions for specific expressions
+    // Create validation functions for specific expressions (exact same as web version)
     const validations = {
       'Smiling': () => {
-        return measurements.mouthCornerRaise > 0.02 &&
-               Math.abs(measurements.leftCornerRaise - measurements.rightCornerRaise) < 0.02 &&
-               measurements.mouthHeightNorm < 0.09 * mouthThresholdMultiplier;
+        const goodRaise = measurements.mouthCornerRaise > 0.022;
+        const symmetrical = Math.abs(measurements.leftCornerRaise - measurements.rightCornerRaise) < 0.018;
+        const notTooOpen = measurements.mouthHeightNorm < 0.085 * mouthThresholdMultiplier;
+        const wideEnough = measurements.mouthWidthNorm > 0.36;
+        const bothCornersUp = measurements.leftCornerRaise > 0.012 && measurements.rightCornerRaise > 0.012;
+        return goodRaise && symmetrical && notTooOpen && wideEnough && bothCornersUp;
       },
       'Laughing': () => {
-        return measurements.mouthHeightNorm > 0.09 * mouthThresholdMultiplier &&
-               measurements.mouthCornerRaise > 0.025 &&
-               measurements.leftCornerRaise > 0.012 && measurements.rightCornerRaise > 0.012;
+        const veryOpen = measurements.mouthHeightNorm > 0.10 * mouthThresholdMultiplier;
+        const strongRaise = measurements.mouthCornerRaise > 0.030;
+        const bothCornersHigh = measurements.leftCornerRaise > 0.015 && measurements.rightCornerRaise > 0.015;
+        const veryWide = measurements.mouthWidthNorm > 0.50;
+        const eyesEngaged = measurements.avgEyeHeightNorm > 0.040 * eyeThresholdMultiplier;
+        return veryOpen && strongRaise && bothCornersHigh && veryWide && eyesEngaged;
       },
       'Speaking': () => {
-        return measurements.mouthHeightNorm > 0.055 * mouthThresholdMultiplier &&
-               measurements.mouthHeightNorm < 0.16 * mouthThresholdMultiplier &&
-               Math.abs(measurements.mouthCornerRaise) < 0.03 &&
-               measurements.mouthWidthNorm > 0.28;
+        const goodOpening = measurements.mouthHeightNorm > 0.065 * mouthThresholdMultiplier && 
+                          measurements.mouthHeightNorm < 0.14 * mouthThresholdMultiplier;
+        const neutralCorners = Math.abs(measurements.mouthCornerRaise) < 0.025;
+        const wideEnough = measurements.mouthWidthNorm > 0.30;
+        const eyesOpen = measurements.avgEyeHeightNorm > 0.028 * eyeThresholdMultiplier;
+        const notYawning = !(measurements.mouthHeightNorm > 0.11 * mouthThresholdMultiplier && 
+                           measurements.avgEyeHeightNorm < 0.035 * eyeThresholdMultiplier);
+        return goodOpening && neutralCorners && wideEnough && eyesOpen && notYawning;
       },
       'Sad': () => {
-        const strongDroop = measurements.mouthCornerRaise < -0.025;
-        const narrowedEyes = measurements.avgEyeHeightNorm < 0.035 * eyeThresholdMultiplier;
-        const moderateOpening = measurements.mouthHeightNorm > 0.025 * mouthThresholdMultiplier && 
-                              measurements.mouthHeightNorm < 0.065 * mouthThresholdMultiplier;
-        const notSpeaking = !(measurements.mouthHeightNorm > 0.055 * mouthThresholdMultiplier && measurements.mouthWidthNorm > 0.33);
-        const notSmiling = measurements.leftCornerRaise < 0 && measurements.rightCornerRaise < 0;
-        const symmetrical = Math.abs(measurements.leftCornerRaise - measurements.rightCornerRaise) < 0.015;
-        
-        return strongDroop && narrowedEyes && moderateOpening && notSpeaking && notSmiling && symmetrical;
+        const strongDroop = measurements.mouthCornerRaise < -0.022;
+        const narrowedEyes = measurements.avgEyeHeightNorm < 0.036 * eyeThresholdMultiplier;
+        const moderateOpening = measurements.mouthHeightNorm > 0.022 * mouthThresholdMultiplier && 
+                              measurements.mouthHeightNorm < 0.068 * mouthThresholdMultiplier;
+        const notSpeaking = !(measurements.mouthHeightNorm > 0.060 * mouthThresholdMultiplier && measurements.mouthWidthNorm > 0.34);
+        const bothDown = measurements.leftCornerRaise < -0.008 && measurements.rightCornerRaise < -0.008;
+        const symmetrical = Math.abs(measurements.leftCornerRaise - measurements.rightCornerRaise) < 0.018;
+        const notSmiling = measurements.mouthCornerRaise < 0;
+        return strongDroop && narrowedEyes && moderateOpening && notSpeaking && bothDown && symmetrical && notSmiling;
+      },
+      'Happy': () => {
+        const goodRaise = measurements.mouthCornerRaise > 0.015;
+        const wideSmile = measurements.mouthWidthNorm > 0.36;
+        const openMouth = measurements.mouthHeightNorm > 0.030 * mouthThresholdMultiplier;
+        const brightEyes = measurements.avgEyeHeightNorm > 0.036 * eyeThresholdMultiplier;
+        const notTooOpen = measurements.mouthHeightNorm < 0.10 * mouthThresholdMultiplier;
+        return goodRaise && wideSmile && openMouth && brightEyes && notTooOpen;
+      },
+      'Angry': () => {
+        const squintedEyes = measurements.avgEyeHeightNorm < 0.032 * eyeThresholdMultiplier;
+        const tightMouth = measurements.mouthHeightNorm < 0.038 * mouthThresholdMultiplier;
+        const wideMouth = measurements.mouthWidthNorm > 0.38;
+        const furrowedBrow = measurements.eyebrowRaise < -0.006;
+        const notSmiling = measurements.mouthCornerRaise < 0.010;
+        const eyebrowsTogether = measurements.eyebrowDistance < 0.32;
+        return squintedEyes && tightMouth && wideMouth && furrowedBrow && notSmiling && eyebrowsTogether;
       },
       'Disgust': () => {
-        const tightMouth = measurements.mouthHeightNorm < 0.03 * mouthThresholdMultiplier;
-        const narrowMouth = measurements.mouthWidthNorm < 0.36;
-        const squintedEyes = measurements.avgEyeHeightNorm < 0.038 * eyeThresholdMultiplier;
-        const noseWrinkleDetected = measurements.noseWrinkle > 0.02;
-        const notSpeaking = !(measurements.mouthHeightNorm > 0.05 * mouthThresholdMultiplier && measurements.mouthWidthNorm > 0.3);
-        const notSmiling = measurements.mouthCornerRaise <= 0.003;
-        
+        const tightMouth = measurements.mouthHeightNorm < 0.032 * mouthThresholdMultiplier;
+        const narrowMouth = measurements.mouthWidthNorm < 0.37;
+        const squintedEyes = measurements.avgEyeHeightNorm < 0.039 * eyeThresholdMultiplier;
+        const notSpeaking = !(measurements.mouthHeightNorm > 0.055 * mouthThresholdMultiplier && measurements.mouthWidthNorm > 0.32);
+        const notSmiling = measurements.mouthCornerRaise <= 0.005;
+        const noseWrinkled = measurements.noseWrinkle > 0.018;
         return tightMouth && narrowMouth && squintedEyes && notSpeaking && notSmiling;
       },
+      'Crying': () => {
+        const veryNarrowEyes = measurements.avgEyeHeightNorm < 0.028 * eyeThresholdMultiplier;
+        const droopingMouth = measurements.mouthCornerRaise < -0.003;
+        const moderateMouth = measurements.mouthHeightNorm < 0.065 * mouthThresholdMultiplier;
+        const notSmiling = !(measurements.mouthCornerRaise > 0.005);
+        const notLaughing = !(measurements.mouthHeightNorm > 0.10 * mouthThresholdMultiplier && measurements.mouthCornerRaise > 0.02);
+        return veryNarrowEyes && droopingMouth && moderateMouth && notSmiling && notLaughing;
+      },
       'Surprised': () => {
-        return measurements.mouthHeightNorm > 0.07 * mouthThresholdMultiplier &&
-               measurements.avgEyeHeightNorm > 0.045 * eyeThresholdMultiplier &&
-               measurements.eyebrowRaise > 0.012;
+        const wideOpen = measurements.mouthHeightNorm > 0.075 * mouthThresholdMultiplier;
+        const wideEyes = measurements.avgEyeHeightNorm > 0.047 * eyeThresholdMultiplier;
+        const raisedBrows = measurements.eyebrowRaise > 0.013;
+        const neutralCorners = Math.abs(measurements.mouthCornerRaise) < 0.022;
+        return wideOpen && wideEyes && raisedBrows && neutralCorners;
+      },
+      'Fear': () => {
+        const raisedBrows = measurements.eyebrowRaise > 0.018;
+        const wideEyes = measurements.avgEyeHeightNorm > 0.048 * eyeThresholdMultiplier;
+        const openMouth = measurements.mouthHeightNorm > 0.045 * mouthThresholdMultiplier;
+        const notTooOpen = measurements.mouthHeightNorm < 0.085 * mouthThresholdMultiplier;
+        const notSmiling = measurements.mouthCornerRaise < 0.015;
+        return raisedBrows && wideEyes && openMouth && notTooOpen && notSmiling;
       },
       'Yawning': () => {
-        return measurements.mouthHeightNorm > 0.11 * mouthThresholdMultiplier &&
-               measurements.avgEyeHeightNorm < 0.037 * eyeThresholdMultiplier &&
-               Math.abs(measurements.mouthCornerRaise) < 0.015;
+        const veryOpen = measurements.mouthHeightNorm > 0.115 * mouthThresholdMultiplier;
+        const droopyEyes = measurements.avgEyeHeightNorm < 0.038 * eyeThresholdMultiplier;
+        const neutralCorners = Math.abs(measurements.mouthCornerRaise) < 0.018;
+        const wide = measurements.mouthWidthNorm > 0.38;
+        const notLaughing = !(measurements.mouthCornerRaise > 0.025);
+        return veryOpen && droopyEyes && neutralCorners && wide && notLaughing;
+      },
+      'Sleepy': () => {
+        const veryNarrowEyes = measurements.avgEyeHeightNorm < 0.027 * eyeThresholdMultiplier;
+        const closedMouth = measurements.mouthHeightNorm < 0.042 * mouthThresholdMultiplier;
+        const relaxedCorners = Math.abs(measurements.mouthCornerRaise) < 0.012;
+        const notWideOpen = !(measurements.mouthHeightNorm > 0.08 * mouthThresholdMultiplier);
+        return veryNarrowEyes && closedMouth && relaxedCorners && notWideOpen;
+      },
+      'Excited': () => {
+        const veryWideEyes = measurements.avgEyeHeightNorm > 0.048 * eyeThresholdMultiplier;
+        const bigSmile = measurements.mouthCornerRaise > 0.025;
+        const raisedBrows = measurements.eyebrowRaise > 0.012;
+        const wideMouth = measurements.mouthWidthNorm > 0.38;
+        const openMouth = measurements.mouthHeightNorm > 0.045 * mouthThresholdMultiplier;
+        return veryWideEyes && bigSmile && raisedBrows && wideMouth && openMouth;
+      },
+      'Confused': () => {
+        const asymmetricBrows = measurements.eyebrowAsymmetry > 0.016;
+        const oneRaised = (measurements.leftEyebrowRaise > 0.010 || measurements.rightEyebrowRaise > 0.010);
+        const openEyes = measurements.avgEyeHeightNorm > 0.032 * eyeThresholdMultiplier;
+        const neutralMouth = Math.abs(measurements.mouthCornerRaise) < 0.020;
+        const notWideOpen = measurements.mouthHeightNorm < 0.070 * mouthThresholdMultiplier;
+        return asymmetricBrows && oneRaised && openEyes && neutralMouth && notWideOpen;
+      },
+      'Winking': () => {
+        const bigDifference = measurements.eyeOpennessDiff > 0.023;
+        const oneClosed = (measurements.leftEyeHeight < 0.022 * measurements.faceWidth || measurements.rightEyeHeight < 0.022 * measurements.faceWidth);
+        const oneOpen = (measurements.leftEyeHeight > 0.020 * measurements.faceWidth || measurements.rightEyeHeight > 0.020 * measurements.faceWidth);
+        const notBothClosed = !(measurements.leftEyeHeight < 0.025 * measurements.faceWidth && measurements.rightEyeHeight < 0.025 * measurements.faceWidth);
+        return bigDifference && oneClosed && oneOpen && notBothClosed;
+      },
+      'Flirting': () => {
+        const winking = measurements.eyeOpennessDiff > 0.023;
+        const oneClosed = (measurements.leftEyeHeight < 0.022 * measurements.faceWidth || measurements.rightEyeHeight < 0.022 * measurements.faceWidth);
+        const smiling = measurements.mouthCornerRaise > 0.012;
+        const wideMouth = measurements.mouthWidthNorm > 0.34;
+        const notFullSmile = measurements.mouthCornerRaise < 0.040;
+        return winking && oneClosed && smiling && wideMouth && notFullSmile;
+      },
+      'Sarcastic': () => {
+        const asymmetric = measurements.mouthAsymmetry > 0.022;
+        const oneCornerUp = (measurements.leftCornerRaise > 0.018 || measurements.rightCornerRaise > 0.018);
+        const notBothHigh = !(measurements.leftCornerRaise > 0.025 && measurements.rightCornerRaise > 0.025);
+        const openEyes = measurements.avgEyeHeightNorm > 0.034 * eyeThresholdMultiplier;
+        const wideMouth = measurements.mouthWidthNorm > 0.34;
+        return asymmetric && oneCornerUp && notBothHigh && openEyes && wideMouth;
+      },
+      'Eyebrow Raise': () => {
+        const highRaise = measurements.eyebrowRaise > 0.022;
+        const wideEyes = measurements.avgEyeHeightNorm > 0.038 * eyeThresholdMultiplier;
+        const notSurprised = !(measurements.mouthHeightNorm > 0.08 * mouthThresholdMultiplier);
+        return highRaise && wideEyes && notSurprised;
       }
     };
 
@@ -641,37 +754,117 @@ export const detectEmotionsFromFace = async (
     const validateExpression = createExpressionValidator({}, detectionQualityRef, emotionHistoryRef);
 
     // Apply quality multiplier and validation
-    expressions.forEach(expr => {
+    const expressionsWithValidation = expressions.map(expr => {
       const qualityFactor = Math.max(0.5, detectionQualityRef.current);
-      expr.confidence *= qualityFactor;
+      const adjustedConfidence = expr.confidence * qualityFactor;
       
-      expr.isValid = validateExpression(expr.name, expr.confidence, { validations, ...measurements });
+      const isValid = validateExpression(expr.name, adjustedConfidence, { validations, ...measurements });
       
       const consecutiveCount = consecutiveEmotionCountRef.current[expr.name] || 0;
-      if (consecutiveCount > 2) {
-        expr.confidence *= 1.1;
-      }
+      const finalConfidence = consecutiveCount > 2 ? adjustedConfidence * 1.1 : adjustedConfidence; // 10% boost for consistent detections
+      
+      return {
+        ...expr,
+        confidence: finalConfidence,
+        isValid
+      };
     });
 
-    const validExpressions = expressions.filter(expr => expr.isValid);
-    validExpressions.sort((a, b) => b.confidence - a.confidence);
+    const validExpressions = expressionsWithValidation.filter((expr: any) => expr.isValid);
+    validExpressions.sort((a: any, b: any) => b.confidence - a.confidence);
 
     // Debug logging (10% of the time)
     if (Math.random() < 0.1 && validExpressions.length > 0) {
       console.log('📊 Detection Status:', {
         validExpressions: validExpressions.length,
-        top3: validExpressions.slice(0, 3).map(e => `${e.name}:${e.confidence.toFixed(2)}`),
+        top3: validExpressions.slice(0, 3).map((e: any) => `${e.name}:${e.confidence.toFixed(2)}`),
         quality: detectionQualityRef.current.toFixed(3),
         lastStable: lastStableEmotionRef.current,
         stability: emotionStabilityCountRef.current
       });
     }
 
+    // Confidence analysis helper function (exact same as web)
+    const analyzeConfidence = (expressions: any[]) => {
+      if (expressions.length === 0) return null;
+      
+      const top = expressions[0];
+      const second = expressions[1];
+      const third = expressions[2];
+      
+      return {
+        topConfidence: top.confidence,
+        confidenceGap: second ? top.confidence - second.confidence : top.confidence,
+        top3Spread: third ? top.confidence - third.confidence : top.confidence,
+        reliability: top.confidence > 0.8 ? 'Very High' :
+                   top.confidence > 0.7 ? 'High' :
+                   top.confidence > 0.6 ? 'Medium' :
+                   top.confidence > 0.4 ? 'Low' : 'Very Low',
+        competition: second && (top.confidence - second.confidence) < 0.05 ? 'High' :
+                   second && (top.confidence - second.confidence) < 0.1 ? 'Medium' : 'Low'
+      };
+    };
+    
+    const confidenceAnalysis = analyzeConfidence(validExpressions);
+    
+    // Dynamic confidence thresholds based on detection quality (exact same as web)
+    const baseConfidenceThreshold = 0.50; // Balanced threshold
+    const qualityMultiplier = detectionQualityRef.current;
+    const dynamicThreshold = Math.max(0.32, baseConfidenceThreshold * qualityMultiplier); // Balanced minimum
+    
+    // Get top expressions with significant confidence gaps
+    const topExpressions = validExpressions.slice(0, 3); // Top 3 expressions
+    const confidenceGap = topExpressions.length > 1 ? 
+        topExpressions[0].confidence - topExpressions[1].confidence : 0;
+    
+    // Select the best expression based on confidence and gap (exact same as web)
+    let selectedExpression = null;
+    
+    if (topExpressions.length > 0) {
+      const topConfidence = topExpressions[0].confidence;
+      
+      // High confidence with significant gap - very reliable
+      if (topConfidence > 0.8 && confidenceGap > 0.15) {
+        selectedExpression = topExpressions[0];
+      }
+      // Good confidence with moderate gap - reliable
+      else if (topConfidence > 0.7 && confidenceGap > 0.1) {
+        selectedExpression = topExpressions[0];
+      }
+      // Decent confidence with small gap - acceptable
+      else if (topConfidence > dynamicThreshold && confidenceGap > 0.05) {
+        selectedExpression = topExpressions[0];
+      }
+      // Multiple similar confidence - be more conservative
+      else if (topConfidence > dynamicThreshold && confidenceGap <= 0.05) {
+        // If current emotion is in top 3, maintain it unless confidence is much higher
+        const currentEmotionName = lastStableEmotionRef.current;
+        const currentInTop3 = topExpressions.find((expr: any) => 
+          expr.name === currentEmotionName
+        );
+        
+        if (currentInTop3 && topConfidence - currentInTop3.confidence < 0.1) {
+          // Maintain current emotion if it's still competitive
+          selectedExpression = currentInTop3;
+        } else {
+          selectedExpression = topExpressions[0];
+        }
+      }
+    }
+    
+    // Fallback to neutral if no expression meets criteria
+    const topExpression = selectedExpression || {
+      name: 'Neutral',
+      confidence: 0.5
+    };
+
     return {
+      topExpression,
       validExpressions,
       detectionQuality: detectionQualityRef.current,
       faceBox,
-      measurements
+      measurements,
+      confidenceAnalysis
     };
 
   } catch (error) {

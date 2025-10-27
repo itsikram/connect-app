@@ -96,7 +96,6 @@ const AppGrid: React.FC<AppGridProps> = ({
       <ScrollView 
         horizontal={false}
         showsVerticalScrollIndicator={false}
-        style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
       >
         <View style={[styles.grid, { paddingHorizontal: padding, gap: gap }]}>
@@ -117,10 +116,9 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingHorizontal: 16,
     letterSpacing: 0.5,
+    marginLeft: 20
   },
-  scrollView: {
-    maxHeight: 400,
-  },
+
   scrollContent: {
     paddingBottom: 20,
   },

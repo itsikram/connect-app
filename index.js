@@ -14,6 +14,7 @@ import mobileAds from 'react-native-google-mobile-ads';
 import { appOpenAdManager } from './src/lib/ads';
 import { backgroundTtsService } from './src/lib/backgroundTtsService';
 import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
+import { pushBackgroundService } from './src/lib/pushBackgroundService';
 
 // Suppress Firebase deprecation warnings
 const originalWarn = console.warn;
@@ -63,7 +64,27 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
     console.log('📱 Background message received:', remoteMessage?.messageId);
     
     await configureNotificationsChannel();
+    // Ensure background actions service is running to keep JS alive
+    try { await pushBackgroundService.ensure(); } catch (e) {}
+    // Ensure TTS is initialized in headless/background context
+    try { await backgroundTtsService.initialize(); } catch (e) { console.error('❌ TTS init in BG failed:', e); }
     const data = remoteMessage?.data || {};
+    
+    // Speak message directly via FCM when app is killed
+    if (data.type === 'speak_message' || data.type === 'speak-message') {
+      const message = data.message || data.text || data.body || '';
+      if (message && message.trim().length > 0) {
+        try {
+          const priority = data.priority === 'high' ? 'high' : (data.priority === 'low' ? 'low' : 'normal');
+          const interrupt = String(data.interrupt ?? 'true') !== 'false';
+          await backgroundTtsService.speakMessage(message, { priority, interrupt });
+          console.log('🔊 Spoke message from background FCM');
+        } catch (ttsError) {
+          console.error('❌ Error speaking FCM speak_message:', ttsError);
+        }
+      }
+      return;
+    }
     
     // Handle incoming call notifications with highest priority
     if (data.type === 'incoming_call') {
@@ -141,16 +162,16 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
       }
     }
     
-    await notifee.displayNotification({
-      title,
-      body,
-      android: {
-        channelId: 'default',
-        smallIcon: 'ic_launcher',
-        pressAction: { id: 'default' },
-      },
-      data,
-    });
+    // await notifee.displayNotification({
+    //   title,
+    //   body,
+    //   android: {
+    //     channelId: 'default',
+    //     smallIcon: 'ic_launcher',
+    //     pressAction: { id: 'default' },
+    //   },
+    //   data,
+    // });
     
     console.log('✅ Background notification displayed:', title);
   } catch (e) {
@@ -177,6 +198,8 @@ AppRegistry.registerComponent(appName, () => App);
     await backgroundTtsService.initialize();
     // Initialize background service manager
     await backgroundServiceManager.initialize();
+    // Also directly ensure background actions is running
+    try { await pushBackgroundService.ensure(); } catch (e) {}
   } catch (e) {
     console.error('Error initializing background services:', e);
   }

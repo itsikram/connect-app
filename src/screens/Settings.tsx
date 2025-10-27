@@ -114,7 +114,11 @@ const Settings = () => {
       </ScrollView>
 
       {/* Tab Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        style={styles.content}
+        contentContainerStyle={styles.contentInner}
+        showsVerticalScrollIndicator={false}
+      >
         {renderTabContent()}
       </ScrollView>
     </SafeAreaView>
@@ -160,6 +164,8 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
+  },
+  contentInner: {
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 80,

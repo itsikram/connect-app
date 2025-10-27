@@ -4,10 +4,13 @@
     "private": true,
     "scripts": {
         "android": "adb connect 127.0.0.1:5555 && npx react-native run-android --deviceId 127.0.0.1:5555",
+        "connect": "adb connect 127.0.0.1:5555 && adb -s 127.0.0.1:5555 reverse tcp:8081 tcp:8081",
         "ios": "react-native run-ios",
         "lint": "eslint .",
         "start": "react-native start",
-        "test": "jest"
+    "test": "jest",
+    "models:download": "node scripts/download-models.js",
+    "models:download:sample": "MODEL_URL=https://storage.googleapis.com/download.tensorflow.org/models/tflite/model_zoo/uploaded/posenet_mobilenet_v1_100_257x257_multi_kpt_stripped.tflite LABELS_URL=https://raw.githubusercontent.com/tensorflow/tflite-support/master/tensorflow_lite_support/metadata/python/tests/testdata/object_detector/labels.txt node scripts/download-models.js"
     },
     "dependencies": {
         "@notifee/react-native": "^9.1.8",
@@ -27,12 +30,18 @@
         "@react-navigation/native": "^7.0.0",
         "@react-navigation/native-stack": "^7.0.0",
         "@reduxjs/toolkit": "^2.8.2",
+        "@tensorflow-models/facemesh": "^0.0.4",
+        "@tensorflow/tfjs": "^4.22.0",
+        "@tensorflow/tfjs-react-native": "^1.0.0",
         "axios": "^1.10.0",
         "chess.js": "^1.4.0",
+        "franc-min": "^6.2.0",
         "moment": "^2.30.1",
         "react": "19.1.0",
         "react-native": "0.80.1",
         "react-native-agora": "^3.7.1",
+        "react-native-audio-recorder-player": "^4.5.0",
+        "react-native-background-actions": "^4.0.1",
         "react-native-fs": "^2.20.0",
         "react-native-gesture-handler": "^2.17.1",
         "react-native-google-mobile-ads": "^15.7.0",
@@ -40,6 +49,7 @@
         "react-native-image-picker": "^8.2.1",
         "react-native-installed-apps": "^0.0.6",
         "react-native-linear-gradient": "^2.8.3",
+        "react-native-nitro-modules": "^0.29.2",
         "react-native-paper": "^5.14.5",
         "react-native-particles": "^0.0.8",
         "react-native-permissions": "^5.4.2",
@@ -56,7 +66,8 @@
         "react-native-webview": "^13.16.0",
         "react-native-worklets-core": "^1.6.2",
         "react-redux": "^9.2.0",
-        "socket.io-client": "^4.8.1"
+        "socket.io-client": "^4.8.1",
+        "tflite-react-native": "^0.0.5"
     },
     "devDependencies": {
         "@babel/core": "^7.25.2",

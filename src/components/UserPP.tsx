@@ -1,9 +1,9 @@
 import { View, Text, StyleSheet, Image } from 'react-native';
-
+import config from '../lib/config';
 const UserPP = ({ image, isActive, size }: { image: string, isActive: boolean, size?: number }) => {
   return (
     <View>
-      <Image source={{ uri: image || 'https://programmerikram.com/wp-content/uploads/2025/03/default-profilePic.png'  }} style={[styles.image, { width: size || 40, height: size || 40, borderRadius: (size || 40) / 2 }]} />
+      <Image source={{ uri: image || config?.DEFAULT_PROFILE_URL  }} style={[styles.image, { width: size || 40, height: size || 40, borderRadius: (size || 40) / 2 }]} />
       {isActive && <View style={styles.activeDotContainer} />}
     </View>
   );

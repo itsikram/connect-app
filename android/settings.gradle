@@ -4,3 +4,6 @@ extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autoli
 rootProject.name = 'Connect'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')
+// Include Nitro modules required by react-native-audio-recorder-player
+include ':react-native-nitro-modules'
+project(':react-native-nitro-modules').projectDir = new File(rootProject.projectDir, "../node_modules/react-native-nitro-modules/android")

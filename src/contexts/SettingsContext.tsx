@@ -91,7 +91,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   const [settings, setSettings] = useState<SettingsData>({
     // Default values
     showTyping: true,
-    isShareEmotion: true,
+    isShareEmotion: false,
     readReceipts: true,
     typingIndicators: true,
     messagePreview: true,

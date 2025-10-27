@@ -8,6 +8,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     SafeAreaView,
+    StatusBar,
     Alert,
     Modal,
     Pressable,
@@ -21,6 +22,10 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Slider from '@react-native-community/slider';
+import { check, request, PERMISSIONS, RESULTS, openSettings } from 'react-native-permissions';
+import Video from 'react-native-video';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatHeaderSkeleton, ChatBubblesSkeleton } from '../components/skeleton/ChatSkeleton';
 import UserPP from '../components/UserPP';
@@ -46,7 +51,7 @@ interface Message {
     parent?: any | null;
     tempId?: string;
     reacts?: string[];
-    messageType?: 'text' | 'call';
+    messageType?: 'text' | 'call' | 'audio';
     callType?: 'audio' | 'video';
     callEvent?: 'missed' | 'ended' | 'declined' | 'started';
 }
@@ -56,6 +61,11 @@ const isValidImageUrl = (url: string): boolean => {
     if (typeof url !== 'string') return false;
     // Basic check for image file extensions
     return /^https?:\/\/.+\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i.test(url);
+};
+
+const isAudioUrl = (url: string): boolean => {
+    if (typeof url !== 'string') return false;
+    return /^https?:\/\/.+\.(mp3|m4a|aac|ogg|oga|opus|wav|webm)$/i.test(url);
 };
 
 
@@ -69,6 +79,20 @@ const SingleMessage = () => {
     const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall } = useSocket();
     const { colors: themeColors, isDarkMode } = useTheme();
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
+
+    // Ensure status bar sits above header when this screen is focused
+    useFocusEffect(
+        React.useCallback(() => {
+            try {
+                StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+                if (Platform.OS === 'android') {
+                    StatusBar.setTranslucent(false);
+                    StatusBar.setBackgroundColor(themeColors.background.primary);
+                }
+            } catch (e) {}
+            return () => {};
+        }, [isDarkMode, themeColors.background.primary])
+    );
 
     // Add state for context menu
     const [contextMenuVisible, setContextMenuVisible] = useState(false);
@@ -90,6 +114,279 @@ const SingleMessage = () => {
     const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
     const swipeableRefs = useRef<Map<string, any>>(new Map());
     const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
+
+    // Voice message (recording) - use instance directly
+    const audioRecorderPlayerRef = React.useRef<any>(null);
+    
+    React.useEffect(() => {
+        // Create instance dynamically to avoid TypeScript constructor issues
+        try {
+            // Use require to dynamically get the module
+            const AudioRecorderPlayerModule = require('react-native-audio-recorder-player');
+            
+            // Log the structure to understand what we're dealing with
+            console.log('AudioRecorderPlayerModule:', Object.keys(AudioRecorderPlayerModule));
+            console.log('Default:', AudioRecorderPlayerModule.default);
+            
+            // Try different ways to get a constructor
+            let AudioRecorderPlayerClass;
+            if (AudioRecorderPlayerModule.default) {
+                AudioRecorderPlayerClass = AudioRecorderPlayerModule.default;
+            } else if (typeof AudioRecorderPlayerModule === 'function') {
+                AudioRecorderPlayerClass = AudioRecorderPlayerModule;
+            } else {
+                AudioRecorderPlayerClass = AudioRecorderPlayerModule;
+            }
+            
+            // Try to create instance
+            if (typeof AudioRecorderPlayerClass === 'function') {
+                audioRecorderPlayerRef.current = new AudioRecorderPlayerClass();
+                console.log('AudioRecorderPlayer initialized successfully with new');
+            } else {
+                // Maybe it's already an instance
+                audioRecorderPlayerRef.current = AudioRecorderPlayerClass;
+                console.log('AudioRecorderPlayer initialized successfully (using module directly)');
+            }
+        } catch (e) {
+            console.error('Error initializing AudioRecorderPlayer:', e);
+            audioRecorderPlayerRef.current = null;
+        }
+        
+        return () => {
+            try {
+                if (audioRecorderPlayerRef.current && typeof audioRecorderPlayerRef.current.removeRecordBackListener === 'function') {
+                    audioRecorderPlayerRef.current.removeRecordBackListener();
+                }
+            } catch (e) {
+                console.error('Error cleaning up AudioRecorderPlayer:', e);
+            }
+        };
+    }, []);
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordSecs, setRecordSecs] = useState(0);
+    const [recordTime, setRecordTime] = useState('00:00');
+    const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+    const [playingId, setPlayingId] = useState<string | null>(null);
+    const [playingProgress, setPlayingProgress] = useState<Record<string, { current: number; duration: number }>>({});
+    const videoRefs = useRef(new Map<string, any>()).current;
+    const [isMicPermissionGranted, setIsMicPermissionGranted] = useState<boolean>(false);
+
+    const ensureMicPermission = async () => {
+        try {
+            let permission: any;
+            if (Platform.OS === 'android') {
+                permission = PERMISSIONS.ANDROID.RECORD_AUDIO;
+            } else if (Platform.OS === 'ios') {
+                permission = PERMISSIONS.IOS.MICROPHONE;
+            }
+            if (!permission) return true;
+            let result = await check(permission);
+            if (result === RESULTS.DENIED) {
+                result = await request(permission);
+            }
+            if (result === RESULTS.GRANTED) {
+                setIsMicPermissionGranted(true);
+                return true;
+            }
+            if (result === RESULTS.BLOCKED) {
+                Alert.alert('Permission needed', 'Please enable microphone permission in Settings.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => openSettings() }
+                ]);
+            }
+            return false;
+        } catch (e) {
+            return false;
+        }
+    };
+
+    const startRecording = async () => {
+        console.log('startRecording called', { isRecording, isUploadingAudio, hasRecorder: !!audioRecorderPlayerRef.current });
+        if (isRecording || isUploadingAudio) return;
+        
+        const ok = await ensureMicPermission();
+        if (!ok) {
+            console.log('Microphone permission not granted');
+            return;
+        }
+        
+        try {
+            if (!audioRecorderPlayerRef.current) {
+                console.error('AudioRecorderPlayer is null');
+                Alert.alert('Voice recording unavailable', 'Recorder not initialized. Please restart the app.');
+                return;
+            }
+            
+            const path = Platform.select({ ios: 'voice.m4a', android: undefined });
+            console.log('Starting recording with path:', path);
+            const uri = await audioRecorderPlayerRef.current.startRecorder(path);
+            console.log('Recording started, URI:', uri);
+            
+            setIsRecording(true);
+            setRecordSecs(0);
+            setRecordTime('00:00');
+            
+            audioRecorderPlayerRef.current.addRecordBackListener((e: any) => {
+                const secs = Math.floor(e.currentPosition / 1000);
+                setRecordSecs(secs);
+                setRecordTime(formatSecs(secs));
+                return undefined;
+            });
+        } catch (e: any) {
+            console.error('Error in startRecording:', e);
+            setIsRecording(false);
+            Alert.alert('Recording failed', e?.message || 'Could not start recording. Please try again.');
+        }
+    };
+
+    const stopRecording = async (shouldSend: boolean) => {
+        console.log('stopRecording called', { shouldSend, isRecording });
+        
+        // Don't do anything if we're not actually recording
+        if (!isRecording) {
+            console.log('Not currently recording, ignoring stop request');
+            return;
+        }
+        
+        try {
+            if (!audioRecorderPlayerRef.current) {
+                console.error('AudioRecorderPlayer is null in stopRecording');
+                setIsRecording(false);
+                return;
+            }
+            
+            // Mark as not recording immediately to prevent duplicate calls
+            setIsRecording(false);
+            
+            const resultPath = await audioRecorderPlayerRef.current.stopRecorder();
+            console.log('Recording stopped, result path:', resultPath);
+            
+            try {
+                audioRecorderPlayerRef.current.removeRecordBackListener();
+            } catch (e) {
+                console.warn('Error removing record back listener:', e);
+            }
+            
+            setRecordSecs(0);
+            setRecordTime('00:00');
+            
+            if (shouldSend && resultPath) {
+                await uploadAndSendAudio(resultPath);
+            }
+        } catch (e) {
+            console.error('Error in stopRecording:', e);
+            setRecordSecs(0);
+            setRecordTime('00:00');
+        }
+    };
+
+    const cancelRecording = async () => {
+        await stopRecording(false);
+    };
+
+    const uploadAndSendAudio = async (filePath: string) => {
+        try {
+            setIsUploadingAudio(true);
+            // Normalize uri for RN
+            let uri = filePath;
+            if (!uri.startsWith('file://')) {
+                uri = `file://${uri}`;
+            }
+            const fileName = `voice-${Date.now()}.m4a`;
+            const formData: any = new FormData();
+            formData.append('file', {
+                uri,
+                name: fileName,
+                type: Platform.OS === 'ios' ? 'audio/m4a' : 'audio/aac',
+            } as any);
+
+            const res = await api.post('/upload/file', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+            } as any);
+            const voiceUrl = res?.data?.secure_url || res?.data?.url;
+            if (voiceUrl && isConnected) {
+                emit('sendMessage', {
+                    room,
+                    senderId: myProfile?._id,
+                    receiverId: friend?._id,
+                    message: '',
+                    attachment: voiceUrl,
+                    parent: replyingTo?._id || false,
+                    messageType: 'audio',
+                    tempId: Date.now().toString(),
+                    timestamp: new Date().toISOString(),
+                });
+            }
+        } catch (e) {
+            Alert.alert('Upload failed', 'Could not upload voice message.');
+        } finally {
+            setIsUploadingAudio(false);
+        }
+    };
+
+    const togglePlay = (item: Message) => {
+        if (!item.attachment) return;
+        if (playingId === item._id) {
+            setPlayingId(null);
+            return;
+        }
+        setPlayingId(item._id);
+    };
+
+    const seekTo = (item: Message, seconds: number) => {
+        const ref = videoRefs.get(item._id);
+        try { ref?.seek?.(seconds); } catch (e) {}
+        setPlayingProgress(prev => ({
+            ...prev,
+            [item._id]: { current: seconds, duration: prev[item._id]?.duration || 0 }
+        }));
+    };
+
+    const onVideoProgress = (item: Message, progress: { currentTime: number; playableDuration: number }) => {
+        setPlayingProgress(prev => ({
+            ...prev,
+            [item._id]: { current: progress.currentTime, duration: Math.max(progress.playableDuration || prev[item._id]?.duration || 0, progress.currentTime) }
+        }));
+    };
+
+    const onVideoLoad = (item: Message, meta: { duration?: number }) => {
+        const duration = meta?.duration || 0;
+        setPlayingProgress(prev => ({
+            ...prev,
+            [item._id]: { current: prev[item._id]?.current || 0, duration }
+        }));
+    };
+
+    const onVideoEnd = (item: Message) => {
+        setPlayingId(prev => (prev === item._id ? null : prev));
+        setPlayingProgress(prev => ({
+            ...prev,
+            [item._id]: { current: prev[item._id]?.duration || 0, duration: prev[item._id]?.duration || 0 }
+        }));
+    };
+
+    const renderHiddenVideo = (item: Message) => {
+        if (!item.attachment) return null;
+        return (
+            <Video
+                ref={(r: any) => { if (r) { videoRefs.set(item._id, r); } else { videoRefs.delete(item._id); } }}
+                source={{ uri: item.attachment }}
+                paused={playingId !== item._id}
+                playInBackground={true}
+                ignoreSilentSwitch={"obey"}
+                onProgress={(e: any) => onVideoProgress(item, e)}
+                onLoad={(e: any) => onVideoLoad(item, e)}
+                onEnd={() => onVideoEnd(item)}
+                style={{ width: 0, height: 0 }}
+            />
+        );
+    };
+
+    const formatSecs = (secs: number) => {
+        const s = Math.floor(secs % 60).toString().padStart(2, '0');
+        const m = Math.floor(secs / 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    };
 
     // Add state for info menu
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
@@ -301,9 +598,23 @@ const SingleMessage = () => {
 
 
 
-        const handleEmotionChange = (emotion: string) => {
-            setFriendEmotion(emotion);
-        };
+    const handleEmotionChange = (payload: any) => {
+        try {
+            if (!payload) return;
+            // Only apply if the event is for this friend (when profileId provided)
+            if (payload?.profileId && String(payload.profileId) !== String(friend?._id)) return;
+
+            if (typeof payload === 'string') {
+                setFriendEmotion(payload);
+                return;
+            }
+            if (typeof payload === 'object') {
+                const display = payload.emoji || payload.emotionText || payload.emotion || '';
+                setFriendEmotion(display || '');
+                return;
+            }
+        } catch (_) { }
+    };
 
         on('emotion_change', handleEmotionChange);
 
@@ -327,6 +638,54 @@ const SingleMessage = () => {
             off('deleteMessage', handleDeleteMessage);
         };
     }, [isConnected, myProfile?._id, on, off]);
+
+    // Realtime block/unblock listeners and blocked message notice
+    useEffect(() => {
+        if (!isConnected) return;
+        if (!friend?._id || !myProfile?._id) return;
+
+        const handleUserBlocked = ({ by, target }: { by: string; target: string }) => {
+            // Emitted to blocker (me): if I blocked this friend
+            if (String(target) === String(friend._id)) {
+                setIsBlocked(true);
+            }
+        };
+        const handleBlockedByUser = ({ by, target }: { by: string; target: string }) => {
+            // Emitted to me when friend blocked me
+            if (String(by) === String(friend._id)) {
+                setIsBlockedByFriend(true);
+            }
+        };
+        const handleUserUnblocked = ({ by, target }: { by: string; target: string }) => {
+            if (String(target) === String(friend._id)) {
+                setIsBlocked(false);
+            }
+        };
+        const handleUnblockedByUser = ({ by, target }: { by: string; target: string }) => {
+            if (String(by) === String(friend._id)) {
+                setIsBlockedByFriend(false);
+            }
+        };
+        const handleMessageBlocked = ({ receiverId, reason }: { receiverId: string; reason: string }) => {
+            if (String(receiverId) === String(friend._id)) {
+                try { Alert.alert('Message not sent', reason || 'You cannot message this user.'); } catch (_) {}
+            }
+        };
+
+        on('userBlocked', handleUserBlocked);
+        on('blockedByUser', handleBlockedByUser);
+        on('userUnblocked', handleUserUnblocked);
+        on('unblockedByUser', handleUnblockedByUser);
+        on('message_blocked', handleMessageBlocked);
+
+        return () => {
+            off('userBlocked', handleUserBlocked);
+            off('blockedByUser', handleBlockedByUser);
+            off('userUnblocked', handleUserUnblocked);
+            off('unblockedByUser', handleUnblockedByUser);
+            off('message_blocked', handleMessageBlocked);
+        };
+    }, [isConnected, friend?._id, myProfile?._id, on, off]);
 
     // Early return with skeletons if required data is not available
     if (!friend?._id || !myProfile?._id) {
@@ -397,6 +756,52 @@ const SingleMessage = () => {
             }, 100);
         }
     }, [messages]);
+
+    // Track which messages we've already emitted seen for (avoid duplicate emits)
+    const seenEmittedRef = useRef<Set<string>>(new Set());
+
+    // Helper to emit seen for a specific message if eligible
+    const emitSeenFor = (msg: Message | undefined | null) => {
+        try {
+            if (!msg || !msg._id) return;
+            if (!isConnected) return;
+            if (msg.senderId === myProfile?._id) return; // don't mark own messages
+            if (seenEmittedRef.current.has(msg._id)) return;
+            emit('seenMessage', msg);
+            seenEmittedRef.current.add(msg._id);
+            // Also update Redux unread counts for this chat
+            try {
+                dispatch(markMessagesAsRead({ chatId: friend?._id, currentUserId: myProfile?._id }));
+            } catch (_) { }
+        } catch (_) { }
+    };
+
+    // Mirror web: after messages update, if the last message is from friend, emit seen after a delay
+    useEffect(() => {
+        if (!friend?._id || !myProfile?._id) return;
+        if (!messages || messages.length === 0) return;
+        const last = messages[messages.length - 1];
+        if (!last) return;
+        if (last.senderId === friend._id && !last.isSeen) {
+            const t = setTimeout(() => emitSeenFor(last), 2000);
+            return () => clearTimeout(t);
+        }
+        return;
+    }, [messages, friend?._id, myProfile?._id, isConnected]);
+
+    // Emit seen when received messages become visible on screen
+    const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: Message }> }) => {
+        try {
+            viewableItems.forEach(v => {
+                const item = v?.item;
+                if (!item) return;
+                if (item.senderId === friend?._id && !item.isSeen) {
+                    emitSeenFor(item);
+                }
+            });
+        } catch (_) { }
+    }).current;
+    const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 70, minimumViewTime: 400 });
 
 
     const sendMessage = () => {
@@ -894,6 +1299,30 @@ const SingleMessage = () => {
                                     {item.message || (item.callEvent === 'missed' ? (item.callType === 'video' ? 'Missed video call' : 'Missed audio call') : (item.callType === 'video' ? 'Video call' : 'Audio call'))}
                                 </Text>
                             </View>
+                        ) : item.messageType === 'audio' || isAudioUrl(item.attachment || '') ? (
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <TouchableOpacity
+                                    onPress={() => togglePlay(item)}
+                                    accessibilityLabel={playingId === item._id ? 'Pause voice message' : 'Play voice message'}
+                                    style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
+                                >
+                                    <Icon name={playingId === item._id ? 'pause' : 'play-arrow'} size={20} color={item.senderId === myProfile?._id ? '#fff' : themeColors.primary} />
+                                </TouchableOpacity>
+                                <Slider
+                                    style={{ flex: 1, height: 28, marginHorizontal: 6 }}
+                                    minimumValue={0}
+                                    maximumValue={Math.max(1, Math.floor((playingProgress[item._id]?.duration || 0)))}
+                                    value={Math.floor(playingProgress[item._id]?.current || 0)}
+                                    minimumTrackTintColor={item.senderId === myProfile?._id ? '#fff' : themeColors.primary}
+                                    maximumTrackTintColor={item.senderId === myProfile?._id ? 'rgba(255,255,255,0.35)' : themeColors.gray[400]}
+                                    thumbTintColor={item.senderId === myProfile?._id ? '#fff' : themeColors.primary}
+                                    onSlidingComplete={(val) => seekTo(item, Number(val))}
+                                />
+                                <Text style={{ color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary, fontSize: 12, marginLeft: 6 }}>
+                                    {formatSecs(playingProgress[item._id]?.current || 0)} / {formatSecs(playingProgress[item._id]?.duration || 0)}
+                                </Text>
+                                {renderHiddenVideo(item)}
+                            </View>
                         ) : (
                             <Text style={{
                                 color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
@@ -903,7 +1332,7 @@ const SingleMessage = () => {
                                 {item.message}
                             </Text>
                         )}
-                        {item.attachment && isValidImageUrl(item.attachment) && (
+                        {item.attachment && isValidImageUrl(item.attachment) && item.messageType !== 'audio' && (
                             <Image
                                 source={{ uri: item.attachment }}
                                 style={{ width: 200, height: 200, borderRadius: 8, marginTop: 8 }}
@@ -1100,6 +1529,50 @@ const SingleMessage = () => {
         );
     };
 
+    const renderSelfBlockedMessage = () => {
+        if (!isBlocked) return null;
+        return (
+            <View style={{
+                backgroundColor: themeColors.surface.header,
+                borderTopWidth: 1,
+                borderTopColor: themeColors.border.primary,
+                paddingHorizontal: 16,
+                paddingVertical: 20,
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}>
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: themeColors.status.error + '15',
+                    paddingHorizontal: 20,
+                    paddingVertical: 12,
+                    borderRadius: 25,
+                    borderWidth: 1,
+                    borderColor: themeColors.status.error + '30',
+                }}>
+                    <Icon name="block" size={24} color={themeColors.status.error} />
+                    <Text style={{
+                        color: themeColors.status.error,
+                        fontSize: 16,
+                        fontWeight: '600',
+                        marginLeft: 8,
+                    }}>
+                        You blocked {friend?.fullName || 'this user'}
+                    </Text>
+                </View>
+                <Text style={{
+                    color: themeColors.text.secondary,
+                    fontSize: 12,
+                    marginTop: 8,
+                    textAlign: 'center',
+                }}>
+                    Unblock to send messages
+                </Text>
+            </View>
+        );
+    };
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
 
@@ -1157,11 +1630,12 @@ const SingleMessage = () => {
                                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <View style={{ height: 10, width: 10, borderRadius: 5, backgroundColor: 'green' }}></View>
                                         <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Online</Text>
-                                        {
-                                            friendEmotion && (
-                                                <><Text style={{ fontSize: 12, color: themeColors.text.secondary }}>|</Text><Text style={{ fontSize: 12, color: themeColors.text.secondary }}>{friendEmotion}</Text></>
-                                            )
-                                        }
+                                        {typeof friendEmotion === 'string' && friendEmotion.length > 0 && (
+                                            <>
+                                                <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>|</Text>
+                                                <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>{friendEmotion}</Text>
+                                            </>
+                                        )}
                                     </View>
                                 ) : (
                                     <Text>Away</Text>
@@ -1253,8 +1727,10 @@ const SingleMessage = () => {
                         ListFooterComponent={renderTypingIndicator}
                         onScroll={handleScroll}
                         scrollEventThrottle={16}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfigRef.current as any}
                         onScrollToIndexFailed={(info) => {
-                            const wait = new Promise(resolve => setTimeout(resolve, 200));
+                            const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
                             wait.then(() => {
                                 flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
                             });
@@ -1279,8 +1755,10 @@ const SingleMessage = () => {
                     ListFooterComponent={renderTypingIndicator}
                     onScroll={handleScroll}
                     scrollEventThrottle={16}
+                    onViewableItemsChanged={onViewableItemsChanged}
+                    viewabilityConfig={viewabilityConfigRef.current as any}
                     onScrollToIndexFailed={(info) => {
-                        const wait = new Promise(resolve => setTimeout(resolve, 200));
+                        const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
                         wait.then(() => {
                             flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
                         });
@@ -1924,6 +2402,8 @@ const SingleMessage = () => {
 
             {isBlockedByFriend ? (
                 <>{renderBlockedMessage()}</>
+            ) : isBlocked ? (
+                <>{renderSelfBlockedMessage()}</>
             ) : (
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -2010,6 +2490,28 @@ const SingleMessage = () => {
                         <Icon name="add" size={24} color={themeColors.text.secondary} />
                     </TouchableOpacity>
 
+                    {/* Inline voice message button (replaces floating mic) */}
+                    <TouchableOpacity
+                        onPress={() => (isRecording ? stopRecording(true) : startRecording())}
+                        accessibilityLabel={isRecording ? 'Stop and send voice message' : 'Record voice message'}
+                        style={{
+                            width: 35,
+                            height: 35,
+                            borderRadius: 20,
+                            backgroundColor: isRecording ? themeColors.status.error : themeColors.gray[100],
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 8,
+                        }}
+                        disabled={isUploadingAudio}
+                    >
+                        {isUploadingAudio ? (
+                            <ActivityIndicator color={themeColors.text.secondary} />
+                        ) : (
+                            <Icon name={isRecording ? 'stop' : 'mic'} size={20} color={isRecording ? themeColors.text.inverse : themeColors.text.secondary} />
+                        )}
+                    </TouchableOpacity>
+
                     <View style={{
                         flex: 1,
                         flexDirection: 'row',
@@ -2079,6 +2581,23 @@ const SingleMessage = () => {
 
             {/* Video and Audio Call Components */}
             {/* VideoCall and AudioCall components now rendered globally in App.tsx */}
+
+            {/* Voice recorder controls */}
+            <View style={{ position: 'absolute', left: 16, right: 16, bottom: 90, display: isRecording ? 'flex' : 'none' }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: themeColors.surface.header, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: themeColors.border.primary }}>
+                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', marginRight: 8 }} />
+                    <Text style={{ color: themeColors.text.primary, fontWeight: '600', marginRight: 12 }}>Recording</Text>
+                    <Text style={{ color: themeColors.text.secondary, marginRight: 'auto' }}>{recordTime}</Text>
+                    <TouchableOpacity onPress={() => stopRecording(true)} style={{ marginRight: 12 }} accessibilityLabel="Stop and send voice message">
+                        <Icon name="send" size={20} color={themeColors.primary} />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={cancelRecording} accessibilityLabel="Cancel recording">
+                        <Icon name="delete" size={20} color={themeColors.status.error} />
+                    </TouchableOpacity>
+                </View>
+            </View>
+
+            {/* Floating mic button removed in favor of inline button */}
         </SafeAreaView>
     );
 };

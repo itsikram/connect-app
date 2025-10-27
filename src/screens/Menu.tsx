@@ -16,7 +16,7 @@ import LudoGame from './LudoGame';
 import LudoGameSVG from './LudoGameSVG';
 
 const Menu = () => {
-  const { logout } = useContext(AuthContext);
+  const { user, logout } = useContext(AuthContext);
   const navigation = useNavigation();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { colors: themeColors } = useTheme();
@@ -40,6 +40,27 @@ const Menu = () => {
       setChessGameActive(true);
       return;
     }
+    if (app.id === 'EmotionFaceMesh') {
+      (navigation as any).navigate('EmotionFaceMesh');
+      return;
+    }
+    if (app.id === 'camera') {
+      (navigation as any).navigate('Home', { screen: 'Camera' });
+      return;
+    }
+    if (app.id === 'mediaPlayer') {
+      (navigation as any).navigate('Menu', {
+        screen: 'MediaPlayer',
+        params: {
+          source: {
+            type: 'video',
+            uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+            title: 'Sample Video',
+          }
+        }
+      });
+      return;
+    }
     app.onPress?.();
   };
 
@@ -60,7 +81,7 @@ const Menu = () => {
   }
 
   return (
-    <ScrollView 
+    <ScrollView
       style={[styles.container, { backgroundColor: themeColors.background.primary }]}
       showsVerticalScrollIndicator={true}
       bounces={true}
@@ -68,46 +89,65 @@ const Menu = () => {
     >
       <Text style={[styles.title, { color: themeColors.text.primary }]}>Menu</Text>
 
-      <View style={styles.section}>
-        <TouchableOpacity style={[styles.item, { backgroundColor: themeColors.surface.primary }]} onPress={goToProfile}>
-          <View style={styles.itemLeft}>
-            {myProfile?.profilePic ? (
-              <Image source={{ uri: myProfile.profilePic }} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.surface.secondary }]}>
-                <Icon name="person" size={24} color={themeColors.text.secondary} />
+      {!user && (
+        <View style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
+          <TouchableOpacity onPress={() => (navigation as any).navigate('Login')}>
+            <View style={[styles.section, { backgroundColor: themeColors.primary + '15', borderRadius: 12, padding: 16, marginBottom: 16 }]}>
+              <Text style={[styles.infoTitle, { color: themeColors.primary }]}>Welcome to Connect</Text>
+              <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
+                Log in or create an account to access your profile, settings, and connect with friends.
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+        </View>
+
+      )}
+
+      {user && (
+        <>
+          <View style={styles.section}>
+            <TouchableOpacity style={[styles.item, { backgroundColor: themeColors.surface.primary }]} onPress={goToProfile}>
+              <View style={styles.itemLeft}>
+                {myProfile?.profilePic ? (
+                  <Image source={{ uri: myProfile.profilePic }} style={styles.avatar} />
+                ) : (
+                  <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.surface.secondary }]}>
+                    <Icon name="person" size={24} color={themeColors.text.secondary} />
+                  </View>
+                )}
               </View>
-            )}
-          </View>
-          <View style={styles.itemBody}>
-            <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>{myProfile?.fullName || 'My Profile'}</Text>
-            <Text style={[styles.itemSubtitle, { color: themeColors.text.secondary }]}>View your profile</Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
-        </TouchableOpacity>
+              <View style={styles.itemBody}>
+                <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>{myProfile?.fullName || 'My Profile'}</Text>
+                <Text style={[styles.itemSubtitle, { color: themeColors.text.secondary }]}>View your profile</Text>
+              </View>
+              <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
+            </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.item, { backgroundColor: themeColors.surface.primary }]} onPress={goToSettings}>
-          <View style={[styles.itemLeftIcon, { backgroundColor: themeColors.surface.secondary }]}>
-            <Icon name="settings" size={22} color={themeColors.text.primary} />
+            <TouchableOpacity style={[styles.item, { backgroundColor: themeColors.surface.primary }]} onPress={goToSettings}>
+              <View style={[styles.itemLeftIcon, { backgroundColor: themeColors.surface.secondary }]}>
+                <Icon name="settings" size={22} color={themeColors.text.primary} />
+              </View>
+              <View style={styles.itemBody}>
+                <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>Settings</Text>
+                <Text style={[styles.itemSubtitle, { color: themeColors.text.secondary }]}>Account, privacy, notifications</Text>
+              </View>
+              <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
+            </TouchableOpacity>
           </View>
-          <View style={styles.itemBody}>
-            <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>Settings</Text>
-            <Text style={[styles.itemSubtitle, { color: themeColors.text.secondary }]}>Account, privacy, notifications</Text>
-          </View>
-          <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
-        </TouchableOpacity>
-      </View>
 
-      <View style={styles.section}>
-        <Button title="Logout" onPress={logout} color={themeColors.status.error} />
-      </View>
+          <View style={styles.section}>
+            <Button title="Logout" onPress={logout} color={themeColors.status.error} />
+          </View>
+        </>
+      )}
 
       {/* Option 1: Separate sections for custom and device apps */}
-      <AppGrid 
+      <AppGrid
         apps={sampleApps.map(app => ({
           ...app,
           onPress: () => handleAppPress(app)
-        }))} 
+        }))}
         title="Connect Apps"
         columns={4}
       />
@@ -143,7 +183,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   section: {
-    width: '100%',
+    width: '90%',
     paddingHorizontal: 16,
     marginBottom: 24,
   },
@@ -211,6 +251,15 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     shadowOffset: { width: 0, height: 2 },
     zIndex: 1000,
+  },
+  infoTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    lineHeight: 20,
   },
 });
 

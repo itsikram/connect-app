@@ -16,7 +16,9 @@ const config = {
     }),
   },
   resolver: {
-    platforms: ['ios', 'android', 'native', 'web'],
+    extraNodeModules: {
+      'expo-asset': require('path').resolve(__dirname, 'shims/expo-asset'),
+    },
   },
 };
 

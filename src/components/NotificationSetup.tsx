@@ -1,19 +1,16 @@
 import React, { useCallback } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
+import { navigate as globalNavigate } from '../lib/navigationService';
 
-interface NotificationSetupProps {
-  navigation: any;
-}
-
-const NotificationSetup: React.FC<NotificationSetupProps> = ({ navigation }) => {
+const NotificationSetup: React.FC = () => {
   // Memoize the navigate function to prevent unnecessary re-renders
   const navigate = useCallback((screen: string, params?: any) => {
     try {
-      navigation.navigate(screen, params);
+      globalNavigate(screen, params);
     } catch (error) {
       console.error('Navigation error:', error);
     }
-  }, [navigation]);
+  }, []);
 
   const { cancelIncomingCallNotifications } = useNotifications({
     navigate,

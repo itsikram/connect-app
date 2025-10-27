@@ -7,9 +7,10 @@
 
 import * as React from 'react';
 import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { navigationRef, markNavigationReady } from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert } from 'react-native';
+import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
@@ -40,6 +41,9 @@ import IncomingCall from './src/screens/IncomingCall';
 import OutgoingCall from './src/screens/OutgoingCall';
 import VideoCall from './src/components/VideoCall';
 import AudioCall from './src/components/AudioCall';
+import CameraScreen from './src/screens/CameraScreen';
+import GalleryScreen from './src/screens/GalleryScreen';
+import GalleryPreview from './src/screens/GalleryPreview';
 // Socket context
 import { SocketProvider, useSocket } from './src/contexts/SocketContext';
 import { ToastProvider, useToast } from './src/contexts/ToastContext';
@@ -58,10 +62,11 @@ import TopNavigationProgress, { TopNavigationProgressRef } from './src/component
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
-import GlobalEmotionDetection from './src/components/GlobalEmotionDetection';
+import GlobalExpressionDetection from './src/components/GlobalExpressionDetection';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
+import { addNewMessage } from './src/reducers/chatReducer';
 import api, { userAPI } from './src/lib/api';
 import FloatingButton from './src/components/FloatingButton';
 import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
@@ -92,6 +97,9 @@ function HomeStack() {
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="Camera" component={CameraScreen} />
+      <Stack.Screen name="Gallery" component={GalleryScreen} />
+      <Stack.Screen name="GalleryPreview" component={GalleryPreview} />
     </Stack.Navigator>
   );
 }
@@ -122,6 +130,8 @@ function MenuStack() {
       <Stack.Screen name="MenuHome" component={Menu} />
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="Settings" component={Settings} />
+      <Stack.Screen name="EmotionFaceMesh" component={require('./src/screens/EmotionFaceMeshDemo').default} />
+      <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
     </Stack.Navigator>
   );
 }
@@ -130,6 +140,7 @@ function MenuStack() {
 function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
   const { isChessGameActive } = useChessGame();
+  const unreadMessageCount = useSelector((state: RootState) => state.chat.unreadMessageCount);
   
   // Debug navigation state
   React.useEffect(() => {
@@ -146,19 +157,21 @@ function TabBarWithLudoCheck(props: any) {
   const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
   
   // Hide tab bar for specific screens
-  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost') {
+  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer') {
     return null;
   }
   
   const tabs = props.user ? [
-    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true },
-    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true },
-    { name: 'Friends', icon: 'people', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true },
-    { name: 'Message', icon: 'message', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: true },
-    { name: 'Menu', icon: 'menu', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true },
+    // Order to match web header: Home, Friends, Videos, Message, Downloads/Menu
+    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Friends', icon: 'user-friends', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: true, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
+    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true, iconSet: 'fa5', faStyle: 'solid' },
   ] : [
     { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },
     { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3' },
+    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true, iconSet: 'fa5', faStyle: 'solid' },
   ];
   return <ProfessionalTabBar {...props} tabs={tabs} />;
 }
@@ -167,7 +180,19 @@ function TabBarWithLudoCheck(props: any) {
 function AppWithTopProgress() {
   const progressRef = React.useRef<TopNavigationProgressRef>(null);
   const readyRef = React.useRef(false);
-  const navigationRef = React.useRef<any>(null);
+  const themeContext = React.useContext(ThemeContext);
+
+  const applyStatusBarDefaults = React.useCallback(() => {
+    try {
+      const isDark = themeContext?.isDarkMode;
+      const bg = themeContext?.colors?.background?.primary || '#000000';
+      StatusBar.setBarStyle(isDark ? 'light-content' : 'dark-content');
+      if (Platform.OS === 'android') {
+        StatusBar.setTranslucent(false);
+        StatusBar.setBackgroundColor(bg);
+      }
+    } catch (e) {}
+  }, [themeContext?.isDarkMode, themeContext?.colors?.background?.primary]);
 
   const handleMenuNavigation = (screenName: string, params?: any) => {
     try {
@@ -182,11 +207,15 @@ function AppWithTopProgress() {
       ref={navigationRef}
       onReady={() => {
         readyRef.current = true;
+        applyStatusBarDefaults();
+        markNavigationReady();
       }}
       onStateChange={() => {
         if (readyRef.current) {
           progressRef.current?.trigger();
         }
+        // Enforce consistent, non-translucent status bar on every navigation change
+        applyStatusBarDefaults();
       }}
     >
       <View style={{ flex: 1 }}>
@@ -257,16 +286,28 @@ function AppContent() {
   const { showMessageToast, showNotificationToast } = useUserToast();
   const { showInfo } = useToast();
   const navigation = useNavigation();
+  const themeContext = React.useContext(ThemeContext);
   const [screen, setScreen] = React.useState<string>('');
   const [activeIncomingCall, setActiveIncomingCall] = React.useState<{
     callerId: string;
     channelName: string;
     isAudio: boolean;
   } | null>(null);
+  // Keep latest active incoming call in a ref to avoid stale closures in event handlers
+  const activeIncomingCallRef = React.useRef<{
+    callerId: string;
+    channelName: string;
+    isAudio: boolean;
+  } | null>(null);
+  React.useEffect(() => {
+    activeIncomingCallRef.current = activeIncomingCall;
+  }, [activeIncomingCall]);
   const incomingCallTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const currentScreenRef = React.useRef<string>('');
   const callEndDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isCallEndingRef = React.useRef<boolean>(false);
+  // After a call ends or is accepted, ignore any incoming-call events briefly to avoid ghost navigations
+  const ignoreIncomingCallsUntilRef = React.useRef<number>(0);
   const dispatch = useDispatch();
 
   React.useEffect(() => {
@@ -356,9 +397,18 @@ function AppContent() {
 
     // Navigate to IncomingCall screen on incoming video/audio call events
     const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
-      // Check if there's already an active incoming call
-      if (activeIncomingCall) {
-        console.log('🚫 Ignoring incoming video call - already have active incoming call:', activeIncomingCall);
+      // Global guards to prevent ghost/duplicate navigations
+      if (isCallEndingRef.current) {
+        console.log('🚫 Ignoring incoming video call - call ending in progress');
+        return;
+      }
+      if (Date.now() < ignoreIncomingCallsUntilRef.current) {
+        console.log('🚫 Ignoring incoming video call - within cooldown window');
+        return;
+      }
+      // Check if there's already an active incoming call (latest via ref)
+      if (activeIncomingCallRef.current) {
+        console.log('🚫 Ignoring incoming video call - already have active incoming call:', activeIncomingCallRef.current);
         return;
       }
       
@@ -386,9 +436,18 @@ function AppContent() {
       });
     };
     const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
-      // Check if there's already an active incoming call
-      if (activeIncomingCall) {
-        console.log('🚫 Ignoring incoming audio call - already have active incoming call:', activeIncomingCall);
+      // Global guards to prevent ghost/duplicate navigations
+      if (isCallEndingRef.current) {
+        console.log('🚫 Ignoring incoming audio call - call ending in progress');
+        return;
+      }
+      if (Date.now() < ignoreIncomingCallsUntilRef.current) {
+        console.log('🚫 Ignoring incoming audio call - within cooldown window');
+        return;
+      }
+      // Check if there's already an active incoming call (latest via ref)
+      if (activeIncomingCallRef.current) {
+        console.log('🚫 Ignoring incoming audio call - already have active incoming call:', activeIncomingCallRef.current);
         return;
       }
       
@@ -441,6 +500,20 @@ function AppContent() {
           incomingCallTimeoutRef.current = null;
         }
 
+        // Enforce non-translucent status bar after any call end to avoid overlay on header
+        try {
+          const bg = themeContext?.colors?.background?.primary || '#000000';
+          const isDark = themeContext?.isDarkMode;
+          if (Platform.OS === 'android') {
+            StatusBar.setTranslucent(false);
+            StatusBar.setBackgroundColor(bg);
+          }
+          StatusBar.setBarStyle(isDark ? 'light-content' : 'dark-content');
+        } catch (e) {}
+
+        // Start a short cooldown to ignore any late/duplicate incoming-call events
+        ignoreIncomingCallsUntilRef.current = Date.now() + 4000; // 4s cooldown
+
         // Reset the flag after a longer delay to prevent rapid re-triggering
         setTimeout(() => {
           isCallEndingRef.current = false;
@@ -468,15 +541,17 @@ function AppContent() {
         clearTimeout(incomingCallTimeoutRef.current);
         incomingCallTimeoutRef.current = null;
       }
+      // Briefly ignore any stray incoming-call events that might race the accept action
+      ignoreIncomingCallsUntilRef.current = Date.now() + 2000; // 2s cooldown
     };
 
-    on('agora-incoming-video-call', handleIncomingVideo);
-    on('agora-incoming-audio-call', handleIncomingAudio);
-    on('agora-call-accepted', handleCallAccepted);
+    on('incoming-video-call', handleIncomingVideo);
+    on('incoming-audio-call', handleIncomingAudio);
+    on('call-accepted', handleCallAccepted);
     
     // Listen to call end events to clear active incoming call state
-    on('audioCallEnd', handleAudioCallEnd);
-    on('videoCallEnd', handleVideoCallEnd);
+    on('audio-call-ended', handleAudioCallEnd);
+    on('video-call-ended', handleVideoCallEnd);
 
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
@@ -496,6 +571,28 @@ function AppContent() {
           })
         },
       })
+
+      // Update Redux chat state for unread badge
+      try {
+        if (myProfile?._id && friendProfile?._id && updatedMessage) {
+          dispatch(addNewMessage({
+            chatId: friendProfile._id,
+            message: {
+              _id: updatedMessage._id || String(Date.now()),
+              room: updatedMessage.room || `${myProfile._id}_${friendProfile._id}`,
+              senderId: updatedMessage.senderId || friendProfile._id,
+              receiverId: updatedMessage.receiverId || myProfile._id,
+              message: updatedMessage.message || '',
+              attachment: updatedMessage.attachment || false,
+              reacts: updatedMessage.reacts || [],
+              isSeen: Boolean(updatedMessage.isSeen),
+              timestamp: updatedMessage.timestamp || new Date().toISOString(),
+              __v: 0,
+            },
+            currentUserId: myProfile._id,
+          }));
+        }
+      } catch (_) { }
     }
 
     on('newMessageToUser', handleNewMessage)
@@ -546,11 +643,11 @@ function AppContent() {
       off('newMessageToUser',handleNewMessage)
       off('newNotification', handleNewNotification)
       off('speak_message', handleSpeakMessage)
-      off('agora-incoming-video-call', handleIncomingVideo)
-      off('agora-incoming-audio-call', handleIncomingAudio)
-      off('agora-call-accepted', handleCallAccepted)
-      off('audioCallEnd', handleAudioCallEnd)
-      off('videoCallEnd', handleVideoCallEnd)
+      off('incoming-video-call', handleIncomingVideo)
+      off('incoming-audio-call', handleIncomingAudio)
+      off('call-accepted', handleCallAccepted)
+      off('audio-call-ended', handleAudioCallEnd)
+      off('video-call-ended', handleVideoCallEnd)
     }
   }, [isConnected,on,off])
 
@@ -581,11 +678,11 @@ function AppContent() {
           <>
             <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
             {/* Initialize notifications */}
-            <NotificationSetup navigation={navigation} />
+            <NotificationSetup />
             {/* Request required permissions on app start */}
             <PermissionsInitializer user={user} />
-            {/* Global emotion detection - starts automatically when user is logged in */}
-            <GlobalEmotionDetection />
+            {/* Global expression detection (MediaPipe-based) */}
+            <GlobalExpressionDetection />
             {/* Global call components - rendered everywhere */}
             {myProfile?._id && (
               <>
@@ -697,6 +794,14 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                         tabBarLabel: 'Register',
                       }}
                     />
+                    <Tab.Screen
+                      name="Menu"
+                      component={MenuStack}
+                      options={{
+                        tabBarLabel: 'Menu',
+                        headerShown: false,
+                      }}
+                    />
                   </>
                 )}
               </Tab.Navigator>
@@ -710,9 +815,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
 }
 
 function App() {
-  const isDarkMode = useColorScheme() === 'dark';
-
-  console.log('isDarkMode', isDarkMode)
+  const isDarkMode = useColorScheme() === 'dark' || true;
 
   return (
     <ErrorBoundary>
