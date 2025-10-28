@@ -5,7 +5,7 @@ import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
 import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import { fetchChatList, updateUnreadMessageCount } from '../reducers/chatReducer';
@@ -116,6 +116,14 @@ const Message = React.memo(() => {
       off('audio-call-ended', handleAudioEnd);
     };
   }, [on, off]);
+
+  // Ensure we re-render once this screen regains focus after a call
+  useFocusEffect(
+    React.useCallback(() => {
+      setIsCallActive(false);
+      return () => {};
+    }, [])
+  );
 
 
 

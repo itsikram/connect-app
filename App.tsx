@@ -132,6 +132,8 @@ function MenuStack() {
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="EmotionFaceMesh" component={require('./src/screens/EmotionFaceMeshDemo').default} />
       <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
+      <Stack.Screen name="Facebook" component={require('./src/screens/FacebookScreen').default} />
+      <Stack.Screen name="YouTube" component={require('./src/screens/YouTubeScreen').default} />
     </Stack.Navigator>
   );
 }
@@ -157,7 +159,7 @@ function TabBarWithLudoCheck(props: any) {
   const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
   
   // Hide tab bar for specific screens
-  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer') {
+  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube') {
     return null;
   }
   

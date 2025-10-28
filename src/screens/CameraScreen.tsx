@@ -23,21 +23,14 @@ import {
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import Reanimated, {
-  useSharedValue,
-  useAnimatedProps,
-  withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
+import { } from 'react-native-gesture-handler';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import { detectEmotionsFromFace, emotionEmojiMap, type EmotionDetectionState } from '../lib/emotionDetection';
 import { savePhotoToMedia, saveVideoToMedia } from '../lib/mediaLibrary';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-Reanimated.addWhitelistedNativeProps({ zoom: true });
-const ReanimatedCamera = Reanimated.createAnimatedComponent(Camera);
+// Using regular Camera component (no Reanimated wrapper) to avoid conflicts
 
 type CameraMode = 'photo' | 'video' | 'portrait' | 'pano' | 'square';
 type FlashMode = 'off' | 'on' | 'auto';
@@ -66,6 +59,7 @@ const CameraScreen = () => {
   const [lastMediaPath, setLastMediaPath] = useState<string | null>(null);
   const [beautyEnabled, setBeautyEnabled] = useState(true);
   const [beautyIntensity] = useState(0.12); // subtle default
+  const [faceBox, setFaceBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // Emotion detection states
   const [detectedEmotion, setDetectedEmotion] = useState<string | null>(null);
@@ -135,7 +129,6 @@ const CameraScreen = () => {
   }, [devices, device]);
 
   // Zoom
-  const zoom = useSharedValue(1);
   const [currentZoom, setCurrentZoom] = useState(1); // For displaying zoom level
   const minZoom = device?.minZoom ?? 1;
   const maxZoom = device?.maxZoom ?? 10;
@@ -146,8 +139,6 @@ const CameraScreen = () => {
   const recordingInterval = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Animations
-  const captureButtonScale = useSharedValue(1);
-  const flashAnimation = useSharedValue(0);
   const flashOpacity = new Animated.Value(0);
 
   useEffect(() => {
@@ -174,49 +165,14 @@ const CameraScreen = () => {
     };
   }, [isRecording]);
 
-  const animatedProps = useAnimatedProps(() => {
-    return {
-      zoom: Math.max(Math.min(zoom.value, maxZoom), minZoom),
-    };
-  }, [zoom, maxZoom, minZoom]);
+  // Zoom handling without Reanimated
 
-  // Pinch to zoom gesture
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((event) => {
-      const velocity = (event.scale - 1) / 5;
-      const newZoom = zoom.value + velocity;
-      zoom.value = Math.max(Math.min(newZoom, maxZoom), minZoom);
-    })
-    .onEnd(() => {
-      // Update display zoom level
-      runOnJS(setCurrentZoom)(zoom.value);
-    });
-
-  // Double tap to switch camera
-  const doubleTapGesture = Gesture.Tap()
-    .numberOfTaps(2)
-    .onEnd(() => {
-      runOnJS(flipCamera)();
-    });
-
-  // Single tap to focus
-  const tapGesture = Gesture.Tap()
-    .numberOfTaps(1)
-    .onEnd((event) => {
-      // Focus at tap location
-      runOnJS(focusAtPoint)(event.x, event.y);
-    });
-
-  const composedGestures = Gesture.Simultaneous(
-    pinchGesture,
-    Gesture.Exclusive(doubleTapGesture, tapGesture)
-  );
+  // Gestures disabled to avoid Reanimated runtime errors
 
   const flipCamera = useCallback(() => {
     setCameraPosition((prev) => (prev === 'back' ? 'front' : 'back'));
-    zoom.value = withSpring(1);
     setCurrentZoom(1);
-  }, [zoom]);
+  }, []);
 
   const cycleFlash = useCallback(() => {
     setFlash((prev) => {
@@ -357,22 +313,20 @@ const CameraScreen = () => {
   }, [cameraMode, isRecording, startRecording, stopRecording, takePhoto]);
 
   const zoomIn = useCallback(() => {
-    zoom.value = withSpring(Math.min(zoom.value + 1, maxZoom));
-  }, [zoom, maxZoom]);
+    setCurrentZoom(prev => Math.min(prev + 1, maxZoom));
+  }, [maxZoom]);
 
   const zoomOut = useCallback(() => {
-    zoom.value = withSpring(Math.max(zoom.value - 1, minZoom));
-  }, [zoom, minZoom]);
+    setCurrentZoom(prev => Math.max(prev - 1, minZoom));
+  }, [minZoom]);
 
   const resetZoom = useCallback(() => {
-    zoom.value = withSpring(1);
     setCurrentZoom(1);
-  }, [zoom]);
+  }, []);
 
   const setZoomLevel = useCallback((level: number) => {
-    zoom.value = withSpring(level);
     setCurrentZoom(level);
-  }, [zoom]);
+  }, []);
 
   // Create emotion detection state object
   const emotionDetectionState: EmotionDetectionState = {
@@ -421,6 +375,33 @@ const CameraScreen = () => {
         
         if (faces && faces.length > 0) {
           const face = faces[0];
+          // Update faceBox to roughly follow detected face
+          try {
+            const imgW = (photo as any)?.width ?? SCREEN_WIDTH;
+            const imgH = (photo as any)?.height ?? SCREEN_HEIGHT;
+            const bounds: any = (face as any)?.bounds || (face as any)?.frame;
+            if (bounds) {
+              const bx = bounds.x ?? bounds.left ?? 0;
+              const by = bounds.y ?? bounds.top ?? 0;
+              const bw = bounds.width ?? (bounds.right != null && bounds.left != null ? bounds.right - bounds.left : 0);
+              const bh = bounds.height ?? (bounds.bottom != null && bounds.top != null ? bounds.bottom - bounds.top : 0);
+
+              const nx = bx / Math.max(1, imgW);
+              const ny = by / Math.max(1, imgH);
+              const nw = bw / Math.max(1, imgW);
+              const nh = bh / Math.max(1, imgH);
+              setFaceBox({
+                x: nx * SCREEN_WIDTH,
+                y: ny * SCREEN_HEIGHT,
+                width: Math.max(60, nw * SCREEN_WIDTH),
+                height: Math.max(80, nh * SCREEN_HEIGHT),
+              });
+            } else {
+              setFaceBox(null);
+            }
+          } catch {
+            setFaceBox(null);
+          }
           
           // Detect emotion
           const detectionResult = await detectEmotionsFromFace(face, emotionDetectionState);
@@ -437,6 +418,7 @@ const CameraScreen = () => {
           }
         } else {
           setFaceDetected(false);
+          setFaceBox(null);
         }
       }
     } catch (error) {
@@ -446,14 +428,14 @@ const CameraScreen = () => {
 
   // Run emotion detection periodically
   useEffect(() => {
-    if (!isEmotionDetectionEnabled || !isFocused) return;
+    if (!isEmotionDetectionEnabled || !isFocused || !device) return;
     
     const interval = setInterval(() => {
       detectEmotionFromFrame();
     }, 500);
     
     return () => clearInterval(interval);
-  }, [isEmotionDetectionEnabled, isFocused, detectEmotionFromFrame]);
+  }, [isEmotionDetectionEnabled, isFocused, device, detectEmotionFromFrame]);
 
   if (!hasPermission) {
     return (
@@ -479,20 +461,19 @@ const CameraScreen = () => {
   }
 
   return (
-    <GestureHandlerRootView style={styles.container}>
+    <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      <GestureDetector gesture={composedGestures}>
-        <View style={styles.cameraContainer}>
-          <ReanimatedCamera
+      <View style={styles.cameraContainer}>
+          <Camera
             ref={camera}
             style={StyleSheet.absoluteFill}
             device={device}
-            isActive={isFocused}
+            isActive={isFocused && !!device}
             photo={cameraMode !== 'video'}
             video={cameraMode === 'video'}
             audio={cameraMode === 'video'}
-            animatedProps={animatedProps}
+            zoom={currentZoom}
             enableZoomGesture={false}
           />
 
@@ -508,15 +489,45 @@ const CameraScreen = () => {
           {/* Live filter overlays */}
           {activeFilter === 'vivid' && (
             <>
-              {/* Neutral vivid (less warm) */}
+              {/* Apple-like Vivid approximation */}
               <View style={[StyleSheet.absoluteFill, styles.filterOverlay, styles.vividOverlayNeutral]} pointerEvents="none" />
               <View style={[StyleSheet.absoluteFill, styles.filterOverlay, styles.vividOverlayCool]} pointerEvents="none" />
+              <View style={[StyleSheet.absoluteFill, styles.filterOverlay, styles.vividShadows]} pointerEvents="none" />
+              <View style={styles.vividCenterLiftContainer} pointerEvents="none">
+                <View style={styles.vividCenterLift} />
+              </View>
 
               {/* Beauty ML overlay - only when a face is detected */}
               {beautyEnabled && faceDetected && (
-                <View pointerEvents="none" style={styles.beautyContainer}>
-                  <View style={[styles.beautyMask, { opacity: beautyIntensity }]} />
-                  <View style={[styles.beautyMaskInner, { opacity: beautyIntensity * 0.8 }]} />
+                <View pointerEvents="none" style={styles.beautyLayer}>
+                  <View
+                    style={[
+                      styles.beautyMask,
+                      faceBox
+                        ? {
+                            left: Math.max(0, faceBox.x + faceBox.width * 0.5 - (SCREEN_WIDTH * 0.55) / 2),
+                            top: Math.max(0, faceBox.y + faceBox.height * 0.5 - (SCREEN_HEIGHT * 0.45) / 2),
+                            width: SCREEN_WIDTH * 0.55,
+                            height: SCREEN_HEIGHT * 0.45,
+                          }
+                        : undefined,
+                      { opacity: beautyIntensity },
+                    ]}
+                  />
+                  <View
+                    style={[
+                      styles.beautyMaskInner,
+                      faceBox
+                        ? {
+                            left: Math.max(0, faceBox.x + faceBox.width * 0.5 - (SCREEN_WIDTH * 0.48) / 2),
+                            top: Math.max(0, faceBox.y + faceBox.height * 0.5 - (SCREEN_HEIGHT * 0.38) / 2),
+                            width: SCREEN_WIDTH * 0.48,
+                            height: SCREEN_HEIGHT * 0.38,
+                          }
+                        : undefined,
+                      { opacity: beautyIntensity * 0.8 },
+                    ]}
+                  />
                 </View>
               )}
             </>
@@ -597,18 +608,6 @@ const CameraScreen = () => {
                         name="color-filter"
                         size={26}
                         color={activeFilter === 'vivid' ? '#FFD700' : '#fff'}
-                      />
-                    </TouchableOpacity>
-
-                    {/* Beauty toggle (applies when vivid on) */}
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={() => setBeautyEnabled(v => !v)}
-                    >
-                      <IconIonic
-                        name={beautyEnabled ? 'sparkles' : 'sparkles-outline'}
-                        size={24}
-                        color={beautyEnabled ? '#FFD700' : '#fff'}
                       />
                     </TouchableOpacity>
                   </>
@@ -770,8 +769,7 @@ const CameraScreen = () => {
             </TouchableOpacity>
           )}
         </View>
-      </GestureDetector>
-    </GestureHandlerRootView>
+    </View>
   );
 };
 
@@ -1168,15 +1166,34 @@ const styles = StyleSheet.create({
   vividOverlayCool: {
     backgroundColor: 'rgba(0, 160, 255, 0.05)',
   },
-  // Beauty mask centered softly to brighten midtones where the face usually is
-  beautyContainer: {
+  vividShadows: {
+    backgroundColor: 'rgba(0,0,0,0.06)',
+  },
+  vividCenterLiftContainer: {
     position: 'absolute',
-    top: '20%',
+    top: 0,
     left: 0,
     right: 0,
+    bottom: 0,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  vividCenterLift: {
+    width: SCREEN_WIDTH * 0.9,
+    height: SCREEN_HEIGHT * 0.9,
+    borderRadius: SCREEN_WIDTH * 0.9,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+  },
+  // Beauty mask centered softly to brighten midtones where the face usually is
+  beautyLayer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
   },
   beautyMask: {
+    position: 'absolute',
     width: SCREEN_WIDTH * 0.7,
     height: SCREEN_HEIGHT * 0.5,
     borderRadius: SCREEN_WIDTH * 0.7,

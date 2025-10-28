@@ -61,6 +61,14 @@ const Menu = () => {
       });
       return;
     }
+    if (app.id === 'facebook') {
+      (navigation as any).navigate('Menu', { screen: 'Facebook' });
+      return;
+    }
+    if (app.id === 'youtube') {
+      (navigation as any).navigate('Menu', { screen: 'YouTube' });
+      return;
+    }
     app.onPress?.();
   };
 
@@ -182,8 +190,13 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     textAlign: 'center',
   },
-  section: {
+  alertSection: {
     width: '90%',
+    paddingHorizontal: 16,
+    marginBottom: 24,
+  },
+  section: {
+    width: '100%',
     paddingHorizontal: 16,
     marginBottom: 24,
   },

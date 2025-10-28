@@ -19,8 +19,7 @@ import {
     ActivityIndicator,
 } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
-import { useRoute, useNavigation } from '@react-navigation/native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 import { check, request, PERMISSIONS, RESULTS, openSettings } from 'react-native-permissions';
@@ -495,6 +494,16 @@ const SingleMessage = () => {
             off('audio-call-ended', handleAudioEnd);
         };
     }, [on, off]);
+
+    // Reset suppression when this screen regains focus after ending a call
+    // Ensure we re-render once this screen regains focus after a call
+    // Using navigation listener instead of useFocusEffect to avoid duplicate imports
+    useEffect(() => {
+        const unsubscribe = navigation.addListener('focus', () => {
+            setIsCallActive(false);
+        });
+        return unsubscribe;
+    }, [navigation]);
 
     // Set up room and socket events when both IDs are available
     useEffect(() => {

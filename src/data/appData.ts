@@ -83,7 +83,10 @@ export const sampleApps: AppItem[] = [
     name: 'Facebook',
     icon: 'facebook',
     color: '#1877F2',
-    onPress: () => console.log('Facebook pressed'),
+    onPress: () => {
+      // Navigation will be handled by the AppGrid component
+      console.log('Facebook pressed - navigation handled by AppGrid');
+    },
   },
   {
     id: 'twitter',
@@ -97,7 +100,10 @@ export const sampleApps: AppItem[] = [
     name: 'YouTube',
     icon: 'play-circle-filled',
     color: '#FF0000',
-    onPress: () => console.log('YouTube pressed'),
+    onPress: () => {
+      // Navigation will be handled by the AppGrid component
+      console.log('YouTube pressed - navigation handled by AppGrid');
+    },
   },
   {
     id: 'gmail',
