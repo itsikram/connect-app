@@ -431,7 +431,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
 
   // Leave channel
   const leaveChannel = useCallback(async () => {
-    setCallStatus("Ending call...")
     // Prevent multiple calls to leaveChannel
     if (isLeavingRef.current) {
       console.log('Already leaving audio channel, ignoring duplicate call');
@@ -523,8 +522,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   // End call - called when user clicks end button
   const endCall = useCallback(async () => {
     console.log('AudioCall: endCall called, isEndingCallRef:', isEndingCallRef.current);
-    setCallStatus("Ending call...")
-
 
     console.log('AudioCall: Ending audio call...');
     console.log('AudioCall: Debug state:', {

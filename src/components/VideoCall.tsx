@@ -50,6 +50,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   const [isVideoCall, setIsVideoCall] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
+  const [callStatus, setCallStatus] = useState<string | null>('Connecting...');
   const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
   const [currentChannel, setCurrentChannel] = useState<string | null>(null);
   const [remoteFriendId, setRemoteFriendId] = useState<string | null>(null); // Track the other user's ID
@@ -194,6 +195,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         throw new Error('Invalid token response from server');
       }
 
+      setCallStatus("Waiting for user...")
+
       console.log('Video token received successfully:', {
         appId: data.appId,
         hasToken: !!data.token,
@@ -292,6 +295,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       // Add event listeners
       engine.addListener('UserJoined', (uid: number) => {
         console.log('Remote video user joined:', uid);
+        setCallStatus("Connected")
         setRemoteUid(uid);
       });
 
@@ -601,6 +605,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Local cleanup without emitting to server
   const cleanupCall = useCallback(async () => {
     console.log('VideoCall: cleanupCall called');
+    setCallStatus("Ending call...")
     
     if (currentChannel) {
       const callId = `video-${currentChannel}`;
@@ -1260,8 +1265,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               ) : (
                 <Icon name="person" size={80} color={themeColors.text.secondary} />
               )}
-              <Text style={[styles.waitingText, { color: themeColors.text.secondary }]}>
-                Connecting...
+              <Text style={[styles.waitingText, { color: callStatus === 'Connected' ? themeColors.status.success || '#34C759' : themeColors.text.secondary }]}>
+                {callStatus}
               </Text>
             </View>
           )}
