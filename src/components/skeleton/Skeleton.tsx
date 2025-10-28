@@ -11,9 +11,9 @@ interface SkeletonBlockProps {
 
 export const useSkeletonColors = () => {
     const { colors: themeColors, isDarkMode } = useTheme();
-    const base = themeColors.surface.secondary;
+    const base = themeColors?.surface?.secondary || themeColors?.gray?.[200] || 'rgba(0,0,0,0.1)';
     // Subtle highlight based on theme
-    const highlight = isDarkMode ? themeColors.surface.primary : themeColors.background.primary;
+    const highlight = isDarkMode ? (themeColors?.surface?.primary || 'rgba(255,255,255,0.1)') : (themeColors?.background?.primary || 'rgba(0,0,0,0.05)');
     return { baseColor: base, highlightColor: highlight };
 };
 

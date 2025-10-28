@@ -28,6 +28,7 @@ import Video from 'react-native-video';
 import AudioRecorderPlayerModule from 'react-native-audio-recorder-player';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatHeaderSkeleton, ChatBubblesSkeleton } from '../components/skeleton/ChatSkeleton';
+import { SkeletonBlock } from '../components/skeleton/Skeleton';
 import UserPP from '../components/UserPP';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
@@ -459,6 +460,25 @@ const SingleMessage = () => {
     const [isBlocked, setIsBlocked] = useState<boolean>(false);
     const [isBlocking, setIsBlocking] = useState<boolean>(false);
     const [isBlockedByFriend, setIsBlockedByFriend] = useState<boolean>(false);
+    const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
+    
+    // Message-related state - MUST be before early returns to follow React hooks rules
+    const [messages, setMessages] = useState<Message[]>([]);
+    const [inputText, setInputText] = useState('');
+    const [isTyping, setIsTyping] = useState(false);
+    const [typingMessage, setTypingMessage] = useState('');
+    const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
+    const flatListRef = useRef<FlatList>(null);
+    const inputRef = useRef<TextInput>(null);
+    const scrollOffsetRef = useRef<number>(0);
+    const lastLoadTimestampRef = useRef<number>(0);
+    const visibleMessageIdRef = useRef<string | null>(null);
+
+    // Pagination state for loading old messages
+    const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
+    const [hasMoreMessages, setHasMoreMessages] = useState(true);
+    const [currentPage, setCurrentPage] = useState(0);
+    const messagesPerPage = 20;
 
     // Set up room and socket events when both IDs are available
     useEffect(() => {
@@ -539,6 +559,7 @@ const SingleMessage = () => {
         // Reset when friend changes
         setMessages([]);
         setCurrentPage(0);
+        setIsInitialLoading(true);
         
         console.log('Fetching initial messages for friend:', friend._id);
         
@@ -576,6 +597,9 @@ const SingleMessage = () => {
                 console.error('Error fetching initial messages from HTTP:', error);
                 console.error('Error details:', error?.response?.data || error?.message);
                 setHasMoreMessages(false);
+            } finally {
+                // Turn off initial loading skeleton once fetch completes
+                setIsInitialLoading(false);
             }
         };
         
@@ -647,6 +671,11 @@ const SingleMessage = () => {
                     // Otherwise, append as new
                     return [...prev, newMessage];
                 });
+                
+                // Remove from pending messages when real message arrives
+                if (newMessage.tempId) {
+                    setPendingMessages(prev => prev.filter(msg => msg.tempId !== newMessage.tempId));
+                }
 
                 // Dispatch action to update message count in Redux
                 dispatch(addNewMessage({
@@ -773,16 +802,6 @@ const SingleMessage = () => {
         };
     }, [isConnected, friend?._id, myProfile?._id, on, off]);
 
-    // Early return with skeletons if required data is not available
-    if (!friend?._id || !myProfile?._id) {
-        return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
-                <ChatHeaderSkeleton />
-                <ChatBubblesSkeleton count={12} />
-            </SafeAreaView>
-        );
-    }
-
     // Tab bar hiding is now handled at the app level in App.tsx
 
     useFocusEffect(
@@ -809,23 +828,6 @@ const SingleMessage = () => {
             return () => { isActive = false; };
         }, [friend?._id, myProfile?._id, dispatch])
     );
-
-    const [messages, setMessages] = useState<Message[]>([]);
-
-    const [inputText, setInputText] = useState('');
-    const [isTyping, setIsTyping] = useState(false);
-    const [typingMessage, setTypingMessage] = useState('');
-    const flatListRef = useRef<FlatList>(null);
-    const inputRef = useRef<TextInput>(null);
-    const scrollOffsetRef = useRef<number>(0);
-    const lastLoadTimestampRef = useRef<number>(0);
-    const visibleMessageIdRef = useRef<string | null>(null);
-
-    // Pagination state for loading old messages
-    const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
-    const [hasMoreMessages, setHasMoreMessages] = useState(true);
-    const [currentPage, setCurrentPage] = useState(0);
-    const messagesPerPage = 20;
 
     // Debug pagination state
     useEffect(() => {
@@ -904,17 +906,24 @@ const SingleMessage = () => {
     const sendMessage = () => {
         console.log('Sending message:', inputText.trim());
         if ((inputText.trim() || pendingAttachment) && isConnected && !isUploading) {
-            // const newMessage: Message = {
-            //     _id: Date.now().toString(),
-            //     message: inputText.trim(),
-            //     room,
-            //     receiverId: friend?._id,
-            //     senderId: myProfile?._id,
-            //     timestamp: new Date(),
-            //     isSeen: false,
-            // };
-
-            // Add message to local state immediately for optimistic UI
+            const tempId = Date.now().toString();
+            const messageContent = inputText.trim();
+            
+            // Add message to pending state
+            const pendingMessage: Message = {
+                _id: tempId,
+                message: messageContent,
+                receiverId: friend?._id,
+                senderId: myProfile?._id,
+                room,
+                attachment: pendingAttachment || undefined,
+                timestamp: new Date(),
+                isSeen: false,
+                tempId,
+                parent: replyingTo || undefined,
+            };
+            
+            setPendingMessages(prev => [...prev, pendingMessage]);
             setInputText('');
 
             // Send message through socket
@@ -922,14 +931,14 @@ const SingleMessage = () => {
                 room,
                 senderId: myProfile?._id,
                 receiverId: friend?._id,
-                message: inputText.trim(),
+                message: messageContent,
                 attachment: pendingAttachment || undefined,
                 parent: replyingTo?._id || false,
-                tempId: Date.now().toString(),
+                tempId,
                 timestamp: new Date().toISOString()
             });
 
-            console.log('Message sent:', inputText.trim());
+            console.log('Message sent:', messageContent);
             setPendingAttachment(null);
             setPendingAttachmentLocal(null);
             setUploadProgress(null);
@@ -1417,6 +1426,66 @@ const SingleMessage = () => {
         </View>
     );
 
+    const renderPendingMessage = ({ item }: { item: Message }) => {
+        const isMyMessage = item.senderId === myProfile?._id;
+        const bgColor = themeColors.surface.secondary;
+        
+        return (
+            <View style={{
+                marginBottom: 8,
+                marginHorizontal: 16,
+                flexDirection: 'row',
+                alignItems: 'flex-end',
+                justifyContent: isMyMessage ? 'flex-end' : 'flex-start',
+            }}>
+                {!isMyMessage && (
+                    <View style={{ marginRight: 8, marginBottom: 2 }}>
+                        <SkeletonBlock width={36} height={36} borderRadius={18} />
+                    </View>
+                )}
+                
+                <View style={{ 
+                    flex: 1, 
+                    maxWidth: isMyMessage ? '75%' : '78%',
+                    alignItems: isMyMessage ? 'flex-end' : 'flex-start',
+                }}>
+                    <View style={{
+                        backgroundColor: bgColor,
+                        borderRadius: 18,
+                        borderBottomLeftRadius: isMyMessage ? 18 : 4,
+                        borderBottomRightRadius: isMyMessage ? 4 : 18,
+                        paddingHorizontal: 12,
+                        paddingVertical: 8,
+                        minWidth: Math.max(120, (item.message?.length || 100) * 10),
+                        maxWidth: isMyMessage ? '75%' : '78%',
+                    }}>
+                        <SkeletonBlock 
+                            width="70%" 
+                            height={20} 
+                            borderRadius={4} 
+                            style={{ marginBottom: 4 }} 
+                        />
+                        <View style={{ 
+                            flexDirection: 'row', 
+                            justifyContent: 'flex-end', 
+                            alignItems: 'center', 
+                            marginTop: 4 
+                        }}>
+                            {isMyMessage && <SkeletonBlock width={14} height={14} style={{ marginRight: 4 }} />}
+                            <SkeletonBlock width={35} height={11} borderRadius={4} />
+                        </View>
+                    </View>
+                </View>
+                
+                {isMyMessage && (
+                    <View style={{ marginLeft: 8, marginBottom: 2 }}>
+                        <SkeletonBlock width={15} height={15} borderRadius={8} />
+                    </View>
+                )}
+            </View>
+        );
+    };
+
     const renderMessage = ({ item }: { item: Message }) => {
         const isMyMessage = item.senderId === myProfile?._id;
         
@@ -1842,6 +1911,16 @@ const SingleMessage = () => {
         );
     };
 
+    // Show full skeletons if no friend or profile data
+    if (!friend?._id || !myProfile?._id) {
+        return (
+            <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
+                <ChatHeaderSkeleton />
+                <ChatBubblesSkeleton count={22} />
+            </SafeAreaView>
+        );
+    }
+
     return (
         <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
 
@@ -1978,64 +2057,88 @@ const SingleMessage = () => {
             </View>
 
 
-            {chatBackground ? (
-                <ImageBackground
-                    source={{ uri: chatBackground }}
-                    style={{ flex: 1 }}
-                    imageStyle={{ opacity: isDarkMode ? 0.2 : 0.35 }}
-                >
-                    <FlatList
-                        ref={flatListRef}
-                        data={messages}
-                        renderItem={renderMessage}
-                        keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
-                        style={{ flex: 1 }}
-                        contentContainerStyle={{ paddingVertical: 8 }}
-                        showsVerticalScrollIndicator={false}
-                        ListHeaderComponent={renderLoadingOldMessages}
-                        ListFooterComponent={renderTypingIndicator}
-                        onScroll={handleScroll}
-                        scrollEventThrottle={16}
-                        onViewableItemsChanged={onViewableItemsChanged}
-                        viewabilityConfig={viewabilityConfigRef.current as any}
-                        onScrollToIndexFailed={(info) => {
-                            const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
-                            wait.then(() => {
-                                flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-                            });
-                        }}
-                        inverted={false}
-                        removeClippedSubviews={false}
-                    />
-                </ImageBackground>
+            {isInitialLoading ? (
+                <ChatBubblesSkeleton count={22} />
             ) : (
-                <FlatList
-                    ref={flatListRef}
-                    data={messages}
-                    renderItem={renderMessage}
-                    keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
-                    style={{ flex: 1 }}
-                    contentContainerStyle={{ paddingVertical: 8 }}
-                    showsVerticalScrollIndicator={false}
-                    ListHeaderComponent={renderLoadingOldMessages}
-                    ListFooterComponent={renderTypingIndicator}
-                    onScroll={handleScroll}
-                    scrollEventThrottle={16}
-                    onViewableItemsChanged={onViewableItemsChanged}
-                    viewabilityConfig={viewabilityConfigRef.current as any}
-                    onScrollToIndexFailed={(info) => {
-                        const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
-                        wait.then(() => {
-                            flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-                        });
-                    }}
-                    inverted={false}
-                    removeClippedSubviews={false}
-                    maintainVisibleContentPosition={{
-                        minIndexForVisible: 0,
-                        autoscrollToTopThreshold: 10
-                    }}
-                />
+                <>
+                    {chatBackground ? (
+                        <ImageBackground
+                            source={{ uri: chatBackground }}
+                            style={{ flex: 1 }}
+                            imageStyle={{ opacity: isDarkMode ? 0.2 : 0.35 }}
+                        >
+                            <FlatList
+                                ref={flatListRef}
+                                data={messages}
+                                renderItem={renderMessage}
+                                keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
+                                style={{ flex: 1 }}
+                                contentContainerStyle={{ paddingVertical: 8 }}
+                                showsVerticalScrollIndicator={false}
+                                ListHeaderComponent={renderLoadingOldMessages}
+                                ListFooterComponent={
+                                    <>
+                                        {pendingMessages.map((msg, idx) => (
+                                            <View key={msg.tempId || `pending-${idx}`}>
+                                                {renderPendingMessage({ item: msg })}
+                                            </View>
+                                        ))}
+                                        {renderTypingIndicator()}
+                                    </>
+                                }
+                                onScroll={handleScroll}
+                                scrollEventThrottle={16}
+                                onViewableItemsChanged={onViewableItemsChanged}
+                                viewabilityConfig={viewabilityConfigRef.current as any}
+                                onScrollToIndexFailed={(info) => {
+                                    const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
+                                    wait.then(() => {
+                                        flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                                    });
+                                }}
+                                inverted={false}
+                                removeClippedSubviews={false}
+                            />
+                        </ImageBackground>
+                    ) : (
+                        <FlatList
+                            ref={flatListRef}
+                            data={messages}
+                            renderItem={renderMessage}
+                            keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
+                            style={{ flex: 1 }}
+                            contentContainerStyle={{ paddingVertical: 8 }}
+                            showsVerticalScrollIndicator={false}
+                            ListHeaderComponent={renderLoadingOldMessages}
+                            ListFooterComponent={
+                                <>
+                                    {pendingMessages.map((msg, idx) => (
+                                        <View key={msg.tempId || `pending-${idx}`}>
+                                            {renderPendingMessage({ item: msg })}
+                                        </View>
+                                    ))}
+                                    {renderTypingIndicator()}
+                                </>
+                            }
+                            onScroll={handleScroll}
+                            scrollEventThrottle={16}
+                            onViewableItemsChanged={onViewableItemsChanged}
+                            viewabilityConfig={viewabilityConfigRef.current as any}
+                            onScrollToIndexFailed={(info) => {
+                                const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
+                                wait.then(() => {
+                                    flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                                });
+                            }}
+                            inverted={false}
+                            removeClippedSubviews={false}
+                            maintainVisibleContentPosition={{
+                                minIndexForVisible: 0,
+                                autoscrollToTopThreshold: 10
+                            }}
+                        />
+                    )}
+                </>
             )}
 
 

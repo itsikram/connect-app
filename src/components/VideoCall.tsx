@@ -574,6 +574,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       localPreviewStarted.current = false; // Reset preview flag
       engineRef.current = null;
       // Ensure end-call lock is released even on failures
+      isEndingCallRef.current = false;
     } finally {
       isLeavingRef.current = false;
     }
@@ -977,7 +978,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const retryTimeouts: ReturnType<typeof setTimeout>[] = [];
     
     // Check if the local video view should be rendered (same conditions as in JSX)
-    const shouldRenderLocalVideo = isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
+    const shouldRenderLocalVideo = !isEndingCallRef.current && !callEnded && isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
     
     if (shouldRenderLocalVideo && engineRef.current && !localPreviewStarted.current) {
       console.log('📹 Local video view conditions met, starting preview...');
@@ -1227,18 +1228,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {callAccepted && remoteUid && !isAudioMode ? (
             <View style={styles.remoteVideo}>
               <RtcRemoteView.SurfaceView
-                style={[styles.remoteVideo, getFilterStyle(localRemoteFilter || remoteFilter)]}
+                style={[styles.remoteVideo, getFilterStyle(myFilter || localRemoteFilter || remoteFilter)]}
                 uid={remoteUid}
                 channelId={currentChannel || ''}
                 renderMode={VideoRenderMode.Fit}
                 zOrderMediaOverlay={false}
               />
-              {(localRemoteFilter || remoteFilter) && (
+              {(myFilter || localRemoteFilter || remoteFilter) && (
                 <>
-                  {/* Primary filter overlay - prioritize local filter over remote */}
-                  <View style={[styles.filterOverlay, getFilterOverlayStyle(localRemoteFilter || remoteFilter)]} />
+                  {/* Primary filter overlay - prioritize my filter over local and remote filters */}
+                  <View style={[styles.filterOverlay, getFilterOverlayStyle(myFilter || localRemoteFilter || remoteFilter)]} />
                   {/* Secondary filter overlay for more realistic effect */}
-                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(localRemoteFilter || remoteFilter)]} />
+                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(myFilter || localRemoteFilter || remoteFilter)]} />
                 </>
               )}
             </View>

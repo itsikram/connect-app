@@ -162,6 +162,7 @@ const options = {
   linkingURI: 'connect://home',
   parameters: { taskName: 'ConnectBackground' },
   allowExecutionInForeground: false,
+  stopWithTerminate: false,
   // Android specific
   foregroundService: true,
 };

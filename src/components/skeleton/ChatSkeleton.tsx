@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, ScrollView } from 'react-native';
 import { SkeletonBlock, SkeletonRow, SkeletonColumn } from './Skeleton';
 import { useTheme } from '../../contexts/ThemeContext';
 
@@ -32,33 +32,91 @@ export const ChatHeaderSkeleton: React.FC = () => {
     );
 };
 
-export const ChatBubblesSkeleton: React.FC<{ count?: number }> = ({ count = 10 }) => {
-    const widths = ['35%', '60%', '50%', '70%', '40%', '55%', '65%', '45%', '58%', '62%'];
+export const ChatBubblesSkeleton: React.FC<{ count?: number }> = ({ count = 22 }) => {
+    const { colors: themeColors } = useTheme();
+    const widths = [120, 160, 180, 140, 200, 150, 170, 130, 190, 145, 165, 175, 155, 185, 135, 195, 125, 185, 155, 175, 160, 140];
+    const bgColor = themeColors?.surface?.secondary || 'rgba(0,0,0,0.1)';
+    
     return (
-        <View style={{ flex: 1 }}>
+        <ScrollView 
+            style={{ flex: 1, backgroundColor: themeColors?.background?.primary }}
+            contentContainerStyle={{ paddingVertical: 8 }}
+            showsVerticalScrollIndicator={false}
+        >
             {Array.from({ length: count }).map((_, idx) => {
                 const isLeft = idx % 2 === 0;
                 const width = widths[idx % widths.length];
+                const showProfilePic = !isLeft;
+                const showSeenIndicator = isLeft && idx % 3 === 0;
+                
                 return (
                     <View key={idx} style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 6,
+                        marginBottom: 8,
+                        marginHorizontal: 16,
                         flexDirection: 'row',
-                        justifyContent: isLeft ? 'flex-start' : 'flex-end'
+                        alignItems: 'flex-end',
+                        justifyContent: isLeft ? 'flex-end' : 'flex-start',
                     }}>
-                        <SkeletonBlock
-                            width={width}
-                            height={34}
-                            borderRadius={18}
-                            style={{
-                                borderBottomLeftRadius: isLeft ? 4 : 18,
-                                borderBottomRightRadius: isLeft ? 18 : 4,
-                            }}
-                        />
+                        {/* Profile picture for incoming messages (left) */}
+                        {showProfilePic && (
+                            <View style={{ marginRight: 8, marginBottom: 2 }}>
+                                <SkeletonBlock width={36} height={36} borderRadius={18} />
+                            </View>
+                        )}
+                        
+                        {/* Hidden placeholder for right alignment spacing */}
+                        {!showProfilePic && !showSeenIndicator && (
+                            <View style={{ marginLeft: 8, marginBottom: 2, width: 36, height: 36 }} />
+                        )}
+                        
+                        <View style={{ 
+                            backgroundColor: bgColor,
+                            borderRadius: 18,
+                            borderBottomLeftRadius: isLeft ? 18 : 4,
+                            borderBottomRightRadius: isLeft ? 4 : 18,
+                            paddingHorizontal: 12,
+                            paddingVertical: 8,
+                            maxWidth: isLeft ? '75%' : '78%',
+                            minWidth: width,
+                            width: width,
+                        }}>
+                            {/* Message text skeleton */}
+                            <SkeletonBlock 
+                                width={width - 24} 
+                                height={20} 
+                                borderRadius={4} 
+                                style={{ marginBottom: 4 }} 
+                            />
+                            
+                            {/* Timestamp skeleton */}
+                            <View style={{ 
+                                flexDirection: 'row', 
+                                justifyContent: 'flex-end', 
+                                alignItems: 'center', 
+                                marginTop: 4 
+                            }}>
+                                {isLeft && (
+                                    <SkeletonBlock width={14} height={14} style={{ marginRight: 4 }} />
+                                )}
+                                <SkeletonBlock width={35} height={11} borderRadius={4} />
+                            </View>
+                        </View>
+                        
+                        {/* Profile picture for outgoing messages (seen) */}
+                        {showSeenIndicator && (
+                            <View style={{ marginLeft: 8, marginBottom: 2 }}>
+                                <SkeletonBlock width={15} height={15} borderRadius={8} />
+                            </View>
+                        )}
+                        
+                        {/* Hidden placeholder for incoming messages spacing */}
+                        {!showProfilePic && !showSeenIndicator && (
+                            <View style={{ marginLeft: 8, marginBottom: 2, width: 15, height: 15 }} />
+                        )}
                     </View>
                 );
             })}
-        </View>
+        </ScrollView>
     );
 };
 
