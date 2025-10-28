@@ -75,11 +75,20 @@ const SingleMessage = () => {
     const dispatch = useDispatch<AppDispatch>();
     const friend: any = (route && route.params && route.params.friend) ? route.params.friend : null;
     const myProfile = useSelector((state: RootState) => state.profile);
+    const activeFriends = useSelector((state: RootState) => state.presence.activeFriends);
+    const lastSeenMap = useSelector((state: RootState) => (state as any).presence?.lastSeen || {});
     const [room, setRoom] = useState('');
-    const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall } = useSocket();
+    const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall, checkUserActive } = useSocket();
     const [isCallActive, setIsCallActive] = useState<boolean>(false);
     const { colors: themeColors, isDarkMode } = useTheme();
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
+
+    const isFriendOnline = React.useMemo(() => {
+        try { return !!friend?._id && activeFriends.includes(friend._id); } catch (_) { return false; }
+    }, [activeFriends, friend?._id]);
+    const friendLastSeenIso = React.useMemo(() => {
+        try { return friend?._id ? lastSeenMap[friend._id] : undefined; } catch (_) { return undefined; }
+    }, [lastSeenMap, friend?._id]);
 
     // Ensure status bar sits above header when this screen is focused
     useFocusEffect(
@@ -515,6 +524,7 @@ const SingleMessage = () => {
         // Only emit and set up listeners if socket is connected
         if (isConnected) {
             emit('startChat', { user1: myProfile._id, user2: friend._id });
+            try { checkUserActive(friend._id, myProfile._id); } catch (_) {}
 
             // Set up room joined listener
             const handleRoomJoined = ({ room }: { room: string }) => {
@@ -530,7 +540,7 @@ const SingleMessage = () => {
                 off('roomJoined', handleRoomJoined);
             };
         }
-    }, [friend?._id, myProfile?._id, isConnected, emit, on, off]);
+    }, [friend?._id, myProfile?._id, isConnected, emit, on, off, checkUserActive]);
 
     // Check if user is blocked when component loads
     useEffect(() => {
@@ -1542,7 +1552,7 @@ const SingleMessage = () => {
                         {/* Profile picture for incoming messages */}
                         {!isMyMessage && (
                             <View style={{ marginRight: 8, marginBottom: 2 }}>
-                                <UserPP image={friend?.profilePic} isActive={false} size={36} />
+                                <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={36} />
                             </View>
                         )}
                         
@@ -2004,7 +2014,7 @@ const SingleMessage = () => {
                                     ) : (
                                         <Text>typing...</Text>
                                     )
-                                ) : friend?.isActive ? (
+                                ) : isFriendOnline ? (
                                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                                         <View style={{ height: 10, width: 10, borderRadius: 5, backgroundColor: 'green' }}></View>
                                         <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Online</Text>
@@ -2485,7 +2495,7 @@ const SingleMessage = () => {
                             alignItems: 'center',
                             marginBottom: 20,
                         }}>
-                            <UserPP image={friend?.profilePic} isActive={friend?.isActive} size={50} />
+                            <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={50} />
                             <View style={{ marginLeft: 12, flex: 1 }}>
                                 <Text style={{
                                     fontSize: 18,

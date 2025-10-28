@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,11 @@ import {
   Animated,
   Modal,
   Easing,
+  Image,
+  TextInput,
+  ScrollView,
+  FlatList,
+  ImageBackground,
 } from 'react-native';
 import Svg, {
   Rect,
@@ -24,9 +29,14 @@ import Svg, {
 } from 'react-native-svg';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
+import { useSocket } from '../contexts/SocketContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Logo from '../components/Logo';
 import { Emitter } from 'react-native-particles';
+import api, { friendAPI } from '../lib/api';
+import config from '../lib/config';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 
 const { width, height } = Dimensions.get('window');
 const BOARD_SIZE = Math.min(width * 0.85, height * 0.6);
@@ -52,11 +62,84 @@ interface Player {
   color: string;
   pieces: Piece[];
   isActive: boolean;
+  avatar?: string;
+  profileId?: string;
 }
 
 const LudoGameSVG = () => {
   const { colors: themeColors } = useTheme();
   const { setLudoGameActive } = useLudoGame();
+  const { emit, isConnected } = useSocket();
+  const myProfile = useSelector((state: RootState) => state.profile);
+  
+  // Use remote URL if provided, otherwise fall back to bundled asset
+  const backgroundImageSource = config.LUDU_BACKGROUND_URL.startsWith('http')
+    ? { uri: config.LUDU_BACKGROUND_URL }
+    : require('../assets/images/ludu-background.png');
+
+  // Precomputed board paths to avoid re-creating large arrays on every call
+  const PATHS: Record<number, { x: number; y: number }[]> = useMemo(() => ({
+    0: [
+      { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
+      { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
+      { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
+      { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
+      { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
+      { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
+      { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
+      { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
+      { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
+      { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
+      { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
+      { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
+      { x: 1, y: 7 }, { x: 2, y: 7 }, { x: 3, y: 7 }, { x: 4, y: 7 }, { x: 5, y: 7 }, { x: 6, y: 7 }, { x: 7, y: 7 }
+    ],
+    1: [
+      { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
+      { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
+      { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
+      { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
+      { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
+      { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
+      { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
+      { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
+      { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
+      { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
+      { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
+      { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
+      { x: 7, y: 1 }, { x: 7, y: 2 }, { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 7, y: 6 }, { x: 7, y: 7 }
+    ],
+    2: [
+      { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
+      { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
+      { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
+      { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
+      { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
+      { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
+      { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
+      { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
+      { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
+      { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
+      { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
+      { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
+      { x: 7, y: 13 }, { x: 7, y: 12 }, { x: 7, y: 11 }, { x: 7, y: 10 }, { x: 7, y: 9 }, { x: 7, y: 8 }, { x: 7, y: 7 }
+    ],
+    3: [
+      { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
+      { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
+      { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
+      { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
+      { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
+      { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
+      { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
+      { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
+      { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
+      { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
+      { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
+      { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
+      { x: 13, y: 7 }, { x: 12, y: 7 }, { x: 11, y: 7 }, { x: 10, y: 7 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }
+    ]
+  }), []);
   const [players, setPlayers] = useState<Player[]>([]);
   const [currentPlayer, setCurrentPlayer] = useState(0);
   const [diceValue, setDiceValue] = useState(0);
@@ -70,6 +153,13 @@ const LudoGameSVG = () => {
   const [showPlayerSelection, setShowPlayerSelection] = useState(false);
   const [selectedPlayerCount, setSelectedPlayerCount] = useState(4);
   const [captureAnimations, setCaptureAnimations] = useState<{[key: string]: boolean}>({});
+  const [onlineMode, setOnlineMode] = useState(false);
+  const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [friendList, setFriendList] = useState<any[]>([]);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Original Ludo colors
   const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
@@ -106,8 +196,48 @@ const LudoGameSVG = () => {
     initializeGame();
   }, []);
 
+  useEffect(() => {
+    if (showPlayerSelection && myProfile?._id) {
+      friendAPI.getFriendList(myProfile._id)
+        .then(res => setFriendList(Array.isArray(res.data) ? res.data : []))
+        .catch(() => setFriendList([]));
+    }
+  }, [showPlayerSelection, myProfile?._id]);
+
+  const onChangeFriendSearch = (text: string) => {
+    setFriendSearchQuery(text);
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    if (!text || text.trim().length < 2) {
+      setSearchResults([]);
+      return;
+    }
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        setLoadingSearch(true);
+        const res = await api.get(`/search?input=${encodeURIComponent(text)}`);
+        setSearchResults(res.data?.users || []);
+      } catch (_) {
+        setSearchResults([]);
+      } finally {
+        setLoadingSearch(false);
+      }
+    }, 300);
+  };
+
   const initializeGame = (playerCount: number = selectedPlayerCount) => {
     const newPlayers: Player[] = [];
+    const names: string[] = [];
+    const avatars: (string | undefined)[] = [];
+    const ids: (string | undefined)[] = [];
+    names[0] = myProfile?.fullName || playerNames[0];
+    avatars[0] = myProfile?.profilePic;
+    ids[0] = myProfile?._id;
+    for (let i = 1; i < playerCount; i++) {
+      const f = selectedFriends[i - 1];
+      names[i] = f?.fullName || playerNames[i];
+      avatars[i] = f?.profilePic;
+      ids[i] = f?._id;
+    }
     for (let i = 0; i < playerCount; i++) {
       const pieces: Piece[] = [];
       for (let j = 0; j < 4; j++) {
@@ -122,10 +252,12 @@ const LudoGameSVG = () => {
       }
       newPlayers.push({
         id: i,
-        name: playerNames[i],
+        name: names[i] || playerNames[i],
         color: colors[i],
         pieces,
         isActive: i === 0,
+        avatar: avatars[i],
+        profileId: ids[i],
       });
     }
     setPlayers(newPlayers);
@@ -475,12 +607,12 @@ const LudoGameSVG = () => {
         Animated.timing(tokenPositionAnimations[pieceId].translateX, {
           toValue: targetX,
           duration: animationDuration,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
         Animated.timing(tokenPositionAnimations[pieceId].translateY, {
           toValue: targetY,
           duration: animationDuration,
-          useNativeDriver: false,
+          useNativeDriver: true,
         }),
       ]).start(() => {
         // Move to next step
@@ -492,88 +624,12 @@ const LudoGameSVG = () => {
     animateStep(1);
   };
 
-  // Calculate position on the Ludo board path
+  // Calculate position on the Ludo board path (uses precomputed PATHS)
   const getPositionOnPath = (playerIndex: number, steps: number) => {
-    // Define the path positions for each player (52 main path + 5 home stretch + 1 finish = 58 total)
-    const paths = {
-      0: [ // Red player path (starting from bottom-left going up)
-        // Starting position and main path (52 steps)
-        { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
-        { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
-        { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
-        { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
-        { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
-        { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
-        { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
-        { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
-        { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
-        { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
-        { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
-        { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
-        // Home stretch (6 steps to center)
-        { x: 1, y: 7 }, { x: 2, y: 7 }, { x: 3, y: 7 }, { x: 4, y: 7 }, { x: 5, y: 7 }, { x: 6, y: 7 }, { x: 7, y: 7 }
-      ],
-
-      1: [ // Green player path (starting from top-right going down)
-        // Starting position and main path (52 steps)
-        { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
-        { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
-        { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
-        { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
-        { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
-        { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
-        { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
-        { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
-        { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
-        { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
-        { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
-        { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
-        // Home stretch (6 steps to center)
-        { x: 7, y: 1 }, { x: 7, y: 2 }, { x: 7, y: 3 }, { x: 7, y: 4 }, { x: 7, y: 5 }, { x: 7, y: 6 }, { x: 7, y: 7 }
-      ],
-
-      2: [ // Blue player path (starting from bottom-left going right)
-        // Starting position and main path (52 steps)
-        { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
-        { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 },
-        { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
-        { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
-        { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 },
-        { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
-        { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
-        { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 },
-        { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
-        { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
-        { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 },
-        { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
-        // Home stretch (6 steps to center)
-        { x: 7, y: 13 }, { x: 7, y: 12 }, { x: 7, y: 11 }, { x: 7, y: 10 }, { x: 7, y: 9 }, { x: 7, y: 8 }, { x: 7, y: 7 }
-      ],
-
-      3: [ // Yellow player path (starting from bottom-right going left)
-        // Starting position and main path (52 steps)
-        { x: 13, y: 8 }, { x: 12, y: 8 }, { x: 11, y: 8 }, { x: 10, y: 8 }, { x: 9, y: 8 },
-        { x: 8, y: 9 }, { x: 8, y: 10 }, { x: 8, y: 11 }, { x: 8, y: 12 }, { x: 8, y: 13 }, 
-        { x: 8, y: 14 }, { x: 7, y: 14 }, { x: 6, y: 14 },
-        { x: 6, y: 13 }, { x: 6, y: 12 }, { x: 6, y: 11 }, { x: 6, y: 10 }, { x: 6, y: 9 },
-        { x: 5, y: 8 }, { x: 4, y: 8 }, { x: 3, y: 8 }, { x: 2, y: 8 }, { x: 1, y: 8 }, 
-        { x: 0, y: 8 }, { x: 0, y: 7 }, { x: 0, y: 6 },
-        { x: 1, y: 6 }, { x: 2, y: 6 }, { x: 3, y: 6 }, { x: 4, y: 6 }, { x: 5, y: 6 },
-        { x: 6, y: 5 }, { x: 6, y: 4 }, { x: 6, y: 3 }, { x: 6, y: 2 }, { x: 6, y: 1 }, 
-        { x: 6, y: 0 }, { x: 7, y: 0 }, { x: 8, y: 0 },
-        { x: 8, y: 1 }, { x: 8, y: 2 }, { x: 8, y: 3 }, { x: 8, y: 4 }, { x: 8, y: 5 },
-        { x: 9, y: 6 }, { x: 10, y: 6 }, { x: 11, y: 6 }, { x: 12, y: 6 }, { x: 13, y: 6 }, 
-        { x: 14, y: 6 }, { x: 14, y: 7 }, { x: 14, y: 8 },
-        // Home stretch (6 steps to center)
-        { x: 13, y: 7 }, { x: 12, y: 7 }, { x: 11, y: 7 }, { x: 10, y: 7 }, { x: 9, y: 7 }, { x: 8, y: 7 }, { x: 7, y: 7 }
-      ]
-    };
-
-    const path = paths[playerIndex as keyof typeof paths];
+    const path = PATHS[playerIndex as keyof typeof PATHS];
     if (!path || steps <= 0 || steps > path.length) {
-      return { x: 7, y: 7 }; // Return center position as fallback
+      return { x: 7, y: 7 };
     }
-
     return path[steps - 1];
   };
 
@@ -861,6 +917,18 @@ const LudoGameSVG = () => {
     setCanRollDice(true);
     setDiceRolling(false);
     initializeGame(selectedPlayerCount);
+    // Notify invited friends (soft invite event)
+    if (onlineMode && selectedFriends.length > 0 && isConnected) {
+      try {
+        const invitedIds = selectedFriends.map(f => f._id).filter(Boolean);
+        emit('ludo_invite', {
+          from: myProfile?._id,
+          to: invitedIds,
+          game: 'ludo',
+          timestamp: Date.now(),
+        });
+      } catch (_) {}
+    }
   };
 
   const resetGame = () => {
@@ -995,7 +1063,7 @@ const LudoGameSVG = () => {
     );
   };
 
-  const renderLudoBoard = () => {
+  const renderLudoBoard = useMemo(() => {
     return (
       <Svg width={BOARD_SIZE} height={BOARD_SIZE} viewBox={`0 0 ${BOARD_SIZE} ${BOARD_SIZE}`}>
         {/* Main board background */}
@@ -1338,7 +1406,7 @@ const LudoGameSVG = () => {
         />
       </Svg>
     );
-  };
+  }, [BOARD_SIZE]);
 
   const renderTokens = () => {
     const maxSteps = 59;
@@ -1434,13 +1502,28 @@ const LudoGameSVG = () => {
                         opacity: isActivePlayer ? 1 : 0.3,
                       }}
                     >
-                      <Text style={{
-                        color: 'white',
-                        fontWeight: 'bold',
-                        fontSize: piece.steps === maxSteps ? 20 : 16,
-                      }}>
-                        {piece.steps === maxSteps ? '✓' : pieceIndex + 1}
-                      </Text>
+                      {players[playerIndex]?.avatar ? (
+                        <>
+                          <Image
+                            source={{ uri: players[playerIndex].avatar as string }}
+                            style={{
+                              width: tokenSize * 0.8,
+                              height: tokenSize * 0.8,
+                              borderRadius: (tokenSize * 0.8) / 2,
+                            }}
+                          />
+                        </>
+                      ) : (
+                        piece.steps === maxSteps ? (
+                          <Text style={{
+                            color: 'white',
+                            fontWeight: 'bold',
+                            fontSize: 20,
+                          }}>
+                            ✓
+                          </Text>
+                        ) : null
+                      )}
                       {isBeingCaptured && (
                         <View style={{
                           position: 'absolute',
@@ -1510,13 +1593,26 @@ const LudoGameSVG = () => {
                           elevation: 5,
                         }}
                       >
-                        <Text style={{
-                          color: 'white',
-                          fontWeight: 'bold',
-                          fontSize: 16,
-                        }}>
-                          {pieceIndex + 1}
-                        </Text>
+                        {players[playerIndex]?.avatar ? (
+                          <>
+                            <Image
+                              source={{ uri: players[playerIndex].avatar as string }}
+                              style={{
+                                width: tokenSize * 0.8,
+                                height: tokenSize * 0.8,
+                                borderRadius: (tokenSize * 0.8) / 2,
+                              }}
+                            />
+                          </>
+                        ) : (
+                          <Text style={{
+                            color: 'white',
+                            fontWeight: 'bold',
+                            fontSize: 16,
+                          }}>
+                            {''}
+                          </Text>
+                        )}
                       </View>
                     </Animated.View>
                   </View>
@@ -1552,13 +1648,26 @@ const LudoGameSVG = () => {
                         opacity: isActivePlayer ? 1 : 0.3,
                       }}
                     >
-                      <Text style={{
-                        color: 'white',
-                        fontWeight: 'bold',
-                        fontSize: 16,
-                      }}>
-                        {pieceIndex + 1}
-                      </Text>
+                      {players[playerIndex]?.avatar ? (
+                        <>
+                          <Image
+                            source={{ uri: players[playerIndex].avatar as string }}
+                            style={{
+                              width: tokenSize * 0.8,
+                              height: tokenSize * 0.8,
+                              borderRadius: (tokenSize * 0.8) / 2,
+                            }}
+                          />
+                        </>
+                      ) : (
+                        <Text style={{
+                          color: 'white',
+                          fontWeight: 'bold',
+                          fontSize: 16,
+                        }}>
+                          {''}
+                        </Text>
+                      )}
                     </View>
                   </View>
                 );
@@ -1779,7 +1888,7 @@ const LudoGameSVG = () => {
               }}
               disabled={!isCurrentPlayer || diceValue === 0}
             >
-              <Text style={styles.pieceText}>{pieceIndex + 1}</Text>
+              <Text style={styles.pieceText}>{''}</Text>
             </TouchableOpacity>
           ))}
         </View>
@@ -1789,17 +1898,17 @@ const LudoGameSVG = () => {
 
   if (gameEnded) {
     return (
-      <View style={styles.bg}>
+      <ImageBackground source={backgroundImageSource} style={styles.bg} resizeMode="cover">
         <View style={StyleSheet.absoluteFillObject}>
           <Emitter
-            numberOfParticles={80}
-            emissionRate={3}
-            interval={150}
-            particleLife={5000}
+            numberOfParticles={40}
+            emissionRate={2}
+            interval={220}
+            particleLife={4500}
             direction={-90}
             spread={360}
-            speed={3}
-            gravity={0.15}
+            speed={2}
+            gravity={0.12}
             fromPosition={() => ({ x: Math.random() * width, y: height })}
             infiniteLoop={true}
             autoStart={true}
@@ -1844,23 +1953,23 @@ const LudoGameSVG = () => {
           </TouchableOpacity>
         </View>
       </SafeAreaView>
-      </View>
+      </ImageBackground>
     );
   }
 
   if (showPlayerSelection) {
     return (
-      <View style={styles.bg}>
+      <ImageBackground source={backgroundImageSource} style={styles.bg} resizeMode="cover">
         <View style={StyleSheet.absoluteFillObject}>
           <Emitter
-            numberOfParticles={80}
-            emissionRate={3}
-            interval={150}
-            particleLife={5000}
+            numberOfParticles={40}
+            emissionRate={2}
+            interval={220}
+            particleLife={4500}
             direction={-90}
             spread={360}
-            speed={3}
-            gravity={0.15}
+            speed={2}
+            gravity={0.12}
             fromPosition={() => ({ x: Math.random() * width, y: height })}
             infiniteLoop={true}
             autoStart={true}
@@ -1874,6 +1983,7 @@ const LudoGameSVG = () => {
         <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.playerSelectionContainer}>
           <View style={styles.playerSelectionModal}>
+            <ScrollView contentContainerStyle={{ paddingBottom: 10 }}>
             <View style={styles.modalHeader}>
               <Icon name="group" size={32} color="#FFD700" />
               <Text style={styles.modalTitle}>Select Players</Text>
@@ -1919,6 +2029,66 @@ const LudoGameSVG = () => {
               ))}
             </View>
 
+            {/* Online toggle and friend picker */}
+            <View style={{ marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={[styles.playerCountLabel, { fontWeight: '700' }]}>Play Online with Friends</Text>
+                <TouchableOpacity onPress={() => setOnlineMode(!onlineMode)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: onlineMode ? '#29B1A9' : 'rgba(255,255,255,0.1)' }}>
+                  <Text style={{ color: 'white', fontWeight: '600' }}>{onlineMode ? 'On' : 'Off'}</Text>
+                </TouchableOpacity>
+              </View>
+              {onlineMode && (
+                <View style={{ marginTop: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
+                    <Icon name="search" size={18} color="#FFD700" />
+                    <TextInput
+                      placeholder="Search friends by name..."
+                      placeholderTextColor="#B0B0B0"
+                      value={friendSearchQuery}
+                      onChangeText={onChangeFriendSearch}
+                      style={{ flex: 1, color: 'white', paddingVertical: 4 }}
+                    />
+                  </View>
+                  <FlatList
+                    data={(friendSearchQuery ? searchResults : friendList) as any[]}
+                    keyExtractor={(item: any) => item?._id || String(item?.id) || Math.random().toString()}
+                    renderItem={({ item: f }: { item: any }) => {
+                      const isSelected = selectedFriends.some(sf => sf._id === f._id);
+                      return (
+                        <TouchableOpacity onPress={() => {
+                          setSelectedFriends(prev => {
+                            if (isSelected) return prev.filter(p => p._id !== f._id);
+                            const next = [...prev, f];
+                            return next.slice(0, Math.max(0, selectedPlayerCount - 1));
+                          });
+                        }} style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 }}>
+                          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: '#333' }}>
+                              {f?.profilePic ? (
+                                <Image source={{ uri: f.profilePic }} style={{ width: 28, height: 28 }} />
+                              ) : null}
+                            </View>
+                            <Text style={{ color: 'white', fontSize: 14 }}>{f?.fullName || 'Unknown'}</Text>
+                          </View>
+                          <Icon name={isSelected ? 'check-circle' : 'radio-button-unchecked'} size={18} color={isSelected ? '#29B1A9' : '#888'} />
+                        </TouchableOpacity>
+                      );
+                    }}
+                    style={{ maxHeight: 220, marginTop: 8 }}
+                    nestedScrollEnabled={true}
+                    initialNumToRender={10}
+                    windowSize={7}
+                    ListEmptyComponent={loadingSearch ? (
+                      <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>Searching...</Text>
+                    ) : null}
+                  />
+                  <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>
+                    Selected: {selectedFriends.length} / {Math.max(0, selectedPlayerCount - 1)}
+                  </Text>
+                </View>
+              )}
+            </View>
+
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelButton}
@@ -1935,25 +2105,26 @@ const LudoGameSVG = () => {
                 <Text style={styles.confirmButtonText}>Start Game</Text>
               </TouchableOpacity>
             </View>
+            </ScrollView>
           </View>
         </View>
       </SafeAreaView>
-      </View>
+      </ImageBackground>
     );
   }
 
   return (
-    <View style={styles.bg}>
+    <ImageBackground source={backgroundImageSource} style={styles.bg} resizeMode="cover">
       <View style={StyleSheet.absoluteFillObject}>
         <Emitter
-          numberOfParticles={80}
-          emissionRate={3}
-          interval={150}
-          particleLife={5000}
+          numberOfParticles={40}
+          emissionRate={2}
+          interval={220}
+          particleLife={4500}
           direction={-90}
           spread={360}
-          speed={3}
-          gravity={0.15}
+          speed={2}
+          gravity={0.12}
           fromPosition={() => ({ x: Math.random() * width, y: height })}
           infiniteLoop={true}
           autoStart={true}
@@ -2062,7 +2233,7 @@ const LudoGameSVG = () => {
           <View style={styles.boardContainer}>
             <View style={styles.boardWrapper}>
               <View style={styles.board}>
-                {renderLudoBoard()}
+                {renderLudoBoard}
                 {renderTokens()}
               </View>
               <View style={styles.boardGlow} />
@@ -2163,7 +2334,7 @@ const LudoGameSVG = () => {
         </>
       )}
     </SafeAreaView>
-    </View>
+    </ImageBackground>
   );
 };
 
@@ -2174,7 +2345,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: '#0f1419',
+    backgroundColor: 'transparent',
   },
   backgroundGradient: {
     position: 'absolute',
@@ -2182,7 +2353,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#0f1419',
+    backgroundColor: 'rgba(15, 20, 25, 0.6)',
   },
   backgroundPattern: {
     position: 'absolute',
@@ -2570,6 +2741,7 @@ const styles = StyleSheet.create({
     padding: 35,
     width: '100%',
     maxWidth: 400,
+    maxHeight: '80%',
     elevation: 15,
     shadowColor: '#000',
     shadowOpacity: 0.6,

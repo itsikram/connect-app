@@ -48,6 +48,10 @@ const Menu = () => {
       (navigation as any).navigate('Home', { screen: 'Camera' });
       return;
     }
+    if (app.id === 'gallery') {
+      (navigation as any).navigate('Home', { screen: 'Gallery' });
+      return;
+    }
     if (app.id === 'mediaPlayer') {
       (navigation as any).navigate('Menu', {
         screen: 'MediaPlayer',
@@ -67,6 +71,18 @@ const Menu = () => {
     }
     if (app.id === 'youtube') {
       (navigation as any).navigate('Menu', { screen: 'YouTube' });
+      return;
+    }
+    if (app.id === 'maps') {
+      (navigation as any).navigate('Menu', { screen: 'GoogleMaps' });
+      return;
+    }
+    if (app.id === 'contacts') {
+      (navigation as any).navigate('Menu', { screen: 'GoogleContacts' });
+      return;
+    }
+    if (app.id === 'cricbuzz') {
+      (navigation as any).navigate('Menu', { screen: 'Cricbuzz' });
       return;
     }
     app.onPress?.();

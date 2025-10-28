@@ -153,14 +153,22 @@ const OutgoingCall: React.FC = () => {
       setCallStatus('Call ended');
       setTimeout(() => safeGoBack(), 1000);
     };
+    const handleUpdatedStatus = ({ from, status }: any) => {
+      // We are the caller; any status from callee should update our banner
+      if (status) {
+        setCallStatus(status);
+      }
+    };
 
     on('call-accepted', handleAccepted);
     on(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
     on(isAudio ? 'audio-call-rejected' : 'video-call-rejected', handleEnd);
+    on('updated-call-status', handleUpdatedStatus);
 
     return () => {
       off('call-accepted', handleAccepted);
       off(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
+      off('updated-call-status', handleUpdatedStatus);
     };
   }, [on, off, navigation, isAudio]);
 

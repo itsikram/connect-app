@@ -3,6 +3,7 @@ import postsReducer from './reducers/postsReducer';
 import profileReducer from './reducers/profileReducer';
 import chatReducer from './reducers/chatReducer';
 import notificationReducer from './reducers/notificationReducer';
+import presenceReducer from './reducers/presenceReducer';
 
 const store = configureStore({
     reducer: {
@@ -10,6 +11,7 @@ const store = configureStore({
         profile: profileReducer,
         chat: chatReducer,
         notification: notificationReducer,
+        presence: presenceReducer,
     }
 });
 

@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingBackButton from '../components/FloatingBackButton';
 
-const YouTubeScreen = () => {
+const GoogleMapsScreen = () => {
   const { colors: themeColors } = useTheme();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -33,7 +33,7 @@ const YouTubeScreen = () => {
       />
       <WebView
         ref={webViewRef}
-        source={{ uri: 'https://m.youtube.com' }}
+        source={{ uri: 'https://www.google.com/maps' }}
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -51,6 +51,7 @@ const YouTubeScreen = () => {
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
         mixedContentMode="compatibility"
+        // Use a modern Android mobile UA for better mobile layout
         userAgent="Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
         originWhitelist={["*"]}
         onNavigationStateChange={(navState) => {
@@ -88,4 +89,6 @@ const styles = StyleSheet.create({
   },
 });
 
-export default YouTubeScreen;
+export default GoogleMapsScreen;
+
+

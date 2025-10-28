@@ -10,6 +10,7 @@ interface EnvironmentConfig {
   DEFAULT_NOTIFICATION_SOUND_URL: string;
   DEFAULT_RINGTONE_URL: string;
   CALLING_BEEP_URL: string;
+  LUDU_BACKGROUND_URL: string;
   REACT_LIKE_URL: string;
   REACT_LOVE_URL: string;
   REACT_HAHA_URL: string;
@@ -17,10 +18,10 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-const serverUrl = "http://192.168.0.100:4000"
+// const serverUrl = "http://192.168.0.100:4000"
 // const serverUrl = "http://172.20.10.2:4000"
 const mediapipeServerUrl = "http://192.168.0.100:5000"
-// const serverUrl = "https://connect-server-y1ku.onrender.com"
+const serverUrl = "https://connect-server-y1ku.onrender.com"
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
@@ -33,6 +34,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
     DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
     DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
+    LUDU_BACKGROUND_URL: '/assets/images/ludu-background.png',
     CALLING_BEEP_URL: '/assets/audio/calling-beep.mp3',
     REACT_LIKE_URL: '/assets/images/reacts/reactLike.svg',
     REACT_LOVE_URL: '/assets/images/reacts/reactLove.svg',
@@ -48,6 +50,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
     DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
     DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
+    LUDU_BACKGROUND_URL: '/assets/images/ludu-background.png',
     CALLING_BEEP_URL: '/assets/audio/calling-beep.mp3',
     REACT_LIKE_URL: '/assets/images/reacts/reactLike.svg',
     REACT_LOVE_URL: '/assets/images/reacts/reactLove.svg',
@@ -63,6 +66,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
     DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
     DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
+    LUDU_BACKGROUND_URL: '/assets/images/ludu-background.png',
     CALLING_BEEP_URL: '/assets/audio/calling-beep.mp3',
     REACT_LIKE_URL: '/assets/images/reacts/reactLike.svg',
     REACT_LOVE_URL: '/assets/images/reacts/reactLove.svg',

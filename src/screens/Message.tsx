@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, ActivityIndicator, ScrollView, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { userAPI, debugAuth } from '../lib/api';
@@ -88,7 +88,7 @@ const Message = React.memo(() => {
   const [friends, setFriends] = React.useState<any[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
-  const [activeFriends, setActiveFriends] = React.useState<string[]>([]);
+  const activeFriends = useSelector((state: RootState) => state.presence.activeFriends);
   const { chats: chatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
     chats: any[];
     loading: boolean;
@@ -97,6 +97,26 @@ const Message = React.memo(() => {
 
   const { emit, on, off, isConnected, checkUserActive } = useSocket();
   const [isCallActive, setIsCallActive] = React.useState(false);
+
+  // Sort friends so that active users appear first
+  const sortedFriends = useMemo(() => {
+    const friendsList = [...(profileData?.friends || [])];
+    return friendsList.sort((a: any, b: any) => {
+      const aActive = activeFriends.includes(a?._id) ? 1 : 0;
+      const bActive = activeFriends.includes(b?._id) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const aName = (a?.fullName || '').toLowerCase();
+      const bName = (b?.fullName || '').toLowerCase();
+      return aName.localeCompare(bName);
+    });
+  }, [profileData?.friends, activeFriends]);
+
+  // Keep displayed friends in sync with sorting and search
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFriends(sortedFriends);
+    }
+  }, [sortedFriends, searchQuery]);
 
   // Suspend rendering when a call is active (audio or video)
   useEffect(() => {
@@ -175,70 +195,16 @@ const Message = React.memo(() => {
     }
   }, [chatList?.length, profileData?._id]);
 
-  // Listen for real-time friend online/offline updates
-  useEffect(() => {
-    console.log('useEffect', isConnected);
-    if (!isConnected) return;
-
-    const handleFriendOnline = (data: any) => {
-      const friendProfileId = data?.profileId;
-      console.log('handleFriendOnline', friendProfileId);
-      if (friendProfileId) {
-        setActiveFriends(prev => {
-          if (!prev.includes(friendProfileId)) {
-            return [...prev, friendProfileId];
-          }
-          return prev;
-        });
-      }
-    };
-
-    const handleFriendOffline = (data: any) => {
-      const friendProfileId = data?.profileId;
-      console.log('handleFriendOffline', friendProfileId);
-      if (friendProfileId) {
-        setActiveFriends(prev => prev.filter(id => id !== friendProfileId));
-      }
-    };
-
-    on('friend_online', handleFriendOnline);
-    on('friend_offline', handleFriendOffline);
-
-    return () => {
-      off('friend_online', handleFriendOnline);
-      off('friend_offline', handleFriendOffline);
-    };
-  }, [isConnected, on, off]);
+  // Presence listeners handled globally in App.tsx
 
   // Initial check for online status when contacts change
   useEffect(() => {
     if (!isConnected || !chatList || chatList.length === 0 || !profileData?._id) return;
-
     chatList.forEach((contact) => {
       if (!contact?.person?._id) return;
-      
-      // Check if friend is active
       checkUserActive(contact.person._id, profileData._id);
-      
-      // Listen for is_active response
-      const handleIsActive = (isUserActive: boolean, lastLogin: Date, activeProfileId: string) => {
-        if (isUserActive === true && activeProfileId === contact.person._id) {
-          setActiveFriends(prev => {
-            if (!prev.includes(activeProfileId)) {
-              return [...prev, activeProfileId];
-            }
-            return prev;
-          });
-        }
-      };
-
-      on('is_active', handleIsActive);
-
-      return () => {
-        off('is_active', handleIsActive);
-      };
     });
-  }, [isConnected, chatList, profileData?._id, checkUserActive, on, off]);
+  }, [isConnected, chatList, profileData?._id, checkUserActive]);
 
   const navigation = useNavigation();
 
@@ -321,6 +287,20 @@ const Message = React.memo(() => {
   }, [profileData?._id, dispatch, fetchProfile]);
 
 
+  // Sort chat list so active users' conversations are at the top (then by latest message time)
+  const sortedChatList = useMemo(() => {
+    const list = [...(chatList || [])];
+    return list.sort((a: any, b: any) => {
+      const aActive = activeFriends.includes(a?.person?._id) ? 1 : 0;
+      const bActive = activeFriends.includes(b?.person?._id) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const aTs = new Date(a?.messages?.[0]?.timestamp || 0).getTime();
+      const bTs = new Date(b?.messages?.[0]?.timestamp || 0).getTime();
+      return bTs - aTs;
+    });
+  }, [chatList, activeFriends]);
+
+
   if (isCallActive) {
     return null;
   }
@@ -354,11 +334,11 @@ const Message = React.memo(() => {
       <Text style={[styles.heading, { color: themeColors.text.primary }]}>Messages</Text>
       
 
-      {profileData?.friends && profileData.friends.length > 0 && (
+      {friends && friends.length > 0 && (
         <View style={styles.sectionContainer}>
           <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Friends</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.friendsScrollView}>
-            {profileData.friends.map((friend: any) => (
+            {friends.map((friend: any) => (
               <TouchableOpacity
                 key={friend._id}
                 style={styles.friendItem}
@@ -398,9 +378,9 @@ const Message = React.memo(() => {
           onChangeText={text => {
             setSearchQuery(text);
             if (text.trim() === '') {
-              setFriends(profileData?.friends || []);
+              setFriends(sortedFriends);
             } else {
-              const filtered = (profileData?.friends || []).filter((friend: any) =>
+              const filtered = (sortedFriends || []).filter((friend: any) =>
                 (friend.fullName || '')
                   .toLowerCase()
                   .includes(text.toLowerCase())
@@ -435,7 +415,7 @@ const Message = React.memo(() => {
       )}
 
       <FlatList
-        data={chatList}
+        data={sortedChatList}
         style={styles.contactListContainer}
         renderItem={renderMessageItem}
         keyExtractor={keyExtractor}

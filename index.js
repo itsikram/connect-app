@@ -5,6 +5,21 @@
 import 'react-native-gesture-handler';
 import { AppRegistry } from 'react-native';
 import 'react-native-reanimated';
+// Ensure vector icon fonts are loaded early to avoid missing icons on Android/iOS
+try {
+  // MaterialIcons
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const MaterialIcons = require('react-native-vector-icons/MaterialIcons').default;
+  if (MaterialIcons && MaterialIcons.loadFont) {
+    MaterialIcons.loadFont();
+  }
+  // FontAwesome5
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const FA5 = require('react-native-vector-icons/FontAwesome5').default;
+  if (FA5 && FA5.loadFont) {
+    FA5.loadFont();
+  }
+} catch (_) {}
 import App from './App';
 import { name as appName } from './app.json';
 import messaging from '@react-native-firebase/messaging';
@@ -181,6 +196,18 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
 });
 
 AppRegistry.registerComponent(appName, () => App);
+
+// Headless JS task to keep background JS alive (triggered by KeepAliveService)
+AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
+  try {
+    // Ensure background JS loop/service comes up
+    await pushBackgroundService.ensure();
+    // Initialize TTS in case it is needed immediately
+    try { await backgroundTtsService.initialize(); } catch (e) {}
+  } catch (e) {
+    // no-op
+  }
+});
 
 // Initialize Mobile Ads SDK and show App Open Ad at cold start
 // mobileAds()

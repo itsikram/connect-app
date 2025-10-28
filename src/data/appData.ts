@@ -23,6 +23,16 @@ export const sampleApps: AppItem[] = [
     },
   },
   {
+    id: 'cricbuzz',
+    name: 'Cricbuzz',
+    icon: 'sports-cricket',
+    color: '#2BB673',
+    onPress: () => {
+      // Navigation handled in Menu via handleAppPress
+      console.log('Cricbuzz pressed');
+    },
+  },
+  {
     id: 'mediaPlayer',
     name: 'Media Player',
     icon: 'play-circle-filled',

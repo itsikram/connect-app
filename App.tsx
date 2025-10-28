@@ -67,6 +67,7 @@ import GlobalExpressionDetection from './src/components/GlobalExpressionDetectio
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
+import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/reducers/presenceReducer';
 import api, { userAPI } from './src/lib/api';
 import FloatingButton from './src/components/FloatingButton';
 import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
@@ -131,9 +132,13 @@ function MenuStack() {
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="EmotionFaceMesh" component={require('./src/screens/EmotionFaceMeshDemo').default} />
+      <Stack.Screen name="VideoLibrary" component={require('./src/screens/VideoLibraryScreen').default} />
       <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
       <Stack.Screen name="Facebook" component={require('./src/screens/FacebookScreen').default} />
       <Stack.Screen name="YouTube" component={require('./src/screens/YouTubeScreen').default} />
+      <Stack.Screen name="Cricbuzz" component={require('./src/screens/CricbuzzScreen').default} />
+      <Stack.Screen name="GoogleMaps" component={require('./src/screens/GoogleMapsScreen').default} />
+      <Stack.Screen name="GoogleContacts" component={require('./src/screens/GoogleContactsScreen').default} />
     </Stack.Navigator>
   );
 }
@@ -159,7 +164,7 @@ function TabBarWithLudoCheck(props: any) {
   const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
   
   // Hide tab bar for specific screens
-  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube') {
+  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
     return null;
   }
   
@@ -431,7 +436,8 @@ function AppContent() {
         console.log('⏰ Incoming call timeout - clearing active call state');
         setActiveIncomingCall(null);
       }, 30000); // 30 seconds timeout
-      
+
+      emit('update-call-status', { to: String(from), status: "Ringing..." });
       (navigation as any).navigate('Message', {
         screen: 'IncomingCall',
         params: {
@@ -447,7 +453,7 @@ function AppContent() {
     const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
       // Global guards to prevent ghost/duplicate navigations
       if (isCallEndingRef.current) {
-        console.log('🚫 Ignoring incoming audio call - call ending in progress');
+        console.log('🚫 Ignoring incoming audio ca  ll - call ending in progress');
         return;
       }
       if (Date.now() < ignoreIncomingCallsUntilRef.current) {
@@ -477,7 +483,8 @@ function AppContent() {
         console.log('⏰ Incoming call timeout - clearing active call state');
         setActiveIncomingCall(null);
       }, 30000); // 30 seconds timeout
-      
+      emit('update-call-status', { to: String(from), status: "Ringing..." });
+
       (navigation as any).navigate('Message', {
         screen: 'IncomingCall',
         params: {
@@ -568,6 +575,35 @@ function AppContent() {
     // Listen to call end events to clear active incoming call state
     on('audio-call-ended', handleAudioCallEnd);
     on('video-call-ended', handleVideoCallEnd);
+
+    // Global online/offline presence listeners
+    const handleFriendOnline = (data: any) => {
+      const friendProfileId = data?.profileId || data?.id || data;
+      if (friendProfileId) {
+        dispatch(setFriendOnline(String(friendProfileId)));
+      }
+    };
+    const handleFriendOffline = (data: any) => {
+      const friendProfileId = data?.profileId || data?.id || data;
+      if (friendProfileId) {
+        dispatch(setFriendOffline(String(friendProfileId)));
+      }
+    };
+    const handleIsActive = (isUserActive: boolean, lastLogin: Date, activeProfileId: string) => {
+      if (!activeProfileId) return;
+      if (isUserActive === true) {
+        dispatch(setFriendOnline(String(activeProfileId)));
+      } else {
+        dispatch(setFriendOffline(String(activeProfileId)));
+      }
+      try {
+        const iso = lastLogin ? new Date(lastLogin as any).toISOString() : undefined;
+        dispatch(setFriendLastSeen({ profileId: String(activeProfileId), lastLogin: iso }));
+      } catch (_) {}
+    };
+    on('friend_online', handleFriendOnline);
+    on('friend_offline', handleFriendOffline);
+    on('is_active', handleIsActive);
 
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
@@ -664,6 +700,9 @@ function AppContent() {
       off('call-accepted', handleCallAccepted)
       off('audio-call-ended', handleAudioCallEnd)
       off('video-call-ended', handleVideoCallEnd)
+      off('friend_online', handleFriendOnline)
+      off('friend_offline', handleFriendOffline)
+      off('is_active', handleIsActive)
     }
   }, [isConnected,on,off])
 
@@ -761,18 +800,18 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                       }}
                     />
                     <Tab.Screen
-                      name="Videos"
-                      component={VideosStack}
-                      options={{
-                        tabBarLabel: 'Videos',
-                        headerShown: false,
-                      }}
-                    />
-                    <Tab.Screen
                       name="Friends"
                       component={FriendsStack}
                       options={{
                         tabBarLabel: 'Friends',
+                        headerShown: false,
+                      }}
+                    />
+                    <Tab.Screen
+                      name="Videos"
+                      component={VideosStack}
+                      options={{
+                        tabBarLabel: 'Videos',
                         headerShown: false,
                       }}
                     />

@@ -24,7 +24,8 @@ const IncomingCall: React.FC = () => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const navigation: any = useNavigation();
   const route = useRoute();
-  const { answerVideoCall, answerAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
+  const { answerVideoCall, answerAudioCall, endVideoCall, endAudioCall, on, off, emit } = useSocket();
+  const [statusText, setStatusText] = useState<string>('Incoming call...');
   const [playRingtone, setPlayRingtone] = useState(true);
   const [callAccepted, setCallAccepted] = useState(false);
   const lastCallEndTime = useRef<number>(0);
@@ -305,6 +306,13 @@ const IncomingCall: React.FC = () => {
       on('video-call-ended', handleCallEnd);
       on('audio-call-cancelled', handleCallCancel);
       on('video-call-cancelled', handleCallCancel);
+      // Notify caller that we are ringing
+      if (callerId) {
+        try {
+          emit('update-call-status', { to: callerId, status: 'Ringing...' });
+          setStatusText('Ringing...');
+        } catch (e) { }
+      }
       
       on('video-call-rejected', handleReject);
       on('audio-call-rejected', handleReject);
@@ -322,7 +330,7 @@ const IncomingCall: React.FC = () => {
 
     const cleanup = checkCallActive();
     return cleanup;
-  }, [callerId, channelName, navigation, on, off, callAccepted]);
+  }, [callerId, channelName, navigation, on, off, emit, callAccepted]);
 
   // Auto-accept call if autoAccept flag is set (from notification button)
   useEffect(() => {
@@ -500,7 +508,7 @@ const IncomingCall: React.FC = () => {
 
           {/* Call Status */}
           <Text style={styles.callStatus}>
-            Incoming call...
+            {statusText}
           </Text>
 
           {/* Action Buttons */}

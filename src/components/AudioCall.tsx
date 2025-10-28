@@ -758,6 +758,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
 
     on('call-accepted', handleCallAcceptedWrapper);
     on('audio-call-ended', handleCallEndWrapper);
+    const handleUpdatedCallStatus = (data: any) => {
+      const { from, status } = data || {};
+      // Only update on outgoing side (we initiated call): when not yet connected
+      if (!callAccepted && remoteFriendId && from === remoteFriendId) {
+        setCallStatus(status || '');
+      }
+    };
+    on('updated-call-status', handleUpdatedCallStatus);
 
 
     return () => {
@@ -765,8 +773,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       listenersSetupRef.current = false;
       off('call-accepted', handleCallAcceptedWrapper);
       off('audio-call-ended', handleCallEndWrapper);
+      off('updated-call-status', handleUpdatedCallStatus);
     };
-  }, [isConnected, on, off]);
+  }, [isConnected, on, off, callAccepted, remoteFriendId]);
 
   // Keep refs in sync with latest state to avoid stale logs/guards
   useEffect(() => {

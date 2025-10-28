@@ -28,12 +28,17 @@ public class BootReceiver extends BroadcastReceiver {
                 Intent ttsServiceIntent = new Intent(context, BackgroundTtsService.class);
                 context.startService(ttsServiceIntent);
                 Log.d(TAG, "Background TTS service started after boot");
-                
+
                 // Start notification service if needed
                 Intent notificationServiceIntent = new Intent(context, NotificationService.class);
                 context.startService(notificationServiceIntent);
                 Log.d(TAG, "Notification service started after boot");
-                
+
+                // Start Headless JS keep-alive service to relaunch JS background loop
+                Intent keepAliveIntent = new Intent(context, KeepAliveService.class);
+                context.startService(keepAliveIntent);
+                Log.d(TAG, "KeepAliveService started after boot");
+
             } catch (Exception e) {
                 Log.e(TAG, "Error starting services after boot", e);
             }

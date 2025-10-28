@@ -63,6 +63,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [seeking, setSeeking] = useState(false);
   const [buffering, setBuffering] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
+  const [rotated, setRotated] = useState(false);
 
   useEffect(() => {
     if (Platform.OS === 'android') {
@@ -141,6 +142,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
           <Icon name={fullscreen ? 'fullscreen-exit' : 'fullscreen'} size={22} color="#fff" />
         </TouchableOpacity>
       )}
+      <TouchableOpacity style={styles.controlBtn} onPress={() => setRotated(r => !r)}>
+        <Icon name="screen-rotation" size={22} color="#fff" />
+      </TouchableOpacity>
     </View>
   );
 
@@ -179,7 +183,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
           <Icon name="arrow-back" size={22} color="#fff" />
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>{headerTitle}</Text>
-        <View style={styles.headerBtn} />
+        <TouchableOpacity style={styles.headerBtn} onPress={() => navigation.navigate('VideoLibrary')}>
+          <Icon name="video-library" size={20} color="#fff" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.playerArea}>
@@ -196,7 +202,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
             onBuffer={onBuffer}
             onEnd={onEnd}
             resizeMode={isVideo ? (fullscreen ? 'cover' : 'contain') : 'contain'}
-            style={playerStyle}
+            style={[playerStyle, rotated && styles.rotate90]}
             poster={isVideo ? source.poster : undefined}
             playInBackground
             playWhenInactive
@@ -248,6 +254,7 @@ const styles = StyleSheet.create({
   controlBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)' },
   playBtn: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
   rateText: { color: '#fff', fontWeight: '700' },
+  rotate90: { transform: [{ rotate: '90deg' }] },
 });
 
 export default MediaPlayer;

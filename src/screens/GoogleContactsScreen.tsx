@@ -5,7 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingBackButton from '../components/FloatingBackButton';
 
-const YouTubeScreen = () => {
+const GoogleContactsScreen = () => {
   const { colors: themeColors } = useTheme();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -33,7 +33,7 @@ const YouTubeScreen = () => {
       />
       <WebView
         ref={webViewRef}
-        source={{ uri: 'https://m.youtube.com' }}
+        source={{ uri: 'https://contacts.google.com' }}
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -45,7 +45,6 @@ const YouTubeScreen = () => {
         allowsBackForwardNavigationGestures={Platform.OS === 'ios'}
         setSupportMultipleWindows={false}
         allowFileAccess={true}
-        geolocationEnabled={true}
         startInLoadingState={true}
         scalesPageToFit={true}
         allowsInlineMediaPlayback={true}
@@ -88,4 +87,6 @@ const styles = StyleSheet.create({
   },
 });
 
-export default YouTubeScreen;
+export default GoogleContactsScreen;
+
+

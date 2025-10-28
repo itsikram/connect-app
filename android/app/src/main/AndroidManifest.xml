@@ -95,6 +95,13 @@
         </intent-filter>
       </activity>
 
+      <!-- Headless JS service to relaunch background JS after kill/boot -->
+      <service
+        android:name="com.connect.app.KeepAliveService"
+        android:enabled="true"
+        android:exported="false"
+        android:stopWithTask="false" />
+
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"
         android:exported="false"
