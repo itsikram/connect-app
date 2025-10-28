@@ -1028,16 +1028,28 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
                 try {
                   if (engineRef.current) {
                     console.log('📹 Activating camera hardware...');
-                    // Switching camera twice activates the hardware properly
-                    await engineRef.current.switchCamera();
-                    await new Promise<void>(resolve => setTimeout(() => resolve(), 100));
-                    await engineRef.current.switchCamera();
-                    console.log('📹 Camera hardware activated successfully');
+                    // Only switch camera if it's actually available and initialized
+                    // Check if we're connected and have local video enabled
+                    if (isConnected && localUidRef.current) {
+                      console.log('📹 Camera is ready, attempting activation...');
+                      try {
+                        // Switching camera twice activates the hardware properly
+                        await engineRef.current.switchCamera();
+                        await new Promise<void>(resolve => setTimeout(() => resolve(), 100));
+                        await engineRef.current.switchCamera();
+                        console.log('📹 Camera hardware activated successfully');
+                      } catch (switchError) {
+                        // Camera switching failed, but preview is working, so this is non-critical
+                        console.log('📹 Camera switching not needed or failed (non-critical):', switchError);
+                      }
+                    } else {
+                      console.log('📹 Camera not ready yet (not connected or no local UID)');
+                    }
                   }
                 } catch (activationError) {
                   console.warn('📹 Camera activation warning (non-critical):', activationError);
                 }
-              }, 200);
+              }, 500); // Increased delay to ensure everything is initialized
               
               localPreviewStarted.current = true;
               console.log(`📹 Attempt ${attempt}: Local video preview started successfully! ✅`);
@@ -1184,7 +1196,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
                 style={[styles.topControlButton, { backgroundColor: 'rgba(0, 0, 0, 0.3)' }]}
                 onPress={minimizeVideoCall}
               >
-                <Icon name="minimize" size={20} color="white" />
+                <Icon name="minimize" style={{marginTop: -12}} size={20} color="white" />
               </TouchableOpacity>
             </View>
             
