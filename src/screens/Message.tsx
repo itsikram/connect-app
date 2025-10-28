@@ -96,6 +96,26 @@ const Message = React.memo(() => {
   });
 
   const { emit, on, off, isConnected, checkUserActive } = useSocket();
+  const [isCallActive, setIsCallActive] = React.useState(false);
+
+  // Suspend rendering when a call is active (audio or video)
+  useEffect(() => {
+    const handleCallAccepted = ({ isAudio }: any) => {
+      setIsCallActive(true);
+    };
+    const handleVideoEnd = () => setIsCallActive(false);
+    const handleAudioEnd = () => setIsCallActive(false);
+
+    on('call-accepted', handleCallAccepted);
+    on('videoCallEnd', handleVideoEnd);
+    on('audio-call-ended', handleAudioEnd);
+
+    return () => {
+      off('call-accepted', handleCallAccepted);
+      off('videoCallEnd', handleVideoEnd);
+      off('audio-call-ended', handleAudioEnd);
+    };
+  }, [on, off]);
 
 
 
@@ -292,6 +312,10 @@ const Message = React.memo(() => {
     setRefreshing(false);
   }, [profileData?._id, dispatch, fetchProfile]);
 
+
+  if (isCallActive) {
+    return null;
+  }
 
   if (isLoading) {
     return (

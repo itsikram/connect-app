@@ -78,6 +78,7 @@ const SingleMessage = () => {
     const myProfile = useSelector((state: RootState) => state.profile);
     const [room, setRoom] = useState('');
     const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall } = useSocket();
+    const [isCallActive, setIsCallActive] = useState<boolean>(false);
     const { colors: themeColors, isDarkMode } = useTheme();
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
 
@@ -479,6 +480,21 @@ const SingleMessage = () => {
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
     const [currentPage, setCurrentPage] = useState(0);
     const messagesPerPage = 20;
+
+    // Mark/suspend during call lifecycle
+    useEffect(() => {
+        const handleCallAccepted = ({ isAudio }: any) => setIsCallActive(true);
+        const handleVideoEnd = () => setIsCallActive(false);
+        const handleAudioEnd = () => setIsCallActive(false);
+        on('call-accepted', handleCallAccepted);
+        on('videoCallEnd', handleVideoEnd);
+        on('audio-call-ended', handleAudioEnd);
+        return () => {
+            off('call-accepted', handleCallAccepted);
+            off('videoCallEnd', handleVideoEnd);
+            off('audio-call-ended', handleAudioEnd);
+        };
+    }, [on, off]);
 
     // Set up room and socket events when both IDs are available
     useEffect(() => {
@@ -1910,6 +1926,11 @@ const SingleMessage = () => {
             </View>
         );
     };
+
+    // Short-circuit render when a call is active
+    if (isCallActive) {
+        return null;
+    }
 
     // Show full skeletons if no friend or profile data
     if (!friend?._id || !myProfile?._id) {

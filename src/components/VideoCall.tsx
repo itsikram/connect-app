@@ -670,7 +670,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     
     if (friendIdToNotify && friendIdToNotify !== myId) {
       console.log('VideoCall: ✅ Emitting endVideoCall to friend:', friendIdToNotify);
-      endVideoCall(friendIdToNotify);
+      endVideoCall(friendIdToNotify,currentChannel || '', 'end');
     } else {
       console.error('VideoCall: ❌ ERROR - No valid friend ID to notify! Cannot end call for other user.');
       console.error('VideoCall: Debug - friendIdToNotify:', friendIdToNotify, ', myId:', myId);
@@ -759,7 +759,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   // Toggle video filter - applies LOCAL filter to how I see the remote user
   const toggleVideoFilter = useCallback(() => {
-    const filters = ['', 'vivid', 'warm', 'cool', 'dramatic'];
+    const filters = ['', 'video-vivid-filter', 'video-vivid-warm', 'video-vivid-cool', 'video-vivid-dramatic'];
     const currentIndex = filters.indexOf(localRemoteFilter);
     const nextIndex = (currentIndex + 1) % filters.length;
     const newFilter = filters[nextIndex];
@@ -767,7 +767,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     console.log('🎥 Toggling LOCAL remote video filter from', localRemoteFilter, 'to', newFilter);
     setLocalRemoteFilter(newFilter);
     console.log('🎥 Filter applied locally - does not affect other user');
-  }, [localRemoteFilter]);
+
+    applyVideoFilter(remoteFriendId || '', newFilter || '');
+    
+    // Show filter name briefly
+    if (newFilter) {
+      console.log(`🎥 Applied Apple ${newFilter.charAt(0).toUpperCase() + newFilter.slice(1)} filter to remote video`);
+    } else {
+      console.log('🎥 Removed filter from remote video');
+    }
+  }, [myFilter,remoteFriendId, applyVideoFilter]);
 
   // Minimize call
   const minimizeVideoCall = useCallback(() => {
@@ -902,6 +911,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         setCallAccepted(true); // Important: mark call as accepted
         setCallEnded(false); // Reset call ended state for accepted call
         setIsAudioMode(false);
+        setCallStatus("Connecting..."); // Reset call status for new call
         joinChannel(channelName);
       } else {
         console.log('VideoCall: Audio call accepted, but letting AudioCall component handle it:', channelName);
@@ -1073,13 +1083,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Get filter style based on current filter
   const getFilterStyle = (filter: string) => {
     switch (filter) {
-      case 'vivid':
+        case 'video-vivid-filter':
         return styles.filterVivid;
-      case 'warm':
+      case 'video-warm-filter':
         return styles.filterWarm;
-      case 'cool':
+      case 'video-cool-filter':
         return styles.filterCool;
-      case 'dramatic':
+      case 'video-dramatic-filter':
         return styles.filterDramatic;
       default:
         return {};
@@ -1089,13 +1099,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Get filter overlay style
   const getFilterOverlayStyle = (filter: string) => {
     switch (filter) {
-      case 'vivid':
+      case 'video-vivid-filter':
         return styles.vividOverlay;
-      case 'warm':
+      case 'video-warm-filter':
         return styles.warmOverlay;
-      case 'cool':
+      case 'video-cool-filter':
         return styles.coolOverlay;
-      case 'dramatic':
+      case 'video-dramatic-filter':
         return styles.dramaticOverlay;
       default:
         return {};
@@ -1104,13 +1114,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // Get secondary filter overlay style
   const getFilterOverlaySecondaryStyle = (filter: string) => {
     switch (filter) {
-      case 'vivid':
+      case 'video-vivid-filter':
         return styles.vividOverlaySecondary;
-      case 'warm':
+      case 'video-warm-filter':
         return styles.warmOverlaySecondary;
-      case 'cool':
+      case 'video-cool-filter':
         return styles.coolOverlaySecondary;
-      case 'dramatic':
+      case 'video-dramatic-filter':
         return styles.dramaticOverlaySecondary;
       default:
         return {};
@@ -1213,10 +1223,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           </View>
 
           {/* Filter Indicator */}
-          {localRemoteFilter && (
+          {(localRemoteFilter || remoteFilter) && (
             <View style={styles.filterIndicatorContainer}>
               <Text style={[styles.filterIndicator, { color: themeColors.primary }]}>
-                Filter: {localRemoteFilter.charAt(0).toUpperCase() + localRemoteFilter.slice(1)}
+                {localRemoteFilter || remoteFilter === 'video-vivid-filter' 
+                  ? `Apple ${(localRemoteFilter || remoteFilter).charAt(0).toUpperCase() + (localRemoteFilter || remoteFilter).slice(1)}`
+                  : `Filter: ${(localRemoteFilter || remoteFilter).charAt(0).toUpperCase() + (localRemoteFilter || remoteFilter).slice(1)}`
+                }
               </Text>
             </View>
           )}
@@ -1228,18 +1241,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {callAccepted && remoteUid && !isAudioMode ? (
             <View style={styles.remoteVideo}>
               <RtcRemoteView.SurfaceView
-                style={[styles.remoteVideo, getFilterStyle(myFilter || localRemoteFilter || remoteFilter)]}
+                style={[styles.remoteVideo, getFilterStyle(localRemoteFilter || '')]}
                 uid={remoteUid}
                 channelId={currentChannel || ''}
                 renderMode={VideoRenderMode.Fit}
                 zOrderMediaOverlay={false}
               />
-              {(myFilter || localRemoteFilter || remoteFilter) && (
+              {(localRemoteFilter || remoteFilter) && (
                 <>
                   {/* Primary filter overlay - prioritize my filter over local and remote filters */}
-                  <View style={[styles.filterOverlay, getFilterOverlayStyle(myFilter || localRemoteFilter || remoteFilter)]} />
+                  <View style={[styles.filterOverlay, getFilterOverlayStyle(localRemoteFilter || remoteFilter)]} />
                   {/* Secondary filter overlay for more realistic effect */}
-                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(myFilter || localRemoteFilter || remoteFilter)]} />
+                  <View style={[styles.filterOverlay, getFilterOverlaySecondaryStyle(localRemoteFilter || remoteFilter)]} />
                 </>
               )}
             </View>
@@ -1482,17 +1495,18 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '600',
   },
-  // Filter styles - Matching web CSS filter effects
+  // Filter styles - Apple Camera Vivid Filter Implementation
   filterVivid: {
-    // Vivid: contrast(1.2) saturate(1.4) brightness(1.1) hue-rotate(5deg) sepia(0.1)
+    // Apple Vivid: Enhanced contrast, saturation, and warmth
+    // contrast(1.25) saturate(1.35) brightness(1.08) hue-rotate(8deg) sepia(0.12)
     opacity: 1.0,
     borderWidth: 3,
-    borderColor: '#FFD700', // Gold border for vivid
-    shadowColor: '#FFD700',
+    borderColor: '#FF6B35', // Apple's vivid orange-red accent
+    shadowColor: '#FF6B35',
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 10,
-    elevation: 5,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 6,
   },
   filterWarm: {
     // Warm: contrast(1.15) saturate(1.3) brightness(1.05) hue-rotate(10deg) sepia(0.15)
@@ -1538,8 +1552,9 @@ const styles = StyleSheet.create({
     borderRadius: 8, // Match video border radius
   },
   vividOverlay: {
-    // Vivid: contrast(1.2) saturate(1.4) brightness(1.1) hue-rotate(5deg) sepia(0.1)
-    backgroundColor: 'rgba(255, 215, 0, 0.15)', // Gold tint matching web vivid
+    // Apple Vivid: Enhanced contrast, saturation, and warmth
+    // contrast(1.25) saturate(1.35) brightness(1.08) hue-rotate(8deg) sepia(0.12)
+    backgroundColor: 'rgba(255, 107, 53, 0.18)', // Apple's vivid orange-red tint
   },
   warmOverlay: {
     // Warm: contrast(1.15) saturate(1.3) brightness(1.05) hue-rotate(10deg) sepia(0.15)
@@ -1555,7 +1570,7 @@ const styles = StyleSheet.create({
   },
   // Additional overlay layers for more realistic filter effects
   vividOverlaySecondary: {
-    backgroundColor: 'rgba(255, 255, 0, 0.05)', // Additional yellow layer
+    backgroundColor: 'rgba(255, 165, 0, 0.08)', // Additional warm orange layer for Apple Vivid
   },
   warmOverlaySecondary: {
     backgroundColor: 'rgba(255, 165, 0, 0.08)', // Additional orange layer

@@ -683,6 +683,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       setIsAudioCall(true);
       setCallAccepted(true);
       setCurrentChannel(channelName);
+      setCallStatus("Connecting..."); // Reset call status for new call
 
       console.log('AudioCall: Set states - isAudioCall: true, callAccepted: true, channel:', channelName);
 
