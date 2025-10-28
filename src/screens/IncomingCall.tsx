@@ -4,6 +4,8 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import Video from 'react-native-video';
 
 interface IncomingCallParams {
@@ -31,6 +33,8 @@ const IncomingCall: React.FC = () => {
 
   const { callerId, callerName, callerProfilePic, channelName, isAudio, autoAccept, prevScreenId } = params || {} as IncomingCallParams;
 
+  const myProfile = useSelector((state: RootState) => state.profile);
+
   // Animation values
   const pulseAnim = useMemo(() => new Animated.Value(1), []);
   const slideAnim = useMemo(() => new Animated.Value(50), []);
@@ -39,6 +43,7 @@ const IncomingCall: React.FC = () => {
 
   const safeGoBack = () => {
     console.log('IncomingCall: Going back', prevScreenId);
+    setPlayRingtone(false);
 
     // Log previous screen ID
     try {
@@ -282,6 +287,7 @@ const IncomingCall: React.FC = () => {
           // Only handle call end if call wasn't accepted (caller cancelled)
           console.log('IncomingCall: Handling call end - caller cancelled before acceptance');
           setCallAccepted(false); // Reset call accepted state
+          setPlayRingtone(false);
           // Ensure StatusBar is restored before leaving this screen
           try {
             if (Platform.OS === 'android') {
@@ -328,6 +334,10 @@ const IncomingCall: React.FC = () => {
 
   const title = useMemo(() => (isAudio ? 'Incoming Audio Call' : 'Incoming Video Call'), [isAudio]);
 
+  
+
+  const [callAcceptedState, setCallAcceptedState] = useState(false);
+
   const onAccept = () => {
     if (!callerId || !channelName) {
       console.warn('IncomingCall: Missing required parameters for call acceptance', { callerId, channelName });
@@ -337,6 +347,7 @@ const IncomingCall: React.FC = () => {
     console.log('IncomingCall: Accepting call', { callerId, channelName, isAudio, callerName });
     setPlayRingtone(false);
     setCallAccepted(true); // Mark call as accepted
+    setCallAcceptedState(true); // Hide the incoming call UI
     // Ensure StatusBar is restored before leaving this screen
     try {
       if (Platform.OS === 'android') {
@@ -345,14 +356,19 @@ const IncomingCall: React.FC = () => {
       }
       StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
     } catch (e) { }
+    
+    // Accept the call - this will emit socket event to server
     if (isAudio) {
       answerAudioCall(callerId, channelName);
     } else {
       answerVideoCall(callerId, channelName);
     }
-
-    // Navigate back - call components are now global and will show automatically
-    safeGoBack();
+    
+    // Hide IncomingCall screen immediately so AudioCall/VideoCall Modal appears on top
+    // Navigate back after a brief delay to let AudioCall/VideoCall show
+    setTimeout(() => {
+      safeGoBack();
+    }, 300);
   };
 
   const onDecline = () => {
@@ -395,7 +411,8 @@ const IncomingCall: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-
+      {!callAcceptedState && (
+        <>
       {/* Background with gradient effect */}
       <View style={[
         styles.gradientBackground,
@@ -521,6 +538,8 @@ const IncomingCall: React.FC = () => {
           </Text>
         </Animated.View>
       </View>
+      </>
+      )}
     </SafeAreaView>
   );
 };

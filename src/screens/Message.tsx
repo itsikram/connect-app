@@ -79,7 +79,7 @@ const clearChatListFromStorage = async (userId: string) => {
 export { clearChatListFromStorage };
 
 
-const Message = () => {
+const Message = React.memo(() => {
   const dispatch = useDispatch<AppDispatch>();
   const { colors: themeColors } = useTheme();
   // Use proper typing for Redux state
@@ -116,10 +116,10 @@ const Message = () => {
   }, [profileData?._id]);
 
   useEffect(() => {
-    if (chatList) {
-      console.log('Chat list:', chatList);
+    if (chatList && chatList.length > 0) {
+      console.log('Chat list updated:', chatList.length, 'items');
     }
-  }, [chatList]);
+  }, [chatList?.length]);
 
   useEffect(() => {
     if (profileData?._id) {
@@ -137,12 +137,15 @@ const Message = () => {
     }
   }, [dispatch, profileData?._id]);
 
-  // Save chat list to AsyncStorage whenever chatList changes
+  // Save chat list to AsyncStorage whenever chatList changes (debounced)
   useEffect(() => {
     if (chatList && chatList.length > 0 && profileData?._id) {
-      saveChatListToStorage(chatList, profileData._id);
+      const timeoutId = setTimeout(() => {
+        saveChatListToStorage(chatList, profileData._id);
+      }, 500); // Debounce saves to AsyncStorage
+      return () => clearTimeout(timeoutId);
     }
-  }, [chatList, profileData?._id]);
+  }, [chatList?.length, profileData?._id]);
 
   // Listen for real-time friend online/offline updates
   useEffect(() => {
@@ -210,6 +213,51 @@ const Message = () => {
   }, [isConnected, chatList, profileData?._id, checkUserActive, on, off]);
 
   const navigation = useNavigation();
+
+  const renderMessageItem = useCallback(({ item, index }: { item: any, index: number }) => {
+    const last = item?.messages?.[0];
+    return (
+      <TouchableOpacity
+        style={[
+          styles.messageItem,
+          {
+            borderBottomColor: themeColors.border.secondary,
+            borderBottomWidth: index === ((chatList?.length || 0) - 1) ? 0 : 1,
+          }
+        ]}
+        onPress={() => {
+          (navigation as any).navigate('SingleMessage', { friend: item?.person as any });
+        }}
+      >
+        <UserPP image={item?.person?.profilePic} isActive={activeFriends.includes(item?.person?._id)} size={40} />
+        <View style={styles.messageContent}>
+          <Text style={[styles.profileName, { color: themeColors.text.primary }]}>{item?.person?.fullName || 'User'}</Text>
+          <View style={styles.lastMessageContainer}>
+            {last ? (
+              <>
+                <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={1} ellipsizeMode="tail">
+                  {(() => {
+                    const messageText = last?.message || last?.text || last?.content || '';
+                    return messageText.length > 0 ? messageText : 'No message content';
+                  })()}
+                </Text>
+                <Text style={[styles.lastMessageTime, { color: themeColors.text.tertiary }]}>
+                  <Text style={{ color: themeColors.text.tertiary }}> · </Text>
+                  {moment(last?.timestamp).fromNow()}
+                </Text>
+              </>
+            ) : (
+              <Text style={[styles.lastMessage, { color: themeColors.text.tertiary }]} numberOfLines={1}>No messages yet</Text>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }, [themeColors.border.secondary, themeColors.text.primary, themeColors.text.secondary, themeColors.text.tertiary, chatList?.length, activeFriends, navigation]);
+
+  const keyExtractor = useCallback((item: any) =>
+    (item?.person?._id && item?.person?._id.toString()) || String(item?.id || Math.random())
+  , []);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -357,57 +405,21 @@ const Message = () => {
       <FlatList
         data={chatList}
         style={styles.contactListContainer}
-        renderItem={({ item, index }: { item: any, index: number }) => {
-          const last = item?.messages?.[0];
-          console.log('Message item:', item);
-          console.log('Last message:', last);
-          return (
-            <TouchableOpacity
-              style={[
-                styles.messageItem,
-                {
-                  borderBottomColor: themeColors.border.secondary,
-                  borderBottomWidth: index === ((chatList?.length || 0) - 1) ? 0 : 1,
-                }
-              ]}
-              onPress={() => {
-                (navigation as any).navigate('SingleMessage', { friend: item?.person as any });
-              }}
-            >
-              <UserPP image={item?.person?.profilePic} isActive={activeFriends.includes(item?.person?._id)} size={40} />
-              <View style={styles.messageContent}>
-                <Text style={[styles.profileName, { color: themeColors.text.primary }]}>{item?.person?.fullName || 'User'}</Text>
-                <View style={styles.lastMessageContainer}>
-                  {last ? (
-                    <>
-                      <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={1} ellipsizeMode="tail">
-                        {(() => {
-                          const messageText = last?.message || last?.text || last?.content || '';
-                          return messageText.length > 0 ? messageText : 'No message content';
-                        })()}
-                      </Text>
-                      <Text style={[styles.lastMessageTime, { color: themeColors.text.tertiary }]}>
-                        <Text style={{ color: themeColors.text.tertiary }}> · </Text>
-                        {moment(last?.timestamp).fromNow()}
-                      </Text>
-                    </>
-                  ) : (
-                    <Text style={[styles.lastMessage, { color: themeColors.text.tertiary }]} numberOfLines={1}>No messages yet</Text>
-                  )}
-                </View>
-              </View>
-            </TouchableOpacity>
-          );
-        }}
-        keyExtractor={(item: any) =>
-          (item?.person?._id && item?.person?._id.toString()) || String(item?.id || Math.random())
-        }
+        renderItem={renderMessageItem}
+        keyExtractor={keyExtractor}
         scrollEnabled={false}
+        removeClippedSubviews={true}
+        maxToRenderPerBatch={10}
+        updateCellsBatchingPeriod={50}
+        initialNumToRender={10}
+        windowSize={10}
         ListEmptyComponent={<ListItemSkeleton count={8} />}
       />
     </ScrollView>
   );
-};
+});
+
+Message.displayName = 'Message';
 
 const styles = StyleSheet.create({
   scrollView: {
