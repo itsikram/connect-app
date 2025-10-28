@@ -12,6 +12,8 @@ interface OutgoingCallParams {
   calleeProfilePic?: string;
   channelName: string;
   isAudio: boolean;
+  prevScreenId?: string;
+
 }
 
 const { width, height } = Dimensions.get('window');
@@ -23,6 +25,10 @@ const OutgoingCall: React.FC = () => {
   const { startVideoCall, startAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [callStatus, setCallStatus] = useState('Calling...');
   const [playBeep, setPlayBeep] = useState(true);
+  const [callAccepted, setCallAccepted] = useState(false);
+
+  const params = route.params as unknown as OutgoingCallParams;
+  const { calleeId, calleeName, calleeProfilePic, channelName, isAudio, prevScreenId } = params || {} as OutgoingCallParams;
 
   // Reset status bar when leaving this screen to avoid translucent persisting globally
   React.useEffect(() => {
@@ -44,17 +50,30 @@ const OutgoingCall: React.FC = () => {
   const rotateAnim = useMemo(() => new Animated.Value(0), []);
 
   const safeGoBack = () => {
-    try {
-      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        (navigation as any).navigate('Message', { screen: 'Home' });
-      } else {
-        (navigation as any).navigate('Message', { screen: 'MessageList' });
-      }
-    } catch (e) {}
-  };
+    console.log('OutgoingCall: Going back', prevScreenId);
+    setPlayBeep(false);
 
-  const params = route.params as unknown as OutgoingCallParams;
-  const { calleeId, calleeName, calleeProfilePic, channelName, isAudio } = params || {} as OutgoingCallParams;
+    // Log previous screen ID
+    try {
+
+      (navigation as any).navigate(prevScreenId, { screen: prevScreenId == "Message" && "MessageList" || prevScreenId || 'Home' });
+
+
+    } catch (stateError) {
+      (navigation as any).navigate('Home', { screen: 'Home' });
+    }
+
+    // try {
+    //   if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+    //     (navigation as any).navigate('Message', { screen: 'Home' });
+    //   } else {
+    //     (navigation as any).navigate('Message', { screen: 'MessageList' });
+    //   }
+    // } catch (e) {
+    //   (navigation as any).navigate('Message', { screen: 'Home' });
+    //   console.log('IncomingCall: Error going back', e);
+    // }
+  };
 
   // Start animations on mount
   useEffect(() => {
@@ -124,6 +143,7 @@ const OutgoingCall: React.FC = () => {
   // Close this screen once the peer accepts or ends the call
   useEffect(() => {
     const handleAccepted = () => { 
+      setCallAccepted(true);
       setPlayBeep(false);
       setCallStatus('Call accepted!');
       setTimeout(() => safeGoBack(), 500);
@@ -136,6 +156,7 @@ const OutgoingCall: React.FC = () => {
 
     on('call-accepted', handleAccepted);
     on(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
+    on(isAudio ? 'audio-call-rejected' : 'video-call-rejected', handleEnd);
 
     return () => {
       off('call-accepted', handleAccepted);
@@ -150,12 +171,22 @@ const OutgoingCall: React.FC = () => {
     setPlayBeep(false);
     setCallStatus('Cancelling...');
     if (isAudio) {
-      endAudioCall(calleeId);
+      if(!callAccepted) {
+        endAudioCall(calleeId, channelName, 'cancel');
+      } 
+      else {
+        endAudioCall(calleeId, channelName, 'end');
+      }
     } else {
-      endVideoCall(calleeId);
+      if(!callAccepted) {
+        endVideoCall(calleeId, channelName, 'cancel');
+      } 
+      else {
+        endVideoCall(calleeId, channelName, 'end');
+      }
     }
     setTimeout(() => safeGoBack(), 500);
-  };
+  }; 
 
   // Ensure beep stops on unmount
   useEffect(() => {

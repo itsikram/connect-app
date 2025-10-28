@@ -527,51 +527,74 @@ const SingleMessage = () => {
         checkIfBlockedByFriend();
     }, [friend?._id, myProfile?._id]);
 
-    // Listen for incoming messages
+    // Fetch initial messages using HTTP
+    useEffect(() => {
+        console.log('Initial messages fetch effect triggered:', { friendId: friend?._id });
+        
+        if (!friend?._id) {
+            console.log('Initial fetch blocked - no friendId');
+            return;
+        }
+        
+        // Reset when friend changes
+        setMessages([]);
+        setCurrentPage(0);
+        
+        console.log('Fetching initial messages for friend:', friend._id);
+        
+        const fetchInitialMessages = async () => {
+            try {
+                console.log('API call starting for getChatHistory');
+                const response = await api.get('/message/getChatHistory', {
+                    params: {
+                        friendId: friend?._id,
+                        limit: messagesPerPage
+                    }
+                });
+                
+                console.log('API response received:', { status: response.status, dataLength: response.data?.messages?.length });
+                
+                const httpMessages = response.data?.messages || [];
+                const hasMore = response.data?.hasMore || false;
+                
+                console.log('Fetched initial messages from HTTP:', { 
+                    count: httpMessages.length, 
+                    hasMore 
+                });
+                
+                if (httpMessages.length > 0) {
+                    const validHttpMessages = httpMessages.filter((msg: any) => msg && msg._id);
+                    console.log('Setting messages with count:', validHttpMessages.length);
+                    setMessages(validHttpMessages);
+                    setHasMoreMessages(hasMore);
+                    console.log('Messages state updated successfully');
+                } else {
+                    console.log('No messages received from API');
+                    setHasMoreMessages(false);
+                }
+            } catch (error: any) {
+                console.error('Error fetching initial messages from HTTP:', error);
+                console.error('Error details:', error?.response?.data || error?.message);
+                setHasMoreMessages(false);
+            }
+        };
+        
+        fetchInitialMessages();
+    }, [friend?._id]);
+
+    // Listen for incoming messages via socket
     useEffect(() => {
         if (!isConnected) return;
 
-
         emit('fetchMessages', myProfile?._id);
-
+        
         const handlePreviousMessages = (messages: any) => {
-            // Ensure all messages have valid IDs and filter out any invalid ones
-            const validMessages = messages.filter((msg: any) => msg && msg._id);
-            setMessages(validMessages);
-            setCurrentPage(0);
-            setHasMoreMessages(validMessages.length === messagesPerPage);
-        }
-
-        const handleOldMessages = (oldMessages: any) => {
-            console.log('handleOldMessages received:', oldMessages);
-            
-            if (oldMessages && oldMessages.length > 0) {
-                setMessages(prev => {
-                    // Ensure each message has a unique ID and filter out any duplicates
-                    const validOldMessages = oldMessages.filter((msg: any) => msg && msg._id);
-                    const existingIds = new Set(prev.map(msg => msg._id));
-                    const newMessages = validOldMessages.filter((msg: any) => !existingIds.has(msg._id));
-                    
-                    console.log('Adding old messages:', { 
-                        oldMessagesLength: oldMessages.length, 
-                        validOldMessagesLength: validOldMessages.length,
-                        newMessagesLength: newMessages.length,
-                        existingMessagesLength: prev.length
-                    });
-                    
-                    return [...newMessages, ...prev];
-                });
-                setCurrentPage(prev => prev + 1);
-                setHasMoreMessages(oldMessages.length === messagesPerPage);
-            } else {
-                console.log('No more old messages available');
-                setHasMoreMessages(false);
-            }
-            setIsLoadingOldMessages(false);
+            // This is from socket - only use it to update, not replace
+            console.log('Socket previousMessages received:', messages?.length || 0);
+            // Don't update messages here to avoid conflicts with HTTP load
         }
 
         on('previousMessages', handlePreviousMessages);
-        on('oldMessages', handleOldMessages);
 
         const handleNewMessage = (messageData: any) => {
             console.log('New message received:', messageData, messages);
@@ -660,25 +683,23 @@ const SingleMessage = () => {
             }, 100);
         };
 
+        const handleEmotionChange = (payload: any) => {
+            try {
+                if (!payload) return;
+                // Only apply if the event is for this friend (when profileId provided)
+                if (payload?.profileId && String(payload.profileId) !== String(friend?._id)) return;
 
-
-    const handleEmotionChange = (payload: any) => {
-        try {
-            if (!payload) return;
-            // Only apply if the event is for this friend (when profileId provided)
-            if (payload?.profileId && String(payload.profileId) !== String(friend?._id)) return;
-
-            if (typeof payload === 'string') {
-                setFriendEmotion(payload);
-                return;
-            }
-            if (typeof payload === 'object') {
-                const display = payload.emoji || payload.emotionText || payload.emotion || '';
-                setFriendEmotion(display || '');
-                return;
-            }
-        } catch (_) { }
-    };
+                if (typeof payload === 'string') {
+                    setFriendEmotion(payload);
+                    return;
+                }
+                if (typeof payload === 'object') {
+                    const display = payload.emoji || payload.emotionText || payload.emotion || '';
+                    setFriendEmotion(display || '');
+                    return;
+                }
+            } catch (_) { }
+        };
 
         on('emotion_change', handleEmotionChange);
 
@@ -698,7 +719,8 @@ const SingleMessage = () => {
             off('typing', handleReceiveTyping);
             off('seenMessage', handleSeenMessage);
             off('previousMessages', handlePreviousMessages);
-            off('oldMessages', handleOldMessages);
+            off('emotion_change', handleEmotionChange);
+            // off('oldMessages', handleOldMessages); // Disabled - using HTTP pagination now
             off('deleteMessage', handleDeleteMessage);
         };
     }, [isConnected, myProfile?._id, on, off]);
@@ -795,6 +817,9 @@ const SingleMessage = () => {
     const [typingMessage, setTypingMessage] = useState('');
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
+    const scrollOffsetRef = useRef<number>(0);
+    const lastLoadTimestampRef = useRef<number>(0);
+    const visibleMessageIdRef = useRef<string | null>(null);
 
     // Pagination state for loading old messages
     const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
@@ -856,6 +881,14 @@ const SingleMessage = () => {
     // Emit seen when received messages become visible on screen
     const onViewableItemsChanged = useRef(({ viewableItems }: { viewableItems: Array<{ item: Message }> }) => {
         try {
+            // Track the first visible message for scroll position maintenance
+            if (viewableItems.length > 0) {
+                const firstVisible = viewableItems[0]?.item;
+                if (firstVisible?._id) {
+                    visibleMessageIdRef.current = firstVisible._id;
+                }
+            }
+            
             viewableItems.forEach(v => {
                 const item = v?.item;
                 if (!item) return;
@@ -1093,6 +1126,7 @@ const SingleMessage = () => {
                 calleeProfilePic: friend.profilePic,
                 channelName,
                 isAudio: false,
+                prevScreenId: 'Message',
             }
         });
     };
@@ -1113,6 +1147,7 @@ const SingleMessage = () => {
                 calleeProfilePic: friend.profilePic,
                 channelName,
                 isAudio: true,
+                prevScreenId: 'Message',
             }
         });
     };
@@ -1239,38 +1274,126 @@ const SingleMessage = () => {
         }
     };
 
-    const loadOldMessages = () => {
-        console.log('loadOldMessages called', { isLoadingOldMessages, hasMoreMessages, isConnected, messagesLength: messages.length });
+    const loadOldMessages = async () => {
+        const now = Date.now();
+        const timeSinceLastLoad = now - lastLoadTimestampRef.current;
         
-        if (isLoadingOldMessages || !hasMoreMessages || !isConnected || !room) {
-            console.log('Load old messages blocked:', { isLoadingOldMessages, hasMoreMessages, isConnected, room });
+        console.log('loadOldMessages called', { isLoadingOldMessages, hasMoreMessages, messagesLength: messages.length, timeSinceLastLoad });
+        
+        // Prevent duplicate/rapid loads (at least 500ms between loads)
+        if (timeSinceLastLoad < 500) {
+            console.log('Load blocked - too soon since last load');
+            return;
+        }
+        
+        if (isLoadingOldMessages || !hasMoreMessages || !room || !friend?._id) {
+            console.log('Load old messages blocked:', { isLoadingOldMessages, hasMoreMessages, room, friendId: friend?._id });
             return;
         }
 
+        lastLoadTimestampRef.current = now;
         setIsLoadingOldMessages(true);
+        
         const oldestMessage = messages[0];
-        const lastMessageTimestamp = oldestMessage ? oldestMessage.timestamp : new Date();
+        const lastMessageTimestamp = oldestMessage 
+            ? (oldestMessage.timestamp instanceof Date ? oldestMessage.timestamp : new Date(oldestMessage.timestamp))
+            : new Date();
         
-        console.log('Emitting fetchOldMessages with:', {
-            room,
-            userId: myProfile?._id,
-            page: currentPage + 1,
+        console.log('Fetching old messages with HTTP:', {
+            friendId: friend?._id,
             limit: messagesPerPage,
             beforeTimestamp: lastMessageTimestamp.toISOString()
         });
         
-        emit('fetchOldMessages', {
-            room,
-            userId: myProfile?._id,
-            page: currentPage + 1,
-            limit: messagesPerPage,
-            beforeTimestamp: lastMessageTimestamp.toISOString()
-        });
+        try {
+            // Use HTTP request instead of socket
+            const response = await api.get('/message/getOldMessages', {
+                params: {
+                    friendId: friend?._id,
+                    limit: messagesPerPage,
+                    beforeTimestamp: lastMessageTimestamp.toISOString()
+                }
+            });
+            
+            const oldMessages = response.data?.messages || [];
+            const hasMore = response.data?.hasMore || false;
+            
+            console.log('Received old messages from HTTP:', { 
+                count: oldMessages.length, 
+                hasMore,
+                responseData: response.data
+            });
+            
+            // Always set hasMoreMessages based on server response
+            setHasMoreMessages(hasMore);
+            
+            if (oldMessages.length > 0) {
+                setMessages(prev => {
+                    // Ensure each message has a unique ID and filter out any duplicates
+                    const existingIds = new Set(prev.map(msg => msg._id));
+                    const newMessages = oldMessages.filter((msg: any) => !existingIds.has(msg._id));
+                    
+                    console.log('Adding new old messages:', {
+                        oldMessagesCount: oldMessages.length,
+                        newMessagesCount: newMessages.length,
+                        previousMessagesCount: prev.length,
+                        existingIdsSize: existingIds.size
+                    });
+                    
+                    const updatedMessages = [...newMessages, ...prev];
+                    
+                    // Scroll to the message that was visible before loading
+                    setTimeout(() => {
+                        if (visibleMessageIdRef.current) {
+                            const index = updatedMessages.findIndex(m => m._id === visibleMessageIdRef.current);
+                            if (index !== -1) {
+                                flatListRef.current?.scrollToIndex({
+                                    index: index,
+                                    animated: false,
+                                    viewPosition: 0
+                                });
+                            }
+                        }
+                    }, 300);
+                    
+                    return updatedMessages;
+                });
+                setCurrentPage(prev => prev + 1);
+            } else {
+                // No more messages received
+                console.log('No old messages to add - hasMore is:', hasMore);
+                if (!hasMore) {
+                    console.log('Pagination complete - no more messages available');
+                }
+            }
+        } catch (error: any) {
+            console.error('Error fetching old messages:', error);
+            
+            // Check if it's a 4xx error (client error) vs 5xx (server error)
+            if (error?.response?.status >= 400 && error?.response?.status < 500) {
+                // Client error - likely no more messages or bad request
+                console.log('Client error - stopping pagination');
+                setHasMoreMessages(false);
+            } else if (error?.response?.status >= 500) {
+                // Server error - retry might help
+                console.log('Server error - will allow retry');
+                // Keep hasMoreMessages true to allow retry
+            } else {
+                // Network or unknown error
+                console.log('Network/unknown error - stopping pagination');
+                setHasMoreMessages(false);
+            }
+        } finally {
+            setIsLoadingOldMessages(false);
+        }
     };
 
     const handleScroll = (event: any) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-        const isNearTop = contentOffset.y <= 50; // Within 50px of top
+        const isNearTop = contentOffset.y <= 100; // Within 100px of top
+        
+        // Store current scroll offset
+        scrollOffsetRef.current = contentOffset.y;
         
         console.log('Scroll event:', { 
             contentOffsetY: contentOffset.y, 
@@ -1280,7 +1403,7 @@ const SingleMessage = () => {
             messagesLength: messages.length
         });
         
-        if (isNearTop && hasMoreMessages && !isLoadingOldMessages && isConnected && messages.length > 0) {
+        if (isNearTop && hasMoreMessages && !isLoadingOldMessages && messages.length > 0) {
             console.log('Triggering loadOldMessages from scroll');
             loadOldMessages();
         }
@@ -1865,7 +1988,7 @@ const SingleMessage = () => {
                         ref={flatListRef}
                         data={messages}
                         renderItem={renderMessage}
-                        keyExtractor={(item, index) => item._id || item.tempId || `msg-${index}-${item.timestamp}`}
+                        keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
                         style={{ flex: 1 }}
                         contentContainerStyle={{ paddingVertical: 8 }}
                         showsVerticalScrollIndicator={false}
@@ -1882,10 +2005,7 @@ const SingleMessage = () => {
                             });
                         }}
                         inverted={false}
-                        maintainVisibleContentPosition={{
-                            minIndexForVisible: 0,
-                            autoscrollToTopThreshold: 100
-                        }}
+                        removeClippedSubviews={false}
                     />
                 </ImageBackground>
             ) : (
@@ -1893,7 +2013,7 @@ const SingleMessage = () => {
                     ref={flatListRef}
                     data={messages}
                     renderItem={renderMessage}
-                    keyExtractor={(item, index) => item._id || item.tempId || `msg-${index}-${item.timestamp}`}
+                    keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
                     style={{ flex: 1 }}
                     contentContainerStyle={{ paddingVertical: 8 }}
                     showsVerticalScrollIndicator={false}
@@ -1910,9 +2030,10 @@ const SingleMessage = () => {
                         });
                     }}
                     inverted={false}
+                    removeClippedSubviews={false}
                     maintainVisibleContentPosition={{
                         minIndexForVisible: 0,
-                        autoscrollToTopThreshold: 100
+                        autoscrollToTopThreshold: 10
                     }}
                 />
             )}
