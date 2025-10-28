@@ -6,6 +6,8 @@ import {
   StyleSheet,
   Image,
   Animated,
+  Platform,
+  StatusBar,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useCallMinimize, MinimizedCall } from '../contexts/CallMinimizeContext';
@@ -28,8 +30,11 @@ const MinimizedCallBar: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  // Get status bar height to position bar below it
+  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
+
   return (
-    <Animated.View style={[styles.container, { backgroundColor: themeColors.primary }]}>
+    <Animated.View style={[styles.container, { backgroundColor: themeColors.primary, top: statusBarHeight }]}>
       <TouchableOpacity
         style={styles.callInfo}
         onPress={currentCall.onRestore}
@@ -102,7 +107,6 @@ const MinimizedCallBar: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 0,
     left: 0,
     right: 0,
     zIndex: 1000,

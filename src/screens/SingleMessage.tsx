@@ -1294,216 +1294,298 @@ const SingleMessage = () => {
         </View>
     );
 
-    const renderMessage = ({ item }: { item: Message }) => (
-        <Swipeable
-            ref={(ref) => {
-                if (ref) {
-                    swipeableRefs.current.set(item._id, ref);
-                } else {
-                    swipeableRefs.current.delete(item._id);
-                }
-            }}
-            renderLeftActions={() => (item.senderId !== myProfile?._id ? renderLeftReplyAction() : null)}
-            onSwipeableOpen={(direction) => {
-                if (direction === 'left' && item.senderId !== myProfile?._id) {
-                    startReply(item);
-                    setActiveSwipeId(item._id);
-                }
-            }}
-        >
-            <Pressable onLongPress={(event) => handleMessageLongPress(item, event)} delayLongPress={250}>
-                <View key={item._id} style={{
-                    marginBottom: 8,
-                    alignItems: item.senderId === myProfile?._id ? 'flex-end' : 'flex-start',
-                }}>
+    const renderMessage = ({ item }: { item: Message }) => {
+        const isMyMessage = item.senderId === myProfile?._id;
+        
+        return (
+            <Swipeable
+                ref={(ref) => {
+                    if (ref) {
+                        swipeableRefs.current.set(item._id, ref);
+                    } else {
+                        swipeableRefs.current.delete(item._id);
+                    }
+                }}
+                renderLeftActions={() => (!isMyMessage ? renderLeftReplyAction() : null)}
+                onSwipeableOpen={(direction) => {
+                    if (direction === 'left' && !isMyMessage) {
+                        startReply(item);
+                        setActiveSwipeId(item._id);
+                    }
+                }}
+            >
+                <Pressable onLongPress={(event) => handleMessageLongPress(item, event)} delayLongPress={250}>
                     <View style={{
-                        backgroundColor: item.messageType === 'call'
-                            ? (item.callEvent === 'missed' ? (isDarkMode ? '#3a0d12' : '#fee2e2') : (isDarkMode ? '#0f172a' : '#e2e8f0'))
-                            : (item.senderId === myProfile?._id ? themeColors.primary : themeColors.gray[200]),
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
-                        borderRadius: 20,
-                        maxWidth: '80%',
-                        borderBottomLeftRadius: item.senderId === myProfile._id ? 20 : 4,
-                        borderBottomRightRadius: item.senderId === myProfile._id ? 4 : 20,
-                        borderWidth: highlightedMessageId === item._id ? 2 : 0,
-                        borderColor: highlightedMessageId === item._id ? themeColors.primary : 'transparent',
+                        marginBottom: 8,
+                        marginHorizontal: 16,
+                        flexDirection: 'row',
+                        alignItems: 'flex-end',
+                        justifyContent: isMyMessage ? 'flex-end' : 'flex-start',
                     }}>
-                        {item.parent && (
-                            <TouchableOpacity onPress={() => item.parent?._id && scrollToMessage(item.parent._id)} style={{
-                                marginBottom: 8,
-                                padding: 8,
-                                borderLeftWidth: 3,
-                                borderLeftColor: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.primary,
-                                backgroundColor: item.senderId === myProfile?._id ? 'rgba(255,255,255,0.12)' : themeColors.gray[300],
-                                borderRadius: 6
-                            }}>
-                                <Text style={{
-                                    color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
-                                    opacity: 0.8,
-                                    fontSize: 12,
-                                    fontStyle: 'italic',
-                                }}>
-                                    {item.parent.message || 'Message'}
-                                </Text>
-                            </TouchableOpacity>
-                        )}
-                        {item.messageType === 'call' ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <Icon
-                                    name={item.callType === 'video' ? 'videocam' : 'call'}
-                                    size={18}
-                                    color={item.callEvent === 'missed' ? '#ef4444' : themeColors.text.primary}
-                                />
-                                <Text style={{
-                                    color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
-                                    fontSize: 16,
-                                    lineHeight: 20,
-                                }}>
-                                    {item.message || (item.callEvent === 'missed' ? (item.callType === 'video' ? 'Missed video call' : 'Missed audio call') : (item.callType === 'video' ? 'Video call' : 'Audio call'))}
-                                </Text>
+                        {/* Profile picture for incoming messages */}
+                        {!isMyMessage && (
+                            <View style={{ marginRight: 8, marginBottom: 2 }}>
+                                <UserPP image={friend?.profilePic} isActive={false} size={36} />
                             </View>
-                        ) : item.messageType === 'audio' || isAudioUrl(item.attachment || '') ? (
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <TouchableOpacity
-                                    onPress={() => togglePlay(item)}
-                                    accessibilityLabel={playingId === item._id ? 'Pause voice message' : 'Play voice message'}
-                                    style={{ width: 36, height: 36, borderRadius: 18, borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center', marginRight: 8 }}
-                                >
-                                    <Icon name={playingId === item._id ? 'pause' : 'play-arrow'} size={20} color={item.senderId === myProfile?._id ? '#fff' : themeColors.primary} />
-                                </TouchableOpacity>
-                                <Slider
-                                    style={{ flex: 1, height: 28, marginHorizontal: 6 }}
-                                    minimumValue={0}
-                                    maximumValue={Math.max(1, Math.floor((playingProgress[item._id]?.duration || 0)))}
-                                    value={Math.floor(playingProgress[item._id]?.current || 0)}
-                                    minimumTrackTintColor={item.senderId === myProfile?._id ? '#fff' : themeColors.primary}
-                                    maximumTrackTintColor={item.senderId === myProfile?._id ? 'rgba(255,255,255,0.35)' : themeColors.gray[400]}
-                                    thumbTintColor={item.senderId === myProfile?._id ? '#fff' : themeColors.primary}
-                                    onSlidingComplete={(val) => seekTo(item, Number(val))}
-                                />
-                                <Text style={{ color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary, fontSize: 12, marginLeft: 6 }}>
-                                    {formatSecs(playingProgress[item._id]?.current || 0)} / {formatSecs(playingProgress[item._id]?.duration || 0)}
-                                </Text>
-                                {renderHiddenVideo(item)}
-                            </View>
-                        ) : (
-                            <Text style={{
-                                color: item.senderId === myProfile?._id ? themeColors.text.inverse : themeColors.text.primary,
-                                fontSize: 16,
-                                lineHeight: 20,
-                            }}>
-                                {item.message}
-                            </Text>
                         )}
-                        {item.attachment && isValidImageUrl(item.attachment) && item.messageType !== 'audio' && (
-                            <Image
-                                source={{ uri: item.attachment }}
-                                style={{ width: 200, height: 200, borderRadius: 8, marginTop: 8 }}
-                                resizeMode="cover"
-                            />
-                        )}
-
-
-                        {item.senderId == myProfile?._id && <>
-                            <View style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                justifyContent: 'flex-end',
-                                marginTop: 4,
-                            }}>
-                                <Icon
-                                    name={item.isSeen ? 'done-all' : 'check'}
-                                    size={16}
-                                    color={item.isSeen ? themeColors.text.primary : themeColors.text.inverse}
-                                    style={{ marginLeft: 4 }}
-                                />
-                                <Text style={{
-                                    color: themeColors.text.primary,
-                                    fontSize: 12,
-                                    opacity: 0.7,
-                                    marginLeft: 4,
-                                }}>
-                                    {moment(item.timestamp).format('hh:mm')}
-                                </Text>
-                            </View>
-                        </>}
-
-
-                    </View>
-                    {item.senderId !== myProfile?._id && (
-                        <Text style={{
-                            color: item.senderId === myProfile?._id ? themeColors.primary : themeColors.text.secondary,
-                            fontSize: 12,
-                            opacity: 0.7,
-                            marginTop: 4,
-                            marginLeft: 8,
+                        
+                        <View style={{ 
+                            flex: 1, 
+                            maxWidth: isMyMessage ? '75%' : '78%',
+                            alignItems: isMyMessage ? 'flex-end' : 'flex-start',
                         }}>
-                            {moment(item.timestamp).fromNow()}
-                        </Text>
-                    )}
-                </View>
-            </Pressable>
-        </Swipeable>
-    );
+                            {/* Reply preview for incoming messages */}
+                            {item.parent && !isMyMessage && (
+                                <TouchableOpacity 
+                                    onPress={() => item.parent?._id && scrollToMessage(item.parent._id)} 
+                                    activeOpacity={0.7}
+                                    style={{
+                                        marginBottom: 4,
+                                        padding: 8,
+                                        borderLeftWidth: 3,
+                                        borderLeftColor: themeColors.primary,
+                                        backgroundColor: isDarkMode ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.05)',
+                                        borderRadius: 8,
+                                        maxWidth: '90%',
+                                    }}
+                                >
+                                    <Text style={{
+                                        color: themeColors.text.primary,
+                                        opacity: 0.85,
+                                        fontSize: 13,
+                                        fontStyle: 'italic',
+                                        fontWeight: '500',
+                                    }}>
+                                        {item.parent.message || 'Message'}
+                                    </Text>
+                                </TouchableOpacity>
+                            )}
+                            
+                            {/* Message bubble with minimal styling */}
+                            <View style={{
+                                backgroundColor: item.messageType === 'call'
+                                    ? (item.callEvent === 'missed' ? (isDarkMode ? '#3a0d12' : '#fee2e2') : (isDarkMode ? '#0f172a' : '#e2e8f0'))
+                                    : (isMyMessage ? themeColors.primary : (isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.9)')),
+                                paddingHorizontal: 12,
+                                paddingVertical: 8,
+                                borderRadius: 18,
+                                borderBottomLeftRadius: isMyMessage ? 18 : 4,
+                                borderBottomRightRadius: isMyMessage ? 4 : 18,
+                                borderWidth: highlightedMessageId === item._id ? 3 : 0,
+                                borderColor: highlightedMessageId === item._id ? themeColors.primary : 'transparent',
+                            }}>
+                                {/* Reply preview for sent messages */}
+                                {item.parent && isMyMessage && (
+                                    <TouchableOpacity 
+                                        onPress={() => item.parent?._id && scrollToMessage(item.parent._id)}
+                                        activeOpacity={0.7}
+                                        style={{
+                                            marginBottom: 8,
+                                            padding: 10,
+                                            borderLeftWidth: 3,
+                                            borderLeftColor: themeColors.text.inverse,
+                                            backgroundColor: 'rgba(255,255,255,0.12)',
+                                            borderRadius: 8,
+                                            maxWidth: '90%',
+                                        }}
+                                    >
+                                        <Text style={{
+                                            color: themeColors.text.inverse,
+                                            opacity: 0.9,
+                                            fontSize: 13,
+                                            fontStyle: 'italic',
+                                            fontWeight: '500',
+                                        }}>
+                                            {item.parent.message || 'Message'}
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+                                
+                                {/* Call messages */}
+                                {item.messageType === 'call' ? (
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <Icon
+                                            name={item.callType === 'video' ? 'videocam' : 'call'}
+                                            size={18}
+                                            color={item.callEvent === 'missed' ? '#ef4444' : (isMyMessage ? '#FFFFFF' : '#000000')}
+                                        />
+                                        <Text style={{
+                                            color: isMyMessage ? '#FFFFFF' : '#000000',
+                                            fontSize: 15,
+                                            fontWeight: '500',
+                                        }}>
+                                            {item.message || (item.callEvent === 'missed' ? (item.callType === 'video' ? 'Missed video call' : 'Missed audio call') : (item.callType === 'video' ? 'Video call ended' : 'Audio call ended'))}
+                                        </Text>
+                                    </View>
+                                ) : item.messageType === 'audio' || isAudioUrl(item.attachment || '') ? (
+                                    /* Audio messages */
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', minWidth: 200 }}>
+                                        <TouchableOpacity
+                                            onPress={() => togglePlay(item)}
+                                            accessibilityLabel={playingId === item._id ? 'Pause voice message' : 'Play voice message'}
+                                            style={{ 
+                                                width: 40, 
+                                                height: 40, 
+                                                borderRadius: 20, 
+                                                borderWidth: 2, 
+                                                borderColor: isMyMessage ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.1)', 
+                                                backgroundColor: isMyMessage ? 'rgba(255,255,255,0.15)' : (isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'), 
+                                                alignItems: 'center', 
+                                                justifyContent: 'center', 
+                                                marginRight: 10 
+                                            }}
+                                        >
+                                            <Icon 
+                                                name={playingId === item._id ? 'pause' : 'play-arrow'} 
+                                                size={22} 
+                                                color={isMyMessage ? '#fff' : themeColors.primary} 
+                                            />
+                                        </TouchableOpacity>
+                                        <Slider
+                                            style={{ flex: 1, height: 30, marginHorizontal: 8 }}
+                                            minimumValue={0}
+                                            maximumValue={Math.max(1, Math.floor((playingProgress[item._id]?.duration || 0)))}
+                                            value={Math.floor(playingProgress[item._id]?.current || 0)}
+                                            minimumTrackTintColor={isMyMessage ? '#fff' : themeColors.primary}
+                                            maximumTrackTintColor={isMyMessage ? 'rgba(255,255,255,0.35)' : themeColors.gray[400]}
+                                            thumbTintColor={isMyMessage ? '#fff' : themeColors.primary}
+                                            onSlidingComplete={(val) => seekTo(item, Number(val))}
+                                        />
+                                        <Text style={{ 
+                                            color: isMyMessage ? themeColors.text.inverse : themeColors.text.primary, 
+                                            fontSize: 12, 
+                                            marginLeft: 8,
+                                            fontWeight: '500',
+                                            minWidth: 75,
+                                        }}>
+                                            {formatSecs(playingProgress[item._id]?.current || 0)} / {formatSecs(playingProgress[item._id]?.duration || 0)}
+                                        </Text>
+                                        {renderHiddenVideo(item)}
+                                    </View>
+                                ) : (
+                                    /* Text messages */
+                                    <Text style={{
+                                        color: isMyMessage ? '#FFFFFF' : (isDarkMode ? '#FFFFFF' : '#000000'),
+                                        fontSize: 15,
+                                        lineHeight: 20,
+                                    }}>
+                                        {item.message}
+                                    </Text>
+                                )}
+                                
+                                {/* Images */}
+                                {item.attachment && isValidImageUrl(item.attachment) && item.messageType !== 'audio' && (
+                                    <Image
+                                        source={{ uri: item.attachment }}
+                                        style={{ 
+                                            width: 220, 
+                                            height: 220, 
+                                            borderRadius: 12, 
+                                            marginTop: 6,
+                                        }}
+                                        resizeMode="cover"
+                                    />
+                                )}
+
+                                {/* Timestamp and seen status */}
+                                <View style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'flex-end',
+                                    marginTop: 4,
+                                }}>
+                                    {isMyMessage && (
+                                        <Icon
+                                            name={item.isSeen ? 'done-all' : 'done'}
+                                            size={14}
+                                            color="#FFFFFF"
+                                        />
+                                    )}
+                                    <Text style={{
+                                        color: isMyMessage ? '#FFFFFF' : (isDarkMode ? '#FFFFFF' : '#666666'),
+                                        fontSize: 11,
+                                        marginLeft: 4,
+                                    }}>
+                                        {moment(item.timestamp).format('hh:mm A')}
+                                    </Text>
+                                </View>
+                            </View>
+                        </View>
+                        
+                        {/* Profile picture for outgoing messages */}
+                        {isMyMessage && item?.isSeen ? (
+                            <View style={{ marginLeft: 8, marginBottom: 2 }}>
+                                <UserPP image={myProfile?.profilePic} isActive={false} size={15} />
+                            </View>
+                        ) : 
+                        (
+                            <View style={{ marginLeft: 8, marginBottom: 2, opacity: 0 }}>
+                                <UserPP image={myProfile?.profilePic} isActive={false} size={15} />
+                            </View>
+                        )
+                        }
+                    </View>
+                </Pressable>
+            </Swipeable>
+        );
+    };
 
     const renderTypingIndicator = () => {
         if (!isTyping) return null;
 
         return (
             <View style={{
-                marginVertical: 4,
+                marginBottom: 8,
                 marginHorizontal: 16,
-                alignItems: 'center',
-                display: 'flex',
                 flexDirection: 'row',
-                gap: 8,
+                alignItems: 'flex-end',
             }}>
-                <UserPP image={friend?.profilePic} isActive={false} size={30} />
+                <UserPP image={friend?.profilePic} isActive={false} size={36} />
 
                 <View style={{
-                    backgroundColor: themeColors.gray[200],
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderRadius: 20,
+                    marginLeft: 8,
+                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.9)',
+                    paddingHorizontal: 14,
+                    paddingVertical: 10,
+                    borderRadius: 18,
                     borderBottomLeftRadius: 4,
+                    maxWidth: '78%',
                 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-
                         <View style={{
                             flexDirection: 'row',
                             alignItems: 'center',
+                            gap: 4,
                         }}>
                             <View style={{
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: themeColors.gray[500],
-                                marginRight: 4,
+                                backgroundColor: isDarkMode ? '#FFFFFF' : '#000000',
+                                opacity: 0.4,
+                            }} />
+                            <View style={{
+                                width: 8,
+                                height: 8,
+                                borderRadius: 4,
+                                backgroundColor: isDarkMode ? '#FFFFFF' : '#000000',
                                 opacity: 0.6,
                             }} />
                             <View style={{
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: themeColors.gray[500],
-                                marginRight: 4,
+                                backgroundColor: isDarkMode ? '#FFFFFF' : '#000000',
                                 opacity: 0.8,
-                            }} />
-                            <View style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 4,
-                                backgroundColor: themeColors.gray[500],
-                                opacity: 1,
                             }} />
                         </View>
                         <Text style={{
-                            color: themeColors.text.secondary,
+                            color: isDarkMode ? '#FFFFFF' : '#000000',
                             fontSize: 14,
                             marginLeft: 8,
+                            fontStyle: 'italic',
                         }}>
-                            typing...
+                            {typingMessage && typingMessage.length > 0 ? `typing "${typingMessage}"...` : 'typing...'}
                         </Text>
                     </View>
                 </View>
@@ -1785,7 +1867,7 @@ const SingleMessage = () => {
                         renderItem={renderMessage}
                         keyExtractor={(item, index) => item._id || item.tempId || `msg-${index}-${item.timestamp}`}
                         style={{ flex: 1 }}
-                        contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                        contentContainerStyle={{ paddingVertical: 8 }}
                         showsVerticalScrollIndicator={false}
                         ListHeaderComponent={renderLoadingOldMessages}
                         ListFooterComponent={renderTypingIndicator}
@@ -1813,7 +1895,7 @@ const SingleMessage = () => {
                     renderItem={renderMessage}
                     keyExtractor={(item, index) => item._id || item.tempId || `msg-${index}-${item.timestamp}`}
                     style={{ flex: 1 }}
-                    contentContainerStyle={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                    contentContainerStyle={{ paddingVertical: 8 }}
                     showsVerticalScrollIndicator={false}
                     ListHeaderComponent={renderLoadingOldMessages}
                     ListFooterComponent={renderTypingIndicator}

@@ -302,16 +302,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       engine.addListener('UserOffline', async (uid: number) => {
         console.log('Remote video user left:', uid);
         setRemoteUid(null);
-        // If the remote leaves, end the call locally to keep both sides in sync
-        if (!isEndingCallRef.current && (callAccepted || isVideoCall)) {
-          try {
-            isEndingCallRef.current = true;
-            setCallEnded(true);
-            await cleanupCall();
-          } catch (e) {
-            console.warn('Cleanup after remote offline failed:', e);
-          }
-        }
+        await cleanupCall();
+        setCallEnded(true);
+
+        // // If the remote leaves, end the call locally to keep both sides in sync
+        // if (!isEndingCallRef.current && (callAccepted || isVideoCall)) {
+        //   try {
+        //     isEndingCallRef.current = true;
+        //     await cleanupCall();
+        //   } catch (e) {
+        //     console.warn('Cleanup after remote offline failed:', e);
+        //   }
+        // }
       });
 
       engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
@@ -421,7 +423,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setCurrentChannel(channelName);
       setIsVideoCall(true);
       setCallEnded(false); // Reset call ended state for new call
-      isEndingCallRef.current = false;
 
       // Set call start time for duration tracking
       if (!callStartTime.current) {
@@ -545,7 +546,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
 
       // Release end-call lock after cleanup completes
-      isEndingCallRef.current = false;
 
       console.log('Video call cleanup completed');
     } catch (error) {
@@ -574,7 +574,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       localPreviewStarted.current = false; // Reset preview flag
       engineRef.current = null;
       // Ensure end-call lock is released even on failures
-      isEndingCallRef.current = false;
     } finally {
       isLeavingRef.current = false;
     }
@@ -636,24 +635,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   // End call - called when user clicks end button
   const endCall = useCallback(async () => {
     console.log('VideoCall: endCall called, isEndingCallRef:', isEndingCallRef.current, 'callEnded:', callEnded);
-    
-    // CRITICAL: Use ref for immediate synchronous check (state updates are async!)
-    if (isEndingCallRef.current) {
-      console.log('VideoCall: Already ending call (ref check), ignoring duplicate');
-      return;
-    }
-    
-    // Prevent multiple calls to endCall with both ref and state
-    if (callEnded) {
-      console.log('VideoCall: Call already ended (state check), ignoring duplicate');
-      return;
-    }
+
 
     // IMPORTANT: Set BOTH ref and state immediately
-    isEndingCallRef.current = true;
-    setCallEnded(true);
 
-    console.log('VideoCall: Ending video call...');
     console.log('VideoCall: Debug state:', {
       remoteFriendId,
       incomingCallFrom: incomingCall?.from,
@@ -915,7 +900,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         setCurrentChannel(channelName);
         setCallAccepted(true); // Important: mark call as accepted
         setCallEnded(false); // Reset call ended state for accepted call
-        isEndingCallRef.current = false;
         setIsAudioMode(false);
         joinChannel(channelName);
       } else {
@@ -929,17 +913,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       console.log('VideoCall: Received videoCallEnd event from server');
       console.log('VideoCall: Current state - isEndingCallRef:', isEndingCallRef.current, 'callAccepted:', callAccepted, 'isVideoCall:', isVideoCall, 'callEnded:', callEnded);
       
-      // CRITICAL: Check ref first (synchronous check)
-      if (isEndingCallRef.current) {
-        console.log('VideoCall: Already ending call (ref check), ignoring videoCallEnd event');
-        return;
-      }
-      
-      // Prevent multiple processing with state
-      if (callEnded) {
-        console.log('VideoCall: Call already ended (state check), ignoring duplicate videoCallEnd event');
-        return;
-      }
+
       
       // Debounce rapid-fire call end events (prevent processing same event within 2 seconds)
       const now = Date.now();
@@ -954,8 +928,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         console.log('VideoCall: Processing videoCallEnd - doing local cleanup only (NO re-emit)');
         
         // Set BOTH ref and state
-        isEndingCallRef.current = true;
-        setCallEnded(true);
         
         // IMPORTANT: Only do local cleanup, do NOT call endCall() which would re-emit
         await cleanupCall();
@@ -1005,7 +977,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const retryTimeouts: ReturnType<typeof setTimeout>[] = [];
     
     // Check if the local video view should be rendered (same conditions as in JSX)
-    const shouldRenderLocalVideo = !isEndingCallRef.current && !callEnded && isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
+    const shouldRenderLocalVideo = isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
     
     if (shouldRenderLocalVideo && engineRef.current && !localPreviewStarted.current) {
       console.log('📹 Local video view conditions met, starting preview...');
