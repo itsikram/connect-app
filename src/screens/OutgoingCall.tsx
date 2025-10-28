@@ -4,6 +4,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
+import Video from 'react-native-video';
 
 interface OutgoingCallParams {
   calleeId: string;
@@ -21,6 +22,7 @@ const OutgoingCall: React.FC = () => {
   const route = useRoute();
   const { startVideoCall, startAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [callStatus, setCallStatus] = useState('Calling...');
+  const [playBeep, setPlayBeep] = useState(true);
 
   // Reset status bar when leaving this screen to avoid translucent persisting globally
   React.useEffect(() => {
@@ -122,10 +124,12 @@ const OutgoingCall: React.FC = () => {
   // Close this screen once the peer accepts or ends the call
   useEffect(() => {
     const handleAccepted = () => { 
+      setPlayBeep(false);
       setCallStatus('Call accepted!');
       setTimeout(() => safeGoBack(), 500);
     };
     const handleEnd = () => { 
+      setPlayBeep(false);
       setCallStatus('Call ended');
       setTimeout(() => safeGoBack(), 1000);
     };
@@ -143,6 +147,7 @@ const OutgoingCall: React.FC = () => {
 
   const onCancel = () => {
     if (!calleeId) return;
+    setPlayBeep(false);
     setCallStatus('Cancelling...');
     if (isAudio) {
       endAudioCall(calleeId);
@@ -151,6 +156,13 @@ const OutgoingCall: React.FC = () => {
     }
     setTimeout(() => safeGoBack(), 500);
   };
+
+  // Ensure beep stops on unmount
+  useEffect(() => {
+    return () => {
+      setPlayBeep(false);
+    };
+  }, []);
 
   const spin = rotateAnim.interpolate({
     inputRange: [0, 1],
@@ -174,6 +186,21 @@ const OutgoingCall: React.FC = () => {
           styles.gradientOverlay2,
           { backgroundColor: isDarkMode ? 'rgba(45, 45, 45, 0.6)' : 'rgba(240, 147, 251, 0.6)' }
         ]} />
+        
+        {/* Beep sound player */}
+        {playBeep && (
+          <Video
+            source={require('../assets/audio/calling-beep.mp3')}
+            paused={!playBeep}
+            repeat
+            muted={false}
+            playInBackground
+            ignoreSilentSwitch="ignore"
+            volume={1.0}
+            style={{ width: 0, height: 0 }}
+          />
+        )}
+
         <Animated.View 
           style={[
             styles.content,

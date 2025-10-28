@@ -160,8 +160,25 @@ class SocketService {
     this.emit('answer-call', { to, channelName, isAudio: false });
   }
 
-  endVideoCall(friendId: string): void {
-    this.emit('video-call-end', friendId);
+
+  endAudioCall(friendId: string, channelName?: string, action?: string): void {
+    if(action === 'reject') {
+      this.emit('audio-call-reject', { to: friendId, channelName: channelName || '' });
+    } else if(action === 'cancel') {
+      this.emit('audio-call-cancel', { to: friendId, channelName: channelName || '' });
+    }else {
+      this.emit('audio-call-end', { to: friendId, channelName: channelName || '' });
+    }
+  }
+
+  endVideoCall(friendId: string, channelName?: string, action?: string): void {
+    if(action === 'reject') {
+      this.emit('video-call-reject', { to: friendId, channelName: channelName || '' });
+    } else if(action === 'cancel') {
+      this.emit('video-call-cancel', { to: friendId, channelName: channelName || '' });
+    }else {
+      this.emit('video-call-end', { to: friendId, channelName: channelName || '' });
+    }
   }
 
   // Audio call methods
@@ -173,9 +190,7 @@ class SocketService {
     this.emit('answer-call', { to, channelName, isAudio: true });
   }
 
-  endAudioCall(friendId: string): void {
-    this.emit('audio-call-end', friendId);
-  }
+
 
   // Filter methods
   applyVideoFilter(to: string, filter: string): void {

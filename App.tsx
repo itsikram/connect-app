@@ -406,10 +406,16 @@ function AppContent() {
         console.log('🚫 Ignoring incoming video call - within cooldown window');
         return;
       }
-      // Check if there's already an active incoming call (latest via ref)
+      // If there's already an active incoming call, clear it first
       if (activeIncomingCallRef.current) {
-        console.log('🚫 Ignoring incoming video call - already have active incoming call:', activeIncomingCallRef.current);
-        return;
+        console.log('🔄 Clearing previous incoming call to show new video call:', activeIncomingCallRef.current);
+        // Clear the existing timeout
+        if (incomingCallTimeoutRef.current) {
+          clearTimeout(incomingCallTimeoutRef.current);
+          incomingCallTimeoutRef.current = null;
+        }
+        // Clear the active call state
+        setActiveIncomingCall(null);
       }
       
       console.log('📞 New incoming video call from:', from);
@@ -424,14 +430,15 @@ function AppContent() {
         setActiveIncomingCall(null);
       }, 30000); // 30 seconds timeout
       
-        (navigation as any).navigate('Message', {
-          screen: 'IncomingCall',
+      (navigation as any).navigate('Message', {
+        screen: 'IncomingCall',
         params: {
         callerId: from,
         callerName: callerName || 'Unknown',
         callerProfilePic: callerProfilePic,
         channelName,
         isAudio: false,
+        prevScreenId: currentScreenRef.current,
         }
       });
     };
@@ -445,10 +452,16 @@ function AppContent() {
         console.log('🚫 Ignoring incoming audio call - within cooldown window');
         return;
       }
-      // Check if there's already an active incoming call (latest via ref)
+      // If there's already an active incoming call, clear it first
       if (activeIncomingCallRef.current) {
-        console.log('🚫 Ignoring incoming audio call - already have active incoming call:', activeIncomingCallRef.current);
-        return;
+        console.log('🔄 Clearing previous incoming call to show new audio call:', activeIncomingCallRef.current);
+        // Clear the existing timeout
+        if (incomingCallTimeoutRef.current) {
+          clearTimeout(incomingCallTimeoutRef.current);
+          incomingCallTimeoutRef.current = null;
+        }
+        // Clear the active call state
+        setActiveIncomingCall(null);
       }
       
       console.log('📞 New incoming audio call from:', from);
@@ -471,6 +484,7 @@ function AppContent() {
         callerProfilePic: callerProfilePic,
         channelName,
         isAudio: true,
+        prevScreenId: currentScreenRef.current,
         }
       });
     };

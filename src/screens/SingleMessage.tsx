@@ -25,7 +25,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 import { check, request, PERMISSIONS, RESULTS, openSettings } from 'react-native-permissions';
 import Video from 'react-native-video';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import AudioRecorderPlayerModule from 'react-native-audio-recorder-player';
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatHeaderSkeleton, ChatBubblesSkeleton } from '../components/skeleton/ChatSkeleton';
 import UserPP from '../components/UserPP';
@@ -119,34 +119,35 @@ const SingleMessage = () => {
     const audioRecorderPlayerRef = React.useRef<any>(null);
     
     React.useEffect(() => {
-        // Create instance dynamically to avoid TypeScript constructor issues
+        // The library exports the class itself, we need to instantiate it
         try {
-            // Use require to dynamically get the module
-            const AudioRecorderPlayerModule = require('react-native-audio-recorder-player');
+            // Try multiple ways to get the constructor
+            let AudioRecorderPlayerClass: any = null;
             
-            // Log the structure to understand what we're dealing with
-            console.log('AudioRecorderPlayerModule:', Object.keys(AudioRecorderPlayerModule));
-            console.log('Default:', AudioRecorderPlayerModule.default);
-            
-            // Try different ways to get a constructor
-            let AudioRecorderPlayerClass;
-            if (AudioRecorderPlayerModule.default) {
-                AudioRecorderPlayerClass = AudioRecorderPlayerModule.default;
-            } else if (typeof AudioRecorderPlayerModule === 'function') {
+            // Check if it's already a constructor
+            if (typeof AudioRecorderPlayerModule === 'function') {
                 AudioRecorderPlayerClass = AudioRecorderPlayerModule;
-            } else {
-                AudioRecorderPlayerClass = AudioRecorderPlayerModule;
+            } 
+            // Check if it has a default export
+            else if (typeof (AudioRecorderPlayerModule as any).default === 'function') {
+                AudioRecorderPlayerClass = (AudioRecorderPlayerModule as any).default;
+            }
+            // Try accessing constructor or __proto__
+            else {
+                const moduleAsAny = AudioRecorderPlayerModule as any;
+                if (typeof moduleAsAny.constructor === 'function') {
+                    AudioRecorderPlayerClass = moduleAsAny.constructor;
+                } else {
+                    AudioRecorderPlayerClass = Object.getPrototypeOf(AudioRecorderPlayerModule).constructor;
+                }
             }
             
-            // Try to create instance
-            if (typeof AudioRecorderPlayerClass === 'function') {
-                audioRecorderPlayerRef.current = new AudioRecorderPlayerClass();
-                console.log('AudioRecorderPlayer initialized successfully with new');
-            } else {
-                // Maybe it's already an instance
-                audioRecorderPlayerRef.current = AudioRecorderPlayerClass;
-                console.log('AudioRecorderPlayer initialized successfully (using module directly)');
+            if (!AudioRecorderPlayerClass) {
+                throw new Error('Could not find AudioRecorderPlayer constructor');
             }
+            
+            audioRecorderPlayerRef.current = new AudioRecorderPlayerClass();
+            console.log('AudioRecorderPlayer initialized successfully');
         } catch (e) {
             console.error('Error initializing AudioRecorderPlayer:', e);
             audioRecorderPlayerRef.current = null;
@@ -154,8 +155,18 @@ const SingleMessage = () => {
         
         return () => {
             try {
-                if (audioRecorderPlayerRef.current && typeof audioRecorderPlayerRef.current.removeRecordBackListener === 'function') {
-                    audioRecorderPlayerRef.current.removeRecordBackListener();
+                if (audioRecorderPlayerRef.current) {
+                    // Clean up any active recording or playback
+                    if (typeof audioRecorderPlayerRef.current.removeRecordBackListener === 'function') {
+                        audioRecorderPlayerRef.current.removeRecordBackListener();
+                    }
+                    if (typeof audioRecorderPlayerRef.current.removePlayBackListener === 'function') {
+                        audioRecorderPlayerRef.current.removePlayBackListener();
+                    }
+                    // Try to stop recorder if still active
+                    if (isRecording && typeof audioRecorderPlayerRef.current.stopRecorder === 'function') {
+                        audioRecorderPlayerRef.current.stopRecorder().catch(() => {});
+                    }
                 }
             } catch (e) {
                 console.error('Error cleaning up AudioRecorderPlayer:', e);
@@ -211,13 +222,43 @@ const SingleMessage = () => {
         }
         
         try {
-            if (!audioRecorderPlayerRef.current) {
-                console.error('AudioRecorderPlayer is null');
+            // Always create a fresh instance to avoid Android MediaRecorder state issues
+            try {
+                // Clean up old instance if it exists
+                if (audioRecorderPlayerRef.current) {
+                    try {
+                        audioRecorderPlayerRef.current.removeRecordBackListener();
+                    } catch (e) {
+                        // Ignore errors when removing non-existent listener
+                    }
+                }
+                
+                // Try to create a new instance - try different ways
+                let AudioRecorderPlayerClass;
+                if (typeof AudioRecorderPlayerModule === 'function') {
+                    AudioRecorderPlayerClass = AudioRecorderPlayerModule;
+                } else if (typeof (AudioRecorderPlayerModule as any).default === 'function') {
+                    AudioRecorderPlayerClass = (AudioRecorderPlayerModule as any).default;
+                } else if (typeof (AudioRecorderPlayerModule as any).constructor === 'function') {
+                    AudioRecorderPlayerClass = (AudioRecorderPlayerModule as any).constructor;
+                } else {
+                    AudioRecorderPlayerClass = Object.getPrototypeOf(AudioRecorderPlayerModule).constructor;
+                }
+                
+                audioRecorderPlayerRef.current = new AudioRecorderPlayerClass();
+                console.log('Recorder initialized for new recording');
+            } catch (reinitError) {
+                console.error('Error initializing recorder:', reinitError);
                 Alert.alert('Voice recording unavailable', 'Recorder not initialized. Please restart the app.');
                 return;
             }
             
-            const path = Platform.select({ ios: 'voice.m4a', android: undefined });
+            // Create a unique file path to avoid conflicts
+            const path = Platform.select({ 
+                ios: `voice_${Date.now()}.m4a`, 
+                android: undefined // Let the library handle the path on Android
+            });
+            
             console.log('Starting recording with path:', path);
             const uri = await audioRecorderPlayerRef.current.startRecorder(path);
             console.log('Recording started, URI:', uri);
@@ -230,11 +271,22 @@ const SingleMessage = () => {
                 const secs = Math.floor(e.currentPosition / 1000);
                 setRecordSecs(secs);
                 setRecordTime(formatSecs(secs));
-                return undefined;
             });
         } catch (e: any) {
             console.error('Error in startRecording:', e);
             setIsRecording(false);
+            setRecordSecs(0);
+            setRecordTime('00:00');
+            
+            // Try to clean up any partial recording
+            try {
+                if (audioRecorderPlayerRef.current) {
+                    audioRecorderPlayerRef.current.removeRecordBackListener();
+                }
+            } catch (cleanupError) {
+                console.warn('Error cleaning up after failed start:', cleanupError);
+            }
+            
             Alert.alert('Recording failed', e?.message || 'Could not start recording. Please try again.');
         }
     };
@@ -248,24 +300,27 @@ const SingleMessage = () => {
             return;
         }
         
+        // Mark as not recording immediately to prevent duplicate calls
+        setIsRecording(false);
+        
         try {
             if (!audioRecorderPlayerRef.current) {
                 console.error('AudioRecorderPlayer is null in stopRecording');
-                setIsRecording(false);
+                setRecordSecs(0);
+                setRecordTime('00:00');
                 return;
             }
             
-            // Mark as not recording immediately to prevent duplicate calls
-            setIsRecording(false);
-            
-            const resultPath = await audioRecorderPlayerRef.current.stopRecorder();
-            console.log('Recording stopped, result path:', resultPath);
-            
+            // First, remove the listener to prevent any callbacks
             try {
                 audioRecorderPlayerRef.current.removeRecordBackListener();
             } catch (e) {
                 console.warn('Error removing record back listener:', e);
             }
+            
+            // Stop the recorder
+            const resultPath = await audioRecorderPlayerRef.current.stopRecorder();
+            console.log('Recording stopped, result path:', resultPath);
             
             setRecordSecs(0);
             setRecordTime('00:00');
@@ -277,6 +332,15 @@ const SingleMessage = () => {
             console.error('Error in stopRecording:', e);
             setRecordSecs(0);
             setRecordTime('00:00');
+            
+            // Try to reset the recorder state
+            try {
+                if (audioRecorderPlayerRef.current) {
+                    audioRecorderPlayerRef.current.removeRecordBackListener();
+                }
+            } catch (cleanupError) {
+                console.warn('Error cleaning up after failed stop:', cleanupError);
+            }
         }
     };
 

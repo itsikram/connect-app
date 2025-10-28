@@ -129,7 +129,12 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
     });
 
     if (state.index !== index && !event.defaultPrevented) {
-      navigation.navigate(state.routes[index].name);
+      // For Message tab, always navigate to MessageList screen
+      if (tab.name === 'Message') {
+        navigation.navigate('Message', { screen: 'MessageList' });
+      } else {
+        navigation.navigate(state.routes[index].name);
+      }
     }
 
     // Reset animation flag

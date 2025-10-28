@@ -128,7 +128,7 @@ export default function FloatingButton({
       >
         {icon ? icon : (
           <Image
-            source={require('../assets/image/logo.png')}
+            source={require('../assets/images/logo.png')}
             style={styles.logo}
             resizeMode="contain"
           />

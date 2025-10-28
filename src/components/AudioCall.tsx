@@ -42,8 +42,12 @@ interface IncomingCall {
 }
 
 const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic }) => {
-  console.log('AudioCall: Component mounted with myId:', myId);
   
+  useEffect(() => {
+    console.log('AudioCall: Component mounted with pp:', myId );
+    if(!myId) return;
+  },[myId]);
+
   const { colors: themeColors, isDarkMode } = useTheme();
   const { on, off, answerAudioCall, endAudioCall, isConnected } = useSocket();
   
@@ -74,6 +78,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   const listenersSetupRef = useRef<boolean>(false);
   const callAcceptedRef = useRef<boolean>(false);
   const isAudioCallRef = useRef<boolean>(false);
+  const handleCallAcceptedRef = useRef<any>(null);
+  const handleCallEndRef = useRef<any>(null);
+  const leaveChannelRef = useRef<any>(null);
 
   // Track component lifecycle
   useEffect(() => {
@@ -213,18 +220,33 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
         setRemoteUid(uid);
       });
 
-      engine.addListener('UserOffline', async (uid: number) => {
+      engine.addListener('UserOffline', async (uid: number, reason: number) => {
         console.log('Remote user left:', uid);
+        console.log('UserOffline reason:', reason);
+        
+        // Log reason details
+        const reasonMessages: { [key: number]: string } = {
+          0: 'User quit',
+          1: 'User dropped (network issue)',
+          2: 'Became audience',
+          3: 'Same UID logged in from another device',
+          4: 'Switched to voice-only',
+        };
+        const reasonMessage = reasonMessages[reason] || `Unknown reason (code: ${reason})`;
+        console.log(`UserOffline reason: ${reasonMessage}`);
+        await cleanupCall();
+
+        
         setRemoteUid(null);
         // End audio call locally when remote leaves to ensure both sides end instantly
-        if (!isEndingCallRef.current && (callAccepted || isAudioCall || currentChannel)) {
-          try {
-            isEndingCallRef.current = true;
-            await cleanupCall();
-          } catch (e) {
-            console.warn('Audio cleanup after remote offline failed:', e);
-          }
-        }
+        // if (!isEndingCallRef.current && (callAccepted || isAudioCall || currentChannel)) {
+        //   try {
+        //     isEndingCallRef.current = true;
+        //     await cleanupCall();
+        //   } catch (e) {
+        //     console.warn('Audio cleanup after remote offline failed:', e);
+        //   }
+        // }
       });
 
       engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
@@ -504,14 +526,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     console.log('AudioCall: endCall called, isEndingCallRef:', isEndingCallRef.current);
     console.log('AudioCall: Current state - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall, 'channel:', currentChannel);
     
-    // CRITICAL: Prevent multiple calls with ref (synchronous check)
-    if (isEndingCallRef.current) {
-      console.log('AudioCall: Already ending call (ref check), ignoring duplicate');
-      return;
-    }
 
-    // IMPORTANT: Set flag immediately to prevent race conditions
-    isEndingCallRef.current = true;
     
     console.log('AudioCall: Ending audio call...');
     console.log('AudioCall: Debug state:', {
@@ -544,7 +559,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     
     if (friendIdToNotify && friendIdToNotify !== myId) {
       console.log('AudioCall: ✅ Emitting endAudioCall to friend:', friendIdToNotify);
-      endAudioCall(friendIdToNotify);
+      endAudioCall(friendIdToNotify, currentChannel || undefined, 'end');
     } else {
       console.error('AudioCall: ❌ ERROR - No valid friend ID to notify! Cannot end call for other user.');
       console.error('AudioCall: Debug - friendIdToNotify:', friendIdToNotify, ', myId:', myId);
@@ -688,17 +703,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   // Handle call end
   const handleCallEnd = useCallback(() => {
       console.log('AudioCall: Received audioCallEnd event from server');
-      console.log('AudioCall: Current state - isEndingCallRef:', isEndingCallRef.current, 'callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
-      console.log('AudioCall: Current channel:', currentChannel);
-      console.log('AudioCall: Incoming call:', incomingCall);
-      
-      // CRITICAL: Prevent multiple processing with ref (synchronous)
-      if (isEndingCallRef.current) {
-        console.log('AudioCall: Already ending call (ref check), ignoring duplicate audioCallEnd event');
-        return;
-      }
-      
-      // Debounce rapid-fire call end events (prevent processing same event within 2 seconds)
+
       const now = Date.now();
       if (now - lastCallEndTime.current < 2000) {
         console.log('AudioCall: Ignoring rapid-fire call end event (debounce)');
@@ -709,7 +714,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     // Handle call end if we're in any call state or if we have an active channel
     if (callAccepted || isAudioCall || currentChannel) {
       console.log('AudioCall: Processing audio-call-ended - doing local cleanup only (NO re-emit)');
-      isEndingCallRef.current = true;
       // IMPORTANT: Only do local cleanup, do NOT call endCall() which would re-emit
       cleanupCall();
       // DON'T reset the flag - keep it set to prevent any further calls
@@ -718,6 +722,15 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
       console.log('AudioCall: Debug - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall, 'currentChannel:', currentChannel);
     }
     }, [callAccepted, isAudioCall, currentChannel, incomingCall, cleanupCall]);
+
+  // Keep callbacks in ref for stable references
+  useEffect(() => {
+    handleCallAcceptedRef.current = handleCallAccepted;
+  }, [handleCallAccepted]);
+
+  useEffect(() => {
+    handleCallEndRef.current = handleCallEnd;
+  }, [handleCallEnd]);
 
   // Socket event listeners
   useEffect(() => {
@@ -733,36 +746,31 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     listenersSetupRef.current = true;
 
     console.log('AudioCall: Setting up socket event listeners');
-    console.log('AudioCall: Dependencies - on:', !!on, 'off:', !!off, 'handleCallAccepted:', !!handleCallAccepted, 'handleCallEnd:', !!handleCallEnd);
+    console.log('AudioCall: Dependencies - on:', !!on, 'off:', !!off);
     
-    // Remove incoming call handling - this is now handled by IncomingCall screen
-    // const handleIncomingCall = ({ from, channelName, isAudio, callerName, callerProfilePic }: any) => {
-    //   // Only handle audio calls
-    //   if (isAudio) {
-    //     console.log('Incoming audio call from', from, 'channel:', channelName);
-    //     setIncomingCall({
-    //       from,
-    //       channelName,
-    //       name: callerName || 'Unknown Caller',
-    //       profilePic: callerProfilePic || ''
-    //     });
-    //     setCurrentChannel(channelName);
-    //   }
-    // };
+    const handleCallAcceptedWrapper = (data: any) => {
+      if (handleCallAcceptedRef.current) {
+        handleCallAcceptedRef.current(data);
+      }
+    };
 
-    // Removed: on('incoming-audio-call', handleIncomingCall); - handled by IncomingCall screen
-    on('call-accepted', handleCallAccepted);
-    on('audio-call-ended', handleCallEnd);
+    const handleCallEndWrapper = () => {
+      if (handleCallEndRef.current) {
+        handleCallEndRef.current();
+      }
+    };
+
+    on('call-accepted', handleCallAcceptedWrapper);
+    on('audio-call-ended', handleCallEndWrapper);
 
     
     return () => {
       console.log('AudioCall: Cleaning up socket event listeners');
       listenersSetupRef.current = false;
-      // Removed: off('incoming-audio-call', handleIncomingCall); - handled by IncomingCall screen
-      off('call-accepted', handleCallAccepted);
-      off('audio-call-ended', handleCallEnd);
+      off('call-accepted', handleCallAcceptedWrapper);
+      off('audio-call-ended', handleCallEndWrapper);
     };
-  }, [isConnected, on, off, handleCallAccepted, handleCallEnd]);
+  }, [isConnected, on, off]);
 
   // Keep refs in sync with latest state to avoid stale logs/guards
   useEffect(() => {
@@ -772,12 +780,19 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     isAudioCallRef.current = isAudioCall;
   }, [isAudioCall]);
 
+  // Keep leaveChannel in ref for stable cleanup reference
+  useEffect(() => {
+    leaveChannelRef.current = leaveChannel;
+  }, [leaveChannel]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      leaveChannel();
+      if (leaveChannelRef.current) {
+        leaveChannelRef.current();
+      }
     };
-  }, [leaveChannel]);
+  }, []);
 
   // Format duration
   const formatDuration = (seconds: number): string => {
@@ -790,8 +805,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     return null;
   }
 
-  const displayName = incomingCall?.name || peerName || 'Unknown Caller';
-  const displayPic = incomingCall?.profilePic || peerProfilePic || '';
+  const displayName = incomingCall?.name || 'Unknown Caller';
+  const displayPic = incomingCall?.profilePic || '';
 
   return (
     <Modal

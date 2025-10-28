@@ -13,6 +13,7 @@ interface IncomingCallParams {
   channelName: string;
   isAudio: boolean;
   autoAccept?: boolean;
+  prevScreenId?: string;
 }
 
 const { width, height } = Dimensions.get('window');
@@ -26,7 +27,10 @@ const IncomingCall: React.FC = () => {
   const [callAccepted, setCallAccepted] = useState(false);
   const lastCallEndTime = useRef<number>(0);
   const callEndDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  
+  const params = route.params as unknown as IncomingCallParams;
+
+  const { callerId, callerName, callerProfilePic, channelName, isAudio, autoAccept, prevScreenId } = params || {} as IncomingCallParams;
+
   // Animation values
   const pulseAnim = useMemo(() => new Animated.Value(1), []);
   const slideAnim = useMemo(() => new Animated.Value(50), []);
@@ -34,17 +38,37 @@ const IncomingCall: React.FC = () => {
   const acceptButtonPulse = useMemo(() => new Animated.Value(1), []);
 
   const safeGoBack = () => {
+    console.log('IncomingCall: Going back', prevScreenId);
+
+    // Log previous screen ID
     try {
-      if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
-        (navigation as any).navigate('Message', { screen: 'Home' });
-      } else {
-        (navigation as any).navigate('Message', { screen: 'MessageList' });
-      }
-    } catch (e) {}
+
+      (navigation as any).navigate(prevScreenId, { screen: prevScreenId == "Message" && "MessageList" || prevScreenId || 'Home' });
+
+
+    } catch (stateError) {
+      (navigation as any).navigate('Home', { screen: 'Home' });
+    }
+
+    // try {
+    //   if ((navigation as any).canGoBack && (navigation as any).canGoBack()) {
+    //     (navigation as any).navigate('Message', { screen: 'Home' });
+    //   } else {
+    //     (navigation as any).navigate('Message', { screen: 'MessageList' });
+    //   }
+    // } catch (e) {
+    //   (navigation as any).navigate('Message', { screen: 'Home' });
+    //   console.log('IncomingCall: Error going back', e);
+    // }
   };
 
-  const params = route.params as unknown as IncomingCallParams;
-  const { callerId, callerName, callerProfilePic, channelName, isAudio, autoAccept } = params || {} as IncomingCallParams;
+
+  // Log the previous screen ID
+  useEffect(() => {
+    if (prevScreenId) {
+      console.log('Previous screen ID from params:', prevScreenId);
+    }
+  }, [prevScreenId]);
 
   // Start animations on mount
   useEffect(() => {
@@ -111,12 +135,12 @@ const IncomingCall: React.FC = () => {
           StatusBar.setBackgroundColor(themeColors.background.primary);
         }
         StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-      } catch (e) {}
+      } catch (e) { }
     };
   }, [isDarkMode, themeColors.background.primary]);
 
   useEffect(() => {
-    if(playRingtone) {
+    if (playRingtone) {
       // Trigger incoming call notification when ringtone starts playing
       import('../lib/push').then(({ displayIncomingCallNotification }) => {
         displayIncomingCallNotification({
@@ -134,14 +158,14 @@ const IncomingCall: React.FC = () => {
 
   useEffect(() => {
     if (!callerId || !channelName) {
-        try {
-          if (Platform.OS === 'android') {
-            StatusBar.setTranslucent(false);
-            StatusBar.setBackgroundColor(themeColors.background.primary);
-          }
-          StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-        } catch (e) {}
-        navigation.navigate('Message', { screen: 'Home' });
+      try {
+        if (Platform.OS === 'android') {
+          StatusBar.setTranslucent(false);
+          StatusBar.setBackgroundColor(themeColors.background.primary);
+        }
+        StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+      } catch (e) { }
+      navigation.navigate('Message', { screen: 'Home' });
     }
   }, [callerId, channelName, navigation, isDarkMode, themeColors.background.primary]);
 
@@ -152,12 +176,13 @@ const IncomingCall: React.FC = () => {
       // If we don't have the required parameters, exit
       if (!callerId || !channelName) {
         console.log('IncomingCall: Missing parameters, exiting');
-          navigation.navigate('Message', { screen: 'Home' });
+        navigation.navigate('Message', { screen: 'Home' });
         return;
       }
 
       // Check if call was already ended by listening to call end events
       const handleCallEnd = () => {
+        setPlayRingtone(false);
         // If call was accepted, don't handle here (let VideoCall/AudioCall handle it)
         if (callAccepted) {
           console.log('IncomingCall: Call accepted, ignoring early call end check');
@@ -187,19 +212,105 @@ const IncomingCall: React.FC = () => {
               StatusBar.setBackgroundColor(themeColors.background.primary);
             }
             StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-          } catch (e) {}
-          navigation.navigate('Message', { screen: 'Home' });
+          } catch (e) { }
+          safeGoBack();
+        }, 300); // 300ms debounce
+      };
+      const handleCallCancel = (data: any) => {
+        setPlayRingtone(false);
+
+        // If call was accepted, don't handle here (let VideoCall/AudioCall handle it)
+        if (callAccepted) {
+          console.log('IncomingCall: Call accepted, ignoring early call end check');
+          return;
+        }
+
+        // Debounce rapid-fire call end events (prevent processing same event within 1 second)
+        const now = Date.now();
+        if (now - lastCallEndTime.current < 1000) {
+          console.log('IncomingCall: Ignoring rapid-fire call end event');
+          return;
+        }
+        lastCallEndTime.current = now;
+
+        // Clear any existing debounce timeout
+        if (callEndDebounceTimeout.current) {
+          clearTimeout(callEndDebounceTimeout.current);
+        }
+
+        // Debounce the call end handling
+        callEndDebounceTimeout.current = setTimeout(() => {
+          console.log('IncomingCall: Call ended before user could respond, exiting');
+          // Ensure StatusBar is restored before leaving this screen
+          try {
+            if (Platform.OS === 'android') {
+              StatusBar.setTranslucent(false);
+              StatusBar.setBackgroundColor(themeColors.background.primary);
+            }
+            StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+          } catch (e) { }
+          safeGoBack();
+        }, 300); // 300ms debounce
+      };
+
+      const handleReject = (data: any) => {
+        console.log('IncomingCall: rejected', playRingtone, 'callAccepted:', callAccepted);
+        setPlayRingtone(false);
+
+        // IMPORTANT: If call was already accepted, don't handle call end here
+        // Let VideoCall/AudioCall components handle it instead
+        if (callAccepted) {
+          console.log('IncomingCall: Call was accepted, ignoring call end event (VideoCall/AudioCall will handle it)');
+          return;
+        }
+  
+        // Debounce rapid-fire call end events (prevent processing same event within 1 second)
+        const now = Date.now();
+        if (now - lastCallEndTime.current < 1000) {
+          console.log('IncomingCall: Ignoring rapid-fire call end event');
+          return;
+        }
+        lastCallEndTime.current = now;
+  
+        // Clear any existing debounce timeout
+        if (callEndDebounceTimeout.current) {
+          clearTimeout(callEndDebounceTimeout.current);
+        }
+  
+        // Debounce the call end handling
+        callEndDebounceTimeout.current = setTimeout(() => {
+          // Only handle call end if call wasn't accepted (caller cancelled)
+          console.log('IncomingCall: Handling call end - caller cancelled before acceptance');
+          setCallAccepted(false); // Reset call accepted state
+          // Ensure StatusBar is restored before leaving this screen
+          try {
+            if (Platform.OS === 'android') {
+              StatusBar.setTranslucent(false);
+              StatusBar.setBackgroundColor(themeColors.background.primary);
+            }
+            StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+          } catch (e) { }
+          safeGoBack();
         }, 300); // 300ms debounce
       };
 
       // Listen for call end events
       on('audio-call-ended', handleCallEnd);
       on('video-call-ended', handleCallEnd);
+      on('audio-call-cancelled', handleCallCancel);
+      on('video-call-cancelled', handleCallCancel);
+      
+      on('video-call-rejected', handleReject);
+      on('audio-call-rejected', handleReject);
 
       // Cleanup listeners
       return () => {
         off('audio-call-ended', handleCallEnd);
         off('audio-call-ended', handleCallEnd);
+        off('audio-call-cancelled', handleCallCancel);
+        off('video-call-cancelled', handleCallCancel);
+        off('video-call-rejected', handleReject);
+        off('audio-call-rejected', handleReject);
       };
     };
 
@@ -222,7 +333,7 @@ const IncomingCall: React.FC = () => {
       console.warn('IncomingCall: Missing required parameters for call acceptance', { callerId, channelName });
       return;
     }
-    
+
     console.log('IncomingCall: Accepting call', { callerId, channelName, isAudio, callerName });
     setPlayRingtone(false);
     setCallAccepted(true); // Mark call as accepted
@@ -233,13 +344,13 @@ const IncomingCall: React.FC = () => {
         StatusBar.setBackgroundColor(themeColors.background.primary);
       }
       StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-    } catch (e) {}
+    } catch (e) { }
     if (isAudio) {
       answerAudioCall(callerId, channelName);
     } else {
       answerVideoCall(callerId, channelName);
     }
-    
+
     // Navigate back - call components are now global and will show automatically
     safeGoBack();
   };
@@ -254,73 +365,23 @@ const IncomingCall: React.FC = () => {
         StatusBar.setBackgroundColor(themeColors.background.primary);
       }
       StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-    } catch (e) {}
+    } catch (e) { }
     if (isAudio) {
-      endAudioCall(callerId);
+      if (!callAccepted) {
+        endAudioCall(callerId, channelName, 'reject');
+      } else {
+        endAudioCall(callerId, channelName, 'end');
+      }
     } else {
-      endVideoCall(callerId);
+      if (!callAccepted) {
+        endVideoCall(callerId, channelName, 'reject');
+      } else {
+        endVideoCall(callerId, channelName, 'end');
+      }
     }
     safeGoBack();
   };
 
-  // Close this screen if the remote cancels/ends before we accept
-  useEffect(() => {
-    const handleEnd = () => {
-      console.log('IncomingCall: Received call end event - playRingtone:', playRingtone, 'callAccepted:', callAccepted);
-      
-      // IMPORTANT: If call was already accepted, don't handle call end here
-      // Let VideoCall/AudioCall components handle it instead
-      if (callAccepted) {
-        console.log('IncomingCall: Call was accepted, ignoring call end event (VideoCall/AudioCall will handle it)');
-        return;
-      }
-      
-      // Debounce rapid-fire call end events (prevent processing same event within 1 second)
-      const now = Date.now();
-      if (now - lastCallEndTime.current < 1000) {
-        console.log('IncomingCall: Ignoring rapid-fire call end event');
-        return;
-      }
-      lastCallEndTime.current = now;
-
-      // Clear any existing debounce timeout
-      if (callEndDebounceTimeout.current) {
-        clearTimeout(callEndDebounceTimeout.current);
-      }
-
-      // Debounce the call end handling
-      callEndDebounceTimeout.current = setTimeout(() => {
-        // Only handle call end if call wasn't accepted (caller cancelled)
-        console.log('IncomingCall: Handling call end - caller cancelled before acceptance');
-        setPlayRingtone(false);
-        setCallAccepted(false); // Reset call accepted state
-        // Ensure StatusBar is restored before leaving this screen
-        try {
-          if (Platform.OS === 'android') {
-            StatusBar.setTranslucent(false);
-            StatusBar.setBackgroundColor(themeColors.background.primary);
-          }
-          StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-        } catch (e) {}
-        safeGoBack();
-      }, 300); // 300ms debounce
-    };
-    const handleAccepted = () => {
-      setPlayRingtone(false);
-      setCallAccepted(true);
-      safeGoBack();
-    };
-
-    on('video-call-ended', handleEnd);
-    on('audio-call-ended', handleEnd);
-    on('call-accepted', handleAccepted);
-
-    return () => {
-      on('video-call-ended', handleEnd);
-      on('audio-call-ended', handleEnd);
-      off('call-accepted', handleAccepted);
-    };
-  }, [on, off, navigation, playRingtone, callAccepted]);
 
   // Ensure ringtone stops on unmount and cleanup debounce timeout
   useEffect(() => {
@@ -334,7 +395,7 @@ const IncomingCall: React.FC = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      
+
       {/* Background with gradient effect */}
       <View style={[
         styles.gradientBackground,
@@ -362,7 +423,7 @@ const IncomingCall: React.FC = () => {
           />
         )}
 
-        <Animated.View 
+        <Animated.View
           style={[
             styles.content,
             {
@@ -377,10 +438,10 @@ const IncomingCall: React.FC = () => {
               styles.callTypeBadge,
               { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }
             ]}>
-              <Icon 
-                name={isAudio ? "mic" : "videocam"} 
-                size={20} 
-                color="white" 
+              <Icon
+                name={isAudio ? "mic" : "videocam"}
+                size={20}
+                color="white"
               />
               <Text style={styles.callTypeText}>
                 {isAudio ? 'Audio Call' : 'Video Call'}
@@ -389,7 +450,7 @@ const IncomingCall: React.FC = () => {
           </View>
 
           {/* Profile Picture with Animation */}
-          <Animated.View 
+          <Animated.View
             style={[
               styles.profileContainer,
               { transform: [{ scale: pulseAnim }] }
@@ -400,9 +461,9 @@ const IncomingCall: React.FC = () => {
               { borderColor: isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }
             ]}>
               {callerProfilePic ? (
-                <Image 
-                  source={{ uri: callerProfilePic }} 
-                  style={styles.profileImage} 
+                <Image
+                  source={{ uri: callerProfilePic }}
+                  style={styles.profileImage}
                 />
               ) : (
                 <View style={[

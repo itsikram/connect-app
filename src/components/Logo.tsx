@@ -21,7 +21,7 @@ const Logo: React.FC<LogoProps> = ({ size = 'medium' }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={require('../assets/image/logo.png')}
+        source={require('../assets/images/logo.png')}
         style={[styles.logo, getSize()]}
         resizeMode="contain"
       />

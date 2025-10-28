@@ -20,11 +20,11 @@ interface SocketContextType {
   // Video call methods
   startVideoCall: (to: string, channelName: string) => void;
   answerVideoCall: (to: string, channelName: string) => void;
-  endVideoCall: (friendId: string) => void;
+  endVideoCall: (friendId: string, channelName?: string, action?: string) => void;
   // Audio call methods
   startAudioCall: (to: string, channelName: string) => void;
   answerAudioCall: (to: string, channelName: string) => void;
-  endAudioCall: (friendId: string) => void;
+  endAudioCall: (friendId: string, channelName?: string, action?: string) => void;
   // Filter methods
   applyVideoFilter: (to: string, filter: string) => void;
 }
@@ -130,8 +130,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.answerVideoCall(to, channelName);
   }, []);
 
-  const endVideoCall = useCallback((friendId: string) => {
-    socketService.endVideoCall(friendId);
+  const endVideoCall = useCallback((friendId: string, channelName?: string, action?: string) => {
+    socketService.endVideoCall(friendId, channelName, action);
   }, []);
 
   // Audio call methods
@@ -143,8 +143,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.answerAudioCall(to, channelName);
   }, []);
 
-  const endAudioCall = useCallback((friendId: string) => {
-    socketService.endAudioCall(friendId);
+  const endAudioCall = useCallback((friendId: string, channelName?: string, action?: string) => {
+    socketService.endAudioCall(friendId, channelName, action);
   }, []);
 
   // Filter methods
