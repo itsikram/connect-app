@@ -1,19 +1,53 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, StatusBar, Platform, BackHandler, Linking, TouchableOpacity, Text, Alert } from 'react-native';
+import { View, StyleSheet, StatusBar, Platform, BackHandler, Linking, TouchableOpacity, Text, Alert, Image } from 'react-native';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 import WebView from 'react-native-webview-proxy';
 import { useTheme } from '../contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import FloatingBackButton from '../components/FloatingBackButton';
+import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
 import { downloadVideoAndSave } from '../lib/downloads';
 
 const YouTubeScreen = () => {
   const { colors: themeColors } = useTheme();
+  const navigation = useNavigation();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
   const [currentUrl, setCurrentUrl] = useState('https://m.youtube.com');
   const progressPollRef = useRef<any>(null);
+  const [showQualityPicker, setShowQualityPicker] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [fabOpacity, setFabOpacity] = useState(0.3);
+  const fabTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    // Manage FAB opacity when menu toggles
+    if (isMenuOpen) {
+      setFabOpacity(1.0);
+      if (fabTimerRef.current) {
+        clearTimeout(fabTimerRef.current);
+      }
+      fabTimerRef.current = setTimeout(() => {
+        setFabOpacity(0.3);
+        fabTimerRef.current = null;
+      }, 5000);
+    } else {
+      // When menu closes, ensure opacity returns to the resting state
+      if (fabTimerRef.current) {
+        clearTimeout(fabTimerRef.current);
+        fabTimerRef.current = null;
+      }
+      setFabOpacity(0.3);
+    }
+    return () => {
+      if (fabTimerRef.current) {
+        clearTimeout(fabTimerRef.current);
+        fabTimerRef.current = null;
+      }
+    };
+  }, [isMenuOpen]);
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -80,12 +114,12 @@ const YouTubeScreen = () => {
     })();
   `;
 
-  const buildDownloadUrl = (youtubeUrl: string) => {
+  const buildDownloadUrl = (youtubeUrl: string, height: number) => {
     console.log('youtubeUrl', youtubeUrl);
     try {
       const normalized = (youtubeUrl || '').replace('m.youtube.com', 'www.youtube.com');
       const encoded = encodeURIComponent(normalized);
-      return `https://yt-dl-tyyw.onrender.com/download?url=${encoded}&ext=mp4&height=480&disposition=inline&link_only=true`;
+      return `https://yt-dl-tyyw.onrender.com/download?url=${encoded}&ext=mp4&height=${height}&disposition=inline&link_only=true`;
     } catch (e) {
       return 'https://yt-dl-tyyw.onrender.com';
     }
@@ -131,8 +165,20 @@ const YouTubeScreen = () => {
     }, 2000);
   };
 
-  const startDownload = async () => {
-    const requestUrl = buildDownloadUrl(currentUrl);
+  const startDownload = async (height: number) => {
+    // Notify user immediately
+    try {
+      await notifee.requestPermission();
+      const channelId = await notifee.createChannel({ id: 'downloads', name: 'Downloads', importance: AndroidImportance.LOW });
+      await notifee.displayNotification({
+        id: `dl-start-${Date.now()}`,
+        title: 'Download starting',
+        body: `${height}p — preparing...`,
+        android: { channelId, onlyAlertOnce: true },
+      });
+    } catch (_) {}
+
+    const requestUrl = buildDownloadUrl(currentUrl, height);
 
     const withNoCache = (url: string) => url + (url.indexOf('?') === -1 ? '?' : '&') + `_ts=${Date.now()}`;
     const tryFetch = async (): Promise<any | null> => {
@@ -209,16 +255,60 @@ const YouTubeScreen = () => {
           console.warn('WebView HTTP error: ', nativeEvent);
         }}
       />
-      <View pointerEvents="box-none" style={styles.topRightContainer}>
+      {/* Single FAB with app logo */}
+      <View pointerEvents="box-none" style={styles.fabContainer}>
+        {isMenuOpen && (
+          <View pointerEvents="box-none" style={styles.menuOverlay}>
+            <TouchableOpacity style={styles.menuBackdrop} activeOpacity={1} onPress={() => setIsMenuOpen(false)} />
+            <View style={[styles.menuCard, { backgroundColor: themeColors.surface?.primary || '#1c1c1e', borderColor: themeColors.surface?.secondary || 'rgba(255,255,255,0.08)' }]}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => { setIsMenuOpen(false); setShowQualityPicker(true); }}
+                activeOpacity={0.85}
+              >
+                <Icon name="download" size={18} color={themeColors.text?.primary || '#fff'} />
+                <Text style={[styles.menuItemText, { color: themeColors.text?.primary || '#fff' }]}>Download</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={() => {
+                  setIsMenuOpen(false);
+                  if (canGoBack && webViewRef.current) {
+                    webViewRef.current.goBack();
+                  } else {
+                    try { (navigation as any).goBack(); } catch (_) {}
+                  }
+                }}
+                activeOpacity={0.85}
+              >
+                <Icon name="arrow-back" size={18} color={themeColors.text?.primary || '#fff'} />
+                <Text style={[styles.menuItemText, { color: themeColors.text?.primary || '#fff' }]}>Back</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+
         <TouchableOpacity
-          onPress={startDownload}
-          style={[styles.fab, { backgroundColor: themeColors.primary }]}
-          activeOpacity={0.8}
+          onPress={() => setIsMenuOpen(v => !v)}
+          style={[styles.fabMain, { backgroundColor: themeColors.primary, opacity: fabOpacity }]}
+          activeOpacity={0.9}
         >
-          <Text style={styles.fabText}>⇩</Text>
+          <Image source={require('../assets/images/logo.png')} style={styles.fabLogoImg} resizeMode="contain" />
         </TouchableOpacity>
       </View>
-      <FloatingBackButton />
+      {showQualityPicker && (
+        <View pointerEvents="box-none" style={styles.sheetOverlay}>
+          <TouchableOpacity style={styles.sheetBackdrop} activeOpacity={1} onPress={() => setShowQualityPicker(false)} />
+          <View style={[styles.sheet, { backgroundColor: themeColors.surface?.primary || '#222' }]}> 
+            <Text style={[styles.sheetTitle, { color: themeColors.text?.primary || '#fff' }]}>Choose resolution</Text>
+            {[144, 240, 360, 480, 720, 1080].map(h => (
+              <TouchableOpacity key={h} style={styles.sheetItem} onPress={() => { setShowQualityPicker(false); startDownload(h); }}>
+                <Text style={[styles.sheetItemText, { color: themeColors.text?.primary || '#fff' }]}>{h}p</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 };
@@ -230,25 +320,52 @@ const styles = StyleSheet.create({
   webview: {
     flex: 1,
   },
-  topRightContainer: {
+  fabContainer: { position: 'absolute', bottom: '48%', right: 10 },
+  fabMain: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', elevation: 6 },
+  fabLogo: { color: '#fff', fontSize: 22, fontWeight: '800' },
+  fabLogoImg: { width: 38, height: 38 },
+  menuOverlay: { position: 'absolute', left: -16, right: -16, bottom: -16, top: -16 },
+  menuBackdrop: { position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, backgroundColor: 'transparent' },
+  menuCard: { position: 'absolute', right: 0, bottom: 0, borderRadius: 12, borderWidth: 1, paddingVertical: 6, width: 170 },
+  menuItem: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
+  menuItemText: { marginLeft: 10, fontSize: 14, fontWeight: '600' },
+  sheetOverlay: {
     position: 'absolute',
-    top: 100,
-    right: 10,
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'flex-end',
   },
-  fab: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 4,
+  sheetBackdrop: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.4)'
   },
-  fabText: {
-    color: '#fff',
-    fontSize: 22,
-    lineHeight: 22,
+  sheet: {
+    borderTopLeftRadius: 14,
+    borderTopRightRadius: 14,
+    paddingBottom: 10,
+    paddingTop: 6,
+  },
+  sheetTitle: {
+    fontSize: 14,
     fontWeight: '700',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  sheetItem: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  sheetItemText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });
 
 export default YouTubeScreen;
+

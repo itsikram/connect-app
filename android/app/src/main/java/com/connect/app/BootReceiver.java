@@ -24,14 +24,22 @@ public class BootReceiver extends BroadcastReceiver {
             Log.d(TAG, "Device boot completed or app replaced, restarting background services");
             
             try {
-                // Start background TTS service
+                // Start background TTS service (use startForegroundService on O+)
                 Intent ttsServiceIntent = new Intent(context, BackgroundTtsService.class);
-                context.startService(ttsServiceIntent);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(ttsServiceIntent);
+                } else {
+                    context.startService(ttsServiceIntent);
+                }
                 Log.d(TAG, "Background TTS service started after boot");
 
-                // Start notification service if needed
+                // Start notification service (use startForegroundService on O+)
                 Intent notificationServiceIntent = new Intent(context, NotificationService.class);
-                context.startService(notificationServiceIntent);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(notificationServiceIntent);
+                } else {
+                    context.startService(notificationServiceIntent);
+                }
                 Log.d(TAG, "Notification service started after boot");
 
                 // Start Headless JS keep-alive service to relaunch JS background loop

@@ -37,6 +37,12 @@ public class BackgroundTtsService extends Service {
         // Start as foreground service to prevent system from killing it
         startForeground(NOTIFICATION_ID, createNotification());
         
+        // Nudge Headless JS keep-alive to ensure background JS can spin up
+        try {
+            Intent keepAlive = new Intent(this, KeepAliveService.class);
+            startService(keepAlive);
+        } catch (Exception ignored) {}
+        
         // Keep service running
         return START_STICKY;
     }
@@ -57,7 +63,16 @@ public class BackgroundTtsService extends Service {
         Log.d(TAG, "App task removed, restarting service");
         // Restart service when app is removed from recent apps
         Intent restartServiceIntent = new Intent(getApplicationContext(), BackgroundTtsService.class);
-        startService(restartServiceIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(restartServiceIntent);
+        } else {
+            startService(restartServiceIntent);
+        }
+        // Also poke headless keep-alive
+        try {
+            Intent keepAlive = new Intent(getApplicationContext(), KeepAliveService.class);
+            startService(keepAlive);
+        } catch (Exception ignored) {}
         super.onTaskRemoved(rootIntent);
     }
 

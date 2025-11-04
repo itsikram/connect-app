@@ -10,7 +10,7 @@ import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRo
 import { navigationRef, markNavigationReady } from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform } from 'react-native';
+import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform, Linking, PermissionsAndroid } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
@@ -73,6 +73,9 @@ import FloatingButton from './src/components/FloatingButton';
 import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
 import { backgroundTtsService } from './src/lib/backgroundTtsService';
 import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
+import UpdateModal from './src/components/UpdateModal';
+import RNFS from 'react-native-fs';
+import { getRemoteConfig, subscribeRemoteConfig } from './src/lib/remoteConfig';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -318,6 +321,129 @@ function AppContent() {
   // After a call ends or is accepted, ignore any incoming-call events briefly to avoid ghost navigations
   const ignoreIncomingCallsUntilRef = React.useRef<number>(0);
   const dispatch = useDispatch();
+  const [updateModalVisible, setUpdateModalVisible] = React.useState<boolean>(false);
+  const [serverVersion, setServerVersion] = React.useState<string>('');
+  const [apkUrl, setApkUrl] = React.useState<string>('');
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = React.useState<boolean>(false);
+
+  const getCurrentAppVersion = React.useCallback((): string => {
+    try {
+      // Avoid TS JSON import issues by using require
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const appPackage = require('./package.json');
+      return appPackage?.version || '0.0.0';
+    } catch (e) {
+      return '0.0.0';
+    }
+  }, []);
+
+  const compareVersions = React.useCallback((a: string, b: string): number => {
+    // Normalize like 1.2.3 vs 1.2.10; ignore non-numeric suffixes
+    const toNums = (v: string) => (v || '')
+      .split('.')
+      .map(part => parseInt(String(part).replace(/[^0-9].*$/, ''), 10) || 0);
+    const aa = toNums(a);
+    const bb = toNums(b);
+    const len = Math.max(aa.length, bb.length);
+    for (let i = 0; i < len; i++) {
+      const x = aa[i] || 0;
+      const y = bb[i] || 0;
+      if (x > y) return 1;
+      if (x < y) return -1;
+    }
+    return 0;
+  }, []);
+
+  // Consume remote config set by index.js (/connect) and decide update prompt
+  React.useEffect(() => {
+    const applyConfig = (cfg: any) => {
+      if (!cfg) return;
+      const serverAppVersion: string = cfg?.appVersion || '';
+      const serverIsNew: boolean = Boolean(cfg?.isNewVersionAvailable);
+      const serverApkUrl: string = cfg?.apkUrl || '';
+
+      setServerVersion(serverAppVersion);
+      setApkUrl(serverApkUrl);
+
+      if (Platform.OS === 'android' && serverApkUrl) {
+        const currentVersion = getCurrentAppVersion();
+        const newer = serverIsNew || (serverAppVersion && compareVersions(serverAppVersion, currentVersion) > 0);
+        if (newer) {
+          setUpdateModalVisible(true);
+        }
+      }
+    };
+
+    try {
+      const initial = getRemoteConfig();
+      if (initial) applyConfig(initial);
+    } catch (_) {}
+
+    const unsubscribe = subscribeRemoteConfig((cfg) => applyConfig(cfg));
+    return () => {
+      try { unsubscribe && unsubscribe(); } catch (_) {}
+    };
+  }, [compareVersions, getCurrentAppVersion]);
+
+  const ensureStoragePermission = React.useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') return true;
+    try {
+      const granted = await PermissionsAndroid.request(
+        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
+        {
+          title: 'Storage permission required',
+          message: 'Storage access is needed to download the update.',
+          buttonPositive: 'OK',
+        }
+      );
+      return granted === PermissionsAndroid.RESULTS.GRANTED;
+    } catch (_) {
+      return false;
+    }
+  }, []);
+
+  const downloadAndInstallApk = React.useCallback(async () => {
+    if (!apkUrl) return;
+    if (Platform.OS !== 'android') {
+      try { Linking.openURL(apkUrl); } catch (_) {}
+      return;
+    }
+
+    const hasPerm = await ensureStoragePermission();
+    if (!hasPerm) {
+      try { Linking.openURL(apkUrl); } catch (_) {}
+      return;
+    }
+
+    try {
+      setIsDownloadingUpdate(true);
+      const safeVersion = (serverVersion || 'latest').replace(/[^0-9A-Za-z._-]/g, '');
+      const fileName = `Connect-${safeVersion}-${Date.now()}.apk`;
+      const destPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+
+      const task = RNFS.downloadFile({
+        fromUrl: apkUrl,
+        toFile: destPath,
+        background: true,
+        discretionary: true,
+      });
+      const result = await task.promise;
+      if (result.statusCode === 200) {
+        try {
+          await Linking.openURL(`file://${destPath}`);
+        } catch (e) {
+          // Fallback to open the original URL (browser/DM)
+          try { await Linking.openURL(apkUrl); } catch (_) {}
+        }
+      } else {
+        try { await Linking.openURL(apkUrl); } catch (_) {}
+      }
+    } catch (e) {
+      try { await Linking.openURL(apkUrl); } catch (_) {}
+    } finally {
+      setIsDownloadingUpdate(false);
+    }
+  }, [apkUrl, serverVersion, ensureStoragePermission]);
 
   React.useEffect(() => {
     // Initialize both TTS systems
@@ -747,6 +873,14 @@ function AppContent() {
                 <AudioCall myId={myProfile._id} />
               </>
             )}
+            {/* Global update modal */}
+            <UpdateModal
+              visible={updateModalVisible}
+              serverVersion={serverVersion}
+              apkUrl={apkUrl}
+              onDismiss={() => setUpdateModalVisible(false)}
+              onDownload={downloadAndInstallApk}
+            />
           </>
         );
       }}

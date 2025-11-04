@@ -2,14 +2,22 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, PermissionsAndroid, Platform, SafeAreaView, StatusBar, RefreshControl, Dimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
+import { listDownloads } from '../lib/downloads';
 
 // Use CameraRoll to fetch device videos
 let CameraRoll: any = null;
+let createThumbnail: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   CameraRoll = require('@react-native-camera-roll/camera-roll').CameraRoll;
 } catch (_) {
   CameraRoll = null;
+}
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  createThumbnail = require('react-native-create-thumbnail').createThumbnail;
+} catch (_) {
+  createThumbnail = null;
 }
 
 type VideoAsset = {
@@ -19,6 +27,7 @@ type VideoAsset = {
   duration?: number;
   playableDuration?: number;
   fileSize?: number;
+  isDownloaded?: boolean;
 };
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -40,6 +49,8 @@ const VideoLibraryScreen = ({ navigation }: any) => {
   const [hasNextPage, setHasNextPage] = useState(true);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [downloads, setDownloads] = useState<Array<{ name: string; path: string }>>([]);
+  const [downloadDurations, setDownloadDurations] = useState<Record<string, number>>({});
 
   const requestPermissions = useCallback(async () => {
     if (Platform.OS !== 'android') return true;
@@ -96,6 +107,10 @@ const VideoLibraryScreen = ({ navigation }: any) => {
       if (ok) {
         loadPage(true);
       }
+      try {
+        const files = await listDownloads();
+        setDownloads(files.map(f => ({ name: f.name, path: f.path })));
+      } catch (_) {}
     })();
   }, [requestPermissions, loadPage]);
 
@@ -104,8 +119,40 @@ const VideoLibraryScreen = ({ navigation }: any) => {
     setEndCursor(null);
     setHasNextPage(true);
     await loadPage(true);
+    try {
+      const files = await listDownloads();
+      setDownloads(files.map(f => ({ name: f.name, path: f.path })));
+    } catch (_) {}
     setRefreshing(false);
   }, [loadPage]);
+
+  // Derive durations for downloaded files using createThumbnail (if available)
+  useEffect(() => {
+    if (!createThumbnail) return;
+    (async () => {
+      for (const d of downloads) {
+        if (downloadDurations[d.path] != null) continue;
+        try {
+          const res = await createThumbnail({ url: `file://${d.path}`, timeStamp: 0 });
+          const seconds = res?.duration ? Math.round(Number(res.duration) / 1000) : undefined;
+          if (seconds && isFinite(seconds)) {
+            setDownloadDurations(prev => ({ ...prev, [d.path]: seconds }));
+          }
+        } catch (_) {}
+      }
+    })();
+  }, [downloads, downloadDurations]);
+
+  const allItems: VideoAsset[] = React.useMemo(() => {
+    const dlAsAssets: VideoAsset[] = downloads.map((d) => ({
+      id: `dl:${d.path}`,
+      uri: `file://${d.path}`,
+      filename: d.name,
+      isDownloaded: true,
+      duration: downloadDurations[d.path],
+    }));
+    return [...dlAsAssets, ...assets];
+  }, [downloads, assets, downloadDurations]);
 
   const renderItem = ({ item }: { item: VideoAsset }) => (
     <TouchableOpacity
@@ -113,13 +160,20 @@ const VideoLibraryScreen = ({ navigation }: any) => {
       onPress={() => navigation.navigate('Menu', { screen: 'MediaPlayer', params: { source: { type: 'video', uri: item.uri, title: item.filename } } })}
       activeOpacity={0.9}
     >
-      <Image source={{ uri: item.uri }} style={{ width: '100%', height: '100%', borderRadius: 12 }} resizeMode="cover" />
+      <Image source={{ uri: item.uri }} style={{ width: '100%', height: '100%', borderRadius: 12, backgroundColor: '#111' }} resizeMode="cover" />
       <View style={styles.durationBadge}>
         <Icon name="play-arrow" size={14} color="#fff" />
         <Text style={styles.durationText}>{formatDuration(item.duration)}</Text>
       </View>
+      {item.isDownloaded && (
+        <View style={{ position: 'absolute', left: 8, top: 8, backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 10, paddingHorizontal: 6, paddingVertical: 2 }}>
+          <Icon name="download" size={14} color="#fff" />
+        </View>
+      )}
     </TouchableOpacity>
   );
+
+  // Downloads are now merged into the main list; no separate section
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: '#000' }]}> 
@@ -144,11 +198,12 @@ const VideoLibraryScreen = ({ navigation }: any) => {
           contentContainerStyle={{ padding: GUTTER }}
           numColumns={NUM_COLUMNS}
           keyExtractor={(item) => item.id}
-          data={assets}
+          data={allItems}
           renderItem={renderItem}
           onEndReached={() => hasNextPage && loadPage(false)}
           onEndReachedThreshold={0.6}
           refreshControl={<RefreshControl tintColor="#fff" refreshing={refreshing} onRefresh={onRefresh} />}
+          ListHeaderComponent={undefined}
           ListEmptyComponent={!loading ? (
             <View style={{ padding: 40, alignItems: 'center' }}>
               <Text style={{ color: '#aaa' }}>No videos found</Text>

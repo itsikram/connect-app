@@ -1,6 +1,7 @@
 import BackgroundService from 'react-native-background-actions';
-import notifee from '@notifee/react-native';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 // Background socket state (module-scoped to persist during service lifetime)
 let backgroundSocket: any = null;
@@ -30,6 +31,33 @@ const normalizeIncomingCallPayload = (raw: any) => {
     callerId: raw?.callerId || raw?.from || raw?.userId || raw?.id || '',
   };
 };
+
+// Android-only: ensure channels exist and ask user to disable battery optimizations
+async function ensureAndroidForegroundPrereqs(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await notifee.createChannel({
+      id: 'default',
+      name: 'Default',
+      importance: AndroidImportance.DEFAULT,
+    });
+  } catch (_) {}
+  try {
+    await notifee.createChannel({
+      id: 'incoming_calls',
+      name: 'Incoming Calls',
+      importance: AndroidImportance.HIGH,
+      sound: 'default',
+      vibration: true,
+    });
+  } catch (_) {}
+  try {
+    const batteryOptimizationEnabled = await (notifee as any).isBatteryOptimizationEnabled?.();
+    if (batteryOptimizationEnabled) {
+      await (notifee as any).openBatteryOptimizationSettings?.();
+    }
+  } catch (_) {}
+}
 
 // Set up a resilient socket connection usable in background context
 async function ensureBackgroundSocketConnected(): Promise<void> {
@@ -82,6 +110,7 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
               body: `Call from ${normalized.callerName}`,
               android: {
                 channelId: 'incoming_calls',
+                ongoing: true,
                 pressAction: { id: 'open_incoming_call', launchActivity: 'default' },
                 fullScreenAction: { id: 'incoming_call_fullscreen', launchActivity: 'default' },
               },
@@ -142,6 +171,9 @@ async function backgroundTask({ taskName }: { taskName: string }) {
     const { backgroundTtsService } = await import('./backgroundTtsService');
     await backgroundTtsService.initialize();
   } catch (_) {}
+
+  // Ensure Android notification channels and request ignore battery optimizations
+  try { await ensureAndroidForegroundPrereqs(); } catch (_) {}
 
   // Best-effort: bring up socket once on start
   await ensureBackgroundSocketConnected();
@@ -214,6 +246,7 @@ class PushBackgroundService {
       android: {
         channelId: 'default',
         smallIcon: 'ic_launcher',
+        ongoing: true,
         pressAction: { id: 'default' },
       },
       data,

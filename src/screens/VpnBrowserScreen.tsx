@@ -4,7 +4,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import FloatingBackButton from '../components/FloatingBackButton';
 import WebView from 'react-native-webview-proxy';
-import { getPresetById } from '../config/vpnConfig';
 
 const DEFAULT_URL = 'https://www.google.com';
 
@@ -14,9 +13,7 @@ const VpnBrowserScreen = () => {
   const [canGoBack, setCanGoBack] = useState(false);
   const [url, setUrl] = useState<string>(DEFAULT_URL);
   const [inputUrl, setInputUrl] = useState<string>(DEFAULT_URL);
-  const [proxyHost, setProxyHost] = useState<string>('');
-  const [proxyPort, setProxyPort] = useState<string>('');
-  const [excludedDomain, setExcludedDomain] = useState<string>('');
+  // Proxy selection removed; browsing will not use proxy
 
   useEffect(() => {
     if (Platform.OS !== 'android') return;
@@ -34,11 +31,8 @@ const VpnBrowserScreen = () => {
   const webSource = useMemo(() => {
     const normalizedUrl = inputUrl.trim().length === 0 ? DEFAULT_URL : inputUrl.trim();
     const finalUrl = /^(http|https):\/\//i.test(normalizedUrl) ? normalizedUrl : `https://${normalizedUrl}`;
-    const hasProxy = proxyHost.trim().length > 0 && proxyPort.trim().length > 0;
-    return hasProxy
-      ? { uri: finalUrl, proxy: { uri: proxyHost.trim(), port: proxyPort.trim(), excludedDomain: excludedDomain.trim() || undefined } }
-      : { uri: finalUrl };
-  }, [inputUrl, proxyHost, proxyPort, excludedDomain]);
+    return { uri: finalUrl };
+  }, [inputUrl]);
 
   const onGoPress = () => {
     setUrl(prev => {
@@ -47,13 +41,7 @@ const VpnBrowserScreen = () => {
     });
   };
 
-  const applyNetherlandsPreset = () => {
-    const preset = getPresetById('nl');
-    if (!preset) return;
-    if (preset.host) setProxyHost(preset.host);
-    if (preset.port) setProxyPort(preset.port);
-    if (preset.excludedDomain) setExcludedDomain(preset.excludedDomain);
-  };
+  // Proxy selection removed
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
@@ -83,45 +71,9 @@ const VpnBrowserScreen = () => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: themeColors.text.secondary }]}>Proxy</Text>
-          <TextInput
-            style={[styles.inputSmall, { color: themeColors.text.primary, borderColor: themeColors.surface.secondary }]}
-            placeholder="host (e.g. 10.0.2.2)"
-            placeholderTextColor={themeColors.text.secondary + '99'}
-            value={proxyHost}
-            onChangeText={setProxyHost}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TextInput
-            style={[styles.inputTiny, { color: themeColors.text.primary, borderColor: themeColors.surface.secondary }]}
-            placeholder="port"
-            placeholderTextColor={themeColors.text.secondary + '99'}
-            value={proxyPort}
-            onChangeText={setProxyPort}
-            autoCapitalize="none"
-            autoCorrect={false}
-            keyboardType="numeric"
-            maxLength={5}
-          />
-          <TouchableOpacity style={[styles.presetBtn, { borderColor: themeColors.primary }]} onPress={applyNetherlandsPreset}>
-            <Text style={[styles.presetBtnText, { color: themeColors.primary }]}>NL</Text>
-          </TouchableOpacity>
-        </View>
+        {/* Proxy selection removed */}
 
-        <View style={styles.row}>
-          <Text style={[styles.label, { color: themeColors.text.secondary }]}>Exclude</Text>
-          <TextInput
-            style={[styles.input, { color: themeColors.text.primary, borderColor: themeColors.surface.secondary }]}
-            placeholder="Excluded domain (optional)"
-            placeholderTextColor={themeColors.text.secondary + '99'}
-            value={excludedDomain}
-            onChangeText={setExcludedDomain}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-        </View>
+        {/* Excluded domain input removed as per request */}
       </View>
 
       <WebView

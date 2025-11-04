@@ -31,6 +31,8 @@ import { appOpenAdManager } from './src/lib/ads';
 import { backgroundTtsService } from './src/lib/backgroundTtsService';
 import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
 import { pushBackgroundService } from './src/lib/pushBackgroundService';
+import api from './src/lib/api';
+import { setRemoteConfig } from './src/lib/remoteConfig';
 
 // Suppress Firebase deprecation warnings
 const originalWarn = console.warn;
@@ -166,30 +168,35 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
     }
     
     // Handle other notification types
-    const title = remoteMessage?.notification?.title || 'Message';
-    const body = remoteMessage?.notification?.body || '';
-    
+    const title = remoteMessage?.notification?.title || data.title || 'Message';
+    const body = remoteMessage?.notification?.body || data.body || data.message || '';
+
     // Speak general notifications
-    if (data.type === 'notification' || data.type === 'general') {
+    if (data.type === 'notification' || data.type === 'general' || (!data.type && (title || body))) {
       try {
         await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
       } catch (ttsError) {
         console.error('❌ Error speaking notification:', ttsError);
       }
     }
-    
-    // await notifee.displayNotification({
-    //   title,
-    //   body,
-    //   android: {
-    //     channelId: 'default',
-    //     smallIcon: 'ic_launcher',
-    //     pressAction: { id: 'default' },
-    //   },
-    //   data,
-    // });
-    
-    console.log('✅ Background notification displayed:', title);
+
+    // Always display a visible notification for background messages so users see it even when app is quit
+    try {
+      await configureNotificationsChannel();
+      await notifee.displayNotification({
+        title,
+        body,
+        android: {
+          channelId: 'default',
+          smallIcon: 'ic_launcher',
+          pressAction: { id: 'default' },
+        },
+        data,
+      });
+      console.log('✅ Background notification displayed:', title);
+    } catch (notifyErr) {
+      console.error('❌ Error displaying background notification:', notifyErr);
+    }
   } catch (e) {
     console.error('❌ Error in background message handler:', e);
   }
@@ -209,14 +216,25 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
   }
 });
 
-// Initialize Mobile Ads SDK and show App Open Ad at cold start
-// mobileAds()
-//   .initialize()
-//   .then(() => {
-//     try {
-//       appOpenAdManager.preloadAndShowOnLoad();
-//     } catch (e) {}
-//   });
+// Initialize Mobile Ads SDK and show App Open Ad at cold start if enabled by server
+(async () => {
+  try {
+    const res = await api.get('/connect/');
+    try { setRemoteConfig(res?.data || null); } catch (_) {}
+    const shouldShowAds = Boolean(res?.data?.showAds);
+    if (!shouldShowAds) return;
+
+    mobileAds()
+      .initialize()
+      .then(() => {
+        try {
+          appOpenAdManager.preloadAndShowOnLoad();
+        } catch (e) {}
+      });
+  } catch (e) {
+    // If config fetch fails, skip ad initialization silently
+  }
+})();
 
 // Ensure notification channels exist as soon as the JS runtime starts
 (async () => {

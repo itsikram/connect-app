@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import Svg, { Circle as SvgCircle, Path as SvgPath, SvgXml } from 'react-native-svg';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
@@ -10,6 +11,7 @@ import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
 import config from '../lib/config';
+// Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
 
@@ -69,6 +71,74 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     haha: '😂',
     sad: '😢',
   };
+
+  // Use vector icons for consistent alignment across footer buttons
+  const reactionIconMap: Record<string, { name: string; color: string }> = {
+    like: { name: 'thumb-up', color: themeColors.primary },
+    love: { name: 'favorite', color: '#FF3B5C' },
+    haha: { name: 'emoji-emotions', color: '#F5C84B' },
+    sad: { name: 'sentiment-dissatisfied', color: '#6A3318' },
+  };
+
+  const getAssetUrl = (path?: string): string => {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return `${config.SOCKET_BASE_URL}${path}`;
+  };
+
+  const RemoteSvg = ({ uri, size = 28 }: { uri: string; size?: number }) => {
+    const [xml, setXml] = useState<string | null>(null);
+    useEffect(() => {
+      let cancelled = false;
+      if (!uri) return;
+      fetch(uri)
+        .then(r => r.text())
+        .then(t => {
+          if (!cancelled) setXml(t);
+        })
+        .catch(() => {
+          if (!cancelled) setXml(null);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [uri]);
+    if (!xml) return null;
+    return <SvgXml xml={xml} width={size} height={size} />;
+  };
+
+  const SvgIcon = ({ source, size = 28 }: { source: any; size?: number }) => {
+    const isComponent = typeof source === 'function' || (source && typeof source === 'object' && (source.render || source.$$typeof));
+    if (isComponent) {
+      const Comp: any = source;
+      return <Comp width={size} height={size} />;
+    }
+    // Fallback when Metro still treats SVG as a numeric resource
+    return <Image source={source} style={{ width: size, height: size, resizeMode: 'contain' }} />;
+  };
+
+  const LikeColorIcon = ({ size = 28 }: { size?: number }) => (
+    <Svg width={size} height={size} viewBox="0 0 16 16">
+      <SvgCircle cx="8" cy="8" r="8" fill="#0B84FF" />
+      <SvgPath fill="#FFFFFF" d="M12.162 7.338c.176.123.338.245.338.674 0 .43-.229.604-.474.725a.73.73 0 01.089.546c-.077.344-.392.611-.672.69.121.194.159.385.015.62-.185.295-.346.407-1.058.407H7.5c-.988 0-1.5-.546-1.5-1V7.665c0-1.23 1.467-2.275 1.467-3.13L7.361 3.47c-.005-.065.008-.224.058-.27.08-.079.301-.2.635-.2.218 0 .363.041.534.123.581.277.732.978.732 1.542 0 .271-.414 1.083-.47 1.364 0 0 .867-.192 1.879-.199 1.061-.006 1.749.19 1.749.842 0 .261-.219.523-.316.666zM3.6 7h.8a.6.6 0 01.6.6v3.8a.6.6 0 01-.6.6h-.8a.6.6 0 01-.6-.6V7.6a.6.6 0 01.6-.6z" />
+    </Svg>
+  );
+
+  const LoveColorIcon = ({ size = 28 }: { size?: number }) => (
+    <Svg width={size} height={size} viewBox="0 0 16 16">
+      <SvgCircle cx="8" cy="8" r="8" fill="#FF3B5C" />
+      <SvgPath fill="#FFFFFF" d="M10.473 4C8.275 4 8 5.824 8 5.824S7.726 4 5.528 4c-2.114 0-2.73 2.222-2.472 3.41C3.736 10.55 8 12.75 8 12.75s4.265-2.2 4.945-5.34c.257-1.188-.36-3.41-2.472-3.41" />
+    </Svg>
+  );
+
+  const HahaColorIcon = ({ size = 28 }: { size?: number }) => (
+    <Svg width={size} height={size} viewBox="0 0 16 16">
+      <SvgCircle cx="8" cy="8" r="8" fill="#F5C84B" />
+      <SvgPath fill="#6A3318" d="M3 8.008C3 10.023 4.006 14 8 14c3.993 0 5-3.977 5-5.992C13 7.849 11.39 7 8 7c-3.39 0-5 .849-5 1.008" />
+      <SvgPath fill="#E84D6A" d="M4.541 12.5c.804.995 1.907 1.5 3.469 1.5 1.563 0 2.655-.505 3.459-1.5-.551-.588-1.599-1.5-3.459-1.5s-2.917.912-3.469 1.5" />
+      <SvgPath fill="#2A3755" d="M6.213 4.144c.263.188.502.455.41.788-.071.254-.194.369-.422.371-.78.011-1.708.255-2.506.612-.065.029-.197.088-.332.085-.124-.003-.251-.058-.327-.237-.067-.157-.073-.388.276-.598.545-.33 1.257-.48 1.909-.604a7.077 7.077 0 00-1.315-.768c-.427-.194-.38-.457-.323-.6.127-.317.609-.196 1.078.026a9 9 0 011.552.925zm3.577 0a8.953 8.953 0 011.55-.925c.47-.222.95-.343 1.078-.026.057.143.104.406-.323.6a7.029 7.029 0 00-1.313.768c.65.123 1.363.274 1.907.604.349.21.342.44.276.598-.077.18-.203.234-.327.237-.135.003-.267-.056-.332-.085-.797-.357-1.725-.6-2.504-.612-.228-.002-.351-.117-.422-.37-.091-.333.147-.6.41-.788z" />
+    </Svg>
+  );
 
   const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -545,7 +615,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           <View style={styles.reactsCountLeft}>
             <View style={styles.reactionIconsStack}>
               {placedReacts.slice(0, 3).map((t, idx) => (
-                <Text key={t} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -6 } : null]}>
+                <Text key={`${t}-${idx}`} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -6 } : null]}>
                   {reactionEmojiMap[t] || '👍'}
                 </Text>
               ))}
@@ -573,13 +643,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             >
               {reactType ? (
                 <>
-                  <Text style={styles.likeEmoji}>{reactionEmojiMap[reactType] || '👍'}</Text>
-                  <Text style={[styles.actionLabel, { color: themeColors.primary }]}> {capitalize(reactType)}</Text>
+                  <Icon
+                    name={(reactionIconMap[reactType] && reactionIconMap[reactType].name) || 'thumb-up'}
+                    size={20}
+                    color={(reactionIconMap[reactType] && reactionIconMap[reactType].color) || themeColors.primary}
+                  />
+                  <Text style={[styles.actionLabel, { color: themeColors.primary }]}>{capitalize(reactType)}</Text>
                 </>
               ) : (
                 <>
                   <Icon name="thumb-up-off-alt" size={20} color={subTextColor} />
-                  <Text style={[styles.actionLabel, { color: textColor }]}> Like</Text>
+                  <Text style={[styles.actionLabel, { color: textColor }]}>Like</Text>
                 </>
               )}
             </TouchableOpacity>
@@ -587,16 +661,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
                 <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> 
                   <TouchableOpacity onPress={() => handleSelectReaction('like')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'like' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_LIKE_URL }} style={styles.reactionIcon} /></Text>
+                    <LikeColorIcon size={28} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleSelectReaction('love')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'love' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_LOVE_URL }} style={styles.reactionIcon} />{config?.REACT_LOVE_URL}</Text>
+                    <LoveColorIcon size={28} />
                   </TouchableOpacity>
                   <TouchableOpacity onPress={() => handleSelectReaction('haha')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'haha' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_HAHA_URL }} style={styles.reactionIcon} />{config?.REACT_HAHA_URL}</Text>
+                    <HahaColorIcon size={28} />
                   </TouchableOpacity>
                   {/* <TouchableOpacity onPress={() => handleSelectReaction('sad')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Text style={[reactType === 'sad' ? styles.selectedReact : styles.reactText, styles.reactionIcon]}><Image source={{ uri: config?.REACT_SAD_URL }} style={styles.reactionIcon} />{config?.REACT_SAD_URL}</Text>
+                    <Image source={{ uri: config?.REACT_SAD_URL }} style={styles.reactionIcon} />
                   </TouchableOpacity> */}
                 </View>
                 <View style={[styles.reactionCaret, { backgroundColor: cardBg, borderColor }]} />
@@ -605,11 +679,11 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           </View>
           <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem] }>
             <Icon name="comment" size={20} color={subTextColor} />
-            <Text style={[styles.actionLabel, { color: textColor }]}> Comment</Text>
+            <Text style={[styles.actionLabel, { color: textColor }]}>Comment</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
             <Icon name="share" size={20} color={subTextColor} />
-            <Text style={[styles.actionLabel, { color: textColor }]}> Share</Text>
+            <Text style={[styles.actionLabel, { color: textColor }]}>Share</Text>
           </TouchableOpacity>
         </View>
         {showCommentBox && (
@@ -1168,6 +1242,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#333',
     fontWeight: '500',
+    marginLeft: 6,
   },
   actionEmoji: {
     fontSize: 18,
@@ -1179,10 +1254,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
+    minHeight: 36,
   },
   reactionIcon: {
-    fontSize: 28,
+    width: 28,
+    height: 28,
     marginHorizontal: 0,
+    resizeMode: 'contain',
   },
   likeEmoji: {
     fontSize: 22,

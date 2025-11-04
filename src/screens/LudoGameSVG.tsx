@@ -166,6 +166,88 @@ const LudoGameSVG = () => {
   const playerNames = ['Red', 'Green', 'Blue', 'Yellow'];
   const playerEmojis = ['🔴', '🟢', '🔵', '🟡'];
 
+  // Use exact path length as the true max steps (prevents overruns near home)
+  const maxSteps = useMemo(() => {
+    const len0 = Array.isArray(PATHS?.[0]) ? PATHS[0].length : 59;
+    return (typeof len0 === 'number' && len0 > 0) ? len0 : 59;
+  }, [PATHS]);
+
+  // Rendering order to match dice sequence (web parity)
+  const renderPlayerOrder = useMemo(() => {
+    return selectedPlayerCount === 4 ? [0, 1, 3, 2] : [0, 1, 2].slice(0, selectedPlayerCount);
+  }, [selectedPlayerCount]);
+
+  // Safe zones - cannot capture here. Includes entry squares and start squares.
+  const SAFE_CELLS = useMemo(() => {
+    const cells: Array<[number, number]> = [
+      [1, 6],
+      [8, 1],
+      [6, 13],
+      [13, 8],
+      [7, 13],
+      [13, 7],
+      [7, 2],
+      [2, 7],
+    ];
+    return new Set(cells.map(([x, y]) => `${x},${y}`));
+  }, []);
+
+  // Turn order helper (web parity)
+  const getNextActivePlayer = React.useCallback((fromIndex: number) => {
+    const baseOrder = selectedPlayerCount === 4 ? [0, 1, 3, 2] : [0, 1, 2].slice(0, selectedPlayerCount);
+    if (baseOrder.length === 0) return fromIndex;
+    let idx = baseOrder.indexOf(fromIndex);
+    if (idx === -1) idx = 0;
+    let attempts = 0;
+    while (attempts < baseOrder.length) {
+      idx = (idx + 1) % baseOrder.length;
+      const candidate = baseOrder[idx];
+      const playerWon = winners.some(w => w.id === candidate);
+      if (!playerWon) return candidate;
+      attempts++;
+    }
+    return fromIndex;
+  }, [selectedPlayerCount, winners]);
+
+  // Compute overlapping tokens in the same board cell for better visibility (web parity)
+  const cellOccupancy = useMemo(() => {
+    const map = new Map<string, { playerIndex: number; pieceIndex: number }[]>();
+    players.forEach((player, playerIndex) => {
+      player.pieces.forEach((piece, pieceIndex) => {
+        if (piece.isInPlay) {
+          const pos = getPositionOnPath(playerIndex, piece.steps);
+          const key = `${pos.x},${pos.y}`;
+          if (!map.has(key)) map.set(key, []);
+          map.get(key)!.push({ playerIndex, pieceIndex });
+        }
+      });
+    });
+    return map;
+  }, [players]);
+
+  const getOverlapOffset = (count: number, index: number) => {
+    const delta = CELL_SIZE * 0.35;
+    if (count <= 1) return { dx: 0, dy: 0 };
+    if (count === 2) {
+      return { dx: index === 0 ? -delta / 2 : delta / 2, dy: 0 };
+    }
+    if (count === 3) {
+      const positions = [
+        { dx: -delta / 2, dy: -delta / 2 },
+        { dx: delta / 2, dy: -delta / 2 },
+        { dx: 0, dy: delta / 2 },
+      ];
+      return positions[index] || { dx: 0, dy: 0 };
+    }
+    const grid = [
+      { dx: -delta / 2, dy: -delta / 2 },
+      { dx: delta / 2, dy: -delta / 2 },
+      { dx: -delta / 2, dy: delta / 2 },
+      { dx: delta / 2, dy: delta / 2 },
+    ];
+    return grid[index % 4];
+  };
+
   // Animation refs
   const diceAnimation = useRef(new Animated.Value(0)).current;
   const tokenStrokeAnimations = useRef(Array(16).fill(null).map(() => new Animated.Value(0))).current;
@@ -318,7 +400,6 @@ const LudoGameSVG = () => {
 
       // Check if player can move any piece
       const currentPlayerData = players[currentPlayer];
-      const maxSteps = 59;
       const canMove = currentPlayerData.pieces.some(piece => {
         if (piece.isHome && value === 6) return true;
         if (piece.isInPlay && piece.steps + value <= maxSteps) return true;
@@ -343,17 +424,8 @@ const LudoGameSVG = () => {
             const globalPieceIndex = currentPlayer * 4 + pieceIndex;
             stopTokenStrokeAnimation(globalPieceIndex);
           });
-          
-          // Find next player who hasn't won
-          let nextPlayer = (currentPlayer + 1) % selectedPlayerCount;
-          let attempts = 0;
-          while (attempts < selectedPlayerCount) {
-            const playerWon = winners.some(w => w.id === nextPlayer);
-            if (!playerWon) break;
-            nextPlayer = (nextPlayer + 1) % selectedPlayerCount;
-            attempts++;
-          }
-          
+
+          const nextPlayer = getNextActivePlayer(currentPlayer);
           setCurrentPlayer(nextPlayer);
           setDiceValue(0);
           setCanRollDice(true);
@@ -633,22 +705,8 @@ const LudoGameSVG = () => {
     return path[steps - 1];
   };
 
-  const isSafePosition = (playerIndex: number, position: { x: number; y: number }) => {
-    // Define safe positions (first cell of each player's home column)
-    const safePositions = [
-      // Red player safe position (first cell of red home column)
-      { x: 1, y: 6 },
-      // Green player safe position (first cell of green home column)  
-      { x: 8, y: 1 },
-      // Blue player safe position (first cell of blue home column)
-      { x: 6, y: 13 },
-      // Yellow player safe position (first cell of yellow home column)
-      { x: 13, y: 8 },
-    ];
-    
-    return safePositions[playerIndex] && 
-           safePositions[playerIndex].x === position.x && 
-           safePositions[playerIndex].y === position.y;
+  const isSafePosition = (_playerIndex: number, position: { x: number; y: number }) => {
+    return SAFE_CELLS.has(`${position.x},${position.y}`);
   };
 
   const checkForCapture = (movingPlayerIndex: number, newPosition: { x: number; y: number }) => {
@@ -763,9 +821,9 @@ const LudoGameSVG = () => {
   const movePiece = (pieceId: number) => {
     if (diceValue === 0) return;
 
+    const rolledNow = diceValue;
     const currentPlayerData = players[currentPlayer];
     const piece = currentPlayerData.pieces[pieceId];
-    const maxSteps = 59;
 
     // Validate the move
     if (piece.isHome && diceValue !== 6) return;
@@ -822,7 +880,6 @@ const LudoGameSVG = () => {
       // Move piece on board with step-by-step animation
       const oldSteps = piece.steps;
       const newSteps = piece.steps + diceValue;
-      const maxSteps = 59; // Total path length (52 main + 7 home stretch)
 
       if (newSteps <= maxSteps) {
         // Animate the movement step by step
@@ -836,6 +893,7 @@ const LudoGameSVG = () => {
           setPlayers(updatedPlayers);
 
           // Check for captures after movement (only if not at finish)
+          let didCapture = false;
           if (newSteps < maxSteps) {
             const newPosition = getPositionOnPath(currentPlayer, newSteps);
             const capturedPieces = checkForCapture(currentPlayer, newPosition);
@@ -844,6 +902,7 @@ const LudoGameSVG = () => {
             capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
               captureToken(playerIndex, pieceIndex);
             });
+            didCapture = capturedPieces.length > 0;
           }
 
           // Check for win
@@ -872,8 +931,9 @@ const LudoGameSVG = () => {
 
           setDiceValue(0);
 
-          // If not a 6, pass turn to next player
-          if (diceValue !== 6) {
+          // Keep turn on 6 or capture (web parity). Otherwise pass
+          const keepTurn = (rolledNow === 6) || didCapture;
+          if (!keepTurn) {
             setTimeout(() => {
               // Stop stroke animations for all pieces
               players.forEach((_, playerIndex) => {
@@ -882,16 +942,7 @@ const LudoGameSVG = () => {
                 }
               });
               
-              // Find next player who hasn't won
-              let nextPlayer = (currentPlayer + 1) % selectedPlayerCount;
-              let attempts = 0;
-              while (attempts < selectedPlayerCount) {
-                const playerWon = winners.some(w => w.id === nextPlayer);
-                if (!playerWon) break;
-                nextPlayer = (nextPlayer + 1) % selectedPlayerCount;
-                attempts++;
-              }
-              
+              const nextPlayer = getNextActivePlayer(currentPlayer);
               setCurrentPlayer(nextPlayer);
               setCanRollDice(true);
             }, 500);
@@ -1073,7 +1124,7 @@ const LudoGameSVG = () => {
           width={BOARD_SIZE}
           height={BOARD_SIZE}
           fill="#FFFFFF"
-          stroke="#000000"
+          stroke="#111111"
           strokeWidth="2"
           rx="10"
           ry="10"
@@ -1083,7 +1134,7 @@ const LudoGameSVG = () => {
         {Array.from({ length: 15 }, (_, row) =>
           Array.from({ length: 15 }, (_, col) => {
             let fillColor = "#FFFFFF";
-            let strokeColor = "#f9f9f9";
+            let strokeColor = "#e5e7eb";
             let strokeWidth = 1;
 
             // Home Areas (6x6 squares in corners) - always show all four
@@ -1154,58 +1205,56 @@ const LudoGameSVG = () => {
           })
         )}
 
-        {/* Token Containers in home areas - always show all four */}
-        {/* Red Token Container (Top-Left) */}
-        <Rect
-          x={CELL_SIZE * 1.5}
-          y={CELL_SIZE * 1.5}
-          width={CELL_SIZE * 3}
-          height={CELL_SIZE * 3}
-          fill="#29B1A9"
-          stroke="#000000"
-          strokeWidth="2"
-          rx="8"
-          ry="8"
-        />
-
-        {/* Green Token Container (Top-Right) */}
-        <Rect
-          x={CELL_SIZE * 10.5}
-          y={CELL_SIZE * 1.5}
-          width={CELL_SIZE * 3}
-          height={CELL_SIZE * 3}
-          fill="#29B1A9"
-          stroke="#000000"
-          strokeWidth="2"
-          rx="8"
-          ry="8"
-        />
-
-        {/* Blue Token Container (Bottom-Left) */}
-        <Rect
-          x={CELL_SIZE * 1.5}
-          y={CELL_SIZE * 10.5}
-          width={CELL_SIZE * 3}
-          height={CELL_SIZE * 3}
-          fill="#29B1A9"
-          stroke="#000000"
-          strokeWidth="2"
-          rx="8"
-          ry="8"
-        />
-
-        {/* Yellow Token Container (Bottom-Right) */}
-        <Rect
-          x={CELL_SIZE * 10.5}
-          y={CELL_SIZE * 10.5}
-          width={CELL_SIZE * 3}
-          height={CELL_SIZE * 3}
-          fill="#29B1A9"
-          stroke="gray"
-          strokeWidth="2"
-          rx="8"
-          ry="8"
-        />
+        {/* Inner white squares in home areas with pips (web parity) */}
+        {/* Red home inner */}
+        <Rect x={CELL_SIZE * 1} y={CELL_SIZE * 1} width={CELL_SIZE * 4} height={CELL_SIZE * 4} fill="#FFFFFF" stroke="#1f2937" strokeWidth="1.5" />
+        {/* Red pips */}
+        {(() => {
+          const cx = (1 + 2) * CELL_SIZE;
+          const cy = (1 + 2) * CELL_SIZE;
+          const r = CELL_SIZE * 0.30;
+          const gap = CELL_SIZE * 0.45;
+          const pts = [[-gap,-gap],[gap,-gap],[-gap,gap],[gap,gap]];
+          return pts.map((o, i) => (
+            <Circle key={`pip-red-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={r} fill="#FF0000" stroke="#000" strokeWidth={2} />
+          ));
+        })()}
+        {/* Green home inner */}
+        <Rect x={CELL_SIZE * 10} y={CELL_SIZE * 1} width={CELL_SIZE * 4} height={CELL_SIZE * 4} fill="#FFFFFF" stroke="#1f2937" strokeWidth="1.5" />
+        {(() => {
+          const cx = (10 + 2) * CELL_SIZE;
+          const cy = (1 + 2) * CELL_SIZE;
+          const r = CELL_SIZE * 0.30;
+          const gap = CELL_SIZE * 0.45;
+          const pts = [[-gap,-gap],[gap,-gap],[-gap,gap],[gap,gap]];
+          return pts.map((o, i) => (
+            <Circle key={`pip-green-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={r} fill="#00FF00" stroke="#000" strokeWidth={2} />
+          ));
+        })()}
+        {/* Blue home inner */}
+        <Rect x={CELL_SIZE * 1} y={CELL_SIZE * 10} width={CELL_SIZE * 4} height={CELL_SIZE * 4} fill="#FFFFFF" stroke="#1f2937" strokeWidth="1.5" />
+        {(() => {
+          const cx = (1 + 2) * CELL_SIZE;
+          const cy = (10 + 2) * CELL_SIZE;
+          const r = CELL_SIZE * 0.30;
+          const gap = CELL_SIZE * 0.45;
+          const pts = [[-gap,-gap],[gap,-gap],[-gap,gap],[gap,gap]];
+          return pts.map((o, i) => (
+            <Circle key={`pip-blue-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={r} fill="#0000FF" stroke="#000" strokeWidth={2} />
+          ));
+        })()}
+        {/* Yellow home inner */}
+        <Rect x={CELL_SIZE * 10} y={CELL_SIZE * 10} width={CELL_SIZE * 4} height={CELL_SIZE * 4} fill="#FFFFFF" stroke="#1f2937" strokeWidth="1.5" />
+        {(() => {
+          const cx = (10 + 2) * CELL_SIZE;
+          const cy = (10 + 2) * CELL_SIZE;
+          const r = CELL_SIZE * 0.30;
+          const gap = CELL_SIZE * 0.45;
+          const pts = [[-gap,-gap],[gap,-gap],[-gap,gap],[gap,gap]];
+          return pts.map((o, i) => (
+            <Circle key={`pip-yellow-${i}`} cx={cx + o[0]} cy={cy + o[1]} r={r} fill="#FFFF00" stroke="#000" strokeWidth={2} />
+          ));
+        })()}
 
         {/* Start squares - always show all four */}
         {/* Red start (row 13, column 7) - bottom of left vertical path */}
@@ -1215,8 +1264,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#FF0000"
-          stroke="#000000"
-          strokeWidth="2"
+          stroke="#1f2937"
+          strokeWidth="1.5"
         />
 
         {/* Green start (row 7, column 13) - right of top horizontal path */}
@@ -1226,8 +1275,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#00FF00"
-          stroke="#000000"
-          strokeWidth="2"
+          stroke="#1f2937"
+          strokeWidth="1.5"
         />
 
         {/* Blue start (row 2, column 7) - top of right vertical path */}
@@ -1237,8 +1286,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#0000FF"
-          stroke="#000000"
-          strokeWidth="2"
+          stroke="#1f2937"
+          strokeWidth="1.5"
         />
 
         {/* Yellow start (row 7, column 2) - left of bottom horizontal path */}
@@ -1248,90 +1297,32 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#FFFF00"
-          stroke="#000000"
-          strokeWidth="2"
+          stroke="#1f2937"
+          strokeWidth="1.5"
         />
 
-        {/* Home columns leading to center - 3 squares wide each - always show all four */}
-        {/* Blue home column (rows 9-14, columns 6-8) - left vertical path */}
-        {[9, 10, 11, 12, 13, 14].map((i) =>
-          [6, 7, 8].map((j) => (
-            <Rect
-              key={`blue-col-${i}-${j}`}
-              x={CELL_SIZE * j}
-              y={CELL_SIZE * i}
-              width={CELL_SIZE}
-              height={CELL_SIZE}
-              fill="#0000FF"
-              stroke="#000000"
-              strokeWidth="1"
-            />
-          ))
-        )}
-
-        {/* Yellow home column (rows 6-8, columns 9-14) - bottom horizontal path */}
-        {[6, 7, 8].map((i) =>
-          [9, 10, 11, 12, 13, 14].map((j) => (
-            <Rect
-              key={`yellow-col-${i}-${j}`}
-              x={CELL_SIZE * j}
-              y={CELL_SIZE * i}
-              width={CELL_SIZE}
-              height={CELL_SIZE}
-              fill="#FFFF00"
-              stroke="#000000"
-              strokeWidth="1"
-            />
-          ))
-        )}
-
-        {/* Green home column (rows 1-6, columns 6-8) - right vertical path */}
-        {[0, 1, 2, 3, 4, 5].map((i) =>
-          [6, 7, 8].map((j) => (
-            <Rect
-              key={`green-col-${i}-${j}`}
-              x={CELL_SIZE * j}
-              y={CELL_SIZE * i}
-              width={CELL_SIZE}
-              height={CELL_SIZE}
-              fill="#00FF00"
-              stroke="#000000"
-              strokeWidth="1"
-            />
-          ))
-        )}
-
-        {/* Red home column (rows 6-8, columns 1-6) - top horizontal path */}
-        {[6, 7, 8].map((i) =>
-          [0, 1, 2, 3, 4, 5].map((j) => (
-            <Rect
-              key={`red-col-${i}-${j}`}
-              x={CELL_SIZE * j}
-              y={CELL_SIZE * i}
-              width={CELL_SIZE}
-              height={CELL_SIZE}
-              fill="#FF0000"
-              stroke="#000000"
-              strokeWidth="1"
-            />
-          ))
-        )}
+        {/* Colored home columns (single width towards center) */}
+        {[1, 2, 3, 4, 5].map((r) => (
+          <Rect key={`green-col-${r}`} x={CELL_SIZE * 7} y={CELL_SIZE * r} width={CELL_SIZE} height={CELL_SIZE} fill="#00FF00" stroke="#1f2937" strokeWidth="1" />
+        ))}
+        {[9, 10, 11, 12, 13].map((c) => (
+          <Rect key={`yellow-row-${c}`} x={CELL_SIZE * c} y={CELL_SIZE * 7} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFF00" stroke="#1f2937" strokeWidth="1" />
+        ))}
+        {[9, 10, 11, 12].map((r) => (
+          <Rect key={`blue-col-${r}`} x={CELL_SIZE * 7} y={CELL_SIZE * r} width={CELL_SIZE} height={CELL_SIZE} fill="#0000FF" stroke="#1f2937" strokeWidth="1" />
+        ))}
+        {[1, 2, 3, 4, 5].map((c) => (
+          <Rect key={`red-row-${c}`} x={CELL_SIZE * c} y={CELL_SIZE * 7} width={CELL_SIZE} height={CELL_SIZE} fill="#FF0000" stroke="#1f2937" strokeWidth="1" />
+        ))}
 
 
-        {[6, 7, 8].map((i) =>
-          [6, 7, 8].map((j) => (
-            <Rect
-              key={`red-green-${i}-${j}`}
-              x={CELL_SIZE * j}
-              y={CELL_SIZE * i}
-              width={CELL_SIZE}
-              height={CELL_SIZE}
-              fill="#29B1A9"
-              stroke="#29B1A9"
-              strokeWidth="1"
-            />
-          ))
-        )}
+        {/* Center 3x3 backdrop left as white; pinwheel below draws the colored triangles */}
+
+        {/* Entry highlight cells (web parity) */}
+        <Rect x={CELL_SIZE * 1} y={CELL_SIZE * 6} width={CELL_SIZE} height={CELL_SIZE} fill="#FF0000" stroke="#000" strokeWidth="1" />
+        <Rect x={CELL_SIZE * 8} y={CELL_SIZE * 1} width={CELL_SIZE} height={CELL_SIZE} fill="#00FF00" stroke="#000" strokeWidth="1" />
+        <Rect x={CELL_SIZE * 6} y={CELL_SIZE * 13} width={CELL_SIZE} height={CELL_SIZE} fill="#0000FF" stroke="#000" strokeWidth="1" />
+        <Rect x={CELL_SIZE * 13} y={CELL_SIZE * 8} width={CELL_SIZE} height={CELL_SIZE} fill="#FFFF00" stroke="#000" strokeWidth="1" />
 
         {/* Safe positions - first cell of each home column (cannot be captured) */}
         {/* Red safe position */}
@@ -1341,8 +1332,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#FF0000"
-          stroke="#000000"
-          strokeWidth="3"
+          stroke="#374151"
+          strokeWidth="2"
           strokeDasharray="5,5"
         />
         {/* Green safe position */}
@@ -1352,8 +1343,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#00FF00"
-          stroke="#000000"
-          strokeWidth="3"
+          stroke="#374151"
+          strokeWidth="2"
           strokeDasharray="5,5"
         />
         {/* Blue safe position */}
@@ -1363,8 +1354,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#0000FF"
-          stroke="#000000"
-          strokeWidth="3"
+          stroke="#374151"
+          strokeWidth="2"
           strokeDasharray="5,5"
         />
         {/* Yellow safe position */}
@@ -1374,8 +1365,8 @@ const LudoGameSVG = () => {
           width={CELL_SIZE}
           height={CELL_SIZE}
           fill="#FFFF00"
-          stroke="#000000"
-          strokeWidth="3"
+          stroke="#374151"
+          strokeWidth="2"
           strokeDasharray="5,5"
         />
 
@@ -1412,8 +1403,8 @@ const LudoGameSVG = () => {
     const maxSteps = 59;
     return (
       <View style={StyleSheet.absoluteFillObject}>
-        {players.map((player, playerIndex) =>
-          player.pieces.map((piece, pieceIndex) => {
+        {renderPlayerOrder.map((playerIndex) =>
+          players[playerIndex]?.pieces.map((piece, pieceIndex) => {
             const tokenSize = CELL_SIZE * 0.9;
             const globalPieceIndex = playerIndex * 4 + pieceIndex;
             const isCurrentPlayer = playerIndex === currentPlayer;
@@ -1450,6 +1441,11 @@ const LudoGameSVG = () => {
             if (useAnimation) {
               const captureKey = `${playerIndex}-${pieceIndex}`;
               const isBeingCaptured = captureAnimations[captureKey];
+              const pos = getPositionOnPath(playerIndex, piece.steps);
+              const key = `${pos.x},${pos.y}`;
+              const group = cellOccupancy.get(key) || [];
+              const idxInGroup = group.findIndex(g => g.playerIndex === playerIndex && g.pieceIndex === pieceIndex);
+              const { dx, dy } = getOverlapOffset(group.length, idxInGroup);
               
               // Render animated token with enhanced animations - separated into two layers
               return (
@@ -1469,6 +1465,8 @@ const LudoGameSVG = () => {
                       {
                         translateY: tokenPositionAnimations[globalPieceIndex].translateY,
                       },
+                      { translateX: dx },
+                      { translateY: dy },
                     ],
                   }}
                 >
@@ -1502,6 +1500,10 @@ const LudoGameSVG = () => {
                         opacity: isActivePlayer ? 1 : 0.3,
                       }}
                     >
+                        {/* inner ring */}
+                        <View style={{ position: 'absolute', left: 4, top: 4, right: 4, bottom: 4, borderRadius: (tokenSize/2)-4, borderWidth: 3, borderColor: '#ffffff22' }} />
+                        {/* glossy highlight */}
+                        <View style={{ position: 'absolute', left: tokenSize*0.14, top: tokenSize*0.12, width: tokenSize*0.55, height: tokenSize*0.55, borderRadius: (tokenSize*0.55)/2, backgroundColor: '#ffffff', opacity: 0.15 }} />
                       {players[playerIndex]?.avatar ? (
                         <>
                           <Image
@@ -1593,6 +1595,10 @@ const LudoGameSVG = () => {
                           elevation: 5,
                         }}
                       >
+                        {/* inner ring */}
+                        <View style={{ position: 'absolute', left: 4, top: 4, right: 4, bottom: 4, borderRadius: (tokenSize/2)-4, borderWidth: 3, borderColor: '#ffffff22' }} />
+                        {/* glossy highlight */}
+                        <View style={{ position: 'absolute', left: tokenSize*0.14, top: tokenSize*0.12, width: tokenSize*0.55, height: tokenSize*0.55, borderRadius: (tokenSize*0.55)/2, backgroundColor: '#ffffff', opacity: 0.15 }} />
                         {players[playerIndex]?.avatar ? (
                           <>
                             <Image
@@ -2188,45 +2194,7 @@ const LudoGameSVG = () => {
                 </View>
               </View>
 
-              <View style={styles.diceContainer}>
-                <Animated.View
-                  style={[
-                    styles.dice,
-                    {
-                      backgroundColor: players[currentPlayer]?.color,
-                      transform: [
-                        {
-                          rotate: diceAnimation.interpolate({
-                            inputRange: [0, 1],
-                            outputRange: ['0deg', '360deg'],
-                          }),
-                        },
-                        {
-                          scale: diceRolling ? 1.1 : 1,
-                        },
-                      ],
-                    },
-                  ]}
-                >
-                  <TouchableOpacity
-                    style={styles.diceButton}
-                    onPress={rollDice}
-                    disabled={!canRollDice || diceRolling}
-                  >
-                    <View style={styles.diceInner}>
-                      {diceValue > 0 ? (
-                        renderDiceDots(diceValue)
-                      ) : (
-                        <Icon name="casino" size={65} color="white" />
-                      )}
-                    </View>
-                    <View style={styles.diceGlow} />
-                  </TouchableOpacity>
-                </Animated.View>
-                <Text style={styles.diceLabel}>
-                  {diceRolling ? 'Rolling...' : canRollDice ? 'Tap to Roll' : 'Move a Piece'}
-                </Text>
-              </View>
+              {/* Dice moved to board center overlay */}
             </View>
           </View>
 
@@ -2235,6 +2203,24 @@ const LudoGameSVG = () => {
               <View style={styles.board}>
                 {renderLudoBoard}
                 {renderTokens()}
+                {/* Centered dice overlay (web parity) */}
+                <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 50, pointerEvents: canRollDice ? 'auto' : 'none' }}>
+                  <TouchableOpacity onPress={rollDice} disabled={!canRollDice || diceRolling} activeOpacity={0.8}>
+                    <View style={{ width: 108, height: 108, alignItems: 'center', justifyContent: 'center' }}>
+                      {(!diceRolling && canRollDice && diceValue === 0) ? (
+                        players[currentPlayer]?.avatar ? (
+                          <Image source={{ uri: players[currentPlayer].avatar as string }} style={{ width: 80, height: 80, borderRadius: 40, resizeMode: 'cover', backgroundColor: 'transparent', borderWidth: 3, borderColor: players[currentPlayer]?.color || '#FFD700' }} />
+                        ) : (
+                          <Icon name="casino" size={80} color={players[currentPlayer]?.color || '#FFD700'} />
+                        )
+                      ) : (
+                        <View style={{ width: 108, height: 108, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center', borderWidth: 3, borderColor: players[currentPlayer]?.color || '#FFD700', shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 6 } }}>
+                          {renderDiceDots(diceValue > 0 ? diceValue : 1)}
+                        </View>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
               </View>
               <View style={styles.boardGlow} />
             </View>
@@ -2476,47 +2462,47 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
   },
   gameInfoContainer: {
-    marginTop: 20,
-    marginBottom: 15,
-    paddingHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 16,
   },
   gameInfo: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 25,
-    paddingVertical: 20,
-    backgroundColor: 'rgba(26, 35, 50, 0.8)',
-    borderRadius: 20,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: 'rgba(26, 35, 50, 0.6)',
+    borderRadius: 14,
     borderWidth: 1,
-    borderColor: 'rgba(255, 215, 0, 0.2)',
-    elevation: 8,
+    borderColor: 'rgba(255, 255, 255, 0.08)',
+    elevation: 2,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
   },
   currentPlayerInfo: {
     flex: 1,
   },
   currentPlayerLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#B0B0B0',
-    marginBottom: 5,
-    marginTop: -35,
+    marginBottom: 4,
+    marginTop: 0,
   },
   currentPlayerBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 25,
-    elevation: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    elevation: 2,
     shadowColor: '#000',
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    marginRight: 15,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    marginRight: 10,
+    shadowOffset: { width: 0, height: 1 },
     position: 'relative',
   },
   badgeGlow: {
@@ -2530,13 +2516,13 @@ const styles = StyleSheet.create({
     zIndex: -1,
   },
   currentPlayerEmoji: {
-    fontSize: 16,
-    marginRight: 8,
+    fontSize: 14,
+    marginRight: 6,
   },
   currentPlayerName: {
     color: 'white',
-    fontWeight: 'bold',
-    fontSize: 16,
+    fontWeight: '700',
+    fontSize: 14,
   },
   diceContainer: {
     alignItems: 'center',

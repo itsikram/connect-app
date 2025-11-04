@@ -74,7 +74,7 @@ const Menu = () => {
       return;
     }
     if (app.id === 'vpnBrowser') {
-      (navigation as any).navigate('Menu', { screen: 'VpnBrowser' });
+      (navigation as any).navigate('VpnBrowser');
       return;
     }
     if (app.id === 'maps') {

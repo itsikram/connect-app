@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Foreground service permissions for ongoing call controls (best effort across API levels) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
@@ -99,7 +100,8 @@
         android:name="com.connect.app.KeepAliveService"
         android:enabled="true"
         android:exported="false"
-        android:stopWithTask="false" />
+        android:stopWithTask="false"
+        android:process=":bg" />
 
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"
@@ -123,14 +125,18 @@
         android:name="com.connect.app.NotificationService"
         android:exported="false"
         android:enabled="true"
+        android:stopWithTask="false"
+        android:process=":bg"
         android:foregroundServiceType="mediaPlayback">
       </service>
 
-      <!-- Ensure proper foreground service types for background actions service on Android 14+ -->
+      <!-- React Native Background Actions foreground service (keeps background alive) -->
       <service
         android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
         android:exported="false"
-        android:foregroundServiceType="dataSync|mediaPlayback" />
+        android:stopWithTask="false"
+        android:process=":bg"
+        android:foregroundServiceType="dataSync|mediaPlayback|phoneCall" />
 
       <!-- Boot receiver to restart background services -->
       <receiver

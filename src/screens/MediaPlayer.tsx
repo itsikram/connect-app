@@ -118,31 +118,35 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   const renderControls = () => (
     <View style={styles.controlsRow}>
-      <TouchableOpacity style={styles.controlBtn} onPress={() => skip(-10)}>
-        <Icon name="replay-10" size={22} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity style={[styles.playBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]} onPress={togglePlay}>
-        <Icon name={paused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.controlBtn} onPress={() => skip(10)}>
-        <Icon name="forward-10" size={22} color="#fff" />
+      <TouchableOpacity style={styles.iconBtn} onPress={() => skip(-10)}>
+        <Icon name="replay-10" size={24} color="#fff" />
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.controlBtn} onPress={toggleMute}>
+      <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: themeColors.primary }]} onPress={togglePlay}>
+        <Icon name={paused ? 'play-arrow' : 'pause'} size={30} color="#000" />
+      </TouchableOpacity>
+
+      <TouchableOpacity style={styles.iconBtn} onPress={() => skip(10)}>
+        <Icon name="forward-10" size={24} color="#fff" />
+      </TouchableOpacity>
+
+      <View style={{ flex: 1 }} />
+
+      <TouchableOpacity style={styles.iconBtn} onPress={toggleMute}>
         <Icon name={muted ? 'volume-off' : 'volume-up'} size={22} color="#fff" />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.controlBtn} onPress={cycleRate}>
-        <Text style={styles.rateText}>{rate.toFixed(1)}x</Text>
+      <TouchableOpacity style={styles.chipBtn} onPress={cycleRate}>
+        <Text style={styles.chipText}>{rate.toFixed(1)}x</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.controlBtn} onPress={toggleLoop}>
+      <TouchableOpacity style={styles.iconBtn} onPress={toggleLoop}>
         <Icon name={loop ? 'repeat-on' : 'repeat'} size={22} color={loop ? themeColors.primary : '#fff'} />
       </TouchableOpacity>
       {isVideo && (
-        <TouchableOpacity style={styles.controlBtn} onPress={() => setFullscreen(f => !f)}>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => setFullscreen(f => !f)}>
           <Icon name={fullscreen ? 'fullscreen-exit' : 'fullscreen'} size={22} color="#fff" />
         </TouchableOpacity>
       )}
-      <TouchableOpacity style={styles.controlBtn} onPress={() => setRotated(r => !r)}>
+      <TouchableOpacity style={styles.iconBtn} onPress={() => setRotated(r => !r)}>
         <Icon name="screen-rotation" size={22} color="#fff" />
       </TouchableOpacity>
     </View>
@@ -222,8 +226,10 @@ const MediaPlayer = ({ route, navigation }: any) => {
         )}
       </View>
 
-      {renderSeekbar()}
-      {renderControls()}
+      <View style={styles.bottomPanel}>
+        {renderSeekbar()}
+        {renderControls()}
+      </View>
     </SafeAreaView>
   );
 };
@@ -246,13 +252,15 @@ const styles = StyleSheet.create({
   audioPlaceholder: { width: SCREEN_WIDTH, height: 160, backgroundColor: '#111' },
   bufferBadge: { position: 'absolute', top: 12, right: 12, backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 14, paddingHorizontal: 10, paddingVertical: 6 },
 
-  seekRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 6 },
+  bottomPanel: { backgroundColor: 'rgba(12,12,12,0.92)', borderTopLeftRadius: 16, borderTopRightRadius: 16 },
+  seekRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 10 },
   timeText: { color: '#fff', fontSize: 12, width: 48, textAlign: 'center' },
 
-  controlsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-evenly', paddingHorizontal: 12, paddingVertical: 16 },
-  controlBtn: { width: 40, height: 40, borderRadius: 20, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)' },
-  playBtn: { width: 56, height: 56, borderRadius: 28, justifyContent: 'center', alignItems: 'center' },
-  rateText: { color: '#fff', fontWeight: '700' },
+  controlsRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 12 },
+  iconBtn: { width: 44, height: 44, borderRadius: 8, justifyContent: 'center', alignItems: 'center' },
+  primaryBtn: { width: 64, height: 64, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginHorizontal: 6 },
+  chipBtn: { height: 32, borderRadius: 16, paddingHorizontal: 10, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.12)', marginHorizontal: 2 },
+  chipText: { color: '#fff', fontWeight: '700' },
   rotate90: { transform: [{ rotate: '90deg' }] },
 });
 

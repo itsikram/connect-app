@@ -215,14 +215,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           icon={<Icon name="photo-camera" size={20} color={themeColors.primary} />}
           style={{ flex: 1, marginRight: 8 }}
         />
-        <ModernButton
-          title="Camera"
-          onPress={() => (navigation as any).navigate('Camera')}
-          variant="modern"
-          size="small"
-          icon={<Icon name="camera-alt" size={20} color={themeColors.primary} />}
-          style={{ flex: 1, marginRight: 8 }}
-        />
+
         <ModernButton
           title="Live Video"
           onPress={() => { openModal(); pickMedia('video'); }}

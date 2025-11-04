@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -20,6 +20,7 @@ import {
   useCameraPermission,
   useCodeScanner,
 } from 'react-native-vision-camera';
+import { Canvas, Group, Rect, LinearGradient, RadialGradient, vec, Fill } from '@shopify/react-native-skia';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
@@ -27,8 +28,10 @@ import { } from 'react-native-gesture-handler';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import { detectEmotionsFromFace, emotionEmojiMap, type EmotionDetectionState } from '../lib/emotionDetection';
 import { savePhotoToMedia, saveVideoToMedia } from '../lib/mediaLibrary';
+import { beautifyPhoto } from '../lib/photoBeauty';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
+const TOP_BUTTON_SPACING = 16;
 
 // Using regular Camera component (no Reanimated wrapper) to avoid conflicts
 
@@ -41,6 +44,11 @@ const CameraScreen = () => {
   const camera = useRef<Camera>(null);
   const isFocused = useIsFocused();
 
+  // Hide header for this screen
+  useLayoutEffect(() => {
+    (navigation as any)?.setOptions?.({ headerShown: false });
+  }, [navigation]);
+
   // Camera permissions
   const { hasPermission, requestPermission } = useCameraPermission();
 
@@ -50,7 +58,6 @@ const CameraScreen = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [cameraMode, setCameraMode] = useState<CameraMode>('photo');
   const [timer, setTimer] = useState<TimerOption>(0);
-  const [hdr, setHdr] = useState(false);
   const [livePhoto, setLivePhoto] = useState(false);
   const [showControls, setShowControls] = useState(true);
   const [isCapturing, setIsCapturing] = useState(false);
@@ -244,8 +251,20 @@ const CameraScreen = () => {
       });
 
       console.log('Photo captured:', photo.path);
+
+      let finalPath = photo.path;
+      // Post-capture beautification (face-aware softening + tone lift)
+      if (beautyEnabled) {
+        try {
+          finalPath = await beautifyPhoto(photo.path);
+        } catch (e) {
+          console.warn('Beautify failed, saving original photo', e);
+          finalPath = photo.path;
+        }
+      }
+
       // Save to app gallery
-      const saved = await savePhotoToMedia(photo.path);
+      const saved = await savePhotoToMedia(finalPath);
       setLastMediaPath(saved);
       Alert.alert('Saved', 'Photo saved to Gallery');
 
@@ -486,16 +505,10 @@ const CameraScreen = () => {
             pointerEvents="none"
           />
 
-          {/* Live filter overlays */}
+          {/* Live filter overlays (Skia Vivid) */}
           {activeFilter === 'vivid' && (
             <>
-              {/* Apple-like Vivid approximation */}
-              <View style={[StyleSheet.absoluteFill, styles.filterOverlay, styles.vividOverlayNeutral]} pointerEvents="none" />
-              <View style={[StyleSheet.absoluteFill, styles.filterOverlay, styles.vividOverlayCool]} pointerEvents="none" />
-              <View style={[StyleSheet.absoluteFill, styles.filterOverlay, styles.vividShadows]} pointerEvents="none" />
-              <View style={styles.vividCenterLiftContainer} pointerEvents="none">
-                <View style={styles.vividCenterLift} />
-              </View>
+              <VividSkiaOverlay width={SCREEN_WIDTH} height={SCREEN_HEIGHT} />
 
               {/* Beauty ML overlay - only when a face is detected */}
               {beautyEnabled && faceDetected && (
@@ -536,7 +549,7 @@ const CameraScreen = () => {
           {/* Top controls */}
           {showControls && (
             <View style={styles.topControls}>
-              <View style={styles.topLeftControls}>
+              <View style={styles.topButtonsRow}>
                 <TouchableOpacity style={styles.iconButton} onPress={() => navigation.goBack()}>
                   <Icon name="close" size={32} color="#fff" />
                 </TouchableOpacity>
@@ -564,54 +577,30 @@ const CameraScreen = () => {
                     />
                   </TouchableOpacity>
                 )}
-              </View>
 
-              <View style={styles.topRightControls}>
                 {cameraMode === 'photo' && (
-                  <>
-                    <TouchableOpacity style={styles.iconButton} onPress={cycleTimer}>
-                      {timer === 0 ? (
-                        <IconIonic name="timer-outline" size={28} color="#fff" />
-                      ) : (
-                        <View style={styles.timerBadge}>
-                          <Text style={styles.timerText}>{timer}</Text>
-                        </View>
-                      )}
-                    </TouchableOpacity>
-
-                    <TouchableOpacity style={styles.iconButton} onPress={() => setHdr(!hdr)}>
-                      <Text style={[styles.hdrText, { color: hdr ? '#FFD700' : '#fff' }]}>
-                        HDR
-                      </Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity 
-                      style={styles.iconButton} 
-                      onPress={() => {
-                        console.log('📷 Logging all cameras...');
-                        if (devices && devices.length > 0) {
-                          console.log(JSON.stringify(devices, null, 2));
-                        } else {
-                          console.log('No cameras found');
-                        }
-                      }}
-                    >
-                      <IconIonic name="information-circle-outline" size={28} color="#fff" />
-                    </TouchableOpacity>
-
-                    {/* Vivid filter toggle */}
-                    <TouchableOpacity
-                      style={styles.iconButton}
-                      onPress={() => setActiveFilter(prev => (prev === 'vivid' ? 'none' : 'vivid'))}
-                    >
-                      <IconIonic
-                        name="color-filter"
-                        size={26}
-                        color={activeFilter === 'vivid' ? '#FFD700' : '#fff'}
-                      />
-                    </TouchableOpacity>
-                  </>
+                  <TouchableOpacity style={styles.iconButton} onPress={cycleTimer}>
+                    {timer === 0 ? (
+                      <IconIonic name="timer-outline" size={28} color="#fff" />
+                    ) : (
+                      <View style={styles.timerBadge}>
+                        <Text style={styles.timerText}>{timer}</Text>
+                      </View>
+                    )}
+                  </TouchableOpacity>
                 )}
+
+                {/* Vivid filter toggle (always visible) */}
+                <TouchableOpacity
+                  style={styles.iconButton}
+                  onPress={() => setActiveFilter(prev => (prev === 'vivid' ? 'none' : 'vivid'))}
+                >
+                  <IconIonic
+                    name="color-filter"
+                    size={26}
+                    color={activeFilter === 'vivid' ? '#FFD700' : '#fff'}
+                  />
+                </TouchableOpacity>
               </View>
             </View>
           )}
@@ -773,6 +762,55 @@ const CameraScreen = () => {
   );
 };
 
+// Skia Vivid overlay (approximation of Apple's "Vivid")
+const VividSkiaOverlay = ({ width, height }: { width: number; height: number }) => {
+  const w = width;
+  const h = height;
+  const center = vec(w / 2, h / 2);
+  const radius = Math.max(w, h);
+
+  return (
+    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
+      {/* Midtone lift and subtle overall punch */}
+      <Group blendMode="overlay" opacity={0.12}>
+        <Rect x={0} y={0} width={w} height={h}>
+          <LinearGradient start={vec(0, 0)} end={vec(w, h)} colors={["rgba(255,255,255,0.35)", "rgba(255,255,255,0.15)"]} />
+        </Rect>
+      </Group>
+
+      {/* Warm highlights ↔ cool shadows tint to emulate Vivid toning */}
+      <Group blendMode="softLight" opacity={0.18}>
+        <Rect x={0} y={0} width={w} height={h}>
+          <LinearGradient
+            start={vec(0, 0)}
+            end={vec(w, h)}
+            colors={["rgba(255, 196, 140, 0.55)", "rgba(120, 180, 255, 0.55)"]}
+          />
+        </Rect>
+      </Group>
+
+      {/* Gentle center lift for perceived clarity */}
+      <Group blendMode="softLight" opacity={0.10}>
+        <Rect x={0} y={0} width={w} height={h}>
+          <RadialGradient c={center} r={radius} colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0)"]} />
+        </Rect>
+      </Group>
+
+      {/* Slight edge vignette to add local contrast */}
+      <Group blendMode="multiply" opacity={0.08}>
+        <Rect x={0} y={0} width={w} height={h}>
+          <RadialGradient c={center} r={radius} colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.45)"]} />
+        </Rect>
+      </Group>
+
+      {/* Very subtle cool cast to keep whites crisp */}
+      <Group blendMode="color" opacity={0.04}>
+        <Fill color="rgba(10, 40, 80, 1)" />
+      </Group>
+    </Canvas>
+  );
+};
+
 // Scrollable mode picker component (iPhone-style)
 const ScrollableModePicker = ({
   modes,
@@ -855,11 +893,16 @@ const styles = StyleSheet.create({
   },
   topLeftControls: {
     flexDirection: 'row',
-    gap: 15,
+    gap: TOP_BUTTON_SPACING,
   },
   topRightControls: {
     flexDirection: 'row',
-    gap: 15,
+    gap: TOP_BUTTON_SPACING,
+  },
+  topButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: TOP_BUTTON_SPACING,
   },
   iconButton: {
     width: 48,

@@ -1,4 +1,5 @@
 import RNFS from 'react-native-fs';
+import notifee, { AndroidImportance } from '@notifee/react-native';
 
 export const DOWNLOADS_DIR = `${RNFS.DocumentDirectoryPath}/downloads`;
 
@@ -34,10 +35,70 @@ export async function downloadVideoAndSave(url: string, suggestedName?: string):
   }
   const baseName = sanitizeFileName(suggestedName || candidate);
   const toFile = `${DOWNLOADS_DIR}/${baseName}`;
-  const result = await RNFS.downloadFile({ fromUrl: url, toFile, discretionary: true, background: true }).promise;
+  // Prepare notifications (Android/iOS 13+ may require permissions)
+  try { await notifee.requestPermission(); } catch (_) {}
+  let channelId = 'downloads';
+  try {
+    channelId = await notifee.createChannel({ id: 'downloads', name: 'Downloads', importance: AndroidImportance.LOW });
+  } catch (_) {}
+
+  const notificationId = `dl-${Date.now()}`;
+  try {
+    await notifee.displayNotification({
+      id: notificationId,
+      title: 'Downloading',
+      body: `${baseName} — preparing...`,
+      android: { channelId, onlyAlertOnce: true, ongoing: true, progress: { max: 100, current: 0, indeterminate: true } },
+    });
+  } catch (_) {}
+
+  let lastPct = 0;
+  const toMB = (n: number) => (n / (1024 * 1024));
+  const result = await RNFS.downloadFile({
+    fromUrl: url,
+    toFile,
+    discretionary: true,
+    background: true,
+    progressDivider: 2,
+    progress: async (data) => {
+      const total = Number(data.contentLength || 0);
+      const written = Number(data.bytesWritten || 0);
+      const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((written / total) * 100))) : 0;
+      if (pct !== lastPct) {
+        lastPct = pct;
+        try {
+          const writtenMb = toMB(written).toFixed(1);
+          const totalMb = total > 0 ? toMB(total).toFixed(1) : undefined;
+          const body = totalMb ? `${baseName} — ${pct}% (${writtenMb} / ${totalMb} MB)` : `${baseName} — ${writtenMb} MB`;
+          await notifee.displayNotification({
+            id: notificationId,
+            title: total > 0 ? `Downloading ${pct}%` : 'Downloading',
+            body,
+            android: { channelId, onlyAlertOnce: true, ongoing: true, progress: { max: 100, current: pct, indeterminate: total === 0 } },
+          });
+        } catch (_) {}
+      }
+    },
+  }).promise;
   if (result.statusCode && result.statusCode >= 200 && result.statusCode < 300) {
+    try {
+      await notifee.displayNotification({
+        id: notificationId,
+        title: 'Download complete',
+        body: `${baseName} — saved`,
+        android: { channelId, onlyAlertOnce: true, ongoing: false, progress: { max: 100, current: 100, indeterminate: false } },
+      });
+    } catch (_) {}
     return toFile;
   }
+  try {
+    await notifee.displayNotification({
+      id: notificationId,
+      title: 'Download failed',
+      body: baseName,
+      android: { channelId, onlyAlertOnce: true, ongoing: false },
+    });
+  } catch (_) {}
   throw new Error(`Download failed with status ${result.statusCode}`);
 }
 

@@ -35,6 +35,12 @@ public class NotificationService extends Service {
         // Start as foreground service
         startForeground(NOTIFICATION_ID, createNotification());
         
+        // Nudge Headless JS keep-alive to ensure background JS can spin up
+        try {
+            Intent keepAlive = new Intent(this, KeepAliveService.class);
+            startService(keepAlive);
+        } catch (Exception ignored) {}
+        
         // Keep service running
         return START_STICKY;
     }
@@ -55,7 +61,16 @@ public class NotificationService extends Service {
         Log.d(TAG, "App task removed, restarting notification service");
         // Restart service when app is removed from recent apps
         Intent restartServiceIntent = new Intent(getApplicationContext(), NotificationService.class);
-        startService(restartServiceIntent);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            startForegroundService(restartServiceIntent);
+        } else {
+            startService(restartServiceIntent);
+        }
+        // Also poke headless keep-alive
+        try {
+            Intent keepAlive = new Intent(getApplicationContext(), KeepAliveService.class);
+            startService(keepAlive);
+        } catch (Exception ignored) {}
         super.onTaskRemoved(rootIntent);
     }
 
