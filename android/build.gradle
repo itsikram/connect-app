@@ -49,3 +49,18 @@ gradle.projectsEvaluated {
         }
     }
 }
+
+// Enforce a single NDK version for all Android subprojects to avoid mismatches
+subprojects { project ->
+    // Configure when the Android plugin is applied, without afterEvaluate
+    plugins.withId("com.android.library") {
+        android {
+            ndkVersion = rootProject.ext.ndkVersion
+        }
+    }
+    plugins.withId("com.android.application") {
+        android {
+            ndkVersion = rootProject.ext.ndkVersion
+        }
+    }
+}

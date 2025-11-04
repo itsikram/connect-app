@@ -71,7 +71,7 @@ def enableProguardInReleaseBuilds = false
  * give correct results when using with locales other than en-US. Note that
  * this variant is about 6MiB larger per architecture than default.
  */
-def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
+// Using Hermes; JSC dependency removed for faster/smaller builds
 
 android {
     ndkVersion = rootProject.ext.ndkVersion
@@ -131,8 +131,6 @@ dependencies {
     // The version of react-native is set by the React Native Gradle Plugin
     implementation("com.facebook.react:react-android")
     implementation("androidx.multidex:multidex:2.0.1")
-
-    implementation jscFlavor
 }
 
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
