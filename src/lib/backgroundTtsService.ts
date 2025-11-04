@@ -28,8 +28,64 @@ class BackgroundTtsService {
       // Load settings from storage
       await this.loadSettings();
       
-      // Configure TTS
-      await Tts.setDefaultLanguage(this.settings.language);
+      // Configure TTS language with graceful fallback if unsupported
+      let appliedLanguage = this.settings.language;
+      try {
+        // Try to use a supported voice if available
+        const voices: any[] = (await Tts.voices().catch(() => [])) as any[];
+        const installedVoices = Array.isArray(voices)
+          ? voices.filter((v: any) => !v?.notInstalled)
+          : [];
+        const installedLanguages = installedVoices.map((v: any) => v?.language).filter(Boolean);
+
+        const fallbackCandidates = [
+          this.settings.language,
+          'en-US',
+          'en_GB',
+          'en-IN',
+          'en',
+        ].filter(Boolean) as string[];
+
+        let selectedLanguage: string | undefined;
+        for (const lang of fallbackCandidates) {
+          if (installedLanguages.includes(lang)) {
+            selectedLanguage = lang;
+            break;
+          }
+        }
+        // If we didn't find a match by inspection, still attempt in order using setDefaultLanguage
+        if (!selectedLanguage) {
+          for (const lang of fallbackCandidates) {
+            try {
+              await Tts.setDefaultLanguage(lang);
+              selectedLanguage = lang;
+              break;
+            } catch (_) {
+              // keep trying
+            }
+          }
+        } else {
+          await Tts.setDefaultLanguage(selectedLanguage);
+        }
+
+        // If still nothing worked, skip language configuration rather than crashing
+        if (selectedLanguage) {
+          appliedLanguage = selectedLanguage;
+          // Try to set a matching voice for better reliability
+          const matchingVoice = installedVoices.find((v: any) => v?.language === selectedLanguage);
+          if (matchingVoice?.id) {
+            try {
+              await (Tts as any).setDefaultVoice?.(matchingVoice.id);
+            } catch (_) {}
+          }
+        } else {
+          console.warn('🎤 No supported TTS language found from candidates; continuing without explicit language');
+        }
+      } catch (langError) {
+        console.warn('🎤 Could not configure preferred TTS language, proceeding with platform default:', langError);
+      }
+
+      // Configure rate after language selection
       await Tts.setDefaultRate(this.settings.rate);
       
       // Set up event listeners
@@ -40,6 +96,13 @@ class BackgroundTtsService {
 
       this.isInitialized = true;
       console.log('🎤 Background TTS Service initialized');
+
+      // Persist applied language if it differs (prevents repeated unsupported-language attempts next boot)
+      if (appliedLanguage && appliedLanguage !== this.settings.language) {
+        try {
+          await this.saveSettings({ language: appliedLanguage });
+        } catch (_) {}
+      }
     } catch (error) {
       console.error('❌ Error initializing Background TTS Service:', error);
     }

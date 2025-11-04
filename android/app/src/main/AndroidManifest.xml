@@ -13,6 +13,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Foreground service permissions for ongoing call controls (best effort across API levels) -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_PHONE_CALL" />
@@ -23,9 +24,7 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
@@ -105,7 +104,7 @@
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"
         android:exported="false"
-        android:foregroundServiceType="mediaProjection">
+        >
       </service>
 
       <!-- Background TTS Service for push notifications -->
@@ -113,7 +112,7 @@
         android:name="com.connect.app.BackgroundTtsService"
         android:exported="false"
         android:enabled="true"
-        android:foregroundServiceType="mediaProjection">
+        android:foregroundServiceType="mediaPlayback">
         <intent-filter>
           <action android:name="android.intent.action.MEDIA_BUTTON" />
         </intent-filter>
@@ -124,8 +123,14 @@
         android:name="com.connect.app.NotificationService"
         android:exported="false"
         android:enabled="true"
-        android:foregroundServiceType="mediaProjection">
+        android:foregroundServiceType="mediaPlayback">
       </service>
+
+      <!-- Ensure proper foreground service types for background actions service on Android 14+ -->
+      <service
+        android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
+        android:exported="false"
+        android:foregroundServiceType="dataSync|mediaPlayback" />
 
       <!-- Boot receiver to restart background services -->
       <receiver
