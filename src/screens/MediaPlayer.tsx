@@ -119,13 +119,13 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const renderControls = () => (
     <View style={styles.controlsRow}>
       <TouchableOpacity style={styles.controlBtn} onPress={() => skip(-10)}>
-        <Icon name="replay_10" size={22} color="#fff" />
+        <Icon name="replay-10" size={22} color="#fff" />
       </TouchableOpacity>
       <TouchableOpacity style={[styles.playBtn, { backgroundColor: 'rgba(255,255,255,0.15)' }]} onPress={togglePlay}>
         <Icon name={paused ? 'play-arrow' : 'pause'} size={28} color="#fff" />
       </TouchableOpacity>
       <TouchableOpacity style={styles.controlBtn} onPress={() => skip(10)}>
-        <Icon name="forward_10" size={22} color="#fff" />
+        <Icon name="forward-10" size={22} color="#fff" />
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.controlBtn} onPress={toggleMute}>
@@ -201,7 +201,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
             onProgress={onProgress}
             onBuffer={onBuffer}
             onEnd={onEnd}
-            resizeMode={isVideo ? (fullscreen ? 'cover' : 'contain') : 'contain'}
             style={[playerStyle, rotated && styles.rotate90]}
             poster={isVideo ? source.poster : undefined}
             playInBackground

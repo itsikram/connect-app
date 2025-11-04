@@ -73,6 +73,10 @@ const Menu = () => {
       (navigation as any).navigate('Menu', { screen: 'YouTube' });
       return;
     }
+    if (app.id === 'vpnBrowser') {
+      (navigation as any).navigate('Menu', { screen: 'VpnBrowser' });
+      return;
+    }
     if (app.id === 'maps') {
       (navigation as any).navigate('Menu', { screen: 'GoogleMaps' });
       return;
@@ -83,6 +87,10 @@ const Menu = () => {
     }
     if (app.id === 'cricbuzz') {
       (navigation as any).navigate('Menu', { screen: 'Cricbuzz' });
+      return;
+    }
+    if (app.id === 'downloads') {
+      (navigation as any).navigate('Menu', { screen: 'Downloads' });
       return;
     }
     app.onPress?.();

@@ -133,9 +133,11 @@ function MenuStack() {
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="EmotionFaceMesh" component={require('./src/screens/EmotionFaceMeshDemo').default} />
       <Stack.Screen name="VideoLibrary" component={require('./src/screens/VideoLibraryScreen').default} />
+      <Stack.Screen name="Downloads" component={require('./src/screens/DownloadsScreen').default} />
       <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
       <Stack.Screen name="Facebook" component={require('./src/screens/FacebookScreen').default} />
       <Stack.Screen name="YouTube" component={require('./src/screens/YouTubeScreen').default} />
+        <Stack.Screen name="VpnBrowser" component={require('./src/screens/VpnBrowserScreen').default} />
       <Stack.Screen name="Cricbuzz" component={require('./src/screens/CricbuzzScreen').default} />
       <Stack.Screen name="GoogleMaps" component={require('./src/screens/GoogleMapsScreen').default} />
       <Stack.Screen name="GoogleContacts" component={require('./src/screens/GoogleContactsScreen').default} />

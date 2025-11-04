@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleSheet, StatusBar, Platform } from 'react-native';
-import { WebView } from 'react-native-webview';
+import WebView from 'react-native-webview-proxy';
 import { useTheme } from '../contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingBackButton from '../components/FloatingBackButton';

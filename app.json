@@ -1,6 +1,9 @@
 {
   "name": "Connect",
   "displayName": "Connect",
+  "react-native-google-mobile-ads": {
+    "android_app_id": "ca-app-pub-8953965236531270~4949960103"
+  },
   "android": {
     "package": "com.connect.app"
   },

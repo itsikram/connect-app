@@ -75,6 +75,13 @@ export const sampleApps: AppItem[] = [
     onPress: () => console.log('Gallery pressed'),
   },
   {
+    id: 'downloads',
+    name: 'Downloads',
+    icon: 'download',
+    color: '#009688',
+    onPress: () => console.log('Downloads pressed'),
+  },
+  {
     id: 'whatsapp',
     name: 'WhatsApp',
     icon: 'message',
@@ -113,6 +120,15 @@ export const sampleApps: AppItem[] = [
     onPress: () => {
       // Navigation will be handled by the AppGrid component
       console.log('YouTube pressed - navigation handled by AppGrid');
+    },
+  },
+  {
+    id: 'vpnBrowser',
+    name: 'VPN Browser',
+    icon: 'vpn-key',
+    color: '#00BCD4',
+    onPress: () => {
+      console.log('VPN Browser pressed');
     },
   },
   {
