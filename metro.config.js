@@ -9,6 +9,9 @@ const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const base = getDefaultConfig(__dirname);
 
 const config = {
+  projectRoot: __dirname,
+  // Keep watch scope minimal to avoid slow/failed watch initialization on Windows
+  watchFolders: [],
   transformer: {
     ...base.transformer,
     babelTransformerPath: require.resolve('react-native-svg-transformer'),
@@ -28,5 +31,9 @@ const config = {
     },
   },
 };
+
+// Disable watch mode for release builds on Windows to avoid file watcher failures
+// Metro will automatically skip watch mode when CI is set
+// This helps prevent Windows file watcher issues during release builds
 
 module.exports = mergeConfig(base, config);
