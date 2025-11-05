@@ -5,7 +5,7 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       ios_signing:
-        distribution_type: development # ad_hoc, development, or enterprise (not app_store)
+        distribution_type: development # development, ad_hoc, or enterprise (not app_store)
         bundle_identifier: com.connect.app
       groups:
         - ios_credentials # Add your iOS code signing credentials here
@@ -28,7 +28,7 @@ workflows:
         script: |
           cd app/ios
           xcode-project use-profiles
-      - name: Build IPA for Ad-Hoc distribution
+      - name: Build IPA for Development distribution
         script: |
           cd app/ios
           xcodebuild \
@@ -44,7 +44,7 @@ workflows:
           xcodebuild -exportArchive \
             -archivePath build/Connect.xcarchive \
             -exportPath build/ipa \
-            -exportMethod ad-hoc \
+            -exportMethod development \
             -allowProvisioningUpdates
     artifacts:
       - app/ios/build/ipa/*.ipa
