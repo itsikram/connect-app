@@ -5,19 +5,16 @@ workflows:
     instance_type: mac_mini_m1
     environment:
       ios_signing:
-        distribution_type: app_store # or ad_hoc, development, enterprise
+        distribution_type: ad_hoc # ad_hoc, development, or enterprise (not app_store)
         bundle_identifier: com.connect.app
       groups:
-        - app_store_credentials # Add your App Store Connect API key credentials here
+        - ios_credentials # Add your iOS code signing credentials here
       vars:
         XCODE_WORKSPACE: "app/ios/Connect.xcworkspace"
         XCODE_SCHEME: "Connect"
-        APP_ID: 1234567890 # Replace with your App Store Connect App ID
         BUNDLE_ID: "com.connect.app"
       node: 18.20.0
       cocoapods: default
-    integrations:
-      app_store_connect: integration
     scripts:
       - name: Install dependencies
         script: |
@@ -31,7 +28,7 @@ workflows:
         script: |
           cd app/ios
           xcode-project use-profiles
-      - name: Build ipa for App Store
+      - name: Build IPA for Ad-Hoc distribution
         script: |
           cd app/ios
           xcodebuild \
@@ -47,7 +44,7 @@ workflows:
           xcodebuild -exportArchive \
             -archivePath build/Connect.xcarchive \
             -exportPath build/ipa \
-            -exportMethod app-store \
+            -exportMethod ad-hoc \
             -allowProvisioningUpdates
     artifacts:
       - app/ios/build/ipa/*.ipa
@@ -59,13 +56,4 @@ workflows:
         notify:
           success: true
           failure: false
-      app_store_connect:
-        # Authentication with App Store Connect API key (configured in Codemagic UI)
-        auth: integration
-        # Submit to TestFlight
-        submit_to_testflight: true
-        beta_groups:
-          - group name of testers # Add your TestFlight beta group name
-        # Or submit to App Store
-        # submit_to_app_store: true
 
