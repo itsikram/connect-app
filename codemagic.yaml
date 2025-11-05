@@ -7,8 +7,10 @@ workflows:
       ios_signing:
         distribution_type: development # development, ad_hoc, or enterprise (not app_store)
         bundle_identifier: com.connect.app
+        # Automatic code signing - Codemagic will generate certificates/profiles automatically
+        # Requires App Store Connect API key configured in Codemagic UI
       groups:
-        - ios_credentials # Add your iOS code signing credentials here
+        - ios_credentials # MUST match the group name in Codemagic Settings → Code signing identities
       vars:
         XCODE_WORKSPACE: "app/ios/Connect.xcworkspace"
         XCODE_SCHEME: "Connect"
