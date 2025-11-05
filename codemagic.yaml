@@ -27,6 +27,7 @@ workflows:
           pod install
       - name: Set up code signing settings on Xcode project
         script: |
+          cd app/ios
           xcode-project use-profiles
       - name: Build ipa for App Store
         script: |
@@ -60,11 +61,8 @@ workflows:
           success: true
           failure: false
       app_store_connect:
-        # Authentication with App Store Connect API key
-        auth:
-          key_id: $APP_STORE_KEY_ID
-          issuer_id: $APP_STORE_ISSUER_ID
-          key: $APP_STORE_PRIVATE_KEY
+        # Authentication with App Store Connect API key (configured in Codemagic UI)
+        auth: integration
         # Submit to TestFlight
         submit_to_testflight: true
         beta_groups:
