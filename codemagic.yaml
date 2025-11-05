@@ -16,6 +16,8 @@ workflows:
         BUNDLE_ID: "com.connect.app"
       node: 18.20.0
       cocoapods: default
+    integrations:
+      app_store_connect: integration
     scripts:
       - name: Install dependencies
         script: |
