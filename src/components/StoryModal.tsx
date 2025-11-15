@@ -8,9 +8,9 @@ import {
   TouchableOpacity,
   Dimensions,
   StatusBar,
-  SafeAreaView,
   ActivityIndicator,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
@@ -52,6 +52,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
   hasPrevious = false,
 }) => {
   const { colors: themeColors } = useTheme();
+  const insets = useSafeAreaInsets();
   const [imageLoading, setImageLoading] = useState(true);
   const [progress, setProgress] = useState(0);
 
@@ -110,7 +111,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
       onRequestClose={onClose}
     >
       <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.9)" />
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top || StatusBar.currentHeight || 0 }]}>
         <View style={styles.header}>
           {/* Progress bar */}
           <View style={styles.progressContainer}>
@@ -121,27 +122,30 @@ const StoryModal: React.FC<StoryModalProps> = ({
             </View>
           </View>
 
-          {/* Story author info */}
-          <View style={styles.authorContainer}>
-            <Image
-              source={{ uri: story.author.profilePic }}
-              style={styles.authorPic}
-              resizeMode="cover"
-            />
-            <View style={styles.authorInfo}>
-              <Text style={styles.authorName}>
-                {story.author.fullName || `${story.author.user.firstName} ${story.author.user.surname}`}
-              </Text>
-              <Text style={styles.storyTime}>
-                {formatTime(story.createdAt)}
-              </Text>
+          {/* Header row with author info and close button */}
+          <View style={styles.headerRow}>
+            {/* Story author info */}
+            <View style={styles.authorContainer}>
+              <Image
+                source={{ uri: story.author.profilePic }}
+                style={styles.authorPic}
+                resizeMode="cover"
+              />
+              <View style={styles.authorInfo}>
+                <Text style={styles.authorName}>
+                  {story.author.fullName || `${story.author.user.firstName} ${story.author.user.surname}`}
+                </Text>
+                <Text style={styles.storyTime}>
+                  {formatTime(story.createdAt)}
+                </Text>
+              </View>
             </View>
-          </View>
 
-          {/* Close button */}
-          <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-            <Icon name="close" size={24} color="white" />
-          </TouchableOpacity>
+            {/* Close button */}
+            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
+              <Icon name="close" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
         </View>
 
         {/* Story content */}
@@ -187,7 +191,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
             </View>
           )}
         </View>
-      </SafeAreaView>
+      </View>
     </Modal>
   );
 };
@@ -216,9 +220,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'white',
     borderRadius: 1,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   authorContainer: {
     flexDirection: 'row',
     alignItems: 'center',
+    flex: 1,
   },
   authorPic: {
     width: 36,
@@ -241,6 +251,7 @@ const styles = StyleSheet.create({
   },
   closeButton: {
     padding: 8,
+    marginLeft: 8,
   },
   contentContainer: {
     flex: 1,

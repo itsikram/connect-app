@@ -1,6 +1,7 @@
 package com.connect.app
 
 import android.app.Application
+import android.content.Intent
 import com.facebook.react.PackageList
 import com.connect.app.overlay.FloatingOverlayPackage
 import com.connect.app.CallNotificationPackage
@@ -36,5 +37,18 @@ class MainApplication : Application(), ReactApplication {
   override fun onCreate() {
     super.onCreate()
     loadReactNative(this)
+    
+    // Start notification service on app startup to ensure it's always running
+    try {
+      val serviceIntent = Intent(this, NotificationService::class.java)
+      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+        startForegroundService(serviceIntent)
+      } else {
+        startService(serviceIntent)
+      }
+      android.util.Log.d("MainApplication", "NotificationService started from MainApplication")
+    } catch (e: Exception) {
+      android.util.Log.e("MainApplication", "Failed to start NotificationService", e)
+    }
   }
 }

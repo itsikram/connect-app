@@ -44,6 +44,10 @@ const Menu = () => {
       (navigation as any).navigate('EmotionFaceMesh');
       return;
     }
+    if (app.id === 'FaceLandmarks') {
+      (navigation as any).navigate('Menu', { screen: 'FaceLandmarks' });
+      return;
+    }
     if (app.id === 'camera') {
       (navigation as any).navigate('Home', { screen: 'Camera' });
       return;

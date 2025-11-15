@@ -61,6 +61,16 @@ export const sampleApps: AppItem[] = [
     },
   },
   {
+    id: 'FaceLandmarks',
+    name: 'Face Landmarks',
+    icon: 'face-unlock',
+    color: '#00E5FF',
+    onPress: () => {
+      // Navigation handled in Menu via handleAppPress
+      console.log('Face Landmarks pressed');
+    },
+  },
+  {
     id: 'camera',
     name: 'Camera',
     icon: 'camera-alt',

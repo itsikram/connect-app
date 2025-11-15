@@ -76,6 +76,7 @@ import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
 import UpdateModal from './src/components/UpdateModal';
 import RNFS from 'react-native-fs';
 import { getRemoteConfig, subscribeRemoteConfig } from './src/lib/remoteConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -135,6 +136,7 @@ function MenuStack() {
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="EmotionFaceMesh" component={require('./src/screens/EmotionFaceMeshDemo').default} />
+      <Stack.Screen name="FaceLandmarks" component={require('./src/screens/FaceLandmarksScreen').default} />
       <Stack.Screen name="VideoLibrary" component={require('./src/screens/VideoLibraryScreen').default} />
       <Stack.Screen name="Downloads" component={require('./src/screens/DownloadsScreen').default} />
       <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
@@ -354,9 +356,48 @@ function AppContent() {
     return 0;
   }, []);
 
+  // Helper functions to track update modal shows per day
+  const getTodayDateString = React.useCallback((): string => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  }, []);
+
+  // Check if we can show the modal and increment count atomically
+  const checkAndIncrementUpdateModalCount = React.useCallback(async (): Promise<boolean> => {
+    try {
+      const storageKey = 'updateModalShowCount';
+      const today = getTodayDateString();
+      const stored = await AsyncStorage.getItem(storageKey);
+      
+      let count = 0;
+      if (stored) {
+        const data = JSON.parse(stored);
+        if (data.date === today) {
+          count = data.count || 0;
+        }
+      }
+
+      // Check if shown less than 2 times today
+      if (count < 2) {
+        // Increment and save
+        await AsyncStorage.setItem(storageKey, JSON.stringify({
+          date: today,
+          count: count + 1
+        }));
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.warn('Error checking/incrementing update modal show count:', error);
+      // On error, allow showing (fail open)
+      return true;
+    }
+  }, [getTodayDateString]);
+
   // Consume remote config set by index.js (/connect) and decide update prompt
   React.useEffect(() => {
-    const applyConfig = (cfg: any) => {
+    const applyConfig = async (cfg: any) => {
       if (!cfg) return;
       const serverAppVersion: string = cfg?.appVersion || '';
       const serverIsNew: boolean = Boolean(cfg?.isNewVersionAvailable);
@@ -369,7 +410,11 @@ function AppContent() {
         const currentVersion = getCurrentAppVersion();
         const newer = serverIsNew || (serverAppVersion && compareVersions(serverAppVersion, currentVersion) > 0);
         if (newer) {
-          setUpdateModalVisible(true);
+          // Check if we can show the modal (max 2 times per day) and increment count atomically
+          const canShow = await checkAndIncrementUpdateModalCount();
+          if (canShow) {
+            setUpdateModalVisible(true);
+          }
         }
       }
     };
@@ -383,7 +428,7 @@ function AppContent() {
     return () => {
       try { unsubscribe && unsubscribe(); } catch (_) {}
     };
-  }, [compareVersions, getCurrentAppVersion]);
+  }, [compareVersions, getCurrentAppVersion, checkAndIncrementUpdateModalCount]);
 
   const ensureStoragePermission = React.useCallback(async (): Promise<boolean> => {
     if (Platform.OS !== 'android') return true;
@@ -1007,6 +1052,14 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark' || true;
+
+  // Send HTTP request to yt-dl service on app start
+  React.useEffect(() => {
+    fetch('https://yt-dl-tyyw.onrender.com')
+      .catch(() => {
+        // Silently fail - fire and forget
+      });
+  }, []);
 
   return (
     <ErrorBoundary>

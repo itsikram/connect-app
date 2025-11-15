@@ -130,6 +130,16 @@
         android:foregroundServiceType="mediaPlayback">
       </service>
 
+      <!-- Custom Firebase Messaging Service to handle FCM messages when app is closed -->
+      <service
+        android:name="com.connect.app.ConnectFirebaseMessagingService"
+        android:exported="false"
+        android:enabled="true">
+        <intent-filter>
+          <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+      </service>
+
       <!-- React Native Background Actions foreground service (keeps background alive) -->
       <service
         android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
