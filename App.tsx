@@ -20,6 +20,7 @@ import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import { Provider as PaperProvider } from 'react-native-paper';
+import { getApp } from '@react-native-firebase/app';
 import Home from './src/screens/Home';
 import Message from './src/screens/Message';
 import Menu from './src/screens/Menu';
@@ -63,6 +64,7 @@ import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
 import GlobalExpressionDetection from './src/components/GlobalExpressionDetection';
+import locationService from './src/lib/locationService';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
@@ -491,6 +493,17 @@ function AppContent() {
   }, [apkUrl, serverVersion, ensureStoragePermission]);
 
   React.useEffect(() => {
+    // Stop any currently playing TTS immediately
+    const stopTts = async () => {
+      try {
+        await backgroundTtsService.stopSpeaking();
+        await Tts.stop();
+      } catch (e) {
+        // Ignore errors
+      }
+    };
+    stopTts();
+
     // Initialize both TTS systems
     const initializeTts = async () => {
       try {
@@ -501,6 +514,9 @@ function AppContent() {
         
         // Initialize background TTS service
         await backgroundTtsService.initialize();
+        // Stop TTS after initialization to ensure it's not playing
+        await backgroundTtsService.stopSpeaking();
+        await Tts.stop();
         
         // Initialize background service manager
         await backgroundServiceManager.initialize();
@@ -532,16 +548,52 @@ function AppContent() {
 
   // Connect to socket when profile id becomes available; avoid depending on isConnected to prevent loops
   React.useEffect(() => {
-    if (!myProfile?._id) return;
-    console.log('myProfile for socket', myProfile?._id);
+    if (!myProfile?._id) {
+      console.log('⏸️ Socket connection skipped: profile ID not available');
+      return;
+    }
+    console.log('🔌 Attempting socket connection with profile ID:', myProfile._id);
     connect(myProfile._id)
       .then(() => {
-        console.log('Socket connected successfully in SingleMessage component');
+        console.log('✅ Socket connected successfully in AppContent');
       })
       .catch((error) => {
-        console.error('Failed to connect socket in SingleMessage component:', error);
-        Alert.alert('Connection Error', 'Failed to connect to real-time service');
+        console.error('❌ Failed to connect socket in AppContent:', error);
+        console.error('❌ Error details:', {
+          message: error?.message,
+          stack: error?.stack,
+          profileId: myProfile._id
+        });
+        // Don't show alert immediately - socket will retry automatically
+        // Alert.alert('Connection Error', 'Failed to connect to real-time service. The app will retry automatically.');
       });
+  }, [myProfile?._id, connect]);
+
+  // Initialize and start location tracking when profile is available
+  React.useEffect(() => {
+    if (!myProfile?._id) return;
+
+    const initializeLocation = async () => {
+      try {
+        console.log('📍 Initializing location service for profile:', myProfile._id);
+        await locationService.initialize(myProfile._id);
+        // Start will check the setting internally
+        await locationService.start();
+        console.log('✅ Location tracking initialized');
+      } catch (error) {
+        console.error('❌ Error initializing location service:', error);
+        // Don't show alert for location errors as it's not critical
+      }
+    };
+
+    initializeLocation();
+
+    // Cleanup on unmount or profile change
+    return () => {
+      locationService.destroy().catch((error) => {
+        console.error('Error destroying location service:', error);
+      });
+    };
   }, [myProfile?._id]);
 
   // Fetch initial notifications
@@ -778,6 +830,18 @@ function AppContent() {
     on('friend_offline', handleFriendOffline);
     on('is_active', handleIsActive);
 
+    // Handle friend location updates
+    const handleFriendLocationUpdate = (data: any) => {
+      const { profileId: friendProfileId, location } = data;
+      if (friendProfileId && location) {
+        console.log('📍 Friend location update received:', friendProfileId, location);
+        // You can dispatch this to Redux or handle it as needed
+        // For example, update friend location in Redux store
+        // dispatch(updateFriendLocation({ profileId: friendProfileId, location }));
+      }
+    };
+    on('friend_location_update', handleFriendLocationUpdate);
+
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
 
@@ -876,6 +940,7 @@ function AppContent() {
       off('friend_online', handleFriendOnline)
       off('friend_offline', handleFriendOffline)
       off('is_active', handleIsActive)
+      off('friend_location_update', handleFriendLocationUpdate)
     }
   }, [isConnected,on,off])
 
@@ -1052,6 +1117,19 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark' || true;
+
+  // Ensure Firebase is initialized when App component mounts
+  React.useEffect(() => {
+    try {
+      // Check if Firebase is initialized
+      getApp();
+      console.log('✅ Firebase app initialized in App component');
+    } catch (error) {
+      console.error('❌ Firebase not initialized in App component:', error);
+      // Firebase should auto-initialize from google-services.json on Android
+      // If it's not initialized, there might be a configuration issue
+    }
+  }, []);
 
   // Send HTTP request to yt-dl service on app start
   React.useEffect(() => {

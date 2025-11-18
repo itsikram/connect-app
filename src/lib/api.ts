@@ -178,7 +178,10 @@ export const userAPI = {
   //   api.post(`profile/check`, { profileId }),
 
   updateProfile: (userData: any): Promise<AxiosResponse> => 
-    api.post('profile', userData),
+    api.post('profile/update', userData),
+
+  updateLocation: (locationData: { lastLocation: { latitude: number; longitude: number; timestamp: number; accuracy?: number; altitude?: number; heading?: number; speed?: number } }): Promise<AxiosResponse> =>
+    api.post('profile/update', locationData),
 
   changePassword: (passwordData: PasswordChangeData): Promise<AxiosResponse> =>
     api.post('user/change-password', passwordData),
@@ -195,6 +198,8 @@ export const pushAPI = {
     api.post('/notification/token/register', { token }, authToken ? { headers: { Authorization: authToken } } : {}),
   unregisterToken: (token: string, authToken?: string): Promise<AxiosResponse> =>
     api.post('/notification/token/unregister', { token }, authToken ? { headers: { Authorization: authToken } } : {}),
+  unregisterAllOtherTokens: (currentToken: string, authToken?: string): Promise<AxiosResponse> =>
+    api.post('/notification/token/unregister-all-others', { currentToken }, authToken ? { headers: { Authorization: authToken } } : {}),
   sendTest: (payload: { title?: string; body?: string; data?: Record<string, string> }, authToken?: string): Promise<AxiosResponse> =>
     api.post('/notification/send-test', payload || {}, authToken ? { headers: { Authorization: authToken } } : {}),
 };

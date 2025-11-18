@@ -6,10 +6,15 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
+  Alert,
+  ActivityIndicator,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
+import { pushAPI } from '../../lib/api';
+import { getOrCreateFcmToken } from '../../lib/push';
 
 interface NotificationSettings {
   friendRequestReceived: boolean;
@@ -31,6 +36,7 @@ const NotificationSettings = () => {
   const { colors: themeColors } = useTheme();
   const { settings, updateSettings } = useSettings();
   const { showSuccess, showError } = useToast();
+  const [isUnregistering, setIsUnregistering] = useState(false);
   
   const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
     friendRequestReceived: settings.friendRequestReceived ?? true,
@@ -84,6 +90,44 @@ const NotificationSettings = () => {
       console.error('Error saving notification settings:', error);
       showError('Failed to save notification settings');
     }
+  };
+
+  const handleUnregisterAllOtherDevices = async () => {
+    Alert.alert(
+      'Unregister All Other Devices',
+      'This will unregister all other devices for notifications. Your current device will remain registered. Continue?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Unregister',
+          style: 'destructive',
+          onPress: async () => {
+            setIsUnregistering(true);
+            try {
+              const currentToken = await getOrCreateFcmToken();
+              const authToken = await AsyncStorage.getItem('authToken');
+              
+              if (!currentToken) {
+                showError('Unable to get current device token');
+                setIsUnregistering(false);
+                return;
+              }
+
+              await pushAPI.unregisterAllOtherTokens(currentToken, authToken || undefined);
+              showSuccess('All other devices have been unregistered');
+            } catch (error) {
+              console.error('Error unregistering devices:', error);
+              showError('Failed to unregister devices. Please try again.');
+            } finally {
+              setIsUnregistering(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   const renderSwitchSetting = (
@@ -225,6 +269,27 @@ const NotificationSettings = () => {
         </Text>
       </View>
 
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
+          Device Management
+        </Text>
+        <Text style={[styles.sectionDescription, { color: themeColors.text.secondary }]}>
+          Manage notification devices registered to your account
+        </Text>
+        <TouchableOpacity 
+          style={[styles.dangerButton, { backgroundColor: themeColors.error || '#dc3545', opacity: isUnregistering ? 0.6 : 1 }]} 
+          onPress={handleUnregisterAllOtherDevices}
+          disabled={isUnregistering}
+        >
+          {isUnregistering ? (
+            <ActivityIndicator color={themeColors.text.inverse} />
+          ) : (
+            <Text style={[styles.dangerButtonText, { color: themeColors.text.inverse }]}>
+              Unregister All Other Devices
+            </Text>
+          )}
+        </TouchableOpacity>
+      </View>
       
       <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
         <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Notification Settings</Text>
@@ -308,6 +373,17 @@ const styles = StyleSheet.create({
   },
   saveButtonText: {
     fontSize: 18,
+    fontWeight: '600',
+  },
+  dangerButton: {
+    paddingVertical: 16,
+    paddingHorizontal: 32,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  dangerButtonText: {
+    fontSize: 16,
     fontWeight: '600',
   },
 });

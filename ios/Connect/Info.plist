@@ -35,6 +35,18 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app requires background location.</string>
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>We need your location to track movement.</string>
+
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>location</string>
+	</array>
+
+	
 	<!-- Permissions for Agora Video/Audio Calling -->
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs access to camera to make video calls</string>

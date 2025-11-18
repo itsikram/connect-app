@@ -23,7 +23,7 @@ try {
 import App from './App';
 import { name as appName } from './app.json';
 import messaging from '@react-native-firebase/messaging';
-import { getApp } from '@react-native-firebase/app';
+import { getApp, initializeApp } from '@react-native-firebase/app';
 import notifee from '@notifee/react-native';
 import { displayIncomingCallNotification, configureNotificationsChannel } from './src/lib/push';
 import mobileAds from 'react-native-google-mobile-ads';
@@ -42,6 +42,23 @@ console.warn = (...args) => {
   }
   originalWarn.apply(console, args);
 };
+
+// Initialize Firebase explicitly to ensure it's ready before use
+// React Native Firebase should auto-initialize from google-services.json on Android
+// This check ensures Firebase is ready before we use it
+let firebaseInitialized = false;
+try {
+  // Try to get the default app first (it may already be initialized)
+  getApp();
+  firebaseInitialized = true;
+  console.log('✅ Firebase app already initialized');
+} catch (error) {
+  // Firebase should auto-initialize from google-services.json on Android
+  // If it's not initialized, log the error but don't fail
+  console.warn('⚠️ Firebase app not initialized yet:', error.message);
+  // Firebase will be initialized when the native code loads
+  // We'll check again when we actually need to use it
+}
 
 // Handle Notifee background events (e.g., action presses when app is killed)
 notifee.onBackgroundEvent(async ({ type, detail }) => {
@@ -77,8 +94,34 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 });
 
 // Background handler: show a notification when message received in background/quit
-messaging().setBackgroundMessageHandler(async remoteMessage => {
+// Ensure Firebase is initialized before setting the handler
+// Note: On Android, Firebase auto-initializes from google-services.json
+// The background handler will check Firebase initialization when it runs
+try {
+  // Check if Firebase is initialized before setting the handler
+  getApp();
+  console.log('✅ Firebase initialized before setting background message handler');
+  firebaseInitialized = true;
+} catch (error) {
+  console.warn('⚠️ Firebase not initialized before setting background message handler:', error.message);
+  // Firebase should auto-initialize from google-services.json on Android
+  // The handler will check again when it runs
+}
+
+// Set the background message handler
+// This must be called at the top level, not inside a function
+try {
+  messaging().setBackgroundMessageHandler(async remoteMessage => {
   try {
+    // Ensure Firebase is initialized in the background handler
+    try {
+      getApp();
+    } catch (firebaseError) {
+      console.error('❌ Firebase not initialized in background handler:', firebaseError);
+      // Return early if Firebase is not initialized
+      return;
+    }
+    
     console.log('📱 Background message received:', remoteMessage?.messageId);
     
     await configureNotificationsChannel();
@@ -88,19 +131,17 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
     try { await backgroundTtsService.initialize(); } catch (e) { console.error('❌ TTS init in BG failed:', e); }
     const data = remoteMessage?.data || {};
     
-    // Speak message directly via FCM when app is killed
+    // Stop any currently playing TTS
+    try {
+      await backgroundTtsService.stopSpeaking();
+    } catch (e) {
+      // Ignore errors when stopping
+    }
+    
+    // Speak message directly via FCM when app is killed - DISABLED
     if (data.type === 'speak_message' || data.type === 'speak-message') {
-      const message = data.message || data.text || data.body || '';
-      if (message && message.trim().length > 0) {
-        try {
-          const priority = data.priority === 'high' ? 'high' : (data.priority === 'low' ? 'low' : 'normal');
-          const interrupt = String(data.interrupt ?? 'true') !== 'false';
-          await backgroundTtsService.speakMessage(message, { priority, interrupt });
-          console.log('🔊 Spoke message from background FCM');
-        } catch (ttsError) {
-          console.error('❌ Error speaking FCM speak_message:', ttsError);
-        }
-      }
+      // TTS disabled - no longer speaking messages
+      console.log('🔇 TTS disabled - skipping speak_message');
       return;
     }
     
@@ -112,15 +153,15 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
         callerId: data.callerId || data.from,
       });
       
-      // Speak incoming call notification
-      try {
-        await backgroundTtsService.speakIncomingCall(
-          data.callerName || 'Unknown Caller',
-          String(data.isAudio) === 'true'
-        );
-      } catch (ttsError) {
-        console.error('❌ Error speaking incoming call:', ttsError);
-      }
+      // TTS disabled - no longer speaking incoming calls
+      // try {
+      //   await backgroundTtsService.speakIncomingCall(
+      //     data.callerName || 'Unknown Caller',
+      //     String(data.isAudio) === 'true'
+      //   );
+      // } catch (ttsError) {
+      //   console.error('❌ Error speaking incoming call:', ttsError);
+      // }
       
       // Import and use the call notification service
       try {
@@ -156,29 +197,71 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
         message: data.message?.substring(0, 50) + '...',
       });
       
-      // Speak new message notification
+      // TTS disabled - no longer speaking new messages
+      // try {
+      //   await backgroundTtsService.speakNewMessage(
+      //     data.senderName || 'Someone',
+      //     data.message || 'New message received'
+      //   );
+      // } catch (ttsError) {
+      //   console.error('❌ Error speaking new message:', ttsError);
+      // }
+    }
+    
+    // Handle chat messages (when app is closed)
+    if (data.type === 'chat') {
+      console.log('💬 Processing chat message in background:', {
+        senderName: data.senderName,
+        message: data.message?.substring(0, 50) + '...',
+      });
+      
+      // Extract title and body for chat messages
+      const chatTitle = remoteMessage?.notification?.title || data.senderName || data.title || 'New Message';
+      const chatBody = remoteMessage?.notification?.body || data.message || data.body || 'You have a new message';
+      
+      // TTS disabled - no longer speaking chat messages
+      // try {
+      //   await backgroundTtsService.speakNewMessage(
+      //     data.senderName || chatTitle,
+      //     chatBody
+      //   );
+      // } catch (ttsError) {
+      //   console.error('❌ Error speaking chat message:', ttsError);
+      // }
+      
+      // Display notification with proper body
       try {
-        await backgroundTtsService.speakNewMessage(
-          data.senderName || 'Someone',
-          data.message || 'New message received'
-        );
-      } catch (ttsError) {
-        console.error('❌ Error speaking new message:', ttsError);
+        await configureNotificationsChannel();
+        await notifee.displayNotification({
+          title: chatTitle,
+          body: chatBody,
+          android: {
+            channelId: 'default',
+            smallIcon: 'ic_launcher',
+            pressAction: { id: 'default' },
+            sound: undefined, // No sound
+          },
+          data,
+        });
+        console.log('✅ Chat notification displayed:', chatTitle, chatBody);
+        return; // Return early to avoid duplicate notification
+      } catch (notifyErr) {
+        console.error('❌ Error displaying chat notification:', notifyErr);
       }
     }
     
     // Handle other notification types
-    const title = remoteMessage?.notification?.title || data.title || 'Message';
+    const title = remoteMessage?.notification?.title || data.title || data.senderName || 'Message';
     const body = remoteMessage?.notification?.body || data.body || data.message || '';
 
-    // Speak general notifications
-    if (data.type === 'notification' || data.type === 'general' || (!data.type && (title || body))) {
-      try {
-        await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
-      } catch (ttsError) {
-        console.error('❌ Error speaking notification:', ttsError);
-      }
-    }
+    // TTS disabled - no longer speaking general notifications
+    // if (data.type === 'notification' || data.type === 'general' || (!data.type && (title || body))) {
+    //   try {
+    //     await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
+    //   } catch (ttsError) {
+    //     console.error('❌ Error speaking notification:', ttsError);
+    //   }
+    // }
 
     // Always display a visible notification for background messages so users see it even when app is quit
     try {
@@ -190,6 +273,7 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
           channelId: 'default',
           smallIcon: 'ic_launcher',
           pressAction: { id: 'default' },
+          sound: undefined, // No sound
         },
         data,
       });
@@ -200,7 +284,12 @@ messaging().setBackgroundMessageHandler(async remoteMessage => {
   } catch (e) {
     console.error('❌ Error in background message handler:', e);
   }
-});
+  });
+} catch (error) {
+  console.error('❌ Failed to set background message handler:', error);
+  // If Firebase is not initialized, the handler will fail
+  // This is expected if Firebase hasn't been initialized yet
+}
 
 AppRegistry.registerComponent(appName, () => App);
 
@@ -240,8 +329,20 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
 (async () => {
   try { 
     await configureNotificationsChannel(); 
+    // Stop any currently playing TTS immediately
+    try {
+      await backgroundTtsService.stopSpeaking();
+    } catch (e) {
+      // Ignore errors
+    }
     // Initialize background TTS service
     await backgroundTtsService.initialize();
+    // Stop TTS after initialization to ensure it's not playing
+    try {
+      await backgroundTtsService.stopSpeaking();
+    } catch (e) {
+      // Ignore errors
+    }
     // Initialize background service manager
     await backgroundServiceManager.initialize();
     // Also directly ensure background actions is running

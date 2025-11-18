@@ -31,6 +31,14 @@ apply plugin: "com.facebook.react.rootproject"
 
 // Suppress deprecation warnings from third-party libraries
 allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        // Local repository for react-native-background-geolocation tslocationmanager
+        maven {
+            url "${rootProject.projectDir}/../node_modules/react-native-background-geolocation/android/libs"
+        }
+    }
     tasks.withType(JavaCompile) {
         options.compilerArgs << "-Xlint:-deprecation"
     }

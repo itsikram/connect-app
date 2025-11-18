@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useCallback, useMemo, useState, Suspense, useTransition } from 'react';
 import { 
   View, 
   Text, 
@@ -6,27 +6,40 @@ import {
   SafeAreaView,
   StatusBar,
   ScrollView,
-  TouchableOpacity
+  TouchableOpacity,
+  ActivityIndicator
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 
-// Import all settings components
-import ProfileSettings from '../components/settings/ProfileSettings';
-import PrivacySettings from '../components/settings/PrivacySettings';
-import NotificationSettings from '../components/settings/NotificationSettings';
-import AccountSettings from '../components/settings/AccountSettings';
-import PreferenceSettings from '../components/settings/PreferenceSettings';
-import MessageSettings from '../components/settings/MessageSettings';
-import SoundSettings from '../components/settings/SoundSettings';
-import TtsSettings from '../components/settings/TtsSettings';
-import BackgroundNotificationTester from '../components/BackgroundNotificationTester';
+const ProfileSettings = React.lazy(() => import('../components/settings/ProfileSettings'));
+const PrivacySettings = React.lazy(() => import('../components/settings/PrivacySettings'));
+const NotificationSettings = React.lazy(() => import('../components/settings/NotificationSettings'));
+const AccountSettings = React.lazy(() => import('../components/settings/AccountSettings'));
+const PreferenceSettings = React.lazy(() => import('../components/settings/PreferenceSettings'));
+const MessageSettings = React.lazy(() => import('../components/settings/MessageSettings'));
+const SoundSettings = React.lazy(() => import('../components/settings/SoundSettings'));
+const TtsSettings = React.lazy(() => import('../components/settings/TtsSettings'));
+const BackgroundSettings = React.lazy(() => import('../components/BackgroundNotificationTester'));
+
+const TAB_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
+  profile: ProfileSettings,
+  privacy: PrivacySettings,
+  notification: NotificationSettings,
+  account: AccountSettings,
+  preference: PreferenceSettings,
+  message: MessageSettings,
+  sound: SoundSettings,
+  tts: TtsSettings,
+  background: BackgroundSettings,
+};
 
 const Settings = () => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const [activeTab, setActiveTab] = useState('profile');
+  const [isPending, startTransition] = useTransition();
 
-  const tabs = [
+  const tabs = useMemo(() => [
     { id: 'profile', title: 'Profile', icon: 'person' },
     { id: 'privacy', title: 'Privacy', icon: 'security' },
     { id: 'notification', title: 'Notification', icon: 'notifications' },
@@ -36,32 +49,37 @@ const Settings = () => {
     { id: 'sound', title: 'Sounds', icon: 'volume-up' },
     { id: 'tts', title: 'TTS', icon: 'record-voice-over' },
     { id: 'background', title: 'Background', icon: 'background-replacement' },
-  ];
+  ], []);
 
-  const renderTabContent = () => {
-    switch (activeTab) {
-      case 'profile':
-        return <ProfileSettings />;
-      case 'privacy':
-        return <PrivacySettings />;
-      case 'notification':
-        return <NotificationSettings />;
-      case 'account':
-        return <AccountSettings />;
-      case 'preference':
-        return <PreferenceSettings />;
-      case 'message':
-        return <MessageSettings />;
-      case 'sound':
-        return <SoundSettings />;
-      case 'tts':
-        return <TtsSettings />;
-      case 'background':
-        return <BackgroundNotificationTester />;
-      default:
-        return <ProfileSettings />;
-    }
-  };
+  const activeLabel = useMemo(
+    () => tabs.find((tab) => tab.id === activeTab)?.title || 'Settings',
+    [tabs, activeTab]
+  );
+
+  const handleTabPress = useCallback((tabId: string) => {
+    if (tabId === activeTab) return;
+    startTransition(() => setActiveTab(tabId));
+  }, [activeTab, startTransition]);
+
+  const ActiveComponent = useMemo(
+    () => TAB_COMPONENTS[activeTab] || ProfileSettings,
+    [activeTab]
+  );
+
+  const tabContent = useMemo(() => (
+    <Suspense
+      fallback={
+        <View style={styles.suspenseFallback}>
+          <ActivityIndicator size="small" color={themeColors.primary} />
+          <Text style={{ marginTop: 8, color: themeColors.text.secondary }}>
+            Loading {activeLabel} settings...
+          </Text>
+        </View>
+      }
+    >
+      <ActiveComponent />
+    </Suspense>
+  ), [ActiveComponent, activeLabel, themeColors.primary, themeColors.text.secondary]);
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
@@ -92,9 +110,10 @@ const Settings = () => {
               activeTab === tab.id && { 
                 borderBottomColor: themeColors.primary,
                 borderBottomWidth: 2
-              }
+              },
+              isPending && activeTab === tab.id && { opacity: 0.6 }
             ]}
-            onPress={() => setActiveTab(tab.id)}
+            onPress={() => handleTabPress(tab.id)}
           >
             <Icon 
               name={tab.icon} 
@@ -115,11 +134,11 @@ const Settings = () => {
 
       {/* Tab Content */}
       <ScrollView
-        style={styles.content}
+        style={[styles.content, { opacity: isPending ? 0.85 : 1 }]}
         contentContainerStyle={styles.contentInner}
         showsVerticalScrollIndicator={false}
       >
-        {renderTabContent()}
+        {tabContent}
       </ScrollView>
     </SafeAreaView>
   );
@@ -169,6 +188,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 20,
     paddingBottom: 80,
+  },
+  suspenseFallback: {
+    paddingVertical: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

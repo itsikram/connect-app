@@ -13,10 +13,10 @@ interface ServiceStatus {
 class BackgroundServiceManager {
   private static instance: BackgroundServiceManager;
   private serviceStatus: ServiceStatus = {
-    backgroundTtsService: false,
-    notificationService: false,
-    batteryOptimizationExempt: false,
-    autoStartEnabled: false,
+    backgroundTtsService: true,
+    notificationService: true,
+    batteryOptimizationExempt: true,
+    autoStartEnabled: true,
   };
 
   public static getInstance(): BackgroundServiceManager {

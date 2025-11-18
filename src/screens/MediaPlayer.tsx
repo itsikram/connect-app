@@ -6,26 +6,12 @@ import Slider from '@react-native-community/slider';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-// Media source passed via route params or defaults
+// Media source passed via route params
 type MediaSource = {
   type: 'video' | 'audio';
   uri: string; // remote or file URI
   title?: string;
   poster?: string; // for video poster image (optional)
-};
-
-const DEFAULT_VIDEO: MediaSource = {
-  type: 'video',
-  // Fallback sample: expects you to pass a valid uri via route params
-  uri: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-  title: 'Sample Video',
-};
-
-const DEFAULT_AUDIO: MediaSource = {
-  type: 'audio',
-  // Use a bundled ringtone as an example; replace with your own
-  uri: '',
-  title: 'Sample Audio',
 };
 
 function formatTime(seconds: number): string {
@@ -41,8 +27,13 @@ function formatTime(seconds: number): string {
 const MediaPlayer = ({ route, navigation }: any) => {
   const { colors: themeColors, isDarkMode } = useTheme();
 
+  // Memoize the selected media so it only updates when the incoming route source changes.
+  // If no media is selected, we keep this null and show the video list instead of a sample.
   const paramsSource: MediaSource | undefined = route?.params?.source;
-  const source: MediaSource = paramsSource || DEFAULT_VIDEO;
+  const source: MediaSource | null = useMemo(
+    () => (paramsSource ? paramsSource : null),
+    [paramsSource],
+  );
 
   // Lazy require for react-native-video to avoid hard dependency issues
   let VideoComp: any = null;
@@ -73,7 +64,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
     StatusBar.setBarStyle('light-content');
   }, []);
 
-  const isVideo = source.type === 'video';
+  const isVideo = source?.type === 'video';
 
   const togglePlay = () => setPaused(p => !p);
   const toggleMute = () => setMuted(m => !m);
@@ -114,7 +105,10 @@ const MediaPlayer = ({ route, navigation }: any) => {
     }
   };
 
-  const headerTitle = useMemo(() => source.title || (isVideo ? 'Video' : 'Audio'), [source.title, isVideo]);
+  const headerTitle = useMemo(
+    () => source?.title || (source ? (isVideo ? 'Video' : 'Audio') : 'Select a video'),
+    [source, isVideo],
+  );
 
   const renderControls = () => (
     <View style={styles.controlsRow}>
@@ -193,7 +187,25 @@ const MediaPlayer = ({ route, navigation }: any) => {
       </View>
 
       <View style={styles.playerArea}>
-        {VideoComp ? (
+        {/* If no media is selected, take the user to the video list instead of playing a sample */}
+        {!source ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+            <Icon name="video-library" size={64} color="#fff" />
+            <Text style={{ color: '#fff', marginTop: 12, fontSize: 16 }}>No video selected</Text>
+            <Text style={{ color: '#aaa', marginTop: 4, fontSize: 13 }}>
+              Choose a video from your device library to start playback.
+            </Text>
+            <TouchableOpacity
+              style={[
+                styles.primaryBtn,
+                { marginTop: 20, backgroundColor: themeColors.primary },
+              ]}
+              onPress={() => navigation.navigate('VideoLibrary')}
+            >
+              <Icon name="video-library" size={24} color="#000" />
+            </TouchableOpacity>
+          </View>
+        ) : VideoComp ? (
           <VideoComp
             ref={playerRef}
             source={{ uri: source.uri }}
@@ -226,10 +238,12 @@ const MediaPlayer = ({ route, navigation }: any) => {
         )}
       </View>
 
-      <View style={styles.bottomPanel}>
-        {renderSeekbar()}
-        {renderControls()}
-      </View>
+      {source && (
+        <View style={styles.bottomPanel}>
+          {renderSeekbar()}
+          {renderControls()}
+        </View>
+      )}
     </SafeAreaView>
   );
 };

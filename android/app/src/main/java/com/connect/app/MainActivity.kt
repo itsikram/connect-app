@@ -38,17 +38,29 @@ class MainActivity : ReactActivity() {
     } catch (e: Exception) {
       Log.e("MainActivity", "Failed to start NotificationService", e)
     }
+    
+    // Handle incoming call intents when app is launched from notification
+    handleIncomingCallIntent(intent)
+  }
+  
+  private fun handleIncomingCallIntent(intent: Intent?) {
+    if (intent == null) return
+    
+    // Handle incoming call intents (check both "type" and "action" for compatibility)
+    val callType = intent.getStringExtra("type")
+    val callAction = intent.getStringExtra("action")
+    if (callType == "incoming_call" || callAction == "incoming_call") {
+      Log.d("MainActivity", "Received incoming call intent in onCreate - type: $callType, action: $callAction")
+      // The React Native side will handle the navigation via useNotifications hook
+      // This just ensures the app is brought to foreground
+    }
   }
 
   override fun onNewIntent(intent: Intent) {
     super.onNewIntent(intent)
     setIntent(intent)
 
-    // Handle incoming call intents
-    if (intent.getStringExtra("action") == "incoming_call") {
-      Log.d("MainActivity", "Received incoming call intent")
-      // The React Native side will handle the navigation
-      // This just ensures the app is brought to foreground
-    }
+    // Handle incoming call intents when app is already running
+    handleIncomingCallIntent(intent)
   }
 }

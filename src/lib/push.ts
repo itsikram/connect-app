@@ -118,34 +118,34 @@ export async function unregisterTokenWithServer(): Promise<void> {
 
 export async function configureNotificationsChannel() {
   try {
-    // Create default notification channel
+    // Create default notification channel - SOUND DISABLED
     await notifee.createChannel({
       id: 'default',
       name: 'Default Notifications',
       description: 'General app notifications',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-      sound: 'default',
-      vibration: true,
-      vibrationPattern: [300, 500],
+      sound: undefined, // No sound
+      vibration: false, // No vibration
+      vibrationPattern: undefined,
     });
     
-    // Create calls notification channel with maximum priority for incoming calls
+    // Create calls notification channel with maximum priority for incoming calls - SOUND DISABLED
     await notifee.createChannel({
       id: 'calls',
       name: 'Incoming Calls',
       description: 'Incoming call notifications - full screen alerts',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-      sound: 'default',
-      vibration: true,
-      vibrationPattern: [300, 500, 300, 500],
+      sound: undefined, // No sound
+      vibration: false, // No vibration
+      vibrationPattern: undefined,
       lights: true,
       lightColor: '#FF0000',
       bypassDnd: true, // Bypass Do Not Disturb
     });
     
-    console.log('Notification channels configured successfully');
+    console.log('Notification channels configured successfully (sounds disabled)');
   } catch (error) {
     console.error('Error configuring notification channels:', error);
   }
@@ -168,12 +168,12 @@ export async function displayLocalNotification(title: string, body: string, data
     return;
   }
   
-  // Speak the notification if TTS is enabled
-  try {
-    await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
-  } catch (ttsError) {
-    console.error('❌ Error speaking notification:', ttsError);
-  }
+  // TTS disabled - no longer speaking notifications
+  // try {
+  //   await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
+  // } catch (ttsError) {
+  //   console.error('❌ Error speaking notification:', ttsError);
+  // }
   
   await configureNotificationsChannel();
   await notifee.displayNotification({
@@ -304,22 +304,22 @@ export function listenForegroundMessages() {
       // But still handle TTS for important messages
       console.log('📱 Message received in foreground - processing TTS only');
       
-      // Handle TTS for different message types
-      if (data.type === 'incoming_call') {
-        await backgroundTtsService.speakIncomingCall(
-          data.callerName || 'Unknown Caller',
-          String(data.isAudio) === 'true'
-        );
-      } else if (data.type === 'new_message') {
-        await backgroundTtsService.speakNewMessage(
-          data.senderName || 'Someone',
-          data.message || 'New message received'
-        );
-      } else if (data.type === 'notification' || data.type === 'general') {
-        const title = remoteMessage.notification?.title || 'Notification';
-        const body = remoteMessage.notification?.body || 'You have a new notification';
-        await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
-      }
+      // TTS disabled - no longer speaking notifications in foreground
+      // if (data.type === 'incoming_call') {
+      //   await backgroundTtsService.speakIncomingCall(
+      //     data.callerName || 'Unknown Caller',
+      //     String(data.isAudio) === 'true'
+      //   );
+      // } else if (data.type === 'new_message') {
+      //   await backgroundTtsService.speakNewMessage(
+      //     data.senderName || 'Someone',
+      //     data.message || 'New message received'
+      //   );
+      // } else if (data.type === 'notification' || data.type === 'general') {
+      //   const title = remoteMessage.notification?.title || 'Notification';
+      //   const body = remoteMessage.notification?.body || 'You have a new notification';
+      //   await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
+      // }
       
       return;
     } catch (e) {

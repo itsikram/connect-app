@@ -123,9 +123,9 @@ export class CallNotificationService {
           timeoutAfter: 45000, // Auto-dismiss after 45 seconds
           showChronometer: true,
           chronometerDirection: 'down',
-          // Enhanced visibility settings
-          sound: 'default',
-          vibrationPattern: [300, 500, 300, 500],
+          // Enhanced visibility settings - SOUND DISABLED
+          sound: undefined, // No sound
+          vibrationPattern: undefined, // No vibration
         },
         data: {
           type: 'incoming_call',
@@ -155,8 +155,8 @@ export class CallNotificationService {
         description: 'Full-screen incoming call notifications',
         importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PUBLIC,
-        sound: 'default',
-        vibrationPattern: [300, 500, 300, 500],
+        sound: undefined, // No sound
+        vibrationPattern: undefined, // No vibration
         bypassDnd: true, // Bypass Do Not Disturb
       });
     } catch (error) {

@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useMemo } from 'react';
-import { View, Text, StyleSheet, FlatList, ActivityIndicator, ScrollView, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, FlatList, ScrollView, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
 import { useSelector, useDispatch } from 'react-redux';
 import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
@@ -85,7 +85,6 @@ const Message = React.memo(() => {
   // Use proper typing for Redux state
   const profileData = useSelector((state: RootState) => state.profile);
   const [isLoading, setIsLoading] = React.useState(false);
-  const [friends, setFriends] = React.useState<any[]>([]);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
   const activeFriends = useSelector((state: RootState) => state.presence.activeFriends);
@@ -111,11 +110,14 @@ const Message = React.memo(() => {
     });
   }, [profileData?.friends, activeFriends]);
 
-  // Keep displayed friends in sync with sorting and search
-  useEffect(() => {
+  const filteredFriends = useMemo(() => {
     if (!searchQuery.trim()) {
-      setFriends(sortedFriends);
+      return sortedFriends;
     }
+    const lower = searchQuery.toLowerCase();
+    return (sortedFriends || []).filter((friend: any) =>
+      (friend.fullName || '').toLowerCase().includes(lower)
+    );
   }, [sortedFriends, searchQuery]);
 
   // Suspend rendering when a call is active (audio or video)
@@ -208,6 +210,19 @@ const Message = React.memo(() => {
 
   const navigation = useNavigation();
 
+  // Sort chat list so active users' conversations are at the top (then by latest message time)
+  const sortedChatList = useMemo(() => {
+    const list = [...(chatList || [])];
+    return list.sort((a: any, b: any) => {
+      const aActive = activeFriends.includes(a?.person?._id) ? 1 : 0;
+      const bActive = activeFriends.includes(b?.person?._id) ? 1 : 0;
+      if (aActive !== bActive) return bActive - aActive;
+      const aTs = new Date(a?.messages?.[0]?.timestamp || 0).getTime();
+      const bTs = new Date(b?.messages?.[0]?.timestamp || 0).getTime();
+      return bTs - aTs;
+    });
+  }, [chatList, activeFriends]);
+
   const renderMessageItem = useCallback(({ item, index }: { item: any, index: number }) => {
     const last = item?.messages?.[0];
     return (
@@ -216,7 +231,7 @@ const Message = React.memo(() => {
           styles.messageItem,
           {
             borderBottomColor: themeColors.border.secondary,
-            borderBottomWidth: index === ((chatList?.length || 0) - 1) ? 0 : 1,
+            borderBottomWidth: index === ((sortedChatList.length || 0) - 1) ? 0 : 1,
           }
         ]}
         onPress={() => {
@@ -247,7 +262,7 @@ const Message = React.memo(() => {
         </View>
       </TouchableOpacity>
     );
-  }, [themeColors.border.secondary, themeColors.text.primary, themeColors.text.secondary, themeColors.text.tertiary, chatList?.length, activeFriends, navigation]);
+  }, [themeColors.border.secondary, themeColors.text.primary, themeColors.text.secondary, themeColors.text.tertiary, sortedChatList.length, activeFriends, navigation]);
 
   const keyExtractor = useCallback((item: any) =>
     (item?.person?._id && item?.person?._id.toString()) || String(item?.id || Math.random())
@@ -286,61 +301,23 @@ const Message = React.memo(() => {
     setRefreshing(false);
   }, [profileData?._id, dispatch, fetchProfile]);
 
-
-  // Sort chat list so active users' conversations are at the top (then by latest message time)
-  const sortedChatList = useMemo(() => {
-    const list = [...(chatList || [])];
-    return list.sort((a: any, b: any) => {
-      const aActive = activeFriends.includes(a?.person?._id) ? 1 : 0;
-      const bActive = activeFriends.includes(b?.person?._id) ? 1 : 0;
-      if (aActive !== bActive) return bActive - aActive;
-      const aTs = new Date(a?.messages?.[0]?.timestamp || 0).getTime();
-      const bTs = new Date(b?.messages?.[0]?.timestamp || 0).getTime();
-      return bTs - aTs;
-    });
-  }, [chatList, activeFriends]);
-
-
-  if (isCallActive) {
-    return null;
-  }
-
-  if (isLoading) {
-    return (
-      <ScrollView style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]} contentContainerStyle={styles.container}>
-        <ChatHeaderSkeleton />
-        <Text style={[styles.heading, { color: themeColors.text.primary, marginTop: 8 }]}>Messages</Text>
-        <ListItemSkeleton count={8} />
-      </ScrollView>
-    );
-  }
-
-  return (
-    <ScrollView
-      style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]}
-      contentContainerStyle={styles.container}
-      showsVerticalScrollIndicator={false}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={[themeColors.primary]}
-          tintColor={themeColors.primary}
-        />
-      }
-    >
-
-      
+  const listHeaderComponent = useMemo(() => (
+    <View style={styles.listHeader}>
       <Text style={[styles.heading, { color: themeColors.text.primary }]}>Messages</Text>
-      
 
-      {friends && friends.length > 0 && (
+      {filteredFriends && filteredFriends.length > 0 && (
         <View style={styles.sectionContainer}>
           <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Friends</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.friendsScrollView}>
-            {friends.map((friend: any) => (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.friendsScrollView}
+          >
+            {filteredFriends.map((friend: any, index: number) => {
+              const friendKey = friend?._id ?? friend?.id ?? `${friend?.fullName || 'friend'}-${index}`;
+              return (
               <TouchableOpacity
-                key={friend._id}
+                key={friendKey}
                 style={styles.friendItem}
                 onPress={() => {
                   (navigation as any).navigate('Message', {
@@ -354,80 +331,107 @@ const Message = React.memo(() => {
                   {friend.fullName || 'Friend'}
                 </Text>
               </TouchableOpacity>
-            ))}
+              );
+            })}
           </ScrollView>
         </View>
       )}
 
-
-      <View style={{ width: '100%', marginBottom: 5 }}>
+      <View style={styles.searchContainer}>
         <TextInput
           placeholder="Search friends..."
           placeholderTextColor={themeColors.text.tertiary}
-          style={{
-            backgroundColor: themeColors.surface.secondary,
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 8,
-            fontSize: 16,
-            borderWidth: 1,
-            borderColor: themeColors.border.primary,
-            color: themeColors.text.primary,
-          }}
+          style={[
+            styles.searchInput,
+            {
+              backgroundColor: themeColors.surface.secondary,
+              borderColor: themeColors.border.primary,
+              color: themeColors.text.primary,
+            },
+          ]}
           value={searchQuery}
-          onChangeText={text => {
-            setSearchQuery(text);
-            if (text.trim() === '') {
-              setFriends(sortedFriends);
-            } else {
-              const filtered = (sortedFriends || []).filter((friend: any) =>
-                (friend.fullName || '')
-                  .toLowerCase()
-                  .includes(text.toLowerCase())
-              );
-              setFriends(filtered);
-            }
-          }}
+          onChangeText={setSearchQuery}
+          autoCorrect={false}
+          autoCapitalize="none"
         />
-
-        <View style={{
-          position: 'absolute',
-          right: 12,
-          top: 0,
-          bottom: 0,
-          justifyContent: 'center',
-          height: '100%',
-        }}>
+        <View style={styles.searchIcon}>
           <Text style={{ fontSize: 20, color: themeColors.text.tertiary }}>🔍</Text>
         </View>
-
       </View>
 
-
-
       {(!profileData || Object.keys(profileData).length === 0) && (
-        <View style={[styles.noDataSection, { 
-          backgroundColor: themeColors.surface.secondary, 
-          borderColor: themeColors.border.secondary 
-        }]}>
+        <View style={[
+          styles.noDataSection,
+          {
+            backgroundColor: themeColors.surface.secondary,
+            borderColor: themeColors.border.secondary,
+          }
+        ]}>
           <Text style={[styles.noDataText, { color: themeColors.text.secondary }]}>No profile data available</Text>
         </View>
       )}
+    </View>
+  ), [
+    filteredFriends,
+    themeColors.text.primary,
+    themeColors.text.secondary,
+    themeColors.text.tertiary,
+    themeColors.surface.secondary,
+    themeColors.border.primary,
+    themeColors.border.secondary,
+    searchQuery,
+    navigation,
+    activeFriends,
+    profileData,
+  ]);
 
-      <FlatList
-        data={sortedChatList}
-        style={styles.contactListContainer}
-        renderItem={renderMessageItem}
-        keyExtractor={keyExtractor}
-        scrollEnabled={false}
-        removeClippedSubviews={true}
-        maxToRenderPerBatch={10}
-        updateCellsBatchingPeriod={50}
-        initialNumToRender={10}
-        windowSize={10}
-        ListEmptyComponent={<ListItemSkeleton count={8} />}
-      />
-    </ScrollView>
+  const chatListEmptyComponent = useMemo(() => (
+    chatLoading ? (
+      <ListItemSkeleton count={8} />
+    ) : (
+      <View style={styles.emptyState}>
+        <Text style={{ color: themeColors.text.secondary }}>No conversations yet</Text>
+      </View>
+    )
+  ), [chatLoading, themeColors.text.secondary]);
+
+  if (isLoading) {
+    return (
+      <ScrollView style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]} contentContainerStyle={styles.container}>
+        <ChatHeaderSkeleton />
+        <Text style={[styles.heading, { color: themeColors.text.primary, marginTop: 8 }]}>Messages</Text>
+        <ListItemSkeleton count={8} />
+      </ScrollView>
+    );
+  }
+
+  if (isCallActive) {
+    return null;
+  }
+
+  return (
+    <FlatList
+      data={sortedChatList}
+      renderItem={renderMessageItem}
+      keyExtractor={keyExtractor}
+      ListHeaderComponent={listHeaderComponent}
+      ListEmptyComponent={chatListEmptyComponent}
+      style={[styles.scrollView, { backgroundColor: themeColors.background.primary }]}
+      contentContainerStyle={styles.container}
+      removeClippedSubviews
+      maxToRenderPerBatch={10}
+      updateCellsBatchingPeriod={50}
+      initialNumToRender={10}
+      windowSize={10}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          colors={[themeColors.primary]}
+          tintColor={themeColors.primary}
+        />
+      }
+    />
   );
 });
 
@@ -453,18 +457,20 @@ const styles = StyleSheet.create({
     maxWidth: 70,
     fontSize: 12,
   },
+  listHeader: {
+    width: '100%',
+    marginBottom: 10,
+  },
   profileName: {
     fontSize: 16,
     fontWeight: '600',
   },
   container: {
-    alignItems: 'flex-start',
+    alignItems: 'stretch',
     justifyContent: 'flex-start',
-    padding: 10,
+    paddingHorizontal: 16,
+    paddingTop: 10,
     paddingBottom: 90,
-  },
-  contactListContainer: {
-    width: '100%',
   },
   loadingContainer: {
     flex: 1,
@@ -540,6 +546,30 @@ const styles = StyleSheet.create({
   noDataText: {
     textAlign: 'center',
     fontSize: 16,
+  },
+  searchContainer: {
+    width: '100%',
+    marginBottom: 10,
+    position: 'relative',
+  },
+  searchInput: {
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 16,
+    borderWidth: 1,
+  },
+  searchIcon: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  emptyState: {
+    width: '100%',
+    alignItems: 'center',
+    paddingVertical: 24,
   },
 });
 

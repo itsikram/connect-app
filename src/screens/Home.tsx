@@ -1,6 +1,6 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { View, Text, ActivityIndicator, FlatList, Alert, RefreshControl, TouchableOpacity, NativeSyntheticEvent, NativeScrollEvent, Animated } from 'react-native';
-import { useFocusEffect, useIsFocused } from '@react-navigation/native';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, Animated } from 'react-native';
+import { useIsFocused } from '@react-navigation/native';
 import CreatePost from '../components/CreatePost';
 import api from '../lib/api';
 import Post from '../components/Post';
@@ -19,6 +19,11 @@ import { ModernCard, ModernButton, ModernLoading } from '../components/modern';
 // Storage keys for caching
 const CACHED_POSTS_KEY = 'cached_home_posts';
 const LAST_SYNC_TIMESTAMP_KEY = 'home_last_sync';
+const CACHE_POST_LIMIT = 30;
+const NEW_POSTS_POLL_INTERVAL = 60000;
+const INITIAL_POSTS_TO_RENDER = 5;
+const MAX_BATCH_SIZE = 5;
+const LIST_WINDOW_SIZE = 7;
 
 
 const Home = () => {
@@ -40,12 +45,14 @@ const Home = () => {
     
     // Animation for refresh button
     const slideAnim = useRef(new Animated.Value(-100)).current;
+    const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     // Save posts to cache
-    const savePostsToCache = async (postsToSave: any[]) => {
+    const savePostsToCache = useCallback(async (postsToSave: any[]) => {
         try {
+            const trimmedPosts = postsToSave.slice(0, CACHE_POST_LIMIT);
             const dataToCache = {
-                posts: postsToSave,
+                posts: trimmedPosts,
                 timestamp: new Date().toISOString()
             };
             await AsyncStorage.setItem(CACHED_POSTS_KEY, JSON.stringify(dataToCache));
@@ -54,7 +61,7 @@ const Home = () => {
         } catch (error) {
             console.error('❌ Error saving posts to cache:', error);
         }
-    };
+    }, []);
 
     // Load posts from cache
     const loadPostsFromCache = async () => {
@@ -63,7 +70,7 @@ const Home = () => {
             if (cachedData) {
                 const parsedData = JSON.parse(cachedData);
                 if (parsedData.posts && parsedData.posts.length > 0) {
-                    setPosts(parsedData.posts);
+                    setPosts(parsedData.posts.slice(0, CACHE_POST_LIMIT));
                     console.log('✅ Loaded posts from cache:', parsedData.posts.length);
                     return true;
                 }
@@ -75,7 +82,7 @@ const Home = () => {
     };
 
     // Check for new posts
-    const checkForNewPosts = async () => {
+    const checkForNewPosts = useCallback(async () => {
         try {
             setIsCheckingForNewData(true);
             setError(null);
@@ -104,7 +111,7 @@ const Home = () => {
         } finally {
             setIsCheckingForNewData(false);
         }
-    };
+    }, [slideAnim]);
 
     const fetchPosts = useCallback(async (pageNum = 1, append = false) => {
         if (append) setLoadingMore(true);
@@ -121,7 +128,7 @@ const Home = () => {
                     const updatedPosts = append ? [...prev, ...newPosts] : newPosts;
                     // Save to cache if this is a full refresh (not pagination)
                     if (!append) {
-                        setTimeout(() => savePostsToCache(updatedPosts), 0);
+                        savePostsToCache(updatedPosts);
                     }
                     return updatedPosts;
                 });
@@ -138,7 +145,7 @@ const Home = () => {
             if (append) setLoadingMore(false);
             else setLoading(false);
         }
-    }, []);
+    }, [savePostsToCache]);
 
     const onRefresh = useCallback(async () => {
         setRefreshing(true);
@@ -170,17 +177,31 @@ const Home = () => {
 
     // Check for new posts periodically when app comes to foreground
     useEffect(() => {
-        // Only check for new posts when the screen is focused
-        if (!isFocused) return;
-        
-        const checkInterval = setInterval(() => {
+        if (!isFocused) {
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+            return;
+        }
+
+        if (pollIntervalRef.current) {
+            clearInterval(pollIntervalRef.current);
+        }
+
+        pollIntervalRef.current = setInterval(() => {
             if (!loading && !refreshing && !loadingMore) {
                 checkForNewPosts();
             }
-        }, 30000); // Check every 30 seconds
+        }, NEW_POSTS_POLL_INTERVAL);
 
-        return () => clearInterval(checkInterval);
-    }, [isFocused, loading, refreshing, loadingMore]);
+        return () => {
+            if (pollIntervalRef.current) {
+                clearInterval(pollIntervalRef.current);
+                pollIntervalRef.current = null;
+            }
+        };
+    }, [isFocused, loading, refreshing, loadingMore, checkForNewPosts]);
 
     // Home should not trigger socket connect; connection is managed globally in App
 
@@ -192,16 +213,56 @@ const Home = () => {
         }
     };
 
-    const handlePostCreated = (post: any) => {
+    const handlePostCreated = useCallback((post: any) => {
         setPosts((prev: any[]) => [post, ...prev]);
-    };
+    }, []);
 
-    const handlePostDeleted = (postId: string) => {
+    const handlePostDeleted = useCallback((postId: string) => {
         setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
-    };
+    }, []);
+
+    const renderPost = useCallback(({ item }: { item: any }) => (
+        <Post data={item} onPostDeleted={handlePostDeleted} />
+    ), [handlePostDeleted]);
+
+    const keyExtractor = useCallback((item: any, idx: number) => item._id || idx.toString(), []);
 
     const backgroundColor = themeColors.background.primary;
     const textColor = themeColors.text.primary;
+
+    const listHeaderComponent = useMemo(() => (
+        <View>
+            <CreatePost onPostCreated={handlePostCreated} />
+            <StorySlider />
+        </View>
+    ), [handlePostCreated]);
+
+    const listEmptyComponent = useMemo(() => {
+        if (loading) {
+            return <PostSkeleton count={3} />;
+        }
+        if (error) {
+            return (
+                <View style={{ alignItems: 'center', marginTop: 40 }}>
+                    <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
+                        {error}
+                    </Text>
+                    <Text style={{ color: textColor, fontSize: 14, textAlign: 'center' }}>
+                        Pull down to refresh
+                    </Text>
+                </View>
+            );
+        }
+        return (
+            <View style={{ alignItems: 'center', marginTop: 40 }}>
+                <Text style={{ color: textColor }}>No posts found.</Text>
+            </View>
+        );
+    }, [loading, error, themeColors, textColor]);
+
+    const listFooterComponent = useMemo(() => (
+        loadingMore && !loading ? <PostSkeleton count={1} /> : null
+    ), [loadingMore, loading]);
 
     // Show error state
     if (error && !loading && posts.length === 0) {
@@ -283,36 +344,13 @@ const Home = () => {
 
             <FlatList
                 data={posts}
-                keyExtractor={(item, idx) => item._id || idx.toString()}
-                ListHeaderComponent={
-                    <View>
-                        <CreatePost onPostCreated={handlePostCreated} />
-
-                        <StorySlider />
-                    </View>
-                }
-                renderItem={({ item }) => <Post key={item._id} data={item} onPostDeleted={handlePostDeleted} />}
-                ListEmptyComponent={loading ? (
-                    <PostSkeleton count={3} />
-                ) : error ? (
-                    <View style={{ alignItems: 'center', marginTop: 40 }}>
-                        <Text style={{ color: themeColors.status.error, fontSize: 16, textAlign: 'center', marginBottom: 16 }}>
-                            {error}
-                        </Text>
-                        <Text style={{ color: textColor, fontSize: 14, textAlign: 'center' }}>
-                            Pull down to refresh
-                        </Text>
-                    </View>
-                ) : (
-                    <View style={{ alignItems: 'center', marginTop: 40 }}>
-                        <Text style={{ color: textColor }}>No posts found.</Text>
-                    </View>
-                )}
+                keyExtractor={keyExtractor}
+                ListHeaderComponent={listHeaderComponent}
+                renderItem={renderPost}
+                ListEmptyComponent={listEmptyComponent}
                 onEndReached={handleLoadMore}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={loadingMore && !loading ? (
-                    <PostSkeleton count={1} />
-                ) : null}
+                onEndReachedThreshold={0.2}
+                ListFooterComponent={listFooterComponent}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -323,6 +361,11 @@ const Home = () => {
                 }
                 style={{ backgroundColor }}
                 contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: 80 }}
+                initialNumToRender={INITIAL_POSTS_TO_RENDER}
+                maxToRenderPerBatch={MAX_BATCH_SIZE}
+                windowSize={LIST_WINDOW_SIZE}
+                removeClippedSubviews
+                updateCellsBatchingPeriod={50}
             />
         </View>
     );

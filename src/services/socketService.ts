@@ -8,19 +8,20 @@ class SocketService {
 
   async connect(profileId: string): Promise<void> {
     if (this.socket && this.socket.connected) {
-      console.log('Socket already connected');
+      console.log('✅ Socket already connected');
       return;
     }
 
     if (this.isConnecting) {
-      console.log('Socket connection already in progress');
+      console.log('⏳ Socket connection already in progress');
       return;
     }
 
     try {
       this.isConnecting = true;
+      console.log('🔌 Starting socket connection with profileId:', profileId);
       this.socket = await initializeSocket(profileId);
-      console.log('Socket connected successfully');
+      console.log('✅ Socket connected successfully in socketService');
 
       // Flush any queued listeners first
       if (this.pendingListeners.length > 0) {

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { View, StyleSheet, Platform } from 'react-native';
+import { View, StyleSheet, Platform, AppState, AppStateStatus } from 'react-native';
 import FaceDetection from '@react-native-ml-kit/face-detection';
 import { Camera, useCameraDevice, useCameraPermission, VisionCameraProxy, useFrameProcessor } from 'react-native-vision-camera';
 import { runOnJS } from 'react-native-reanimated';
@@ -10,6 +10,9 @@ import { RootState } from '../store';
 import { useSocket } from '../contexts/SocketContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { selectProfileId, selectMyFriends } from '../selectors/profileSelectors';
+
+const SNAPSHOT_INTERVAL_MS = 1200;
+const PLUGIN_FRAME_RATE = 12;
 
 /**
  * GlobalExpressionDetection
@@ -38,9 +41,23 @@ const GlobalExpressionDetection: React.FC = () => {
   const { emit } = useSocket();
 
   const [active, setActive] = useState(false);
+  const activeRef = useRef(false);
+  const [isAppActive, setIsAppActive] = useState(true);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inflightStartedAtRef = useRef<number>(0);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
+
+  useEffect(() => {
+    const handleAppStateChange = (state: AppStateStatus) => {
+      setIsAppActive(state === 'active');
+    };
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription.remove();
+  }, []);
+
   const requestSeqRef = useRef<number>(0);
   const lastSkipLogRef = useRef<number>(0);
   const skipCountRef = useRef<number>(0);
@@ -70,7 +87,7 @@ const GlobalExpressionDetection: React.FC = () => {
   }, [isEnabled, hasPermission, requestPermission]);
 
   useEffect(() => {
-    const nextActive = Boolean(device && hasPermission && isEnabled);
+    const nextActive = Boolean(device && hasPermission && isEnabled && isAppActive);
     setActive(nextActive);
     try {
       console.log('[GlobalExpressionDetection] State', {
@@ -78,10 +95,11 @@ const GlobalExpressionDetection: React.FC = () => {
         hasPermission,
         isEnabled,
         pluginAvailable: isPluginAvailable,
+        appActive: isAppActive,
         active: nextActive,
       });
     } catch {}
-  }, [device, hasPermission, isEnabled, isPluginAvailable]);
+  }, [device, hasPermission, isEnabled, isPluginAvailable, isAppActive]);
 
   const maybeEmit = useCallback((label: string, clarity: number, emoji?: string, source?: 'plugin' | 'snapshot') => {
     const now = Date.now();
@@ -238,19 +256,18 @@ const GlobalExpressionDetection: React.FC = () => {
   useEffect(() => {
     if (!active) {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
-      if (timeoutRef.current) { clearTimeout(timeoutRef.current); timeoutRef.current = null; }
+      if (timeoutRef.current) { try { console.log('[GlobalExpressionDetection] Stopping snapshot loop'); } catch {} clearTimeout(timeoutRef.current); timeoutRef.current = null; }
       return;
     }
     if (!isPluginAvailable && !timeoutRef.current) {
-      try { console.log('[GlobalExpressionDetection] Starting snapshot loop @ 333ms'); } catch {}
-      const schedule = () => {
-        timeoutRef.current = setTimeout(async () => {
-          timeoutRef.current = null;
-          await runOnceSnapshot();
-          schedule();
-        }, 333);
+      try { console.log('[GlobalExpressionDetection] Starting snapshot loop @', SNAPSHOT_INTERVAL_MS, 'ms'); } catch {}
+      const loop = async () => {
+        if (!activeRef.current) return;
+        await runOnceSnapshot();
+        if (!activeRef.current) return;
+        timeoutRef.current = setTimeout(loop, SNAPSHOT_INTERVAL_MS);
       };
-      schedule();
+      loop();
     }
     return () => {
       if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
@@ -266,11 +283,11 @@ const GlobalExpressionDetection: React.FC = () => {
         ref={cameraRef}
         style={styles.camera}
         device={device}
-        isActive={true}
+        isActive={active}
         photo={!isPluginAvailable}
         frameProcessor={isPluginAvailable ? frameProcessor : undefined}
         // @ts-ignore - available at runtime in VisionCamera
-        frameProcessorFps={isPluginAvailable ? 24 : undefined}
+        frameProcessorFps={isPluginAvailable ? PLUGIN_FRAME_RATE : undefined}
       />
     </View>
   );

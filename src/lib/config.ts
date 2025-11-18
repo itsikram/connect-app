@@ -21,7 +21,7 @@ type Environment = 'development' | 'staging' | 'production';
 const serverUrl = "http://192.168.0.100:4000"
 // const serverUrl = "http://172.20.10.2:4000"
 const mediapipeServerUrl = "http://192.168.0.100:5000"
-//const serverUrl = "https://connect-server-y1ku.onrender.com"
+// const serverUrl = "https://connect-server-y1ku.onrender.com"
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {

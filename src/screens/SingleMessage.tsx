@@ -17,7 +17,9 @@ import {
     Dimensions,
     ScrollView,
     ActivityIndicator,
+    Linking,
 } from 'react-native';
+import { WebView } from 'react-native-webview';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -464,6 +466,11 @@ const SingleMessage = () => {
 
     // Add state for info menu
     const [infoMenuVisible, setInfoMenuVisible] = useState(false);
+    const [friendLocation, setFriendLocation] = useState<{ latitude: number; longitude: number; timestamp: number } | null>(null);
+    const [optionMenuVisible, setOptionMenuVisible] = useState(false);
+    const [callMenuVisible, setCallMenuVisible] = useState(false);
+    const [userInfoData, setUserInfoData] = useState<any>(null);
+    const [loadingUserInfo, setLoadingUserInfo] = useState(false);
     const [chatBackground, setChatBackground] = useState<string | null>(null);
     const [friendEmotion, setFriendEmotion] = useState<string | null>("");
     const [isBlocked, setIsBlocked] = useState<boolean>(false);
@@ -767,6 +774,20 @@ const SingleMessage = () => {
 
         on('emotion_change', handleEmotionChange);
 
+        // Handle friend location updates
+        const handleFriendLocationUpdate = (data: any) => {
+            const { profileId: friendProfileId, location } = data;
+            if (friendProfileId && location && friendProfileId === friend?._id) {
+                console.log('📍 Friend location update received in SingleMessage:', friendProfileId, location);
+                setFriendLocation({
+                    latitude: location.latitude,
+                    longitude: location.longitude,
+                    timestamp: location.timestamp || Date.now(),
+                });
+            }
+        };
+        on('friend_location_update', handleFriendLocationUpdate);
+
         on('seenMessage', handleSeenMessage);
 
         on('newMessage', handleNewMessage);
@@ -784,10 +805,11 @@ const SingleMessage = () => {
             off('seenMessage', handleSeenMessage);
             off('previousMessages', handlePreviousMessages);
             off('emotion_change', handleEmotionChange);
+            off('friend_location_update', handleFriendLocationUpdate);
             // off('oldMessages', handleOldMessages); // Disabled - using HTTP pagination now
             off('deleteMessage', handleDeleteMessage);
         };
-    }, [isConnected, myProfile?._id, on, off]);
+    }, [isConnected, myProfile?._id, friend?._id, on, off]);
 
     // Realtime block/unblock listeners and blocked message notice
     useEffect(() => {
@@ -1207,7 +1229,7 @@ const SingleMessage = () => {
             if (response.status === 200) {
                 setIsBlocked(true);
                 Alert.alert('Success', 'User has been blocked successfully');
-                setInfoMenuVisible(false);
+                setOptionMenuVisible(false);
             } else {
                 Alert.alert('Error', 'Failed to block user. Please try again.');
             }
@@ -1229,7 +1251,7 @@ const SingleMessage = () => {
             if (response.status === 200) {
                 setIsBlocked(false);
                 Alert.alert('Success', 'User has been unblocked successfully');
-                setInfoMenuVisible(false);
+                setOptionMenuVisible(false);
             } else {
                 Alert.alert('Error', 'Failed to unblock user. Please try again.');
             }
@@ -2051,23 +2073,157 @@ const SingleMessage = () => {
                 >
                     <Icon name="notifications" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
                 </TouchableOpacity>
-                <TouchableOpacity
-                    onPress={handleAudioCall}
-                    style={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: 20,
-                        backgroundColor: themeColors.primary,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginLeft: 5,
-                    }}
-                >
-                    <Icon name="call" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
-                </TouchableOpacity>
+                <View style={{ position: 'relative', marginLeft: 5 }}>
+                    <TouchableOpacity
+                        onPress={() => setCallMenuVisible(!callMenuVisible)}
+                        style={{
+                            width: 35,
+                            height: 35,
+                            borderRadius: 20,
+                            backgroundColor: themeColors.primary,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            zIndex: 1001,
+                        }}
+                    >
+                        <Icon name="phone" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
+                    </TouchableOpacity>
 
+                    {callMenuVisible && (
+                        <Modal
+                            visible={callMenuVisible}
+                            transparent={true}
+                            animationType="fade"
+                            onRequestClose={() => setCallMenuVisible(false)}
+                            statusBarTranslucent={true}
+                        >
+                            <Pressable
+                                style={{
+                                    flex: 1,
+                                    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+                                }}
+                                onPress={() => setCallMenuVisible(false)}
+                            >
+                                {/* Dropdown Menu positioned above backdrop */}
+                                <View style={{
+                                    position: 'absolute',
+                                    top: Platform.OS === 'ios' ? 100 : 80,
+                                    right: 16,
+                                    backgroundColor: Platform.OS === 'ios' 
+                                        ? (isDarkMode ? 'rgba(36, 37, 38, 0.98)' : 'rgba(255, 255, 255, 0.98)')
+                                        : (themeColors.surface.header || themeColors.background.primary || (isDarkMode ? '#242526' : '#FFFFFF')),
+                                    borderRadius: 16,
+                                    paddingVertical: 8,
+                                    minWidth: 200,
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 6 },
+                                    shadowOpacity: 0.35,
+                                    shadowRadius: 12,
+                                    elevation: 15,
+                                    borderWidth: 1.5,
+                                    borderColor: themeColors.border.primary || (isDarkMode ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)'),
+                                    overflow: 'hidden',
+                                    // Add subtle background overlay effect
+                                    ...(Platform.OS === 'android' && {
+                                        backgroundColor: isDarkMode 
+                                            ? 'rgba(36, 37, 38, 0.98)' 
+                                            : 'rgba(255, 255, 255, 0.98)',
+                                    }),
+                                }}
+                                onStartShouldSetResponder={() => true}
+                                onResponderTerminationRequest={() => false}>
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setCallMenuVisible(false);
+                                        handleAudioCall();
+                                    }}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        paddingVertical: 14,
+                                        paddingHorizontal: 16,
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: themeColors.border.primary || 'rgba(255, 255, 255, 0.1)',
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 20,
+                                        backgroundColor: themeColors.status.success + '25',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginRight: 14,
+                                    }}>
+                                        <Icon name="call" size={22} color={themeColors.status.success || '#4CAF50'} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{
+                                            fontSize: 15,
+                                            fontWeight: '600',
+                                            color: themeColors.text.primary,
+                                        }}>
+                                            Voice Call
+                                        </Text>
+                                        <Text style={{
+                                            fontSize: 12,
+                                            color: themeColors.text.secondary,
+                                            marginTop: 2,
+                                        }}>
+                                            Start audio call
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    onPress={() => {
+                                        setCallMenuVisible(false);
+                                        handleVideoCall();
+                                    }}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        paddingVertical: 14,
+                                        paddingHorizontal: 16,
+                                    }}
+                                    activeOpacity={0.7}
+                                >
+                                    <View style={{
+                                        width: 40,
+                                        height: 40,
+                                        borderRadius: 20,
+                                        backgroundColor: themeColors.primary + '25',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginRight: 14,
+                                    }}>
+                                        <Icon name="videocam" size={22} color={themeColors.primary} />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{
+                                            fontSize: 15,
+                                            fontWeight: '600',
+                                            color: themeColors.text.primary,
+                                        }}>
+                                            Video Call
+                                        </Text>
+                                        <Text style={{
+                                            fontSize: 12,
+                                            color: themeColors.text.secondary,
+                                            marginTop: 2,
+                                        }}>
+                                            Start video call
+                                        </Text>
+                                    </View>
+                                </TouchableOpacity>
+                                </View>
+                            </Pressable>
+                        </Modal>
+                    )}
+                </View>
                 <TouchableOpacity
-                    onPress={handleVideoCall}
+                    onPress={() => setOptionMenuVisible(true)}
                     style={{
                         width: 35,
                         height: 35,
@@ -2078,10 +2234,46 @@ const SingleMessage = () => {
                         marginLeft: 5,
                     }}
                 >
-                    <Icon name="videocam" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
+                    <Icon name="more-vert" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
                 </TouchableOpacity>
                 <TouchableOpacity
-                    onPress={() => setInfoMenuVisible(true)}
+                    onPress={async () => {
+                        if (!friend?._id) return;
+                        setInfoMenuVisible(true);
+                        setLoadingUserInfo(true);
+                        try {
+                            const res = await api.get(`/profile?profileId=${friend._id}`);
+                            if (res.status === 200) {
+                                setUserInfoData(res.data);
+                                // Set initial location from profile
+                                if (res.data?.lastLocation?.latitude && res.data?.lastLocation?.longitude) {
+                                    setFriendLocation({
+                                        latitude: res.data.lastLocation.latitude,
+                                        longitude: res.data.lastLocation.longitude,
+                                        timestamp: res.data.lastLocation.timestamp || Date.now(),
+                                    });
+                                } else {
+                                    // Clear location if not available
+                                    setFriendLocation(null);
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Error fetching user info:', error);
+                            setUserInfoData(friend);
+                            // Try to get location from friend object
+                            if (friend?.lastLocation?.latitude && friend?.lastLocation?.longitude) {
+                                setFriendLocation({
+                                    latitude: friend.lastLocation.latitude,
+                                    longitude: friend.lastLocation.longitude,
+                                    timestamp: friend.lastLocation.timestamp || Date.now(),
+                                });
+                            } else {
+                                setFriendLocation(null);
+                            }
+                        } finally {
+                            setLoadingUserInfo(false);
+                        }
+                    }}
                     style={{
                         width: 35,
                         height: 35,
@@ -2458,10 +2650,10 @@ const SingleMessage = () => {
             </Modal>
 
             <Modal
-                visible={infoMenuVisible}
+                visible={optionMenuVisible}
                 transparent={true}
                 animationType="slide"
-                onRequestClose={() => setInfoMenuVisible(false)}
+                onRequestClose={() => setOptionMenuVisible(false)}
             >
                 <TouchableOpacity
                     style={{
@@ -2469,7 +2661,7 @@ const SingleMessage = () => {
                         backgroundColor: 'rgba(0, 0, 0, 0.5)',
                         justifyContent: 'flex-end',
                     }}
-                    onPress={() => setInfoMenuVisible(false)}
+                    onPress={() => setOptionMenuVisible(false)}
                     activeOpacity={1}
                 >
                     <View style={{
@@ -2529,7 +2721,7 @@ const SingleMessage = () => {
                                     borderBottomColor: themeColors.border.primary,
                                 }}
                                 onPress={() => {
-                                    setInfoMenuVisible(false);
+                                    setOptionMenuVisible(false);
                                     navigation.navigate('FriendProfile', { friendId: friend?._id });
                                 }}
                             >
@@ -2572,7 +2764,7 @@ const SingleMessage = () => {
                                     borderBottomColor: themeColors.border.primary,
                                 }}
                                 onPress={() => {
-                                    setInfoMenuVisible(false);
+                                    setOptionMenuVisible(false);
                                     Alert.alert('Search', 'Search in conversation feature coming soon!');
                                 }}
                             >
@@ -2615,7 +2807,7 @@ const SingleMessage = () => {
                                     borderBottomColor: themeColors.border.primary,
                                 }}
                                 onPress={() => {
-                                    setInfoMenuVisible(false);
+                                    setOptionMenuVisible(false);
                                     Alert.alert('Media', 'View shared media feature coming soon!');
                                 }}
                             >
@@ -2658,7 +2850,7 @@ const SingleMessage = () => {
                                     borderBottomColor: themeColors.border.primary,
                                 }}
                                 onPress={() => {
-                                    setInfoMenuVisible(false);
+                                    setOptionMenuVisible(false);
                                     Alert.alert('Mute', 'Mute conversation feature coming soon!');
                                 }}
                             >
@@ -2701,7 +2893,7 @@ const SingleMessage = () => {
                                     borderBottomColor: themeColors.border.primary,
                                 }}
                                 onPress={() => {
-                                    setInfoMenuVisible(false);
+                                    setOptionMenuVisible(false);
                                     if (isBlocked) {
                                         Alert.alert('Unblock', `Are you sure you want to unblock ${friend?.fullName}?`, [
                                             { text: 'Cancel', style: 'cancel' },
@@ -2766,7 +2958,7 @@ const SingleMessage = () => {
                                     paddingVertical: 15,
                                 }}
                                 onPress={() => {
-                                    setInfoMenuVisible(false);
+                                    setOptionMenuVisible(false);
                                     Alert.alert('Report', `Report ${friend?.fullName}?`, [
                                         { text: 'Cancel', style: 'cancel' },
                                         {
@@ -2808,6 +3000,498 @@ const SingleMessage = () => {
                         </ScrollView>
                     </View>
                 </TouchableOpacity>
+            </Modal>
+
+            {/* User Info Modal */}
+            <Modal
+                visible={infoMenuVisible}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setInfoMenuVisible(false)}
+            >
+                <Pressable
+                    style={{
+                        flex: 1,
+                        backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                        justifyContent: 'flex-end',
+                    }}
+                    onPress={() => setInfoMenuVisible(false)}
+                >
+                    <Pressable
+                        style={{
+                            backgroundColor: themeColors.background.primary,
+                            borderTopLeftRadius: 20,
+                            borderTopRightRadius: 20,
+                            maxHeight: Dimensions.get('window').height * 0.9,
+                        }}
+                        onPress={(e) => e.stopPropagation()}
+                    >
+                        <View style={{
+                            paddingTop: 20,
+                            paddingBottom: 10,
+                            borderBottomWidth: 1,
+                            borderBottomColor: themeColors.border.primary,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            paddingHorizontal: 20,
+                        }}>
+                            <Text style={{
+                                fontSize: 20,
+                                fontWeight: '700',
+                                color: themeColors.text.primary,
+                            }}>
+                                User Information
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => setInfoMenuVisible(false)}
+                                style={{
+                                    padding: 5,
+                                }}
+                            >
+                                <Icon name="close" size={24} color={themeColors.text.primary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView
+                            style={{ maxHeight: Dimensions.get('window').height * 0.75 }}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {loadingUserInfo ? (
+                                <View style={{
+                                    padding: 60,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                }}>
+                                    <ActivityIndicator size="large" color={themeColors.primary} />
+                                    <Text style={{
+                                        marginTop: 20,
+                                        color: themeColors.text.secondary,
+                                        fontSize: 14,
+                                    }}>
+                                        Loading user information...
+                                    </Text>
+                                </View>
+                            ) : (
+                                <>
+                                    {/* Header Section */}
+                                    <View style={{
+                                        alignItems: 'center',
+                                        paddingVertical: 30,
+                                        paddingHorizontal: 20,
+                                        backgroundColor: themeColors.primary + '08',
+                                        borderBottomWidth: 1,
+                                        borderBottomColor: themeColors.border.primary,
+                                    }}>
+                                        <View style={{ position: 'relative', marginBottom: 15 }}>
+                                            <Image
+                                                source={{ uri: userInfoData?.profilePic || friend?.profilePic || '' }}
+                                                style={{
+                                                    width: 100,
+                                                    height: 100,
+                                                    borderRadius: 50,
+                                                    borderWidth: 4,
+                                                    borderColor: themeColors.primary + '50',
+                                                }}
+                                                defaultSource={require('../assets/images/default-profile-pic.png')}
+                                            />
+                                            {isFriendOnline && (
+                                                <View style={{
+                                                    position: 'absolute',
+                                                    bottom: 5,
+                                                    right: 5,
+                                                    width: 20,
+                                                    height: 20,
+                                                    borderRadius: 10,
+                                                    backgroundColor: '#4CAF50',
+                                                    borderWidth: 3,
+                                                    borderColor: themeColors.background.primary,
+                                                }} />
+                                            )}
+                                        </View>
+                                        <Text style={{
+                                            fontSize: 24,
+                                            fontWeight: '600',
+                                            color: themeColors.text.primary,
+                                            marginBottom: 8,
+                                        }}>
+                                            {userInfoData?.fullName || friend?.fullName || (friend?.user?.firstName && friend?.user?.surname ? `${friend.user.firstName} ${friend.user.surname}` : 'Unknown User')}
+                                        </Text>
+                                        <View style={{
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 6,
+                                            borderRadius: 20,
+                                            backgroundColor: isFriendOnline ? '#4CAF5020' : themeColors.gray[100],
+                                        }}>
+                                            <Text style={{
+                                                fontSize: 13,
+                                                fontWeight: '500',
+                                                color: isFriendOnline ? '#4CAF50' : themeColors.text.secondary,
+                                            }}>
+                                                {isFriendOnline ? 'Online' : 'Offline'}
+                                            </Text>
+                                        </View>
+                                    </View>
+
+                                    {/* Info Cards Section */}
+                                    <View style={{ padding: 20 }}>
+                                        {/* Last Location Card */}
+                                        <View style={{
+                                            backgroundColor: themeColors.surface.secondary,
+                                            borderRadius: 12,
+                                            marginBottom: 16,
+                                            borderWidth: 1,
+                                            borderColor: themeColors.border.primary,
+                                            overflow: 'hidden',
+                                        }}>
+                                            <View style={{
+                                                flexDirection: 'row',
+                                                alignItems: 'center',
+                                                padding: 18,
+                                            }}>
+                                                <View style={{
+                                                    width: 48,
+                                                    height: 48,
+                                                    borderRadius: 12,
+                                                    backgroundColor: '#2196F320',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    marginRight: 16,
+                                                }}>
+                                                    <Icon name="location-on" size={24} color="#2196F3" />
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={{
+                                                        fontSize: 12,
+                                                        fontWeight: '600',
+                                                        textTransform: 'uppercase',
+                                                        letterSpacing: 0.5,
+                                                        color: themeColors.text.secondary,
+                                                        marginBottom: 6,
+                                                    }}>
+                                                        {friendLocation ? 'Current Location' : 'Last Location'}
+                                                    </Text>
+                                                    {friendLocation ? (
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            fontWeight: '500',
+                                                            color: themeColors.text.primary,
+                                                            marginBottom: 4,
+                                                        }}>
+                                                            {friendLocation.latitude.toFixed(6)}, {friendLocation.longitude.toFixed(6)}
+                                                        </Text>
+                                                    ) : (
+                                                        <Text style={{
+                                                            fontSize: 16,
+                                                            fontWeight: '500',
+                                                            color: themeColors.text.primary,
+                                                        }}>
+                                                            {userInfoData?.presentAddress || userInfoData?.permanentAddress || friend?.presentAddress || friend?.permanentAddress || 'Not available'}
+                                                        </Text>
+                                                    )}
+                                                    {friendLocation && (
+                                                        <TouchableOpacity
+                                                            onPress={() => {
+                                                                const url = `https://www.google.com/maps?q=${friendLocation.latitude},${friendLocation.longitude}`;
+                                                                Linking.openURL(url).catch(err => console.error('Error opening maps:', err));
+                                                            }}
+                                                            style={{
+                                                                marginTop: 8,
+                                                                paddingVertical: 6,
+                                                                paddingHorizontal: 12,
+                                                                backgroundColor: '#2196F3',
+                                                                borderRadius: 6,
+                                                                alignSelf: 'flex-start',
+                                                            }}
+                                                        >
+                                                            <Text style={{
+                                                                fontSize: 12,
+                                                                fontWeight: '600',
+                                                                color: '#FFFFFF',
+                                                            }}>
+                                                                Open in Maps
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    )}
+                                                </View>
+                                            </View>
+                                            {friendLocation && (
+                                                <View style={{
+                                                    height: 200,
+                                                    width: '100%',
+                                                    backgroundColor: themeColors.surface.primary,
+                                                }}>
+                                                    <WebView
+                                                        source={{
+                                                            html: `
+                                                                <!DOCTYPE html>
+                                                                <html>
+                                                                <head>
+                                                                    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                                                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+                                                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                                                                    <style>
+                                                                        body { margin: 0; padding: 0; }
+                                                                        #map { width: 100%; height: 100%; }
+                                                                    </style>
+                                                                </head>
+                                                                <body>
+                                                                    <div id="map"></div>
+                                                                    <script>
+                                                                        var map = L.map('map').setView([${friendLocation.latitude}, ${friendLocation.longitude}], 15);
+                                                                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                                                            attribution: '© OpenStreetMap contributors',
+                                                                            maxZoom: 19
+                                                                        }).addTo(map);
+                                                                        L.marker([${friendLocation.latitude}, ${friendLocation.longitude}]).addTo(map)
+                                                                            .bindPopup('Friend Location').openPopup();
+                                                                    </script>
+                                                                </body>
+                                                                </html>
+                                                            `,
+                                                        }}
+                                                        style={{ flex: 1 }}
+                                                        javaScriptEnabled={true}
+                                                        domStorageEnabled={true}
+                                                        startInLoadingState={true}
+                                                        renderLoading={() => (
+                                                            <View style={{
+                                                                position: 'absolute',
+                                                                top: 0,
+                                                                left: 0,
+                                                                right: 0,
+                                                                bottom: 0,
+                                                                justifyContent: 'center',
+                                                                alignItems: 'center',
+                                                                backgroundColor: themeColors.surface.primary,
+                                                            }}>
+                                                                <ActivityIndicator size="large" color={themeColors.primary} />
+                                                            </View>
+                                                        )}
+                                                    />
+                                                </View>
+                                            )}
+                                        </View>
+
+                                        {/* Last Active Card */}
+                                        <View style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            padding: 18,
+                                            backgroundColor: themeColors.surface.secondary,
+                                            borderRadius: 12,
+                                            marginBottom: 16,
+                                            borderWidth: 1,
+                                            borderColor: themeColors.border.primary,
+                                        }}>
+                                            <View style={{
+                                                width: 48,
+                                                height: 48,
+                                                borderRadius: 12,
+                                                backgroundColor: '#4CAF5020',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                marginRight: 16,
+                                            }}>
+                                                <Icon name="access-time" size={24} color="#4CAF50" />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={{
+                                                    fontSize: 12,
+                                                    fontWeight: '600',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: 0.5,
+                                                    color: themeColors.text.secondary,
+                                                    marginBottom: 6,
+                                                }}>
+                                                    Last Active
+                                                </Text>
+                                                <Text style={{
+                                                    fontSize: 16,
+                                                    fontWeight: '500',
+                                                    color: themeColors.text.primary,
+                                                }}>
+                                                    {(() => {
+                                                        const lastSeenValue = friendLastSeenIso;
+                                                        if (!lastSeenValue) return 'Never';
+                                                        if (isFriendOnline) return 'Just now';
+                                                        try {
+                                                            const lastSeenDate = new Date(lastSeenValue);
+                                                            const now = new Date();
+                                                            const diffMs = now.getTime() - lastSeenDate.getTime();
+                                                            const diffMins = Math.floor(diffMs / 60000);
+                                                            const diffHours = Math.floor(diffMs / 3600000);
+                                                            const diffDays = Math.floor(diffMs / 86400000);
+
+                                                            if (diffMins < 1) return 'Just now';
+                                                            if (diffMins < 60) return `${diffMins} ${diffMins === 1 ? 'minute' : 'minutes'} ago`;
+                                                            if (diffHours < 24) return `${diffHours} ${diffHours === 1 ? 'hour' : 'hours'} ago`;
+                                                            if (diffDays < 7) return `${diffDays} ${diffDays === 1 ? 'day' : 'days'} ago`;
+                                                            return lastSeenDate.toLocaleDateString();
+                                                        } catch (e) {
+                                                            return 'Unknown';
+                                                        }
+                                                    })()}
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Emotion Card */}
+                                        <View style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            padding: 18,
+                                            backgroundColor: themeColors.surface.secondary,
+                                            borderRadius: 12,
+                                            marginBottom: 16,
+                                            borderWidth: 1,
+                                            borderColor: themeColors.border.primary,
+                                        }}>
+                                            <View style={{
+                                                width: 48,
+                                                height: 48,
+                                                borderRadius: 12,
+                                                backgroundColor: '#FFC10720',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                marginRight: 16,
+                                            }}>
+                                                <Icon name="mood" size={24} color="#FFC107" />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={{
+                                                    fontSize: 12,
+                                                    fontWeight: '600',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: 0.5,
+                                                    color: themeColors.text.secondary,
+                                                    marginBottom: 6,
+                                                }}>
+                                                    Current Emotion
+                                                </Text>
+                                                <Text style={{
+                                                    fontSize: 18,
+                                                    fontWeight: '500',
+                                                    color: themeColors.text.primary,
+                                                }}>
+                                                    {friendEmotion || userInfoData?.lastEmotion || (userInfoData?.lastEmotionEmoji && userInfoData?.lastEmotionText ? `${userInfoData.lastEmotionEmoji} ${userInfoData.lastEmotionText}` : 'No emotion detected')}
+                                                </Text>
+                                            </View>
+                                        </View>
+
+                                        {/* Last Action Card */}
+                                        <View style={{
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            padding: 18,
+                                            backgroundColor: themeColors.surface.secondary,
+                                            borderRadius: 12,
+                                            marginBottom: 16,
+                                            borderWidth: 1,
+                                            borderColor: themeColors.border.primary,
+                                        }}>
+                                            <View style={{
+                                                width: 48,
+                                                height: 48,
+                                                borderRadius: 12,
+                                                backgroundColor: '#9C27B020',
+                                                alignItems: 'center',
+                                                justifyContent: 'center',
+                                                marginRight: 16,
+                                            }}>
+                                                <Icon name="flash-on" size={24} color="#9C27B0" />
+                                            </View>
+                                            <View style={{ flex: 1 }}>
+                                                <Text style={{
+                                                    fontSize: 12,
+                                                    fontWeight: '600',
+                                                    textTransform: 'uppercase',
+                                                    letterSpacing: 0.5,
+                                                    color: themeColors.text.secondary,
+                                                    marginBottom: 6,
+                                                }}>
+                                                    Last Action
+                                                </Text>
+                                                <Text style={{
+                                                    fontSize: 16,
+                                                    fontWeight: '500',
+                                                    color: themeColors.text.primary,
+                                                }}>
+                                                    {(() => {
+                                                        if (friendEmotion) return 'Sharing emotion';
+                                                        if (isFriendOnline) return 'Currently active';
+                                                        if (friendLastSeenIso) {
+                                                            try {
+                                                                const lastSeenDate = new Date(friendLastSeenIso);
+                                                                const now = new Date();
+                                                                const diffMins = Math.floor((now.getTime() - lastSeenDate.getTime()) / 60000);
+                                                                if (diffMins < 60) return 'Recently active';
+                                                                return 'Last seen recently';
+                                                            } catch (e) {
+                                                                return 'Unknown';
+                                                            }
+                                                        }
+                                                        return 'Unknown';
+                                                    })()}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    </View>
+
+                                    {/* Footer Actions */}
+                                    <View style={{
+                                        padding: 20,
+                                        borderTopWidth: 1,
+                                        borderTopColor: themeColors.border.primary,
+                                        flexDirection: 'row',
+                                        gap: 12,
+                                        justifyContent: 'flex-end',
+                                    }}>
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setInfoMenuVisible(false);
+                                                navigation.navigate('FriendProfile' as never, { friendId: friend?._id } as never);
+                                            }}
+                                            style={{
+                                                paddingVertical: 10,
+                                                paddingHorizontal: 24,
+                                                borderRadius: 8,
+                                                backgroundColor: themeColors.primary,
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontSize: 14,
+                                                fontWeight: '600',
+                                                color: '#FFFFFF',
+                                            }}>
+                                                View Full Profile
+                                            </Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            onPress={() => setInfoMenuVisible(false)}
+                                            style={{
+                                                paddingVertical: 10,
+                                                paddingHorizontal: 24,
+                                                borderRadius: 8,
+                                                backgroundColor: themeColors.surface.secondary,
+                                                borderWidth: 1,
+                                                borderColor: themeColors.border.primary,
+                                            }}
+                                        >
+                                            <Text style={{
+                                                fontSize: 14,
+                                                fontWeight: '600',
+                                                color: themeColors.text.primary,
+                                            }}>
+                                                Close
+                                            </Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </>
+                            )}
+                        </ScrollView>
+                    </Pressable>
+                </Pressable>
             </Modal>
 
             {isBlockedByFriend ? (

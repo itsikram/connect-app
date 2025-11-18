@@ -5,6 +5,7 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Switch,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../../contexts/ThemeContext';
@@ -15,6 +16,7 @@ interface PrivacySettings {
   postVisibility: string;
   friendRequestVisibility: string;
   timelinePostVisibility: string;
+  isShareLocation?: boolean;
 }
 
 const PrivacySettings = () => {
@@ -26,6 +28,7 @@ const PrivacySettings = () => {
     postVisibility: settings.postVisibility ?? 'public',
     friendRequestVisibility: settings.friendRequestVisibility ?? 'public',
     timelinePostVisibility: settings.timelinePostVisibility ?? 'public',
+    isShareLocation: settings.isShareLocation ?? true,
   });
 
   React.useEffect(() => {
@@ -33,6 +36,7 @@ const PrivacySettings = () => {
       postVisibility: settings.postVisibility ?? 'public',
       friendRequestVisibility: settings.friendRequestVisibility ?? 'public',
       timelinePostVisibility: settings.timelinePostVisibility ?? 'public',
+      isShareLocation: settings.isShareLocation ?? true,
     });
   }, [settings]);
 
@@ -47,6 +51,23 @@ const PrivacySettings = () => {
     try {
       const success = await updateSettings(privacySettings);
       if (success) {
+        // Restart or stop location service based on setting
+        // Lazy load locationService to avoid initialization issues
+        if (privacySettings.isShareLocation) {
+          try {
+            const locationService = (await import('../../lib/locationService')).default;
+            await locationService.start();
+          } catch (e) {
+            console.error('Error starting location service:', e);
+          }
+        } else {
+          try {
+            const locationService = (await import('../../lib/locationService')).default;
+            await locationService.stop();
+          } catch (e) {
+            console.error('Error stopping location service:', e);
+          }
+        }
         showSuccess('Privacy settings saved');
       } else {
         showError('Failed to save privacy settings');
@@ -54,6 +75,32 @@ const PrivacySettings = () => {
     } catch (error) {
       console.error('Error saving privacy settings:', error);
       showError('Failed to save privacy settings');
+    }
+  };
+
+  const handleLocationSharingToggle = async (value: boolean) => {
+    setPrivacySettings(prev => ({ ...prev, isShareLocation: value }));
+    // Auto-save location sharing setting
+    try {
+      await updateSettings({ isShareLocation: value });
+      // Lazy load locationService to avoid initialization issues
+      if (value) {
+        try {
+          const locationService = (await import('../../lib/locationService')).default;
+          await locationService.start();
+        } catch (e) {
+          console.error('Error starting location service:', e);
+        }
+      } else {
+        try {
+          const locationService = (await import('../../lib/locationService')).default;
+          await locationService.stop();
+        } catch (e) {
+          console.error('Error stopping location service:', e);
+        }
+      }
+    } catch (error) {
+      console.error('Error updating location sharing setting:', error);
     }
   };
 
@@ -128,6 +175,31 @@ const PrivacySettings = () => {
           (value) => setPrivacySettings(prev => ({ ...prev, timelinePostVisibility: value })),
           'Manage who can post content on your timeline'
         )}
+      </View>
+
+      <View style={styles.section}>
+        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
+          Location Sharing
+        </Text>
+        
+        <View style={[styles.settingItem, { backgroundColor: themeColors.surface.secondary, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: themeColors.border.primary }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+            <View style={{ flex: 1, marginRight: 16 }}>
+              <Text style={[styles.settingLabel, { color: themeColors.text.primary }]}>
+                Share Location with Friends
+              </Text>
+              <Text style={[styles.description, { color: themeColors.text.secondary, marginTop: 4 }]}>
+                Allow friends to see your real-time location in the info modal
+              </Text>
+            </View>
+            <Switch
+              value={privacySettings.isShareLocation ?? true}
+              onValueChange={handleLocationSharingToggle}
+              trackColor={{ false: themeColors.gray[300], true: themeColors.primary + '80' }}
+              thumbColor={privacySettings.isShareLocation ? themeColors.primary : themeColors.gray[400]}
+            />
+          </View>
+        </View>
       </View>
 
       <View style={styles.section}>
