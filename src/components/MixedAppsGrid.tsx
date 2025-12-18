@@ -3,7 +3,7 @@ import { View, StyleSheet, ScrollView, TouchableOpacity, Text } from 'react-nati
 import { useTheme } from '../contexts/ThemeContext';
 import AppGrid from './AppGrid';
 import { sampleApps, AppItem } from '../data/appData';
-import { DeviceAppsService } from '../services/DeviceAppsService';
+// DeviceAppsService removed - react-native-installed-apps uninstalled
 
 interface MixedAppsGridProps {
   title?: string;
@@ -37,9 +37,8 @@ const MixedAppsGrid: React.FC<MixedAppsGridProps> = ({
   const loadDeviceApps = async () => {
     setIsLoading(true);
     try {
-      const apps = await DeviceAppsService.getDeviceAppsForGrid();
-      // Limit the number of device apps to prevent UI overload
-      setDeviceApps(apps.slice(0, maxDeviceApps));
+      // Device apps disabled - react-native-installed-apps uninstalled
+      setDeviceApps([]);
     } catch (error) {
       console.error('Error loading device apps:', error);
       setDeviceApps([]);

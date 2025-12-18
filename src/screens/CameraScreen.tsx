@@ -20,15 +20,13 @@ import {
   useCameraPermission,
   useCodeScanner,
 } from 'react-native-vision-camera';
-import { Canvas, Group, Rect, LinearGradient, RadialGradient, vec, Fill } from '@shopify/react-native-skia';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
 import { } from 'react-native-gesture-handler';
-import FaceDetection from '@react-native-ml-kit/face-detection';
-import { detectEmotionsFromFace, emotionEmojiMap, type EmotionDetectionState } from '../lib/emotionDetection';
+// Face detection removed - @react-native-ml-kit/face-detection uninstalled
+// import { emotionEmojiMap } from '../lib/emotionDetection';
 import { savePhotoToMedia, saveVideoToMedia } from '../lib/mediaLibrary';
-import { beautifyPhoto } from '../lib/photoBeauty';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TOP_BUTTON_SPACING = 16;
@@ -64,8 +62,6 @@ const CameraScreen = () => {
   // Live filter
   const [activeFilter, setActiveFilter] = useState<'none' | 'vivid'>('none');
   const [lastMediaPath, setLastMediaPath] = useState<string | null>(null);
-  const [beautyEnabled, setBeautyEnabled] = useState(true);
-  const [beautyIntensity] = useState(0.12); // subtle default
   const [faceBox, setFaceBox] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
 
   // Emotion detection states
@@ -252,16 +248,7 @@ const CameraScreen = () => {
 
       console.log('Photo captured:', photo.path);
 
-      let finalPath = photo.path;
-      // Post-capture beautification (face-aware softening + tone lift)
-      if (beautyEnabled) {
-        try {
-          finalPath = await beautifyPhoto(photo.path);
-        } catch (e) {
-          console.warn('Beautify failed, saving original photo', e);
-          finalPath = photo.path;
-        }
-      }
+      const finalPath = photo.path;
 
       // Save to app gallery
       const saved = await savePhotoToMedia(finalPath);
@@ -366,84 +353,12 @@ const CameraScreen = () => {
     setEmotionConfidence(confidence);
   }, []);
 
-  // Detect emotion from camera frame
+  // Emotion detection disabled - FaceDetection removed
   const detectEmotionFromFrame = useCallback(async () => {
-    if (!isEmotionDetectionEnabled || !isFocused) return;
-    // Avoid snapshots during video mode or while recording to prevent invalid session configurations
-    if (cameraMode === 'video' || isRecording) return;
-    
-    const now = Date.now();
-    if (now - lastDetectionTimeRef.current < 500) return;
-    lastDetectionTimeRef.current = now;
-    
-    try {
-      // Take a snapshot for face detection
-      if (camera.current) {
-        const photo = await camera.current.takeSnapshot({
-          quality: 20, // Low quality for fast processing
-        });
-        
-        // Detect faces
-        const faces = await FaceDetection.detect(`file://${photo.path}`, {
-          performanceMode: 'fast',
-          landmarkMode: 'all',
-          contourMode: 'all',
-        });
-        
-        setFaceDetected(faces && faces.length > 0);
-        
-        if (faces && faces.length > 0) {
-          const face = faces[0];
-          // Update faceBox to roughly follow detected face
-          try {
-            const imgW = (photo as any)?.width ?? SCREEN_WIDTH;
-            const imgH = (photo as any)?.height ?? SCREEN_HEIGHT;
-            const bounds: any = (face as any)?.bounds || (face as any)?.frame;
-            if (bounds) {
-              const bx = bounds.x ?? bounds.left ?? 0;
-              const by = bounds.y ?? bounds.top ?? 0;
-              const bw = bounds.width ?? (bounds.right != null && bounds.left != null ? bounds.right - bounds.left : 0);
-              const bh = bounds.height ?? (bounds.bottom != null && bounds.top != null ? bounds.bottom - bounds.top : 0);
-
-              const nx = bx / Math.max(1, imgW);
-              const ny = by / Math.max(1, imgH);
-              const nw = bw / Math.max(1, imgW);
-              const nh = bh / Math.max(1, imgH);
-              setFaceBox({
-                x: nx * SCREEN_WIDTH,
-                y: ny * SCREEN_HEIGHT,
-                width: Math.max(60, nw * SCREEN_WIDTH),
-                height: Math.max(80, nh * SCREEN_HEIGHT),
-              });
-            } else {
-              setFaceBox(null);
-            }
-          } catch {
-            setFaceBox(null);
-          }
-          
-          // Detect emotion
-          const detectionResult = await detectEmotionsFromFace(face, emotionDetectionState);
-          
-          if (detectionResult && detectionResult.topExpression) {
-            const { topExpression } = detectionResult;
-            const emoji = emotionEmojiMap[topExpression.name] || '😐';
-            
-            handleEmotionDetected(
-              topExpression.name,
-              emoji,
-              topExpression.confidence
-            );
-          }
-        } else {
-          setFaceDetected(false);
-          setFaceBox(null);
-        }
-      }
-    } catch (error) {
-      console.error('Emotion detection error:', error);
-    }
-  }, [isEmotionDetectionEnabled, isFocused, cameraMode, isRecording, emotionDetectionState, handleEmotionDetected]);
+    // Face detection removed - @react-native-ml-kit/face-detection uninstalled
+    setFaceDetected(false);
+    setFaceBox(null);
+  }, []);
 
   // Run emotion detection periodically
   useEffect(() => {
@@ -505,44 +420,10 @@ const CameraScreen = () => {
             pointerEvents="none"
           />
 
-          {/* Live filter overlays (Skia Vivid) */}
+          {/* Live filter overlays */}
           {activeFilter === 'vivid' && (
             <>
-              <VividSkiaOverlay width={SCREEN_WIDTH} height={SCREEN_HEIGHT} />
-
-              {/* Beauty ML overlay - only when a face is detected */}
-              {beautyEnabled && faceDetected && (
-                <View pointerEvents="none" style={styles.beautyLayer}>
-                  <View
-                    style={[
-                      styles.beautyMask,
-                      faceBox
-                        ? {
-                            left: Math.max(0, faceBox.x + faceBox.width * 0.5 - (SCREEN_WIDTH * 0.55) / 2),
-                            top: Math.max(0, faceBox.y + faceBox.height * 0.5 - (SCREEN_HEIGHT * 0.45) / 2),
-                            width: SCREEN_WIDTH * 0.55,
-                            height: SCREEN_HEIGHT * 0.45,
-                          }
-                        : undefined,
-                      { opacity: beautyIntensity },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.beautyMaskInner,
-                      faceBox
-                        ? {
-                            left: Math.max(0, faceBox.x + faceBox.width * 0.5 - (SCREEN_WIDTH * 0.48) / 2),
-                            top: Math.max(0, faceBox.y + faceBox.height * 0.5 - (SCREEN_HEIGHT * 0.38) / 2),
-                            width: SCREEN_WIDTH * 0.48,
-                            height: SCREEN_HEIGHT * 0.38,
-                          }
-                        : undefined,
-                      { opacity: beautyIntensity * 0.8 },
-                    ]}
-                  />
-                </View>
-              )}
+              {/* Vivid filter removed - Skia dependency removed */}
             </>
           )}
 
@@ -762,54 +643,6 @@ const CameraScreen = () => {
   );
 };
 
-// Skia Vivid overlay (approximation of Apple's "Vivid")
-const VividSkiaOverlay = ({ width, height }: { width: number; height: number }) => {
-  const w = width;
-  const h = height;
-  const center = vec(w / 2, h / 2);
-  const radius = Math.max(w, h);
-
-  return (
-    <Canvas style={StyleSheet.absoluteFill} pointerEvents="none">
-      {/* Midtone lift and subtle overall punch */}
-      <Group blendMode="overlay" opacity={0.12}>
-        <Rect x={0} y={0} width={w} height={h}>
-          <LinearGradient start={vec(0, 0)} end={vec(w, h)} colors={["rgba(255,255,255,0.35)", "rgba(255,255,255,0.15)"]} />
-        </Rect>
-      </Group>
-
-      {/* Warm highlights ↔ cool shadows tint to emulate Vivid toning */}
-      <Group blendMode="softLight" opacity={0.18}>
-        <Rect x={0} y={0} width={w} height={h}>
-          <LinearGradient
-            start={vec(0, 0)}
-            end={vec(w, h)}
-            colors={["rgba(255, 196, 140, 0.55)", "rgba(120, 180, 255, 0.55)"]}
-          />
-        </Rect>
-      </Group>
-
-      {/* Gentle center lift for perceived clarity */}
-      <Group blendMode="softLight" opacity={0.10}>
-        <Rect x={0} y={0} width={w} height={h}>
-          <RadialGradient c={center} r={radius} colors={["rgba(255,255,255,0.12)", "rgba(255,255,255,0)"]} />
-        </Rect>
-      </Group>
-
-      {/* Slight edge vignette to add local contrast */}
-      <Group blendMode="multiply" opacity={0.08}>
-        <Rect x={0} y={0} width={w} height={h}>
-          <RadialGradient c={center} r={radius} colors={["rgba(0,0,0,0)", "rgba(0,0,0,0.45)"]} />
-        </Rect>
-      </Group>
-
-      {/* Very subtle cool cast to keep whites crisp */}
-      <Group blendMode="color" opacity={0.04}>
-        <Fill color="rgba(10, 40, 80, 1)" />
-      </Group>
-    </Canvas>
-  );
-};
 
 // Scrollable mode picker component (iPhone-style)
 const ScrollableModePicker = ({
@@ -1226,30 +1059,6 @@ const styles = StyleSheet.create({
     height: SCREEN_HEIGHT * 0.9,
     borderRadius: SCREEN_WIDTH * 0.9,
     backgroundColor: 'rgba(255,255,255,0.06)',
-  },
-  // Beauty mask centered softly to brighten midtones where the face usually is
-  beautyLayer: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-  },
-  beautyMask: {
-    position: 'absolute',
-    width: SCREEN_WIDTH * 0.7,
-    height: SCREEN_HEIGHT * 0.5,
-    borderRadius: SCREEN_WIDTH * 0.7,
-    backgroundColor: 'rgba(255,255,255,0.8)',
-  },
-  beautyMaskInner: {
-    position: 'absolute',
-    top: 18,
-    left: 18,
-    right: 18,
-    bottom: 18,
-    borderRadius: SCREEN_WIDTH * 0.65,
-    backgroundColor: 'rgba(255,255,255,0.6)'
   },
 });
 

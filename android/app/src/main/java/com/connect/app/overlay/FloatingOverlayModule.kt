@@ -6,10 +6,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
-import com.facebook.react.bridge.Promise
-import com.facebook.react.bridge.ReactApplicationContext
-import com.facebook.react.bridge.ReactContextBaseJavaModule
-import com.facebook.react.bridge.ReactMethod
+import com.facebook.react.bridge.*
+import com.facebook.react.modules.core.DeviceEventManagerModule
 
 class FloatingOverlayModule(private val reactContext: ReactApplicationContext) : ReactContextBaseJavaModule(reactContext) {
 
@@ -61,5 +59,42 @@ class FloatingOverlayModule(private val reactContext: ReactApplicationContext) :
     } catch (e: Exception) {
       promise.reject("overlay_stop_error", e)
     }
+  }
+
+  @ReactMethod
+  fun setMenuOptions(options: ReadableArray, promise: Promise) {
+    try {
+      val service = FloatingOverlayService.getInstance()
+      if (service != null) {
+        val menuOptionsList = mutableListOf<MenuOption>()
+        for (i in 0 until options.size()) {
+          val item = options.getMap(i)
+          if (item != null) {
+            val id = item.getString("id") ?: ""
+            val label = item.getString("label") ?: ""
+            val icon = item.getString("icon") ?: ""
+            menuOptionsList.add(MenuOption(id, label, icon))
+          }
+        }
+        
+        service.setMenuOptions(menuOptionsList) { optionId ->
+          // Send event to React Native when menu item is clicked
+          sendMenuClickEvent(optionId)
+        }
+        promise.resolve(true)
+      } else {
+        promise.reject("service_not_running", "Floating overlay service is not running")
+      }
+    } catch (e: Exception) {
+      promise.reject("menu_options_error", e)
+    }
+  }
+
+  private fun sendMenuClickEvent(optionId: String) {
+    val params = Arguments.createMap()
+    params.putString("optionId", optionId)
+    reactContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit("FloatingOverlayMenuItemClick", params)
   }
 }

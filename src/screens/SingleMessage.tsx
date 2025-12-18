@@ -39,7 +39,15 @@ import moment from 'moment';
 import { launchImageLibrary } from 'react-native-image-picker';
 import api, { friendAPI } from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { backgroundTtsService } from '../lib/backgroundTtsService';
+import { Camera, useCameraDevice } from 'react-native-vision-camera';
+import { useSettings } from '../contexts/SettingsContext';
+import { io, Socket } from 'socket.io-client';
+import config from '../lib/config';
+import RtcEngine from 'react-native-agora';
+import LiveVoiceModal from '../components/LiveVoiceModal';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
+
 
 interface Message {
     _id: string;
@@ -83,7 +91,9 @@ const SingleMessage = () => {
     const { connect, isConnected, emit, on, off, startVideoCall, startAudioCall, checkUserActive } = useSocket();
     const [isCallActive, setIsCallActive] = useState<boolean>(false);
     const { colors: themeColors, isDarkMode } = useTheme();
+    const settings = useSettings();
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
+    const getMessagesStorageKey = (friendId: string) => `@chat_messages_${friendId}`;
 
     const isFriendOnline = React.useMemo(() => {
         try { return !!friend?._id && activeFriends.includes(friend._id); } catch (_) { return false; }
@@ -193,6 +203,75 @@ const SingleMessage = () => {
     const [playingProgress, setPlayingProgress] = useState<Record<string, { current: number; duration: number }>>({});
     const videoRefs = useRef(new Map<string, any>()).current;
     const [isMicPermissionGranted, setIsMicPermissionGranted] = useState<boolean>(false);
+    const [isCameraPermissionGranted, setIsCameraPermissionGranted] = useState<boolean>(false);
+    const isCameraReadyRef = useRef<boolean>(false);
+    
+    // Live voice transfer state
+    const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
+    const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false);
+    const [isLiveVoiceModalOpen, setIsLiveVoiceModalOpen] = useState(false);
+    const [liveVoiceDuration, setLiveVoiceDuration] = useState(0);
+    const [liveVoiceRole, setLiveVoiceRole] = useState<'sender' | 'receiver'>('sender');
+    const liveVoiceEngineRef = useRef<RtcEngine | null>(null);
+    const isLiveVoiceActiveRef = useRef(false);
+    const liveVoiceDurationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    
+    // Get camera device for emotion detection
+    const cameraDevice = useCameraDevice('front');
+
+    const ensureCameraPermission = async () => {
+        try {
+            let permission: any;
+            if (Platform.OS === 'android') {
+                permission = PERMISSIONS.ANDROID.CAMERA;
+            } else if (Platform.OS === 'ios') {
+                permission = PERMISSIONS.IOS.CAMERA;
+            }
+            if (!permission) {
+                // If no permission system, assume granted
+                setIsCameraPermissionGranted(true);
+                return true;
+            }
+            
+            let result = await check(permission);
+            console.log('[SingleMessage] 📷 Camera permission check result:', result);
+            
+            if (result === RESULTS.GRANTED) {
+                setIsCameraPermissionGranted(true);
+                return true;
+            }
+            
+            if (result === RESULTS.DENIED) {
+                console.log('[SingleMessage] 📷 Camera permission denied, requesting...');
+                result = await request(permission);
+                console.log('[SingleMessage] 📷 Camera permission request result:', result);
+                
+                if (result === RESULTS.GRANTED) {
+                    setIsCameraPermissionGranted(true);
+                    return true;
+                }
+            }
+            
+            if (result === RESULTS.BLOCKED) {
+                console.warn('[SingleMessage] 📷 Camera permission is blocked, user needs to enable in Settings');
+                setIsCameraPermissionGranted(false);
+                Alert.alert('Permission needed', 'Please enable camera permission in Settings.', [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Open Settings', onPress: () => openSettings() }
+                ]);
+            } else {
+                // UNAVAILABLE or other status
+                console.warn('[SingleMessage] 📷 Camera permission unavailable or not granted:', result);
+                setIsCameraPermissionGranted(false);
+            }
+            
+            return false;
+        } catch (e) {
+            console.error('[SingleMessage] ❌ Error checking camera permission:', e);
+            setIsCameraPermissionGranted(false);
+            return false;
+        }
+    };
 
     const ensureMicPermission = async () => {
         try {
@@ -473,7 +552,37 @@ const SingleMessage = () => {
     const [loadingUserInfo, setLoadingUserInfo] = useState(false);
     const [chatBackground, setChatBackground] = useState<string | null>(null);
     const [friendEmotion, setFriendEmotion] = useState<string | null>("");
+    const [friendExpression, setFriendExpression] = useState<string | null>(null); // Store friend's expression
+    const [myEmotion, setMyEmotion] = useState<string | null>(null);
     const [isBlocked, setIsBlocked] = useState<boolean>(false);
+    
+    // Emotion detection state
+    const emotionServerSocketRef = React.useRef<Socket | null>(null);
+    const cameraRef = React.useRef<Camera>(null);
+    const cameraViewRef = React.useRef<View>(null);
+    const emotionDetectionIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
+    const serverRequestInFlightRef = React.useRef(false);
+    const serverRequestSeqRef = React.useRef(0);
+    const serverRequestTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const labelHistoryRef = React.useRef<Array<{ t: number; label: string }>>([]);
+    const lastMajorityLabelRef = React.useRef<string | null>(null);
+    const lastEmotionTimestampRef = React.useRef<number>(0);
+    const expressionDataRef = React.useRef<any>(null);
+    const handleEmotionServerResponseRef = React.useRef<((data: any) => void) | null>(null);
+    const cameraSetupTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    const previousCameraRef = React.useRef<Camera | null>(null);
+    const MAJORITY_WINDOW_MS = 1500;
+    const SERVER_REQUEST_TIMEOUT_MS = 8000; // 8 seconds timeout for server response
+    
+    // Emotion emoji map (matching web version)
+    const emotionEmojiMap: Record<string, string> = {
+        'Smiling': '😊',
+        'Neutral': '😐',
+        'Sad': '😢',
+        'Surprised': '😲',
+        'Angry': '😠',
+        'Happy': '😃',
+    };
     const [isBlocking, setIsBlocking] = useState<boolean>(false);
     const [isBlockedByFriend, setIsBlockedByFriend] = useState<boolean>(false);
     const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
@@ -495,6 +604,65 @@ const SingleMessage = () => {
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
     const [currentPage, setCurrentPage] = useState(0);
     const messagesPerPage = 20;
+
+    // Helper function to save messages to AsyncStorage
+    const saveMessagesToStorage = async (friendId: string, messagesToSave: Message[]) => {
+        try {
+            if (!friendId || !messagesToSave || messagesToSave.length === 0) return;
+            
+            // Serialize messages - convert Date objects to ISO strings
+            const serializedMessages = messagesToSave.map(msg => ({
+                ...msg,
+                timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+            }));
+            
+            const storageKey = getMessagesStorageKey(friendId);
+            await AsyncStorage.setItem(storageKey, JSON.stringify(serializedMessages));
+            console.log(`Saved ${serializedMessages.length} messages to storage for friend ${friendId}`);
+        } catch (error) {
+            console.error('Error saving messages to storage:', error);
+        }
+    };
+
+    // Helper function to load messages from AsyncStorage
+    const loadMessagesFromStorage = async (friendId: string): Promise<Message[]> => {
+        try {
+            if (!friendId) return [];
+            
+            const storageKey = getMessagesStorageKey(friendId);
+            const storedData = await AsyncStorage.getItem(storageKey);
+            
+            if (!storedData) {
+                console.log(`No stored messages found for friend ${friendId}`);
+                return [];
+            }
+            
+            const parsedMessages = JSON.parse(storedData);
+            
+            // Deserialize messages - convert ISO strings back to Date objects
+            const deserializedMessages: Message[] = parsedMessages.map((msg: any) => ({
+                ...msg,
+                timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+            }));
+            
+            console.log(`Loaded ${deserializedMessages.length} messages from storage for friend ${friendId}`);
+            return deserializedMessages;
+        } catch (error) {
+            console.error('Error loading messages from storage:', error);
+            return [];
+        }
+    };
+
+    // Debounce save to avoid too many writes
+    const saveTimeoutRef = useRef<any>(null);
+    const debouncedSaveMessages = (friendId: string, messagesToSave: Message[]) => {
+        if (saveTimeoutRef.current) {
+            clearTimeout(saveTimeoutRef.current);
+        }
+        saveTimeoutRef.current = setTimeout(() => {
+            saveMessagesToStorage(friendId, messagesToSave);
+        }, 500); // Save after 500ms of no changes
+    };
 
     // Mark/suspend during call lifecycle
     useEffect(() => {
@@ -589,7 +757,7 @@ const SingleMessage = () => {
         checkIfBlockedByFriend();
     }, [friend?._id, myProfile?._id]);
 
-    // Fetch initial messages using HTTP
+    // Fetch initial messages - load from storage first, then fetch from server
     useEffect(() => {
         console.log('Initial messages fetch effect triggered:', { friendId: friend?._id });
         
@@ -603,10 +771,24 @@ const SingleMessage = () => {
         setCurrentPage(0);
         setIsInitialLoading(true);
         
-        console.log('Fetching initial messages for friend:', friend._id);
+        console.log('Loading messages for friend:', friend._id);
         
-        const fetchInitialMessages = async () => {
+        const loadAndFetchMessages = async () => {
             try {
+                // First, load messages from AsyncStorage
+                const storedMessages = await loadMessagesFromStorage(friend._id);
+                
+                if (storedMessages.length > 0) {
+                    console.log(`Loaded ${storedMessages.length} messages from storage, displaying them immediately`);
+                    setMessages(storedMessages);
+                    // Hide skeleton immediately if we have stored messages
+                    setIsInitialLoading(false);
+                } else {
+                    console.log('No stored messages found - will show skeleton until server fetch completes');
+                    // Keep skeleton visible if no stored messages
+                }
+                
+                // Then fetch fresh messages from server
                 console.log('API call starting for getChatHistory');
                 const response = await api.get('/message/getChatHistory', {
                     params: {
@@ -628,7 +810,19 @@ const SingleMessage = () => {
                 if (httpMessages.length > 0) {
                     const validHttpMessages = httpMessages.filter((msg: any) => msg && msg._id);
                     console.log('Setting messages with count:', validHttpMessages.length);
-                    setMessages(validHttpMessages);
+                    
+                    // Merge with stored messages, avoiding duplicates
+                    setMessages(prev => {
+                        const existingIds = new Set(prev.map(m => m._id));
+                        const newMessages = validHttpMessages.filter((msg: any) => !existingIds.has(msg._id));
+                        const merged = [...prev, ...newMessages].sort((a, b) => {
+                            const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
+                            const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
+                            return timeA - timeB;
+                        });
+                        return merged;
+                    });
+                    
                     setHasMoreMessages(hasMore);
                     console.log('Messages state updated successfully');
                 } else {
@@ -641,12 +835,30 @@ const SingleMessage = () => {
                 setHasMoreMessages(false);
             } finally {
                 // Turn off initial loading skeleton once fetch completes
+                // Only if it wasn't already turned off by stored messages
                 setIsInitialLoading(false);
             }
         };
         
-        fetchInitialMessages();
+        loadAndFetchMessages();
     }, [friend?._id]);
+
+    // Save messages to AsyncStorage whenever they change
+    useEffect(() => {
+        if (!friend?._id || messages.length === 0) return;
+        
+        // Debounce the save operation to avoid too many writes
+        debouncedSaveMessages(friend._id, messages);
+        
+        // Cleanup timeout on unmount or when friend changes
+        return () => {
+            if (saveTimeoutRef.current) {
+                clearTimeout(saveTimeoutRef.current);
+                // Save immediately on cleanup if there's pending data
+                saveMessagesToStorage(friend._id, messages);
+            }
+        };
+    }, [messages, friend?._id]);
 
     // Listen for incoming messages via socket
     useEffect(() => {
@@ -762,11 +974,30 @@ const SingleMessage = () => {
 
                 if (typeof payload === 'string') {
                     setFriendEmotion(payload);
+                    setFriendExpression(null);
                     return;
                 }
                 if (typeof payload === 'object') {
                     const display = payload.emoji || payload.emotionText || payload.emotion || '';
                     setFriendEmotion(display || '');
+                    // Also store expression if available
+                    if (payload.expression) {
+                        if (payload.expression !== 'none') {
+                            setFriendExpression(payload.expression);
+                            console.log('[SingleMessage] ✅ Setting expression:', payload.expression);
+                        } else {
+                            setFriendExpression(null);
+                            console.log('[SingleMessage] ℹ️ Expression is "none", clearing display');
+                        }
+                    } else {
+                        setFriendExpression(null);
+                        console.log('[SingleMessage] ⚠️ No expression in emotion_change event');
+                    }
+                    console.log('[SingleMessage] 📥 Received emotion_change event:', {
+                        emotion: display,
+                        expression: payload.expression || 'none',
+                        fullPayload: payload
+                    });
                     return;
                 }
             } catch (_) { }
@@ -799,6 +1030,118 @@ const SingleMessage = () => {
 
         on('deleteMessage', handleDeleteMessage);
 
+        // Live voice listeners
+        const handleLiveVoiceStart = async ({ channelName }: { channelName: string }) => {
+            try {
+                // Leave any existing connection
+                if (liveVoiceEngineRef.current) {
+                    try {
+                        await liveVoiceEngineRef.current.leaveChannel();
+                        await liveVoiceEngineRef.current.destroy();
+                    } catch (e) {
+                        console.warn('Error leaving existing live voice:', e);
+                    }
+                    liveVoiceEngineRef.current = null;
+                }
+
+                // Generate consistent UID from profileId hash (subscriber uses baseUid)
+                const generateUid = (str: string) => {
+                    let hash = 0;
+                    for (let i = 0; i < str.length; i++) {
+                        hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                        hash |= 0;
+                    }
+                    return Math.abs(hash);
+                };
+                const numericUid = generateUid(myProfile?._id || '0');
+
+                // Get token
+                const { data } = await api.post('/agora/token', { channelName, uid: numericUid, role: 'subscriber' });
+                
+                // Initialize engine
+                const engine = await RtcEngine.create(data.appId);
+                await engine.enableAudio();
+                
+                // Set channel profile to Communication mode (0) to match web RTC mode
+                await engine.setChannelProfile(0); // 0 = Communication (RTC mode)
+                
+                // Enable all remote audio streams (important for receiving audio in Communication mode)
+                await engine.muteAllRemoteAudioStreams(false);
+                
+                // Set up event handlers
+                engine.addListener('UserJoined', (uid) => {
+                    console.log('Live voice: User joined', uid);
+                    // Ensure remote audio is enabled for the joined user
+                    engine.muteRemoteAudioStream(uid, false).catch(e => console.warn('Failed to unmute remote audio:', e));
+                });
+                
+                engine.addListener('UserOffline', (uid) => {
+                    console.log('Live voice: User offline', uid);
+                });
+                
+                engine.addListener('RemoteAudioStateChanged', (uid, state, reason, elapsed) => {
+                    console.log('Live voice: Remote audio state changed', { uid, state, reason });
+                    // state: 0 = STATE_STOPPED, 1 = STATE_STARTING, 2 = STATE_DECODING, 3 = STATE_FAILED
+                    if (state === 1 || state === 2) { // STATE_STARTING or STATE_DECODING
+                        console.log('Live voice: Remote audio starting/decoding');
+                        // Ensure audio is unmuted
+                        engine.muteRemoteAudioStream(uid, false).catch(e => console.warn('Failed to unmute remote audio:', e));
+                    }
+                });
+                
+                // Join channel (no role needed in Communication mode)
+                await engine.joinChannel(data.token, channelName, null, numericUid);
+
+                liveVoiceEngineRef.current = engine;
+                setIsLiveVoiceActive(true);
+                setLiveVoiceDuration(0);
+                setLiveVoiceRole('receiver');
+                setIsLiveVoiceModalOpen(true);
+                
+                // Start duration timer
+                if (liveVoiceDurationTimerRef.current) {
+                    clearInterval(liveVoiceDurationTimerRef.current);
+                }
+                liveVoiceDurationTimerRef.current = setInterval(() => {
+                    setLiveVoiceDuration(prev => prev + 1);
+                }, 1000);
+            } catch (e) {
+                console.error('Live voice subscribe failed:', e);
+                setIsLiveVoiceActive(false);
+                setIsLiveVoiceModalOpen(false);
+            }
+        };
+
+        const handleLiveVoiceStop = async () => {
+            try {
+                if (liveVoiceEngineRef.current) {
+                    await liveVoiceEngineRef.current.leaveChannel();
+                    await liveVoiceEngineRef.current.destroy();
+                    liveVoiceEngineRef.current = null;
+                }
+            } catch (e) {
+                console.warn('Error stopping live voice:', e);
+            }
+            setIsLiveVoiceActive(false);
+            setIsLiveVoiceModalOpen(false);
+            setLiveVoiceDuration(0);
+            setLiveVoiceRole('sender');
+            if (liveVoiceDurationTimerRef.current) {
+                clearInterval(liveVoiceDurationTimerRef.current);
+                liveVoiceDurationTimerRef.current = null;
+            }
+        };
+
+        const handleLiveVoiceLeaveSubscriber = async ({ channelName }: { channelName: string }) => {
+            if (liveVoiceEngineRef.current && isLiveVoiceActive) {
+                await handleLiveVoiceStop();
+            }
+        };
+
+        on('live-voice-start', handleLiveVoiceStart);
+        on('live-voice-stop', handleLiveVoiceStop);
+        on('live-voice-leave-subscriber', handleLiveVoiceLeaveSubscriber);
+
         return () => {
             off('newMessage', handleNewMessage);
             off('typing', handleReceiveTyping);
@@ -806,10 +1149,875 @@ const SingleMessage = () => {
             off('previousMessages', handlePreviousMessages);
             off('emotion_change', handleEmotionChange);
             off('friend_location_update', handleFriendLocationUpdate);
-            // off('oldMessages', handleOldMessages); // Disabled - using HTTP pagination now
             off('deleteMessage', handleDeleteMessage);
+            off('live-voice-start', handleLiveVoiceStart);
+            off('live-voice-stop', handleLiveVoiceStop);
+            off('live-voice-leave-subscriber', handleLiveVoiceLeaveSubscriber);
+            
+            // Cleanup live voice
+            if (liveVoiceDurationTimerRef.current) {
+                clearInterval(liveVoiceDurationTimerRef.current);
+                liveVoiceDurationTimerRef.current = null;
+            }
+            if (liveVoiceEngineRef.current) {
+                liveVoiceEngineRef.current.leaveChannel().catch(() => {});
+                liveVoiceEngineRef.current.destroy().catch(() => {});
+                liveVoiceEngineRef.current = null;
+            }
         };
-    }, [isConnected, myProfile?._id, friend?._id, on, off]);
+    }, [isConnected, myProfile?._id, friend?._id, on, off, isLiveVoiceActive]);
+
+    // Emotion detection integration with Python server
+    useEffect(() => {
+        console.log('[SingleMessage] 🔍 Emotion detection useEffect triggered');
+        console.log('[SingleMessage] 📊 Current state:', {
+            isShareEmotion: settings.settings?.isShareEmotion,
+            hasProfileId: !!myProfile?._id,
+            profileId: myProfile?._id,
+            hasFriendId: !!friend?._id,
+            friendId: friend?._id,
+            isCallActive,
+            hasCameraDevice: !!cameraDevice,
+            isCameraPermissionGranted,
+            isConnected
+        });
+        
+        // Guard check: validate IDs before proceeding
+        const currentFriendId = friend?._id;
+        const currentProfileId = myProfile?._id;
+        
+        if (!settings.settings?.isShareEmotion) {
+            console.log('[SingleMessage] ⏸️ Emotion detection disabled - isShareEmotion setting is false');
+            // Clean up if conditions not met
+            if (emotionDetectionIntervalRef.current) {
+                clearInterval(emotionDetectionIntervalRef.current);
+                emotionDetectionIntervalRef.current = null;
+            }
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+            if (emotionServerSocketRef.current) {
+                emotionServerSocketRef.current.disconnect();
+                emotionServerSocketRef.current = null;
+            }
+            // Reset rolling majority buffers
+            labelHistoryRef.current = [];
+            lastMajorityLabelRef.current = null;
+            serverRequestInFlightRef.current = false;
+            return;
+        }
+        
+        if (!currentProfileId) {
+            console.log('[SingleMessage] ⏸️ Emotion detection disabled - no profileId');
+            // Clean up if conditions not met
+            if (emotionDetectionIntervalRef.current) {
+                clearInterval(emotionDetectionIntervalRef.current);
+                emotionDetectionIntervalRef.current = null;
+            }
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+            if (emotionServerSocketRef.current) {
+                emotionServerSocketRef.current.disconnect();
+                emotionServerSocketRef.current = null;
+            }
+            // Reset rolling majority buffers
+            labelHistoryRef.current = [];
+            lastMajorityLabelRef.current = null;
+            serverRequestInFlightRef.current = false;
+            return;
+        }
+        
+        if (!currentFriendId) {
+            console.log('[SingleMessage] ⏸️ Emotion detection disabled - no friendId');
+            // Clean up if conditions not met
+            if (emotionDetectionIntervalRef.current) {
+                clearInterval(emotionDetectionIntervalRef.current);
+                emotionDetectionIntervalRef.current = null;
+            }
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+            if (emotionServerSocketRef.current) {
+                emotionServerSocketRef.current.disconnect();
+                emotionServerSocketRef.current = null;
+            }
+            // Reset rolling majority buffers
+            labelHistoryRef.current = [];
+            lastMajorityLabelRef.current = null;
+            serverRequestInFlightRef.current = false;
+            return;
+        }
+        
+        if (isCallActive) {
+            console.log('[SingleMessage] ⏸️ Emotion detection disabled - call is active');
+            // Clean up if conditions not met
+            if (emotionDetectionIntervalRef.current) {
+                clearInterval(emotionDetectionIntervalRef.current);
+                emotionDetectionIntervalRef.current = null;
+            }
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+            if (emotionServerSocketRef.current) {
+                emotionServerSocketRef.current.disconnect();
+                emotionServerSocketRef.current = null;
+            }
+            // Reset rolling majority buffers
+            labelHistoryRef.current = [];
+            lastMajorityLabelRef.current = null;
+            serverRequestInFlightRef.current = false;
+            return;
+        }
+        
+        console.log('[SingleMessage] ✅ All conditions met, proceeding with emotion detection setup');
+
+        // Additional validation: ensure IDs are valid strings
+        if (typeof currentProfileId !== 'string' || currentProfileId.length === 0 ||
+            typeof currentFriendId !== 'string' || currentFriendId.length === 0) {
+            console.warn('[SingleMessage] ⚠️ Invalid IDs for emotion detection:', {
+                profileId: currentProfileId || 'missing',
+                profileIdType: typeof currentProfileId,
+                friendId: currentFriendId || 'missing',
+                friendIdType: typeof currentFriendId
+            });
+            return;
+        }
+        
+        console.log('[SingleMessage] ✅ IDs validated, starting emotion detection initialization');
+        console.log('[SingleMessage] 📋 ProfileId:', currentProfileId, 'FriendId:', currentFriendId);
+
+        const initializeEmotionServerSocket = React.useCallback(() => {
+            if (emotionServerSocketRef.current?.connected) {
+                return; // Already connected
+            }
+
+            try {
+                // Use the emotion detection server URL (Render.com)
+                // Clean the URL: remove trailing spaces, slashes, and ensure proper format
+                let pythonServerUrl = (config.MEDIAPIPE_BASE_URL || 'https://emotion-detection-z1b2.onrender.com').trim();
+                // Remove trailing slash if present
+                pythonServerUrl = pythonServerUrl.replace(/\/+$/, '');
+                
+                console.log('[SingleMessage] 🔌 Connecting to Python emotion detection server:', pythonServerUrl);
+                
+                emotionServerSocketRef.current = io(pythonServerUrl, {
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionDelay: 3000,
+                    reconnectionAttempts: 15,
+                    timeout: 60000, // Increased timeout to 60s for Render.com cold starts
+                    forceNew: true,
+                    upgrade: true,
+                    rememberUpgrade: true,
+                    // Add additional options for better connection handling
+                    autoConnect: true,
+                    // Handle Render.com's potential slow cold starts
+                    withCredentials: false
+                });
+
+                emotionServerSocketRef.current.on('connect', () => {
+                    console.log('[SingleMessage] ✅ Connected to Python emotion detection server');
+                });
+
+                emotionServerSocketRef.current.on('disconnect', (reason) => {
+                    console.warn('[SingleMessage] ⚠️ Disconnected from Python emotion detection server:', reason);
+                });
+
+                emotionServerSocketRef.current.on('connect_error', (error) => {
+                    console.warn('[SingleMessage] ❌ Failed to connect to Python emotion detection server:', error.message);
+                    // Log additional error details for debugging
+                    if (error.message === 'timeout') {
+                        console.warn('[SingleMessage] ⏱️ Connection timeout - Render.com server may be cold starting. Will retry...');
+                    }
+                });
+
+                // Remove any existing listeners to prevent duplicates
+                emotionServerSocketRef.current.off('face_emotion');
+                
+                // Listen for emotion detection results using ref to get latest handler
+                emotionServerSocketRef.current.on('face_emotion', (data) => {
+                    console.log('[SingleMessage] 📥 Received face_emotion response:', data);
+                    if (handleEmotionServerResponseRef.current) {
+                        handleEmotionServerResponseRef.current(data);
+                    }
+                });
+            } catch (error) {
+                console.error('[SingleMessage] Error initializing emotion server socket:', error);
+            }
+        }, []);
+        
+        /**
+         * Handle response from Python emotion detection server
+         * Matches web version logic with fast emission on emotion change
+         * Using useCallback to ensure stable handler with latest values
+         */
+        const handleEmotionServerResponse = React.useCallback((data: any) => {
+            // Clear timeout if response arrives
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+            
+            serverRequestInFlightRef.current = false;
+
+            console.log('[SingleMessage] 🔄 Processing emotion response:', {
+                hasData: !!data,
+                success: data?.success,
+                hasEmotions: !!data?.emotions,
+                dominantEmotion: data?.dominant_emotion,
+                error: data?.error
+            });
+
+            // Use friend?._id directly (same as web version uses friendProfile?._id)
+            const currentFriendId = friend?._id;
+            if (!currentFriendId) {
+                console.warn('[SingleMessage] ⚠️ No friendId available, skipping emotion response');
+                return;
+            }
+
+            // Accept responses even if success is false, as long as we have emotion data
+            if (!data) {
+                console.warn('[SingleMessage] ⚠️ Received null/undefined data');
+                return;
+            }
+
+            // If we have dominant_emotion or emotions, process it even if success is false
+            const hasEmotionData = data.emotions || data.dominant_emotion;
+            if (!hasEmotionData) {
+                // No face detected or error - this is normal, just skip
+                if (data?.error || data?.message) {
+                    console.log(`[SingleMessage] No face detected: ${data.error || data.message}`);
+                }
+                return;
+            }
+
+            // Safely extract emotion data with fallbacks
+            const emotions = data.emotions || {};
+            const dominant = emotions.dominant || data.dominant_emotion || 'neutral';
+            const confidence = emotions.confidence || 0.5;
+            const allEmotions = emotions.all || {};
+            
+            // Map Python server emotion format to display format
+            const emotionLabelMap: Record<string, string> = {
+                'happy': 'Smiling',
+                'neutral': 'Neutral',
+                'sad': 'Sad',
+                'surprise': 'Surprised',
+                'angry': 'Angry',
+                'fear': 'Surprised',
+                'disgust': 'Neutral'
+            };
+
+            // Extract expression data
+            const dominantExpression = data.dominant_expression || 'none';
+            const dominantExpressionData = data.dominant_expression_data || {};
+            const expressions = data.expressions || {};
+            const features = data.features || {};
+            
+            // Check if there's a dominant expression that might override emotion
+            let finalEmotion = dominant;
+            if (dominantExpression && dominantExpression !== 'none') {
+                const expressionToEmotionMap: Record<string, string> = {
+                    'Laughing': 'happy',
+                    'Crying': 'sad',
+                    'Silent Crying': 'sad',
+                    'Yawning': 'neutral',
+                    'Sleepy': 'neutral'
+                };
+                const mappedEmotion = expressionToEmotionMap[dominantExpression];
+                if (mappedEmotion) {
+                    finalEmotion = mappedEmotion;
+                }
+            }
+
+            // Map emotion to label
+            let label = emotionLabelMap[finalEmotion] || 'Neutral';
+            
+            // Ensure label matches emotionEmojiMap keys
+            if (label && !emotionEmojiMap[label]) {
+                const capitalized = label.charAt(0).toUpperCase() + label.slice(1);
+                if (emotionEmojiMap[capitalized]) {
+                    label = capitalized;
+                } else {
+                    label = 'Neutral';
+                }
+            }
+
+            // Log detected emotion and expression
+            const emoji = emotionEmojiMap[label] || '😐';
+            console.log(`[SingleMessage] 🎭 Emotion Detected: ${emoji} ${label} | Category: ${finalEmotion} | Confidence: ${(confidence * 100).toFixed(1)}% | Expression: ${dominantExpression || 'none'}`);
+            
+            // Store expression data in ref for later emission
+            expressionDataRef.current = {
+                dominantExpression: dominantExpression,
+                expressionIntensity: dominantExpressionData.intensity || 0,
+                expressionScore: dominantExpressionData.score || 0,
+                allExpressions: expressions,
+                detectedExpressions: data.detected_expressions || [],
+                allEmotions: allEmotions,
+                features: features
+            };
+            
+            // FAST EMISSION: Emit immediately if emotion changed (before majority window)
+            // This ensures super fast response when emotions change
+            if (label !== lastMajorityLabelRef.current) {
+                // New emotion detected - emit immediately for fast response
+                const previousLabel = lastMajorityLabelRef.current;
+                lastMajorityLabelRef.current = label;
+                setMyEmotion(`${emoji} ${label}`);
+                
+                // Use myProfile?._id directly (same as web version uses profileId)
+                const currentProfileId = myProfile?._id;
+                if (currentProfileId && currentFriendId && isConnected) {
+                    try {
+                        // Get the latest expression data from the most recent response
+                        const latestExpressionData = expressionDataRef.current || {};
+                        
+                        console.log(`[SingleMessage] ⚡ FAST Emotion Change Detected: ${previousLabel || 'none'} → ${emoji} ${label} | Emitting immediately`);
+                        
+                        emit('emotion_change', {
+                            profileId: currentProfileId,
+                            emotion: `${emoji} ${label}`,
+                            emotionText: label,
+                            emoji,
+                            friendId: currentFriendId,
+                            confidence: Math.round(confidence * 100) / 100, // Use current frame confidence for immediate emission
+                            quality: Math.round(confidence * 100) / 100,
+                            // Include expression data
+                            expression: latestExpressionData.dominantExpression || 'none',
+                            expressionData: {
+                                dominant: latestExpressionData.dominantExpression || 'none',
+                                intensity: latestExpressionData.expressionIntensity || 0,
+                                score: latestExpressionData.expressionScore || 0,
+                                allExpressions: latestExpressionData.allExpressions || {}
+                            },
+                            // Include all detected expressions
+                            detectedExpressions: latestExpressionData.detectedExpressions || [],
+                            // Include all emotion scores
+                            emotionScores: latestExpressionData.allEmotions || {}
+                        });
+                        console.log(`[SingleMessage] 📤 ⚡ FAST Emotion & Expression emitted immediately to friendId: ${currentFriendId}`, {
+                            emotion: `${emoji} ${label}`,
+                            expression: latestExpressionData.dominantExpression || 'none',
+                            detectedExpressions: latestExpressionData.detectedExpressions || [],
+                            previousEmotion: previousLabel || 'none'
+                        });
+                    } catch (err) {
+                        console.error('[SingleMessage] ❌ Error emitting emotion_change:', err);
+                    }
+                }
+                
+                lastEmotionTimestampRef.current = Date.now();
+            }
+            
+            // Update rolling window for stability tracking (but don't wait for it)
+            const now = Date.now();
+            labelHistoryRef.current.push({ t: now, label });
+            const cutoff = now - MAJORITY_WINDOW_MS;
+            while (labelHistoryRef.current.length && labelHistoryRef.current[0].t < cutoff) {
+                labelHistoryRef.current.shift();
+            }
+            
+            // Compute majority in window for logging/stability (but emission already happened above)
+            const counts: Record<string, number> = {};
+            for (const item of labelHistoryRef.current) {
+                counts[item.label] = (counts[item.label] || 0) + 1;
+            }
+            let majorityLabel: string | null = null;
+            let majorityCount = 0;
+            for (const k in counts) {
+                const c = counts[k];
+                if (c > majorityCount) {
+                    majorityCount = c;
+                    majorityLabel = k;
+                }
+            }
+            
+            // Log majority for debugging (but emission already happened if changed)
+            if (majorityLabel && majorityLabel === label) {
+                const windowSize = labelHistoryRef.current.length || 1;
+                const confidenceApprox = Math.max(0, Math.min(1, majorityCount / windowSize));
+                // Only log if this confirms the immediate emission (not a separate emission)
+                if (majorityLabel === lastMajorityLabelRef.current) {
+                    const majorityEmoji = emotionEmojiMap[majorityLabel] || '😐';
+                    console.log(`[SingleMessage] ✅ Majority confirmed: ${majorityEmoji} ${majorityLabel} | Window Confidence: ${(confidenceApprox * 100).toFixed(1)}% | Window Size: ${windowSize}`);
+                }
+            }
+        }, [friend?._id, myProfile?._id, isConnected, emit]);
+
+        // Update ref whenever handler changes (exact same as web version)
+        React.useEffect(() => {
+            handleEmotionServerResponseRef.current = handleEmotionServerResponse;
+        }, [handleEmotionServerResponse]);
+        
+        /**
+         * Send frame to Python server for emotion detection
+         * Using useCallback to match web version exactly
+         */
+        const detectEmotionFromServer = React.useCallback(async (base64Image: string) => {
+            if (serverRequestInFlightRef.current) {
+                return; // Skip if request already in flight
+            }
+
+            // Use friend?._id directly (same as web version)
+            const currentFriendId = friend?._id;
+            if (!currentFriendId) {
+                console.warn('[SingleMessage] Cannot detect emotion - friendId not available');
+                return;
+            }
+
+            // Ensure socket is connected
+            if (!emotionServerSocketRef.current?.connected) {
+                initializeEmotionServerSocket();
+                // Wait a bit for connection (same as web version - 500ms)
+                await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
+                if (!emotionServerSocketRef.current?.connected) {
+                    console.warn('[SingleMessage] Emotion server not connected, skipping frame');
+                    return;
+                }
+            }
+
+            const reqId = ++serverRequestSeqRef.current;
+            serverRequestInFlightRef.current = true;
+            const t0 = Date.now();
+
+            // Clear any existing timeout
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+
+            // Set timeout to reset flag if no response received
+            serverRequestTimeoutRef.current = setTimeout(() => {
+                console.warn(`[SingleMessage] ⏱️ Server request timeout (req ${reqId}) - resetting flag`);
+                serverRequestInFlightRef.current = false;
+                serverRequestTimeoutRef.current = null;
+            }, SERVER_REQUEST_TIMEOUT_MS);
+
+            try {
+                // Send frame to Python server via socket.io
+                emotionServerSocketRef.current.emit('webcam_frame', { frame: base64Image });
+                console.log(`[SingleMessage] 📤 Sent frame to Python server (req ${reqId})`);
+            } catch (error: any) {
+                const elapsed = Date.now() - t0;
+                console.warn(`[SingleMessage] Error sending frame to Python server (req ${reqId}, ${elapsed}ms):`, error.message);
+                
+                // Clear timeout on error
+                if (serverRequestTimeoutRef.current) {
+                    clearTimeout(serverRequestTimeoutRef.current);
+                    serverRequestTimeoutRef.current = null;
+                }
+                serverRequestInFlightRef.current = false;
+            }
+            // Note: Response will be handled by handleEmotionServerResponse via socket listener
+        }, [friend?._id, initializeEmotionServerSocket]);
+        
+        /**
+         * Capture frame and send to server
+         */
+        const captureFrameAndSend = async () => {
+            // Check all prerequisites
+            if (serverRequestInFlightRef.current) {
+                console.log('[SingleMessage] ⏸️ Skipping frame - request in flight');
+                return;
+            }
+            
+            if (!cameraRef.current) {
+                console.log('[SingleMessage] ⏸️ Skipping frame - camera ref not available');
+                return;
+            }
+            
+            if (!emotionServerSocketRef.current?.connected) {
+                console.log('[SingleMessage] ⏸️ Skipping frame - emotion server not connected');
+                return;
+            }
+
+            // Additional check: ensure camera is ready
+            if (!isCameraPermissionGranted) {
+                console.log('[SingleMessage] ⏸️ Skipping frame - camera permission not granted');
+                return;
+            }
+            
+            if (!cameraDevice) {
+                console.log('[SingleMessage] ⏸️ Skipping frame - camera device not available');
+                return;
+            }
+            
+            // More lenient: if ref exists, try to capture even if not marked ready
+            // The ready flag might be incorrectly set
+            if (!isCameraReadyRef.current) {
+                console.log('[SingleMessage] ⚠️ Camera not marked ready, but attempting capture anyway');
+                // Try to mark as ready if ref exists
+                if (cameraRef.current) {
+                    isCameraReadyRef.current = true;
+                }
+            }
+
+            try {
+                const reqId = ++serverRequestSeqRef.current;
+                
+                console.log(`[SingleMessage] 📸 Attempting to capture frame (req ${reqId})`);
+                
+                // Add timeout to prevent hanging (increased to 10 seconds for first capture)
+                const photoPromise = cameraRef.current.takePhoto({
+                    flash: 'off',
+                });
+                
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error('Camera photo timeout')), 10000)
+                );
+                
+                const photo = await Promise.race([photoPromise, timeoutPromise]) as any;
+                
+                if (!photo || !photo.path) {
+                    console.warn(`[SingleMessage] ⚠️ No photo path returned (req ${reqId})`);
+                    return;
+                }
+                
+                console.log(`[SingleMessage] ✅ Photo captured successfully (req ${reqId}), path: ${photo.path}`);
+                
+                const RNFS = require('react-native-fs');
+                const base64Image = await RNFS.readFile(photo.path, 'base64');
+                const imageData = `data:image/jpeg;base64,${base64Image}`;
+                
+                console.log(`[SingleMessage] 📤 Sending frame to server (req ${reqId}), size: ${base64Image.length} bytes`);
+                
+                // detectEmotionFromServer will set serverRequestInFlightRef and handle the timeout
+                await detectEmotionFromServer(imageData);
+            } catch (error: any) {
+                console.error(`[SingleMessage] ❌ Error capturing/sending frame (req ${serverRequestSeqRef.current}):`, error);
+                
+                // Clear timeout if it was set
+                if (serverRequestTimeoutRef.current) {
+                    clearTimeout(serverRequestTimeoutRef.current);
+                    serverRequestTimeoutRef.current = null;
+                }
+                serverRequestInFlightRef.current = false;
+                
+                // Don't stop detection on first error - might be transient
+                // Only stop if it's a persistent configuration error
+                if (error?.message?.includes('configuration') || error?.message?.includes('Session')) {
+                    console.warn('[SingleMessage] ⚠️ Camera configuration error detected');
+                    // Reset ready state and let it recover
+                    isCameraReadyRef.current = false;
+                } else if (error?.message?.includes('timeout')) {
+                    console.warn('[SingleMessage] ⚠️ Camera timeout - will retry next interval');
+                    // Don't stop, just log
+                }
+            }
+        };
+        
+        /**
+         * Start emotion detection with adaptive frame skipping
+         */
+        const detectEmotions = () => {
+            // Clear any existing interval before starting a new one
+            if (emotionDetectionIntervalRef.current) {
+                clearInterval(emotionDetectionIntervalRef.current);
+                emotionDetectionIntervalRef.current = null;
+            }
+
+            // Optimized adaptive detection frequency - faster for quick emotion changes
+            let detectionInterval = 600; // Reduced to 600ms for faster emotion change detection
+            let frameSkipCounter = 0;
+
+            emotionDetectionIntervalRef.current = setInterval(async () => {
+                const currentFriendId = friend?._id;
+                const currentProfileId = myProfile?._id;
+                
+                // Guard check: stop detection if profileId or friendId become unavailable
+                if (!currentProfileId || typeof currentProfileId !== 'string' || currentProfileId.length === 0 ||
+                    !currentFriendId || typeof currentFriendId !== 'string' || currentFriendId.length === 0) {
+                    console.warn('[SingleMessage] ⚠️ Stopping emotion detection - invalid IDs:', {
+                        profileId: currentProfileId || 'missing',
+                        profileIdType: typeof currentProfileId,
+                        friendId: currentFriendId || 'missing',
+                        friendIdType: typeof currentFriendId
+                    });
+                    if (emotionDetectionIntervalRef.current) {
+                        clearInterval(emotionDetectionIntervalRef.current);
+                        emotionDetectionIntervalRef.current = null;
+                    }
+                    return;
+                }
+                
+                // Adaptive frame skipping for performance
+                // BUT: Don't skip frames when emotions are actively changing (for fast response)
+                const timeSinceLastChange = Date.now() - lastEmotionTimestampRef.current;
+
+                // Only skip frames if no emotion change for a while (keep active detection when changing)
+                if (timeSinceLastChange > 10000) { // No change for 10 seconds
+                    frameSkipCounter++;
+                    if (frameSkipCounter % 2 !== 0) return; // Skip every other frame
+                } else if (timeSinceLastChange > 5000) { // No change for 5 seconds
+                    frameSkipCounter++;
+                    if (frameSkipCounter % 3 === 0) return; // Skip every third frame
+                } else {
+                    // Recent change detected - don't skip frames for fast response
+                    frameSkipCounter = 0; // Reset when active
+                }
+                
+                // Check camera availability before attempting capture
+                if (!cameraRef.current) {
+                    console.log('[SingleMessage] ⏸️ Camera ref not available in interval');
+                    // Try to recover - check if camera should be available
+                    if (cameraDevice && isCameraPermissionGranted) {
+                        console.log('[SingleMessage] 🔄 Camera ref missing but device/permission available - will retry next interval');
+                    }
+                    return;
+                }
+                
+                // Re-check camera permission if not granted (permissions can change)
+                if (!isCameraPermissionGranted) {
+                    console.log('[SingleMessage] ⏸️ Camera permission not granted in interval, re-checking...');
+                    const permissionOk = await ensureCameraPermission();
+                    if (!permissionOk) {
+                        console.log('[SingleMessage] ⏸️ Camera permission still not granted after re-check');
+                        return;
+                    }
+                    // Permission granted, continue with detection
+                    console.log('[SingleMessage] ✅ Camera permission granted after re-check');
+                }
+                
+                if (!cameraDevice) {
+                    console.log('[SingleMessage] ⏸️ Camera device not available in interval');
+                    return;
+                }
+                
+                // More lenient check - if ref exists and device/permission are OK, try to capture
+                // The ready flag might not be set correctly, but we can still try
+                if (!isCameraReadyRef.current) {
+                    console.log('[SingleMessage] ⏸️ Camera not marked ready in interval, but attempting capture anyway');
+                    // Try to mark as ready if ref exists (might have been missed)
+                    if (cameraRef.current) {
+                        console.log('[SingleMessage] 🔄 Attempting to mark camera as ready');
+                        isCameraReadyRef.current = true;
+                    } else {
+                        return;
+                    }
+                }
+                
+                try {
+                    await captureFrameAndSend();
+                } catch (error) {
+                    console.error('[SingleMessage] ❌ Error in emotion detection interval:', error);
+                }
+            }, detectionInterval);
+        };
+        
+        /**
+         * Start emotion detection
+         */
+        const startEmotionDetection = async () => {
+            const currentFriendId = friend?._id;
+            const currentProfileId = myProfile?._id;
+            
+            // Don't start detection if we don't have required IDs
+            if (!currentProfileId || typeof currentProfileId !== 'string' || currentProfileId.length === 0 ||
+                !currentFriendId || typeof currentFriendId !== 'string' || currentFriendId.length === 0) {
+                console.warn('[SingleMessage] ⚠️ Not starting emotion detection - invalid IDs:', {
+                    profileId: currentProfileId || 'missing',
+                    profileIdType: typeof currentProfileId,
+                    friendId: currentFriendId || 'missing',
+                    friendIdType: typeof currentFriendId
+                });
+                return;
+            }
+
+            const cameraOk = await ensureCameraPermission();
+            if (!cameraOk) {
+                console.warn('[SingleMessage] ⚠️ Camera permission not granted');
+                return;
+            }
+
+            if (!cameraDevice) {
+                console.warn('[SingleMessage] ⚠️ Camera device not available');
+                return;
+            }
+
+            console.log('[SingleMessage] 📷 Camera permission granted, device available:', cameraDevice?.id);
+
+            // Wait for camera component to be rendered and ready
+            console.log('[SingleMessage] ⏳ Waiting for camera to be ready...');
+            let cameraReady = false;
+            const maxWaitTime = 10000; // 10 seconds max wait
+            const checkInterval = 500; // Check every 500ms
+            const maxChecks = maxWaitTime / checkInterval;
+            
+            for (let i = 0; i < maxChecks; i++) {
+                await new Promise<void>(resolve => setTimeout(() => resolve(), checkInterval));
+                
+                // Check if camera is ready
+                if (cameraRef.current && isCameraReadyRef.current) {
+                    cameraReady = true;
+                    console.log('[SingleMessage] ✅ Camera is ready after', (i + 1) * checkInterval, 'ms');
+                    break;
+                }
+                
+                // Log progress every 2 seconds
+                if (i > 0 && i % 4 === 0) {
+                    console.log(`[SingleMessage] ⏳ Still waiting for camera... (${(i + 1) * checkInterval}ms)`, {
+                        hasRef: !!cameraRef.current,
+                        isReady: isCameraReadyRef.current,
+                        hasDevice: !!cameraDevice,
+                        hasPermission: isCameraPermissionGranted
+                    });
+                }
+            }
+
+            if (!cameraReady) {
+                console.warn('[SingleMessage] ⚠️ Camera not ready after waiting, but continuing anyway');
+                console.warn('[SingleMessage] Camera state:', { 
+                    hasRef: !!cameraRef.current, 
+                    isReady: isCameraReadyRef.current, 
+                    hasDevice: !!cameraDevice,
+                    hasPermission: isCameraPermissionGranted 
+                });
+                // Try to mark as ready anyway if ref exists (might work)
+                if (cameraRef.current) {
+                    console.log('[SingleMessage] 🔄 Attempting to force camera ready state');
+                    isCameraReadyRef.current = true;
+                }
+            }
+
+            // Initialize Python server socket connection
+            console.log('[SingleMessage] 🔌 Initializing emotion server socket...');
+            initializeEmotionServerSocket();
+            
+            // Wait for connection with retries (Render.com can take time to cold start)
+            let connectionAttempts = 0;
+            const maxConnectionAttempts = 20; // Wait up to 20 seconds (20 * 1000ms)
+            while (!emotionServerSocketRef.current?.connected && connectionAttempts < maxConnectionAttempts) {
+                await new Promise<void>(resolve => setTimeout(() => resolve(), 1000));
+                connectionAttempts++;
+                if (connectionAttempts % 5 === 0) {
+                    console.log(`[SingleMessage] ⏳ Waiting for emotion server connection... (${connectionAttempts}s)`);
+                }
+            }
+            
+            if (!emotionServerSocketRef.current?.connected) {
+                console.warn('[SingleMessage] ⚠️ Emotion server not connected after initialization. Connection may still be establishing in background.');
+                // Don't return - allow the connection to establish in background and retry later
+            } else {
+                console.log('[SingleMessage] ✅ Emotion server connected successfully');
+            }
+
+            console.log('[SingleMessage] ✅ Starting server-side emotion detection with profileId:', currentProfileId, 'friendId:', currentFriendId);
+            console.log('[SingleMessage] 📊 Detection will start in 600ms intervals');
+            
+            // Give camera a bit more time to initialize before starting detection
+            // This ensures the camera ref is properly attached
+            setTimeout(() => {
+                if (cameraRef.current && cameraDevice && isCameraPermissionGranted) {
+                    if (!isCameraReadyRef.current) {
+                        console.log('[SingleMessage] 🔄 Camera ref exists but not marked ready - marking now');
+                        isCameraReadyRef.current = true;
+                    }
+                    console.log('[SingleMessage] ✅ Starting emotion detection interval');
+                    detectEmotions();
+                } else {
+                    console.warn('[SingleMessage] ⚠️ Camera not ready after delay, starting detection anyway');
+                    detectEmotions();
+                }
+            }, 1000); // Wait 1 second after initialization before starting detection
+        };
+        
+        startEmotionDetection();
+
+        return () => {
+            if (emotionDetectionIntervalRef.current) {
+                clearInterval(emotionDetectionIntervalRef.current);
+                emotionDetectionIntervalRef.current = null;
+            }
+            
+            // Clear camera setup timeout
+            if (cameraSetupTimeoutRef.current) {
+                clearTimeout(cameraSetupTimeoutRef.current);
+                cameraSetupTimeoutRef.current = null;
+            }
+            
+            // Reset rolling majority buffers
+            labelHistoryRef.current = [];
+            lastMajorityLabelRef.current = null;
+            
+            // Clear server request timeout
+            if (serverRequestTimeoutRef.current) {
+                clearTimeout(serverRequestTimeoutRef.current);
+                serverRequestTimeoutRef.current = null;
+            }
+            
+            // Reset server request tracking
+            serverRequestInFlightRef.current = false;
+            // Reset camera ready state
+            isCameraReadyRef.current = false;
+            
+            if (emotionServerSocketRef.current) {
+                emotionServerSocketRef.current.off('face_emotion');
+                emotionServerSocketRef.current.disconnect();
+                emotionServerSocketRef.current = null;
+            }
+        };
+    }, [settings.settings?.isShareEmotion, myProfile?._id, friend?._id, isCallActive, cameraDevice, isConnected, emit, isCameraPermissionGranted]);
+
+    // Stable camera ref callback to prevent repeated attach/detach
+    const handleCameraRef = React.useCallback((ref: Camera | null) => {
+        // Only process if the ref actually changed
+        if (ref === previousCameraRef.current) {
+            return;
+        }
+        
+        // Clear any pending setup timeout
+        if (cameraSetupTimeoutRef.current) {
+            clearTimeout(cameraSetupTimeoutRef.current);
+            cameraSetupTimeoutRef.current = null;
+        }
+        
+        // Update refs
+        previousCameraRef.current = ref;
+        cameraRef.current = ref;
+        
+        if (ref) {
+            console.log('[SingleMessage] 📷 Camera ref attached successfully');
+            // Mark camera as ready after a delay to allow initialization
+            // Use a longer delay to ensure camera is fully initialized
+            cameraSetupTimeoutRef.current = setTimeout(() => {
+                // Double-check that ref is still valid
+                if (cameraRef.current && cameraDevice) {
+                    isCameraReadyRef.current = true;
+                    console.log('[SingleMessage] ✅ Camera marked as ready');
+                } else {
+                    console.warn('[SingleMessage] ⚠️ Camera ref or device lost during initialization');
+                    isCameraReadyRef.current = false;
+                }
+                cameraSetupTimeoutRef.current = null;
+            }, 2000); // Increased to 2 seconds for better reliability
+        } else {
+            console.log('[SingleMessage] 📷 Camera ref detached');
+            isCameraReadyRef.current = false;
+        }
+    }, [cameraDevice]);
+
+    // Monitor camera state and ensure it's marked ready when conditions are met
+    useEffect(() => {
+        if (!settings.settings?.isShareEmotion || isCallActive || !cameraDevice || !isCameraPermissionGranted) {
+            return;
+        }
+
+        // Periodically check if camera should be ready but isn't marked as such
+        const checkInterval = setInterval(() => {
+            if (cameraRef.current && cameraDevice && isCameraPermissionGranted && !isCameraReadyRef.current) {
+                console.log('[SingleMessage] 🔄 Camera conditions met but not marked ready - marking now');
+                isCameraReadyRef.current = true;
+            }
+        }, 3000); // Check every 3 seconds
+
+        return () => clearInterval(checkInterval);
+    }, [settings.settings?.isShareEmotion, isCallActive, cameraDevice, isCameraPermissionGranted]);
 
     // Realtime block/unblock listeners and blocked message notice
     useEffect(() => {
@@ -882,8 +2090,15 @@ const SingleMessage = () => {
                 }));
             }
             
+            // Re-check camera permission when screen comes into focus (especially if emotion detection is enabled)
+            if (settings.settings?.isShareEmotion) {
+                ensureCameraPermission().catch(err => {
+                    console.warn('[SingleMessage] Error checking camera permission on focus:', err);
+                });
+            }
+            
             return () => { isActive = false; };
-        }, [friend?._id, myProfile?._id, dispatch])
+        }, [friend?._id, myProfile?._id, dispatch, settings.settings?.isShareEmotion])
     );
 
     // Debug pagination state
@@ -899,11 +2114,13 @@ const SingleMessage = () => {
     useEffect(() => {
         // Scroll to bottom when new messages arrive
         if (messages.length > 0) {
-            setTimeout(() => {
+            // Use a shorter timeout for faster response
+            const timeoutId = setTimeout(() => {
                 flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
+            }, 50);
+            return () => clearTimeout(timeoutId);
         }
-    }, [messages]);
+    }, [messages.length]);
 
     // Track which messages we've already emitted seen for (avoid duplicate emits)
     const seenEmittedRef = useRef<Set<string>>(new Set());
@@ -966,7 +2183,7 @@ const SingleMessage = () => {
             const tempId = Date.now().toString();
             const messageContent = inputText.trim();
             
-            // Add message to pending state
+            // Create the message object
             const pendingMessage: Message = {
                 _id: tempId,
                 message: messageContent,
@@ -980,8 +2197,19 @@ const SingleMessage = () => {
                 parent: replyingTo || undefined,
             };
             
+            // Add message to messages immediately for instant UI update
+            setMessages(prev => [...prev, pendingMessage]);
+            
+            // Also add to pending messages for tracking (will be removed when server confirms)
             setPendingMessages(prev => [...prev, pendingMessage]);
+            
+            // Clear input immediately
             setInputText('');
+            
+            // Immediate scroll attempt (useEffect will also handle it as backup)
+            setTimeout(() => {
+                flatListRef.current?.scrollToEnd({ animated: true });
+            }, 50);
 
             // Send message through socket
             emit('sendMessage', {
@@ -1059,10 +2287,24 @@ const SingleMessage = () => {
         }
     };
 
-    const playSound = () => {
-        console.log('Playing sound:', selectedMessage?.attachment);
-        emit('speak_message', { msgId: selectedMessage?._id, friendId: friend?._id });
-
+    const playSound = async () => {
+        try {
+            console.log('🎤 User clicked speaker button - speaking message:', selectedMessage?.message);
+            if (!selectedMessage?.message) {
+                console.warn('No message to speak');
+                return;
+            }
+            
+            // Directly call TTS service when user clicks speaker button
+            // No longer using socket events to prevent automatic TTS
+            await backgroundTtsService.initialize();
+            await backgroundTtsService.speakMessage(selectedMessage.message, { 
+                priority: 'normal', 
+                interrupt: false 
+            });
+        } catch (error) {
+            console.error('❌ Error speaking message:', error);
+        }
     }
 
     // Add function to copy message
@@ -1216,6 +2458,131 @@ const SingleMessage = () => {
                 prevScreenId: 'Message',
             }
         });
+    };
+
+    // Handle live voice transfer
+    const handleLiveVoiceButtonClick = async () => {
+        try {
+            if (isLiveVoiceActiveRef.current) {
+                // Stop live voice
+                try {
+                    if (liveVoiceEngineRef.current) {
+                        await liveVoiceEngineRef.current.leaveChannel();
+                        await liveVoiceEngineRef.current.destroy();
+                        liveVoiceEngineRef.current = null;
+                    }
+                } catch (e) {
+                    console.warn('Error stopping live voice:', e);
+                }
+                isLiveVoiceActiveRef.current = false;
+                setIsLiveVoiceActive(false);
+                setIsLiveVoiceModalOpen(false);
+                setLiveVoiceDuration(0);
+                setLiveVoiceRole('sender');
+                if (liveVoiceDurationTimerRef.current) {
+                    clearInterval(liveVoiceDurationTimerRef.current);
+                    liveVoiceDurationTimerRef.current = null;
+                }
+                const channelName = room || [myProfile?._id, friend?._id].sort().join('_');
+                emit('live-voice-stop', { to: friend?._id, channelName });
+                return;
+            }
+
+            // Start live voice
+            setIsLiveVoiceConnecting(true);
+            const channelName = room || [myProfile?._id, friend?._id].sort().join('_');
+            
+            // Emit event to ensure receiver leaves subscriber connection if active
+            emit('live-voice-leave-subscriber', { channelName });
+            
+            // Small delay to ensure subscriber connection is closed
+            await new Promise<void>(resolve => setTimeout(() => resolve(), 300));
+            
+            // Generate consistent UID from userId hash
+            // Add 1 to publisher UID to avoid conflict with subscriber UID
+            const generateUid = (str: string) => {
+                let hash = 0;
+                for (let i = 0; i < str.length; i++) {
+                    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                    hash |= 0;
+                }
+                return Math.abs(hash);
+            };
+            const baseUid = generateUid(myProfile?._id || '0');
+            // Use baseUid + 1 for publisher to avoid conflict with subscriber (baseUid)
+            const uid = baseUid + 1;
+            
+            // Get token
+            const { data } = await api.post('/agora/token', { channelName, uid, role: 'publisher' });
+            
+            if (!data || !data.appId || !data.token) {
+                throw new Error('Invalid token response from server');
+            }
+
+            // Dispose previous if any
+            if (liveVoiceEngineRef.current) {
+                try {
+                    await liveVoiceEngineRef.current.leaveChannel();
+                    await liveVoiceEngineRef.current.destroy();
+                } catch (e) {
+                    console.warn('Error disposing previous engine:', e);
+                }
+                liveVoiceEngineRef.current = null;
+            }
+
+            // Initialize engine
+            const engine = await RtcEngine.create(data.appId);
+            await engine.enableAudio();
+            
+            // Set channel profile to Communication mode (0) to match web RTC mode
+            await engine.setChannelProfile(0); // 0 = Communication (RTC mode)
+            
+            // Enable local audio (ensure microphone is enabled for publishing)
+            await engine.muteLocalAudioStream(false);
+            
+            // Join channel as publisher (no role needed in Communication mode)
+            await engine.joinChannel(data.token, channelName, null, uid);
+
+            liveVoiceEngineRef.current = engine;
+            isLiveVoiceActiveRef.current = true;
+            setIsLiveVoiceActive(true);
+            setLiveVoiceDuration(0);
+            setLiveVoiceRole('sender');
+            setIsLiveVoiceModalOpen(true);
+            
+            // Start duration timer
+            if (liveVoiceDurationTimerRef.current) {
+                clearInterval(liveVoiceDurationTimerRef.current);
+            }
+            liveVoiceDurationTimerRef.current = setInterval(() => {
+                setLiveVoiceDuration(prev => prev + 1);
+            }, 1000);
+            
+            emit('live-voice-start', { to: friend?._id, channelName });
+        } catch (err: any) {
+            console.error('Live voice error:', err);
+            setIsLiveVoiceActive(false);
+            isLiveVoiceActiveRef.current = false;
+            setIsLiveVoiceModalOpen(false);
+            setLiveVoiceDuration(0);
+            if (liveVoiceDurationTimerRef.current) {
+                clearInterval(liveVoiceDurationTimerRef.current);
+                liveVoiceDurationTimerRef.current = null;
+            }
+            // Cleanup on error
+            try {
+                if (liveVoiceEngineRef.current) {
+                    await liveVoiceEngineRef.current.leaveChannel().catch(() => {});
+                    await liveVoiceEngineRef.current.destroy().catch(() => {});
+                    liveVoiceEngineRef.current = null;
+                }
+            } catch (cleanupErr) {
+                console.error('Error during cleanup:', cleanupErr);
+            }
+            Alert.alert('Live Voice Error', err?.message || 'Failed to start live voice transfer');
+        } finally {
+            setIsLiveVoiceConnecting(false);
+        }
     };
 
     // Block/Unblock functionality
@@ -2043,7 +3410,10 @@ const SingleMessage = () => {
                                         {typeof friendEmotion === 'string' && friendEmotion.length > 0 && (
                                             <>
                                                 <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>|</Text>
-                                                <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>{friendEmotion}</Text>
+                                                <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>
+                                                    {friendEmotion}
+                                                    {friendExpression && friendExpression !== 'none' && ` • ${friendExpression}`}
+                                                </Text>
                                             </>
                                         )}
                                     </View>
@@ -2304,17 +3674,20 @@ const SingleMessage = () => {
                                 data={messages}
                                 renderItem={renderMessage}
                                 keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
+                                extraData={messages}
                                 style={{ flex: 1 }}
                                 contentContainerStyle={{ paddingVertical: 8 }}
                                 showsVerticalScrollIndicator={false}
                                 ListHeaderComponent={renderLoadingOldMessages}
                                 ListFooterComponent={
                                     <>
-                                        {pendingMessages.map((msg, idx) => (
-                                            <View key={msg.tempId || `pending-${idx}`}>
-                                                {renderPendingMessage({ item: msg })}
-                                            </View>
-                                        ))}
+                                        {pendingMessages
+                                            .filter(msg => !messages.some(m => m.tempId === msg.tempId || m._id === msg._id))
+                                            .map((msg, idx) => (
+                                                <View key={msg.tempId || `pending-${idx}`}>
+                                                    {renderPendingMessage({ item: msg })}
+                                                </View>
+                                            ))}
                                         {renderTypingIndicator()}
                                     </>
                                 }
@@ -2338,17 +3711,20 @@ const SingleMessage = () => {
                             data={messages}
                             renderItem={renderMessage}
                             keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
+                            extraData={messages}
                             style={{ flex: 1 }}
                             contentContainerStyle={{ paddingVertical: 8 }}
                             showsVerticalScrollIndicator={false}
                             ListHeaderComponent={renderLoadingOldMessages}
                             ListFooterComponent={
                                 <>
-                                    {pendingMessages.map((msg, idx) => (
-                                        <View key={msg.tempId || `pending-${idx}`}>
-                                            {renderPendingMessage({ item: msg })}
-                                        </View>
-                                    ))}
+                                    {pendingMessages
+                                        .filter(msg => !messages.some(m => m.tempId === msg.tempId || m._id === msg._id))
+                                        .map((msg, idx) => (
+                                            <View key={msg.tempId || `pending-${idx}`}>
+                                                {renderPendingMessage({ item: msg })}
+                                            </View>
+                                        ))}
                                     {renderTypingIndicator()}
                                 </>
                             }
@@ -3375,6 +4751,7 @@ const SingleMessage = () => {
                                                     color: themeColors.text.primary,
                                                 }}>
                                                     {friendEmotion || userInfoData?.lastEmotion || (userInfoData?.lastEmotionEmoji && userInfoData?.lastEmotionText ? `${userInfoData.lastEmotionEmoji} ${userInfoData.lastEmotionText}` : 'No emotion detected')}
+                                                    {friendExpression && friendExpression !== 'none' && ` • ${friendExpression}`}
                                                 </Text>
                                             </View>
                                         </View>
@@ -3606,6 +4983,33 @@ const SingleMessage = () => {
                         )}
                     </TouchableOpacity>
 
+                    {/* Live voice transfer button */}
+                    <TouchableOpacity
+                        onPress={handleLiveVoiceButtonClick}
+                        accessibilityLabel={isLiveVoiceConnecting ? 'Connecting live voice' : (isLiveVoiceActive ? 'Stop live voice' : 'Start live voice transfer')}
+                        style={{
+                            width: 35,
+                            height: 35,
+                            borderRadius: 20,
+                            backgroundColor: isLiveVoiceActive ? themeColors.status.error : themeColors.gray[100],
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            marginRight: 8,
+                            opacity: (isLiveVoiceConnecting || isRecording || isUploadingAudio) ? 0.6 : 1,
+                        }}
+                        disabled={isLiveVoiceConnecting || isRecording || isUploadingAudio}
+                    >
+                        {isLiveVoiceConnecting ? (
+                            <ActivityIndicator color={themeColors.text.secondary} />
+                        ) : (
+                            <Icon 
+                                name={isLiveVoiceActive ? 'phone-disabled' : 'phone'} 
+                                size={20} 
+                                color={isLiveVoiceActive ? themeColors.text.inverse : themeColors.text.secondary} 
+                            />
+                        )}
+                    </TouchableOpacity>
+
                     <View style={{
                         flex: 1,
                         flexDirection: 'row',
@@ -3650,14 +5054,12 @@ const SingleMessage = () => {
                             justifyContent: 'center',
                         }}
                     >
-
                         {
                             (inputText.length === 0 && !pendingAttachment) ? (
                                 <View style={{ width: 35, height: 35, borderRadius: 20, backgroundColor: themeColors.gray[300], alignItems: 'center', justifyContent: 'center' }}>
                                     <TouchableOpacity onPress={handleEmojiPress}>
                                         <Text style={{ fontSize: 16, color: themeColors.text.secondary }}>👍</Text>
                                     </TouchableOpacity>
-
                                 </View>
                             ) : (
                                 <Icon
@@ -3665,9 +5067,9 @@ const SingleMessage = () => {
                                     style={{ marginRight: -2 }}
                                     size={20}
                                     color={(inputText.trim() || pendingAttachment) && !isUploading ? themeColors.text.inverse : themeColors.text.secondary}
-                                />)
+                                />
+                            )
                         }
-
                     </TouchableOpacity>
                 </View>
                 </KeyboardAvoidingView>
@@ -3692,6 +5094,43 @@ const SingleMessage = () => {
             </View>
 
             {/* Floating mic button removed in favor of inline button */}
+            
+            {/* Live Voice Modal */}
+            <LiveVoiceModal
+                isOpen={isLiveVoiceModalOpen}
+                onClose={() => setIsLiveVoiceModalOpen(false)}
+                isActive={isLiveVoiceActive}
+                duration={liveVoiceDuration}
+                isConnecting={isLiveVoiceConnecting}
+                role={liveVoiceRole}
+                friendName={friend?.fullName || friend?.user?.firstName || 'Friend'}
+                onStop={liveVoiceRole === 'sender' ? handleLiveVoiceButtonClick : undefined}
+            />
+
+            {/* Hidden camera for emotion detection - only render when needed and ready */}
+            {settings.settings?.isShareEmotion && cameraDevice && !isCallActive && isCameraPermissionGranted && (
+                <View style={{ position: 'absolute', width: 200, height: 200, opacity: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: -1, left: -1000, top: -1000 }}>
+                    <Camera
+                        ref={handleCameraRef}
+                        device={cameraDevice}
+                        isActive={settings.settings?.isShareEmotion && !isCallActive && isCameraPermissionGranted}
+                        photo={true}
+                        enableZoomGesture={false}
+                        enableFpsGraph={false}
+                        style={{ width: 200, height: 200 }}
+                        onError={(error) => {
+                            console.error('[SingleMessage] ❌ Camera error:', error);
+                            isCameraReadyRef.current = false;
+                            // Don't crash the app, just log the error
+                            // Stop emotion detection if camera fails
+                            if (emotionDetectionIntervalRef.current) {
+                                clearInterval(emotionDetectionIntervalRef.current);
+                                emotionDetectionIntervalRef.current = null;
+                            }
+                        }}
+                    />
+                </View>
+            )}
         </SafeAreaView>
     );
 };

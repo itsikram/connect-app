@@ -43,18 +43,49 @@ interface DebugAuthResult {
 }
 
 // Helper function to check if token exists and has valid format
+// Removed excessive logging to prevent console spam and performance issues
 const isValidToken = (token: string | null): boolean => {
   if (!token) return false;
 
   // Check if token has the expected JWT format (3 parts separated by dots)
   const parts = token.split('.');
   if (parts.length !== 3) {
-    console.log('❌ Invalid token format - not a JWT token');
+    // Only log errors, not valid tokens (to reduce console spam)
     return false;
   }
 
-  console.log('✅ Token format looks valid');
   return true;
+};
+
+// Token cache to avoid AsyncStorage reads on every request
+let cachedToken: string | null = null;
+let tokenCacheTime: number = 0;
+const TOKEN_CACHE_DURATION = 30000; // Cache for 30 seconds
+
+// Function to get token with caching
+const getCachedToken = async (): Promise<string | null> => {
+  const now = Date.now();
+  // Return cached token if still valid
+  if (cachedToken && (now - tokenCacheTime) < TOKEN_CACHE_DURATION) {
+    return cachedToken;
+  }
+  
+  // Fetch fresh token
+  try {
+    const token = await AsyncStorage.getItem('authToken');
+    cachedToken = token;
+    tokenCacheTime = now;
+    return token;
+  } catch (error) {
+    console.error('❌ Error getting auth token:', error);
+    return null;
+  }
+};
+
+// Function to clear token cache (call when token changes)
+export const clearTokenCache = () => {
+  cachedToken = null;
+  tokenCacheTime = 0;
 };
 
 // Create axios instance with default configuration
@@ -67,14 +98,17 @@ const api: AxiosInstance = axios.create({
   }
 });
 
-console.log('API Base URL:', config.API_BASE_URL);
-console.log('API Timeout:', config.API_TIMEOUT);
+// Only log API config once on module load (not on every request)
+if (__DEV__) {
+  console.log('API Base URL:', config.API_BASE_URL);
+  console.log('API Timeout:', config.API_TIMEOUT);
+}
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token (optimized with caching)
 api.interceptors.request.use(
   async (config: any) => {
     try {
-      const token = await AsyncStorage.getItem('authToken');
+      const token = await getCachedToken();
 
       if (token && isValidToken(token)) {
         if (!config.headers) {
@@ -83,6 +117,8 @@ api.interceptors.request.use(
         config.headers.Authorization = token;
       } else {
         if (token && !isValidToken(token)) {
+          // Clear cache and storage
+          clearTokenCache();
           await AsyncStorage.multiRemove(['authToken', 'user']);
         }
       }
@@ -109,7 +145,8 @@ api.interceptors.response.use(
       originalRequest._retry = true;
 
       try {
-        // Clear stored auth data
+        // Clear token cache and stored auth data
+        clearTokenCache();
         await AsyncStorage.multiRemove(['authToken', 'user']);
         // You can redirect to login screen here if needed
         console.log('Session expired, please login again');
@@ -122,7 +159,8 @@ api.interceptors.response.use(
     if (error.response?.status === 500 && (error.response?.data as any)?.message?.includes('JsonWebTokenError')) {
       console.log('🚨 JWT verification failed - token may be expired or invalid');
       try {
-        // Clear stored auth data
+        // Clear token cache and stored auth data
+        clearTokenCache();
         await AsyncStorage.multiRemove(['authToken', 'user']);
         console.log('🗑️ Cleared invalid token from storage');
       } catch (storageError) {
@@ -132,17 +170,20 @@ api.interceptors.response.use(
 
     // Handle network errors
     if (!error.response) {
-      console.error('Network error:', error.message);
-      console.error('Network error details:', {
-        code: error.code,
-        message: error.message,
-        config: {
-          url: error.config?.url,
-          method: error.config?.method,
-          baseURL: error.config?.baseURL,
-          timeout: error.config?.timeout
-        }
-      });
+      // Only log network errors in development to reduce noise in production
+      if (__DEV__) {
+        console.error('Network error:', error.message);
+        console.error('Network error details:', {
+          code: error.code,
+          message: error.message,
+          config: {
+            url: error.config?.url,
+            method: error.config?.method,
+            baseURL: error.config?.baseURL,
+            timeout: error.config?.timeout
+          }
+        });
+      }
       // You can show a network error message to the user
     }
 

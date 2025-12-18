@@ -92,7 +92,7 @@ export class CallNotificationService {
           // Maximum priority settings
           importance: AndroidImportance.HIGH,
           visibility: AndroidVisibility.PUBLIC,
-          smallIcon: 'ic_launcher',
+          smallIcon: 'ic_notification',
           largeIcon: payload.callerProfilePic || undefined,
           // Default press action
           pressAction: {

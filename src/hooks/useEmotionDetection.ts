@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSocket } from '../contexts/SocketContext';
-import FaceDetection from '@react-native-ml-kit/face-detection';
-import type { Face } from '@react-native-ml-kit/face-detection';
+// FaceDetection removed - @react-native-ml-kit/face-detection uninstalled
 import { Platform } from 'react-native';
 import { 
   emotionEmojiMap, 
@@ -179,40 +178,12 @@ export const useEmotionDetection = (options: EmotionDetectionOptions) => {
   }, [currentEmotion]);
 
   /**
-   * Process face detection result with enhanced logic
+   * Process face detection result - disabled (FaceDetection removed)
    */
   const processFaceDetection = useCallback(async (imagePath: string) => {
-    try {
-      const faces = await FaceDetection.detect(imagePath, {
-        landmarkMode: 'all',
-        contourMode: 'all',
-        classificationMode: 'all',
-      } as any);
-
-      if (faces.length > 0) {
-        const face = faces[0];
-        const emotionData = await detectEmotion(face);
-        
-        if (emotionData && profileId && friendId) {
-          // Emit emotion to server with enhanced data
-          emit('emotion_change', {
-            profileId,
-            emotion: emotionData.emotion,
-            emotionText: emotionData.emotionText,
-            emoji: emotionData.emoji,
-            friendId,
-            confidence: emotionData.confidence,
-            quality: emotionData.quality
-          });
-
-          // Update local state
-          setCurrentEmotion(emotionData.emotion);
-        }
-      }
-    } catch (error) {
-      console.error('Error processing face detection:', error);
-    }
-  }, [detectEmotion, emit, profileId, friendId]);
+    // Face detection disabled - @react-native-ml-kit/face-detection uninstalled
+    console.warn('Face detection disabled - FaceDetection package removed');
+  }, []);
 
   /**
    * Start emotion detection with enhanced state management

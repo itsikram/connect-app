@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { View, StyleSheet } from 'react-native';
 import AppGrid from './AppGrid';
-import { DeviceAppsService } from '../services/DeviceAppsService';
+// DeviceAppsService removed - react-native-installed-apps uninstalled
 import { fallbackApps } from '../data/fallbackApps';
 
 interface DeviceAppsGridProps {
@@ -22,8 +22,8 @@ const DeviceAppsGrid: React.FC<DeviceAppsGridProps> = ({
   const [useFallback, setUseFallback] = useState(false);
 
   useEffect(() => {
-    // Check if device apps are available
-    if (!DeviceAppsService.isPackageAvailable() && showFallback) {
+    // Device apps disabled - react-native-installed-apps uninstalled
+    if (showFallback) {
       setUseFallback(true);
     }
   }, [showFallback]);

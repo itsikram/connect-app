@@ -24,16 +24,23 @@ public class KeepAliveService extends HeadlessJsTaskService {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        // Check if React Native is ready before starting the headless task
-        if (!isReactNativeReady()) {
-            Log.w(TAG, "React Native not ready yet, will retry...");
-            // Retry after a delay - keep service alive during retry
+        try {
+            // Check if React Native is ready before starting the headless task
+            if (!isReactNativeReady()) {
+                Log.w(TAG, "React Native not ready yet, will retry...");
+                // Retry after a delay - keep service alive during retry
+                retryStartTask(intent, flags, startId, 0);
+                return START_STICKY; // Keep service alive to allow retry
+            }
+            
+            // React Native is ready, proceed with normal headless task start
+            return super.onStartCommand(intent, flags, startId);
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onStartCommand, will retry", e);
+            // Retry on error instead of crashing
             retryStartTask(intent, flags, startId, 0);
-            return START_STICKY; // Keep service alive to allow retry
+            return START_STICKY;
         }
-        
-        // React Native is ready, proceed with normal headless task start
-        return super.onStartCommand(intent, flags, startId);
     }
 
     /**
@@ -106,21 +113,26 @@ public class KeepAliveService extends HeadlessJsTaskService {
 
     @Override
     protected @Nullable HeadlessJsTaskConfig getTaskConfig(Intent intent) {
-        // Safety check: return null if React Native is not ready
-        // This prevents the "CatalystInstance not available" error
-        if (!isReactNativeReady()) {
-            Log.w(TAG, "getTaskConfig: React Native not ready, returning null to prevent task start");
+        try {
+            // Safety check: return null if React Native is not ready
+            // This prevents the "CatalystInstance not available" error
+            if (!isReactNativeReady()) {
+                Log.w(TAG, "getTaskConfig: React Native not ready, returning null to prevent task start");
+                return null;
+            }
+            
+            WritableMap data = Arguments.createMap();
+            data.putString("source", "KeepAliveService");
+            return new HeadlessJsTaskConfig(
+                    "KeepAliveTask",
+                    data,
+                    0,
+                    true
+            );
+        } catch (Exception e) {
+            Log.e(TAG, "Error in getTaskConfig, returning null to prevent crash", e);
             return null;
         }
-        
-        WritableMap data = Arguments.createMap();
-        data.putString("source", "KeepAliveService");
-        return new HeadlessJsTaskConfig(
-                "KeepAliveTask",
-                data,
-                0,
-                true
-        );
     }
 }
 

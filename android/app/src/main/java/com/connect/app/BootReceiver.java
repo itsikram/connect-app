@@ -33,14 +33,9 @@ public class BootReceiver extends BroadcastReceiver {
                 }
                 Log.d(TAG, "Background TTS service started after boot");
 
-                // Start notification service (use startForegroundService on O+)
-                Intent notificationServiceIntent = new Intent(context, NotificationService.class);
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    context.startForegroundService(notificationServiceIntent);
-                } else {
-                    context.startService(notificationServiceIntent);
-                }
-                Log.d(TAG, "Notification service started after boot");
+                // NotificationService removed - all background notifications are now handled by 
+                // react-native-background-actions plugin (pushBackgroundService.ts)
+                // The background-fetch plugin service will be started automatically by the app
 
                 // Start Headless JS keep-alive service to relaunch JS background loop
                 Intent keepAliveIntent = new Intent(context, KeepAliveService.class);

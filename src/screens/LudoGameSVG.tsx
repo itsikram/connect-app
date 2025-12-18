@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -161,6 +161,49 @@ const LudoGameSVG = () => {
   const [friendList, setFriendList] = useState<any[]>([]);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Additional state variables from web version
+  const [gameId, setGameId] = useState<string | null>(null);
+  const [myPlayerIndex, setMyPlayerIndex] = useState(0);
+  const [waitingForPlayers, setWaitingForPlayers] = useState(false);
+  const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState<{[key: string]: string}>({});
+  const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState<{[key: string]: number}>({});
+  const [incomingInviteRequest, setIncomingInviteRequest] = useState<any>(null);
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const [showReconnectModal, setShowReconnectModal] = useState(false);
+  const [disconnectedPlayers, setDisconnectedPlayers] = useState<Set<string>>(new Set());
+  const [inviteCopied, setInviteCopied] = useState(false);
+  
+  // Refs to avoid re-binding socket listeners on every state change (matching web version)
+  const playersRef = useRef<Player[]>([]);
+  const currentPlayerRef = useRef(0);
+  const selectedPlayerCountRef = useRef(4);
+  const winnersRef = useRef<Player[]>([]);
+  const maxStepsRef = useRef(59);
+  const lastDiceValueRef = useRef(0);
+  const diceValueRef = useRef(0);
+  const gameStartedRef = useRef(false);
+  const gameEndedRef = useRef(false);
+  const myPlayerIndexRef = useRef(0);
+  const autoStartTriggeredRef = useRef(false);
+  const lastLocalDiceRollTimeRef = useRef(0);
+  const currentPlayerUpdatedFromServerRef = useRef(false);
+  const lastBroadcastRef = useRef(0);
+  const recentMovesRef = useRef(new Map<string, { toSteps: number; timestamp: number; isCapture?: boolean; isMoveOutOfHome?: boolean }>());
+  const lastTurnAdvanceTimeRef = useRef(0);
+  const invitedStatusByFriendIdRef = useRef<{[key: string]: string}>({});
+  const invitedSlotByFriendIdRef = useRef<{[key: string]: number}>({});
+  const inviteTimestampsRef = useRef<{[key: string]: number}>({});
+  const inviteHandlersAttachedRef = useRef(false);
+  const lastInviterRef = useRef<any>(null);
+  const savedGameStateRef = useRef<any>(null);
+  const hasProcessedReconnectionStateRef = useRef(false);
+  const lastRollTimeRef = useRef(0);
+  const isRollingRef = useRef(false);
+  const isMovingRef = useRef(false);
+  const isAutoMovingRef = useRef(false);
+  const moveTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
+
   // Original Ludo colors
   const colors = ['#FF0000', '#00FF00', '#0000FF', '#FFFF00'];
   const playerNames = ['Red', 'Green', 'Blue', 'Yellow'];
@@ -209,12 +252,21 @@ const LudoGameSVG = () => {
     return fromIndex;
   }, [selectedPlayerCount, winners]);
 
+  // Get position on path for a given player and steps (must be defined before use in cellOccupancy)
+  const getPositionOnPath = (playerIndex: number, steps: number) => {
+    const path = PATHS[playerIndex as keyof typeof PATHS];
+    if (!path || steps <= 0 || steps > path.length) {
+      return { x: 7, y: 7 };
+    }
+    return path[steps - 1];
+  };
+
   // Compute overlapping tokens in the same board cell for better visibility (web parity)
   const cellOccupancy = useMemo(() => {
     const map = new Map<string, { playerIndex: number; pieceIndex: number }[]>();
     players.forEach((player, playerIndex) => {
       player.pieces.forEach((piece, pieceIndex) => {
-        if (piece.isInPlay) {
+        if (piece.isInPlay || piece.steps === maxSteps) {
           const pos = getPositionOnPath(playerIndex, piece.steps);
           const key = `${pos.x},${pos.y}`;
           if (!map.has(key)) map.set(key, []);
@@ -224,6 +276,19 @@ const LudoGameSVG = () => {
     });
     return map;
   }, [players]);
+
+  // Sync refs with state (matching web version)
+  useEffect(() => { playersRef.current = players; }, [players]);
+  useEffect(() => { currentPlayerRef.current = currentPlayer; }, [currentPlayer]);
+  useEffect(() => { selectedPlayerCountRef.current = selectedPlayerCount; }, [selectedPlayerCount]);
+  useEffect(() => { winnersRef.current = winners; }, [winners]);
+  useEffect(() => { maxStepsRef.current = maxSteps; }, [maxSteps]);
+  useEffect(() => { diceValueRef.current = diceValue; }, [diceValue]);
+  useEffect(() => { gameStartedRef.current = gameStarted; }, [gameStarted]);
+  useEffect(() => { gameEndedRef.current = gameEnded; }, [gameEnded]);
+  useEffect(() => { myPlayerIndexRef.current = myPlayerIndex; }, [myPlayerIndex]);
+  useEffect(() => { invitedStatusByFriendIdRef.current = invitedStatusByFriendId; }, [invitedStatusByFriendId]);
+  useEffect(() => { invitedSlotByFriendIdRef.current = invitedSlotByFriendId; }, [invitedSlotByFriendId]);
 
   const getOverlapOffset = (count: number, index: number) => {
     const delta = CELL_SIZE * 0.35;
@@ -365,11 +430,64 @@ const LudoGameSVG = () => {
     });
   };
 
-  const rollDice = () => {
-    if (!canRollDice || diceRolling) return;
+  // Helper to set dice value and update ref immediately (matching web version)
+  const setDiceValueImmediate = (value: number) => {
+    setDiceValue(value);
+    diceValueRef.current = value;
+    lastDiceValueRef.current = value;
+  };
 
+  // Get playable pieces for a player given a dice value (matching web version)
+  const getPlayablePieces = React.useCallback((playerIndex: number, diceVal: number) => {
+    const playerData = players[playerIndex];
+    if (!playerData || !Array.isArray(playerData.pieces)) return [];
+    const playable: number[] = [];
+    playerData.pieces.forEach((piece, pieceIndex) => {
+      if (piece.isHome && diceVal === 6) {
+        playable.push(pieceIndex);
+      } else if (piece.isInPlay && piece.steps + diceVal <= maxSteps) {
+        playable.push(pieceIndex);
+      }
+    });
+    return playable;
+  }, [players, maxSteps]);
+
+  const rollDice = () => {
+    // Prevent multiple rolls - check multiple conditions
+    if (waitingForPlayers) return;
+    if (!canRollDice || diceRolling) return;
+    if (isRollingRef.current) return; // Additional guard
+    
+    // CRITICAL: Use refs to ensure we check the most current values (avoid stale closures)
+    // Only the current player can roll dice in online mode
+    if (onlineMode) {
+      const currentMyPlayerIndex = myPlayerIndexRef.current;
+      const currentPlayerIndex = currentPlayerRef.current;
+      if (currentMyPlayerIndex !== currentPlayerIndex) {
+        // Not the current player's turn - prevent roll
+        return;
+      }
+      if (diceValueRef.current > 0) {
+        // Already have a dice value, wait for move
+        return;
+      }
+    }
+    
+    // Prevent rapid successive rolls
+    const timeSinceLastRoll = Date.now() - lastRollTimeRef.current;
+    if (timeSinceLastRoll < 500) return; // Minimum 500ms between rolls
+    
+    // CRITICAL: Double-check conditions right before setting flags (prevent race conditions)
+    // Re-check canRollDice and diceValue one more time after potential state updates
+    if (!canRollDice || diceRolling || isRollingRef.current) return;
+    if (diceValueRef.current > 0 || diceValue > 0) return;
+    if (onlineMode && myPlayerIndexRef.current !== currentPlayerRef.current) return;
+    
+    // Set rolling flags immediately to prevent duplicate rolls
+    isRollingRef.current = true;
     setDiceRolling(true);
     setCanRollDice(false);
+    lastRollTimeRef.current = Date.now();
 
     // Animate dice rolling
     Animated.sequence([
@@ -395,18 +513,41 @@ const LudoGameSVG = () => {
       }),
     ]).start(() => {
       const value = Math.floor(Math.random() * 6) + 1;
-      setDiceValue(value);
+      // Set dice value and broadcast
+      setDiceValueImmediate(value);
+      lastDiceValueRef.current = value;
+      lastLocalDiceRollTimeRef.current = Date.now();
       setDiceRolling(false);
+      isRollingRef.current = false;
 
-      // Check if player can move any piece
       const currentPlayerData = players[currentPlayer];
-      const canMove = currentPlayerData.pieces.some(piece => {
-        if (piece.isHome && value === 6) return true;
-        if (piece.isInPlay && piece.steps + value <= maxSteps) return true;
-        return false;
-      });
+      const playablePieces = getPlayablePieces(currentPlayer, value);
 
-      if (canMove) {
+      if (playablePieces.length === 0) {
+        // No moves available - advance turn
+        setTimeout(() => {
+          const nextPlayer = getNextActivePlayer(currentPlayer);
+          setCurrentPlayer(nextPlayer);
+          currentPlayerRef.current = nextPlayer;
+          lastTurnAdvanceTimeRef.current = Date.now();
+          setDiceValueImmediate(0);
+          lastLocalDiceRollTimeRef.current = 0;
+          setCanRollDice(true);
+        }, 400);
+      } else if (playablePieces.length === 1) {
+        // Only one playable piece - move it automatically
+        isAutoMovingRef.current = true;
+        setCanRollDice(false);
+        setTimeout(() => {
+          if (diceValueRef.current === value && currentPlayerRef.current === currentPlayer) {
+            movePiece(playablePieces[0]);
+          } else {
+            isAutoMovingRef.current = false;
+            setCanRollDice(true);
+          }
+        }, 200);
+      } else {
+        // Multiple pieces are playable - allow user to choose
         // Start stroke animations for movable pieces
         currentPlayerData.pieces.forEach((piece, pieceIndex) => {
           const globalPieceIndex = currentPlayer * 4 + pieceIndex;
@@ -416,20 +557,6 @@ const LudoGameSVG = () => {
             startTokenStrokeAnimation(globalPieceIndex);
           }
         });
-      } else {
-        // No valid moves, automatically pass turn
-        setTimeout(() => {
-          // Stop stroke animations only for current player's pieces
-          currentPlayerData.pieces.forEach((piece, pieceIndex) => {
-            const globalPieceIndex = currentPlayer * 4 + pieceIndex;
-            stopTokenStrokeAnimation(globalPieceIndex);
-          });
-
-          const nextPlayer = getNextActivePlayer(currentPlayer);
-          setCurrentPlayer(nextPlayer);
-          setDiceValue(0);
-          setCanRollDice(true);
-        }, 1500);
       }
     });
   };
@@ -696,44 +823,198 @@ const LudoGameSVG = () => {
     animateStep(1);
   };
 
-  // Calculate position on the Ludo board path (uses precomputed PATHS)
-  const getPositionOnPath = (playerIndex: number, steps: number) => {
-    const path = PATHS[playerIndex as keyof typeof PATHS];
-    if (!path || steps <= 0 || steps > path.length) {
-      return { x: 7, y: 7 };
-    }
-    return path[steps - 1];
-  };
 
   const isSafePosition = (_playerIndex: number, position: { x: number; y: number }) => {
     return SAFE_CELLS.has(`${position.x},${position.y}`);
   };
 
-  const checkForCapture = (movingPlayerIndex: number, newPosition: { x: number; y: number }) => {
-    const capturedPieces: { playerIndex: number; pieceIndex: number }[] = [];
+  const checkForCapture = (movingPlayerIndex: number, newPosition: { x: number; y: number }, movingPieceNewSteps?: number) => {
+    const srcPlayers = playersRef.current && Array.isArray(playersRef.current) && playersRef.current.length > 0 ? playersRef.current : players;
+    const captured: { playerIndex: number; pieceIndex: number }[] = [];
     
-    // Check all other players' pieces for capture
-    players.forEach((player, playerIndex) => {
-      if (playerIndex === movingPlayerIndex) return; // Don't check against self
+    // Count tokens per player at the target position (including the moving player)
+    const tokensAtPosition = new Map<number, number>(); // playerIndex -> count
       
-      player.pieces.forEach((piece, pieceIndex) => {
+    srcPlayers.forEach((player, playerIndex) => {
+      let count = 0;
+      player.pieces.forEach((piece) => {
         if (piece.isInPlay) {
-          // Pieces in home stretch (last 7 steps) cannot be captured
-          if (piece.steps >= 52) return;
-          
+          if (piece.steps >= maxSteps) return; // Skip finished pieces
           const piecePosition = getPositionOnPath(playerIndex, piece.steps);
-          // Check if positions match (same cell)
           if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
-            // Check if the piece being captured is in a safe position
-            if (!isSafePosition(playerIndex, piecePosition)) {
-              capturedPieces.push({ playerIndex, pieceIndex });
-            }
+            count++;
           }
         }
       });
+      if (count > 0) {
+        tokensAtPosition.set(playerIndex, count);
+      }
     });
     
-    return capturedPieces;
+    // Explicitly ensure the moving piece is counted at the new position
+    // This handles cases where state hasn't updated yet or the piece isn't in state
+    if (typeof movingPieceNewSteps === 'number' && movingPieceNewSteps > 0 && movingPieceNewSteps < maxSteps) {
+      const movingPiecePosition = getPositionOnPath(movingPlayerIndex, movingPieceNewSteps);
+      if (movingPiecePosition.x === newPosition.x && movingPiecePosition.y === newPosition.y) {
+        // Check if the moving piece is already counted in the state
+        const movingPlayer = srcPlayers[movingPlayerIndex];
+        let alreadyCounted = false;
+        if (movingPlayer && Array.isArray(movingPlayer.pieces)) {
+          alreadyCounted = movingPlayer.pieces.some(piece => {
+            if (piece.isInPlay && piece.steps === movingPieceNewSteps) {
+              const pos = getPositionOnPath(movingPlayerIndex, piece.steps);
+              return pos.x === newPosition.x && pos.y === newPosition.y;
+            }
+            return false;
+          });
+        }
+        // Only add if not already counted
+        if (!alreadyCounted) {
+          const currentCount = tokensAtPosition.get(movingPlayerIndex) || 0;
+          tokensAtPosition.set(movingPlayerIndex, currentCount + 1);
+        }
+      }
+    }
+    
+    // Get the moving player's token count at the new position
+    const movingPlayerTokenCount = tokensAtPosition.get(movingPlayerIndex) || 0;
+    
+    // Check captures for each opponent
+    tokensAtPosition.forEach((count, playerIndex) => {
+      if (playerIndex === movingPlayerIndex) return; // Skip the moving player
+      
+      const player = srcPlayers[playerIndex];
+      
+      // Find the first piece at this position to check if it's safe
+      let firstPieceAtPosition: { x: number; y: number } | null = null;
+      for (const piece of player.pieces) {
+        if (piece.isInPlay && piece.steps < maxSteps) {
+          const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+          if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+            firstPieceAtPosition = piecePosition;
+            break;
+          }
+        }
+      }
+      
+      // Skip safe positions
+      if (firstPieceAtPosition && isSafePosition(playerIndex, firstPieceAtPosition)) return;
+      
+      // Rule 1: If moving player has 2+ tokens and opponent has 2 tokens, capture both opponent tokens
+      if (movingPlayerTokenCount >= 2 && count === 2) {
+        // Capture both opponent tokens
+        player.pieces.forEach((piece, pieceIndex) => {
+          if (piece.isInPlay && piece.steps < maxSteps) {
+            const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+            if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+              captured.push({ playerIndex, pieceIndex });
+          }
+        }
+      });
+      }
+      // Rule 2: If moving player has 1 token and opponent has 1 token, capture the opponent's token
+      else if (movingPlayerTokenCount === 1 && count === 1) {
+        // Capture the single opponent token
+        player.pieces.forEach((piece, pieceIndex) => {
+          if (piece.isInPlay && piece.steps < maxSteps) {
+            const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+            if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+              captured.push({ playerIndex, pieceIndex });
+            }
+          }
+        });
+      }
+      // If moving player has 2+ tokens and opponent has only 1 token, capture the single token
+      else if (movingPlayerTokenCount >= 2 && count === 1) {
+        // Moving player has double tokens, can capture single opponent token
+        player.pieces.forEach((piece, pieceIndex) => {
+          if (piece.isInPlay && piece.steps < maxSteps) {
+            const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+            if (piecePosition.x === newPosition.x && piecePosition.y === newPosition.y) {
+              captured.push({ playerIndex, pieceIndex });
+            }
+          }
+        });
+      }
+      // If opponent has 2+ tokens and moving player has 1 token, opponent is safe (no capture)
+    });
+    
+    return captured;
+  };
+
+  // Check for captures when a token moves AWAY from a position (rule 2: friend moves token away)
+  const checkForCaptureAfterMoveAway = (movingPlayerIndex: number, oldPosition: { x: number; y: number }) => {
+    const srcPlayers = playersRef.current && Array.isArray(playersRef.current) && playersRef.current.length > 0 ? playersRef.current : players;
+    const captured: { playerIndex: number; pieceIndex: number }[] = [];
+    
+    // Count tokens per player at the old position (after the move)
+    const tokensAtPosition = new Map<number, number>(); // playerIndex -> count
+    
+    srcPlayers.forEach((player, playerIndex) => {
+      let count = 0;
+      player.pieces.forEach((piece) => {
+        if (piece.isInPlay) {
+          if (piece.steps >= maxSteps) return; // Skip finished pieces
+          const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+          if (piecePosition.x === oldPosition.x && piecePosition.y === oldPosition.y) {
+            count++;
+          }
+        }
+      });
+      if (count > 0) {
+        tokensAtPosition.set(playerIndex, count);
+      }
+    });
+    
+    // Check if any player now has a single token that should be captured
+    tokensAtPosition.forEach((count, playerIndex) => {
+      if (playerIndex === movingPlayerIndex) {
+        // Check if moving player left behind tokens that can capture others
+        if (count >= 2) {
+          // Moving player has 2+ tokens left, can capture single tokens of others
+          srcPlayers.forEach((opponent, opponentIndex) => {
+            if (opponentIndex === playerIndex) return;
+            const opponentCount = tokensAtPosition.get(opponentIndex) || 0;
+            if (opponentCount === 1) {
+              // Capture the single opponent token
+              opponent.pieces.forEach((piece, pieceIndex) => {
+                if (piece.isInPlay && piece.steps < maxSteps) {
+                  const piecePosition = getPositionOnPath(opponentIndex, piece.steps);
+                  if (piecePosition.x === oldPosition.x && piecePosition.y === oldPosition.y) {
+                    const position = getPositionOnPath(opponentIndex, piece.steps);
+                    if (!isSafePosition(opponentIndex, position)) {
+                      captured.push({ playerIndex: opponentIndex, pieceIndex });
+                    }
+                  }
+                }
+              });
+            }
+          });
+        }
+      } else {
+        // Check if this player's single token should be captured by remaining tokens
+        if (count === 1) {
+          const movingPlayerRemainingCount = tokensAtPosition.get(movingPlayerIndex) || 0;
+          if (movingPlayerRemainingCount >= 2) {
+            // Moving player left 2+ tokens, can capture this single token
+            const player = srcPlayers[playerIndex];
+            player.pieces.forEach((piece, pieceIndex) => {
+              if (piece.isInPlay && piece.steps < maxSteps) {
+                const piecePosition = getPositionOnPath(playerIndex, piece.steps);
+                if (piecePosition.x === oldPosition.x && piecePosition.y === oldPosition.y) {
+                  const position = getPositionOnPath(playerIndex, piece.steps);
+                  if (!isSafePosition(playerIndex, position)) {
+                    captured.push({ playerIndex, pieceIndex });
+                  }
+                }
+              }
+            });
+          }
+        }
+      }
+    });
+    
+    return captured;
   };
 
   const captureToken = (playerIndex: number, pieceIndex: number) => {
@@ -800,14 +1081,18 @@ const LudoGameSVG = () => {
       ]),
     ]).start(() => {
       // Update the piece state after animation
-      const updatedPlayers = [...players];
-      updatedPlayers[playerIndex].pieces[pieceIndex] = {
-        ...capturedPiece,
-        isHome: true,
-        isInPlay: false,
-        steps: 0,
-      };
-      setPlayers(updatedPlayers);
+      setPlayers(prev => {
+        const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+        updated[playerIndex].pieces[pieceIndex] = {
+          ...capturedPiece,
+          isHome: true,
+          isInPlay: false,
+          steps: 0,
+        };
+        // Update ref immediately to ensure state is synchronized
+        playersRef.current = updated;
+        return updated;
+      });
       
       // Clear capture animation state
       setCaptureAnimations(prev => {
@@ -819,15 +1104,52 @@ const LudoGameSVG = () => {
   };
 
   const movePiece = (pieceId: number) => {
-    if (diceValue === 0) return;
-
-    const rolledNow = diceValue;
+    // Prevent multiple moves from a single dice roll - check moving flag
+    // But allow automatic moves to proceed (they set isAutoMovingRef instead)
+    if (isMovingRef.current && !isAutoMovingRef.current) {
+      return;
+    }
+    
+    // Always prefer ref value when available (prevents move from being blocked due to state sync issues)
+    // The ref is updated immediately, while state updates are async
+    const effectiveDiceValue = (diceValueRef.current > 0) ? diceValueRef.current : diceValue;
+    
+    if (effectiveDiceValue === 0) {
+      return;
+    }
+    
+    // Double-check: if dice value ref is 0, don't allow move (prevents race conditions)
+    if (diceValueRef.current === 0 && diceValue === 0) {
+      return;
+    }
+    
+    // In online mode, only allow moves if it's the current player's turn
+    if (onlineMode && myPlayerIndexRef.current !== currentPlayerRef.current) {
+      return;
+    }
+    
+    const rolledNow = effectiveDiceValue;
     const currentPlayerData = players[currentPlayer];
+    if (!currentPlayerData) {
+      return;
+    }
     const piece = currentPlayerData.pieces[pieceId];
+    if (!piece) {
+      return;
+    }
 
     // Validate the move
-    if (piece.isHome && diceValue !== 6) return;
-    if (piece.isInPlay && piece.steps + diceValue > maxSteps) return;
+    if (piece.isHome && effectiveDiceValue !== 6) return;
+    if (piece.isInPlay && piece.steps + effectiveDiceValue > maxSteps) return;
+    
+    // Set moving flag to prevent duplicate moves
+    isMovingRef.current = true;
+    // Clear auto-moving flag since we're now executing the move
+    isAutoMovingRef.current = false;
+    
+    // CRITICAL: Reset dice value IMMEDIATELY to prevent multiple moves from same roll
+    setDiceValueImmediate(0);
+    lastLocalDiceRollTimeRef.current = 0;
 
     // Stop stroke animations for ALL current player's pieces
     currentPlayerData.pieces.forEach((_, pieceIndex) => {
@@ -837,13 +1159,36 @@ const LudoGameSVG = () => {
 
     const globalPieceIndex = currentPlayer * 4 + pieceId;
 
-    if (piece.isHome && diceValue === 6) {
-      // Move piece out of home
+    if (piece.isHome && effectiveDiceValue === 6) {
+      // Move out
+      const pieceKey = `${currentPlayer}-${pieceId}`;
+      recentMovesRef.current.set(pieceKey, { toSteps: 1, timestamp: Date.now(), isMoveOutOfHome: true });
+      
+      const updated = players.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+      updated[currentPlayer].pieces[pieceId] = {
+        ...piece,
+        isHome: false,
+        isInPlay: true,
+        steps: 1,
+      };
+      setPlayers(updated);
+      // Update ref immediately to ensure protection logic sees the new state
+      playersRef.current = updated;
+      
+      // Keep move protected for 5 seconds (longer for moves out of home to prevent reverts)
+      setTimeout(() => {
+        const tracked = recentMovesRef.current.get(pieceKey);
+        // Only delete if the move hasn't been updated (e.g., by a capture or further move)
+        if (tracked && tracked.toSteps === 1) {
+          recentMovesRef.current.delete(pieceKey);
+        }
+      }, 5000);
+
+      // Animate piece moving out
       const startPosition = getPositionOnPath(currentPlayer, 1);
       const startX = startPosition.x * CELL_SIZE;
       const startY = startPosition.y * CELL_SIZE;
 
-      // Animate piece moving out
       Animated.parallel([
         Animated.timing(tokenPositionAnimations[globalPieceIndex].translateX, {
           toValue: startX,
@@ -856,102 +1201,178 @@ const LudoGameSVG = () => {
           useNativeDriver: false,
         }),
       ]).start(() => {
-        const updatedPlayers = [...players];
-        updatedPlayers[currentPlayer].pieces[pieceId] = {
-          ...piece,
-          isHome: false,
-          isInPlay: true,
-          steps: 1,
-        };
-        setPlayers(updatedPlayers);
-
-        // Check for captures at starting position
+        // Capture at start position
         const newPosition = getPositionOnPath(currentPlayer, 1);
-        const capturedPieces = checkForCapture(currentPlayer, newPosition);
+        const capturedPieces = checkForCapture(currentPlayer, newPosition, 1);
         capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
+          // Track capture to prevent it from being overwritten
+          const captureKey = `${playerIndex}-${pieceIndex}`;
+          recentMovesRef.current.set(captureKey, { toSteps: 0, timestamp: Date.now(), isCapture: true });
           captureToken(playerIndex, pieceIndex);
         });
 
-        setDiceValue(0);
-        setCanRollDice(true);
-        // Keep turn because rolled a 6
+        isMovingRef.current = false; // Reset moving flag
+        isAutoMovingRef.current = false; // Clear auto-moving flag
+        // Reset dice value so player can roll again (since it's a 6, they get another turn)
+        setDiceValueImmediate(0);
+        lastLocalDiceRollTimeRef.current = 0;
+        setCanRollDice(true); // keep turn on 6
       });
     } else if (piece.isInPlay) {
-      // Move piece on board with step-by-step animation
       const oldSteps = piece.steps;
-      const newSteps = piece.steps + diceValue;
+      const oldPosition = getPositionOnPath(currentPlayer, oldSteps);
+      const newSteps = piece.steps + effectiveDiceValue;
 
       if (newSteps <= maxSteps) {
-        // Animate the movement step by step
+        // Track this move
+        const pieceKey = `${currentPlayer}-${pieceId}`;
+        recentMovesRef.current.set(pieceKey, { toSteps: newSteps, timestamp: Date.now() });
+        
+        // Capture the current player index to avoid stale closure
+        const movingPlayerIndex = currentPlayer;
+        
+        // Capture rolledNow value before animation to avoid closure issues
+        const capturedRolledValue = rolledNow;
+        
+        // CRITICAL: Update state and ref immediately so UI shows the move and protection logic sees it
+        // This prevents broadcasts from overwriting the move before animation completes
+        setPlayers(prev => {
+          const updated = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+          updated[movingPlayerIndex].pieces[pieceId].steps = newSteps;
+          updated[movingPlayerIndex].pieces[pieceId].isHome = false;
+          updated[movingPlayerIndex].pieces[pieceId].isInPlay = newSteps > 0 && newSteps < maxSteps;
+          // Update ref immediately to ensure protection logic sees the new state
+          playersRef.current = updated;
+          return updated;
+        });
+        
+        // Animate the visual movement (state is already at target, animation provides visual feedback)
         animateTokenMovement(globalPieceIndex, oldSteps, newSteps, currentPlayer, () => {
-          // Animation completed, update the piece state
-          const updatedPlayers = [...players];
-          updatedPlayers[currentPlayer].pieces[pieceId] = {
-            ...piece,
-            steps: newSteps,
-          };
-          setPlayers(updatedPlayers);
+          // After animation, run capture/win checks
+          let updatedState: Player[] | null = null;
+          setPlayers(prev => {
+            const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+            updatedPlayers[movingPlayerIndex].pieces[pieceId].steps = newSteps;
+            updatedPlayers[movingPlayerIndex].pieces[pieceId].isHome = false;
+            updatedPlayers[movingPlayerIndex].pieces[pieceId].isInPlay = newSteps > 0 && newSteps < maxSteps;
+            // Update ref immediately to ensure broadcasts use current state
+            playersRef.current = updatedPlayers;
+            updatedState = updatedPlayers; // Capture for use in broadcast
+            return updatedPlayers;
+          });
+          
+          // Keep move protected for 2 seconds after completion
+          setTimeout(() => {
+            recentMovesRef.current.delete(pieceKey);
+          }, 2000);
 
-          // Check for captures after movement (only if not at finish)
           let didCapture = false;
           if (newSteps < maxSteps) {
-            const newPosition = getPositionOnPath(currentPlayer, newSteps);
-            const capturedPieces = checkForCapture(currentPlayer, newPosition);
+            const newPosition = getPositionOnPath(movingPlayerIndex, newSteps);
             
-            // Capture any tokens that were landed on
+            // Check for captures at the new position
+            // Pass newSteps to ensure the moving piece is counted correctly
+            const capturedPieces = checkForCapture(movingPlayerIndex, newPosition, newSteps);
+            didCapture = Array.isArray(capturedPieces) && capturedPieces.length > 0;
             capturedPieces.forEach(({ playerIndex, pieceIndex }) => {
+              // Track capture to prevent it from being overwritten
+              const captureKey = `${playerIndex}-${pieceIndex}`;
+              recentMovesRef.current.set(captureKey, { toSteps: 0, timestamp: Date.now(), isCapture: true });
               captureToken(playerIndex, pieceIndex);
             });
-            didCapture = capturedPieces.length > 0;
-          }
-
-          // Check for win
-          if (newSteps === maxSteps) {
-            // Count how many pieces have finished
-            const finishedCount = updatedPlayers[currentPlayer].pieces.filter(
-              p => p.steps === maxSteps
-            ).length;
             
-            // Check if all 4 pieces have finished
-            if (finishedCount === 4) {
-              const newWinners = [...winners, currentPlayerData];
-              setWinners(newWinners);
-              setWinner(currentPlayerData);
-              setShowWinnerModal(true);
-              startWinnerCelebration();
-              
-              // Check if game should end
-              const remainingPlayers = players.filter((_, index) => index < selectedPlayerCount);
-              if (newWinners.length >= remainingPlayers.length - 1) {
-                setGameEnded(true);
+            // Check for captures at the old position (when token moves away)
+            // This handles the case where friend has double tokens and moves one away,
+            // leaving a single token that should be captured
+            if (oldSteps > 0 && oldSteps < maxSteps) {
+              const capturedAfterMoveAway = checkForCaptureAfterMoveAway(movingPlayerIndex, oldPosition);
+              if (capturedAfterMoveAway.length > 0) {
+                didCapture = true; // Count this as a capture for turn purposes
+                capturedAfterMoveAway.forEach(({ playerIndex, pieceIndex }) => {
+                  // Track capture to prevent it from being overwritten
+                  const captureKey = `${playerIndex}-${pieceIndex}`;
+                  recentMovesRef.current.set(captureKey, { toSteps: 0, timestamp: Date.now(), isCapture: true });
+                  captureToken(playerIndex, pieceIndex);
+                });
               }
-              return;
             }
           }
 
-          setDiceValue(0);
+          if (newSteps === maxSteps) {
+            setPlayers(prev => {
+              const updatedPlayers = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+              const finishedCount = updatedPlayers[movingPlayerIndex].pieces.filter(p => p.steps === maxSteps).length;
+            if (finishedCount === 4) {
+                const winnerPlayer = updatedPlayers[movingPlayerIndex];
+                const newWinners = [...winners, winnerPlayer];
+              setWinners(newWinners);
+                setWinner(winnerPlayer);
+              setShowWinnerModal(true);
+              startWinnerCelebration();
+                const remainingPlayers = updatedPlayers.filter((_, idx) => idx < selectedPlayerCount);
+              if (newWinners.length >= remainingPlayers.length - 1) {
+                setGameEnded(true);
+              }
+              }
+              playersRef.current = updatedPlayers; // Update ref
+              updatedState = updatedPlayers; // Update captured state
+              return updatedPlayers;
+            });
+          }
 
-          // Keep turn on 6 or capture (web parity). Otherwise pass
-          const keepTurn = (rolledNow === 6) || didCapture;
-          if (!keepTurn) {
-            setTimeout(() => {
-              // Stop stroke animations for all pieces
-              players.forEach((_, playerIndex) => {
-                for (let i = 0; i < 4; i++) {
-                  stopTokenStrokeAnimation(playerIndex * 4 + i);
-                }
-              });
-              
-              const nextPlayer = getNextActivePlayer(currentPlayer);
-              setCurrentPlayer(nextPlayer);
-              setCanRollDice(true);
-            }, 500);
+          // Verify final state before completing
+          const finalState = playersRef.current[movingPlayerIndex]?.pieces[pieceId];
+          
+          // If state doesn't match, force update one more time
+          if (finalState?.steps !== newSteps) {
+            setPlayers(prev => {
+              const corrected = prev.map(p => ({ ...p, pieces: p.pieces.map(pc => ({ ...pc })) }));
+              corrected[movingPlayerIndex].pieces[pieceId].steps = newSteps;
+              corrected[movingPlayerIndex].pieces[pieceId].isHome = false;
+              corrected[movingPlayerIndex].pieces[pieceId].isInPlay = newSteps > 0 && newSteps < maxSteps;
+              playersRef.current = corrected; // Update ref
+              updatedState = corrected; // Update captured state
+              return corrected;
+            });
+          }
+          
+          isMovingRef.current = false; // Reset moving flag
+          isAutoMovingRef.current = false; // Clear auto-moving flag
+          
+          // Determine if player should keep turn: rolled 6 OR captured a token
+          // CRITICAL: Use the captured rolled value to avoid closure issues
+          const rolledValue = typeof capturedRolledValue === 'number' ? capturedRolledValue : 0;
+          const isSix = rolledValue === 6;
+          const hasCapture = didCapture === true;
+          const keepTurn = isSix || hasCapture;
+          
+          // CRITICAL: Always reset dice value first (regardless of keepTurn)
+          setDiceValueImmediate(0);
+          lastLocalDiceRollTimeRef.current = 0;
+          
+          if (keepTurn) {
+            // Player keeps turn (rolled 6 or captured) - don't advance
+            setCanRollDice(true);
           } else {
-            // Rolled a 6, keep the turn
+            // CRITICAL: Advance to next player - this MUST happen for non-6, non-capture moves
+            const nextPlayer = getNextActivePlayer(movingPlayerIndex);
+            
+            // Force update current player and ref immediately - use both setState and direct ref update
+            setCurrentPlayer(nextPlayer);
+            currentPlayerRef.current = nextPlayer; // Update ref immediately to prevent race conditions
+            lastTurnAdvanceTimeRef.current = Date.now(); // Track when we advanced the turn locally
             setCanRollDice(true);
           }
         });
+      } else {
+        // Invalid move, reset flags
+        isMovingRef.current = false;
+        isAutoMovingRef.current = false;
       }
+    } else {
+      // Invalid move, reset flags
+      isMovingRef.current = false;
+      isAutoMovingRef.current = false;
     }
   };
 
@@ -1130,9 +1551,8 @@ const LudoGameSVG = () => {
           ry="10"
         />
 
-        {/* Create 15x15 grid */}
-        {Array.from({ length: 15 }, (_, row) =>
-          Array.from({ length: 15 }, (_, col) => {
+        {Array.from({ length: 15 }, (_: any, row: number) =>
+          Array.from({ length: 15 }, (_: any, col: number) => {
             let fillColor = "#FFFFFF";
             let strokeColor = "#e5e7eb";
             let strokeWidth = 1;
@@ -1207,7 +1627,15 @@ const LudoGameSVG = () => {
 
         {/* Inner white squares in home areas with pips (web parity) */}
         {/* Red home inner */}
-        <Rect x={CELL_SIZE * 1} y={CELL_SIZE * 1} width={CELL_SIZE * 4} height={CELL_SIZE * 4} fill="#FFFFFF" stroke="#1f2937" strokeWidth="1.5" />
+        <Rect 
+          x={CELL_SIZE * 1} 
+          y={CELL_SIZE * 1} 
+          width={CELL_SIZE * 4} 
+          height={CELL_SIZE * 4} 
+          fill="#FFFFFF" 
+          stroke="#1f2937" 
+          strokeWidth="1.5" 
+        />
         {/* Red pips */}
         {(() => {
           const cx = (1 + 2) * CELL_SIZE;
@@ -1399,12 +1827,12 @@ const LudoGameSVG = () => {
     );
   }, [BOARD_SIZE]);
 
-  const renderTokens = () => {
+  const renderTokens = useMemo(() => {
     const maxSteps = 59;
     return (
       <View style={StyleSheet.absoluteFillObject}>
-        {renderPlayerOrder.map((playerIndex) =>
-          players[playerIndex]?.pieces.map((piece, pieceIndex) => {
+        {renderPlayerOrder.map((playerIndex: number) =>
+          players[playerIndex]?.pieces.map((piece: Piece, pieceIndex: number) => {
             const tokenSize = CELL_SIZE * 0.9;
             const globalPieceIndex = playerIndex * 4 + pieceIndex;
             const isCurrentPlayer = playerIndex === currentPlayer;
@@ -1444,7 +1872,7 @@ const LudoGameSVG = () => {
               const pos = getPositionOnPath(playerIndex, piece.steps);
               const key = `${pos.x},${pos.y}`;
               const group = cellOccupancy.get(key) || [];
-              const idxInGroup = group.findIndex(g => g.playerIndex === playerIndex && g.pieceIndex === pieceIndex);
+              const idxInGroup = group.findIndex((g: { playerIndex: number; pieceIndex: number }) => g.playerIndex === playerIndex && g.pieceIndex === pieceIndex);
               const { dx, dy } = getOverlapOffset(group.length, idxInGroup);
               
               // Render animated token with enhanced animations - separated into two layers
@@ -1683,8 +2111,8 @@ const LudoGameSVG = () => {
         )}
 
         {/* Animated stroke overlays for movable tokens - only for current player */}
-        {players.map((player, playerIndex) =>
-          player.pieces.map((piece, pieceIndex) => {
+        {players.map((player: Player, playerIndex: number) =>
+          player.pieces.map((piece: Piece, pieceIndex: number) => {
             const tokenSize = CELL_SIZE * 0.9;
             const globalPieceIndex = playerIndex * 4 + pieceIndex;
             const isCurrentPlayer = playerIndex === currentPlayer;
@@ -1711,6 +2139,7 @@ const LudoGameSVG = () => {
                 // Yellow (bottom-right)
                 [{ x: 11, y: 11 }, { x: 12, y: 11 }, { x: 11, y: 12 }, { x: 12, y: 12 }],
               ];
+              
 
               const pos = homePositions[playerIndex][pieceIndex];
               x = pos.x * CELL_SIZE;
@@ -1748,8 +2177,8 @@ const LudoGameSVG = () => {
         )}
 
         {/* Clickable overlays for tokens */}
-        {players.map((player, playerIndex) =>
-          player.pieces.map((piece, pieceIndex) => {
+        {players.map((player: Player, playerIndex: number) =>
+          player.pieces.map((piece: Piece, pieceIndex: number) => {
             const tokenSize = CELL_SIZE * 0.9;
             const globalPieceIndex = playerIndex * 4 + pieceIndex;
             const isCurrentPlayer = playerIndex === currentPlayer;
@@ -1839,7 +2268,7 @@ const LudoGameSVG = () => {
         )}
       </View>
     );
-  };
+  }, [renderPlayerOrder, players, currentPlayer, selectedPlayerCount, diceValue, captureAnimations, cellOccupancy, tokenPositionAnimations, tokenNativeScaleAnimations, tokenNativeOpacityAnimations]);
 
   const renderPlayerArea = (player: Player, index: number) => {
     const isCurrentPlayer = index === currentPlayer;
@@ -2202,7 +2631,7 @@ const LudoGameSVG = () => {
             <View style={styles.boardWrapper}>
               <View style={styles.board}>
                 {renderLudoBoard}
-                {renderTokens()}
+                {renderTokens}
                 {/* Centered dice overlay (web parity) */}
                 <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 50, pointerEvents: canRollDice ? 'auto' : 'none' }}>
                   <TouchableOpacity onPress={rollDice} disabled={!canRollDice || diceRolling} activeOpacity={0.8}>

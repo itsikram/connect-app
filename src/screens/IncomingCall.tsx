@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet, Platform } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -49,7 +49,7 @@ const IncomingCall: React.FC = () => {
     // Log previous screen ID
     try {
 
-      (navigation as any).navigate(prevScreenId, { screen: prevScreenId == "Message" && "MessageList" || prevScreenId || 'Home' });
+      (navigation as any).navigate(prevScreenId, { screen: prevScreenId === "Message" ? "MessageList" : (prevScreenId || 'Home') });
 
 
     } catch (stateError) {
@@ -346,7 +346,7 @@ const IncomingCall: React.FC = () => {
 
   const [callAcceptedState, setCallAcceptedState] = useState(false);
 
-  const onAccept = () => {
+  const onAccept = useCallback(() => {
     if (!callerId || !channelName) {
       console.warn('IncomingCall: Missing required parameters for call acceptance', { callerId, channelName });
       return;
@@ -377,7 +377,7 @@ const IncomingCall: React.FC = () => {
     setTimeout(() => {
       safeGoBack();
     }, 300);
-  };
+  }, [callerId, channelName, isAudio, callerName, themeColors.background.primary, isDarkMode, answerAudioCall, answerVideoCall, prevScreenId, navigation]);
 
   const onDecline = () => {
     if (!callerId) return;
@@ -457,93 +457,96 @@ const IncomingCall: React.FC = () => {
             }
           ]}
         >
-          {/* Call Type Indicator */}
-          <View style={styles.callTypeContainer}>
-            <View style={[
-              styles.callTypeBadge,
-              { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }
-            ]}>
-              <Icon
-                name={isAudio ? "mic" : "videocam"}
-                size={20}
-                color="white"
-              />
-              <Text style={styles.callTypeText}>
-                {isAudio ? 'Audio Call' : 'Video Call'}
-              </Text>
+          {/* Top Section - Call Type Indicator */}
+          <View style={styles.topSection}>
+            <View style={styles.callTypeContainer}>
+              <View style={[
+                styles.callTypeBadge,
+                { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }
+              ]}>
+                <Icon
+                  name={isAudio ? "mic" : "videocam"}
+                  size={20}
+                  color="white"
+                />
+                <Text style={styles.callTypeText}>
+                  {isAudio ? 'Audio Call' : 'Video Call'}
+                </Text>
+              </View>
             </View>
           </View>
 
-          {/* Profile Picture with Animation */}
-          <Animated.View
-            style={[
-              styles.profileContainer,
-              { transform: [{ scale: pulseAnim }] }
-            ]}
-          >
-            <View style={[
-              styles.profileRing,
-              { borderColor: isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }
-            ]}>
-              {callerProfilePic ? (
-                <Image
-                  source={{ uri: callerProfilePic }}
-                  style={styles.profileImage}
-                />
-              ) : (
-                <View style={[
-                  styles.profilePlaceholder,
-                  { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }
-                ]}>
-                  <Icon name="person" size={60} color="white" />
-                </View>
-              )}
-            </View>
-          </Animated.View>
-
-          {/* Caller Name */}
-          <Text style={styles.callerName}>
-            {callerName || 'Unknown Caller'}
-          </Text>
-
-          {/* Call Status */}
-          <Text style={styles.callStatus}>
-            {statusText}
-          </Text>
-
-          {/* Action Buttons */}
-          <View style={styles.buttonContainer}>
-            {/* Decline Button */}
-            <TouchableOpacity
-              onPress={onDecline}
-              style={[styles.actionButton, styles.declineButton]}
-              activeOpacity={0.7}
+          {/* Center Section - Profile and Name */}
+          <View style={styles.centerSection}>
+            {/* Profile Picture with Animation */}
+            <Animated.View
+              style={[
+                styles.profileContainer,
+                { transform: [{ scale: pulseAnim }] }
+              ]}
             >
-              <View style={styles.buttonInner}>
-                <Icon name="call-end" size={32} color="white" />
+              <View style={[
+                styles.profileRing,
+                { borderColor: isDarkMode ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.5)' }
+              ]}>
+                {callerProfilePic ? (
+                  <Image
+                    source={{ uri: callerProfilePic }}
+                    style={styles.profileImage}
+                  />
+                ) : (
+                  <View style={[
+                    styles.profilePlaceholder,
+                    { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.3)' }
+                  ]}>
+                    <Icon name="person" size={60} color="white" />
+                  </View>
+                )}
               </View>
-              <View style={[styles.buttonRing, styles.declineButtonRing]} />
-            </TouchableOpacity>
+            </Animated.View>
 
-            {/* Accept Button */}
-            <Animated.View style={{ transform: [{ scale: acceptButtonPulse }] }}>
+            {/* Caller Name */}
+            <Text style={styles.callerName}>
+              {callerName || 'Unknown Caller'}
+            </Text>
+
+            {/* Call Status */}
+            <Text style={styles.callStatus}>
+              {statusText}
+            </Text>
+          </View>
+
+          {/* Bottom Section - Action Buttons */}
+          <View style={styles.bottomSection}>
+            {/* Action Buttons */}
+            <View style={styles.buttonContainer}>
+              {/* Decline Button */}
               <TouchableOpacity
-                onPress={onAccept}
-                style={[styles.actionButton, styles.acceptButton]}
+                onPress={onDecline}
+                style={[styles.actionButton, styles.declineButton]}
                 activeOpacity={0.7}
               >
                 <View style={styles.buttonInner}>
-                  <Icon name="call" size={32} color="white" />
+                  <Icon name="call-end" size={32} color="white" />
                 </View>
-                <View style={[styles.buttonRing, styles.acceptButtonRing]} />
+                <View style={[styles.buttonRing, styles.declineButtonRing]} />
               </TouchableOpacity>
-            </Animated.View>
-          </View>
 
-          {/* Call Duration (for future use) */}
-          <Text style={styles.callDuration}>
-            Tap to answer
-          </Text>
+              {/* Accept Button */}
+              <Animated.View style={{ transform: [{ scale: acceptButtonPulse }] }}>
+                <TouchableOpacity
+                  onPress={onAccept}
+                  style={[styles.actionButton, styles.acceptButton]}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.buttonInner}>
+                    <Icon name="call" size={32} color="white" />
+                  </View>
+                  <View style={[styles.buttonRing, styles.acceptButtonRing]} />
+                </TouchableOpacity>
+              </Animated.View>
+            </View>
+          </View>
         </Animated.View>
       </View>
       </>
@@ -579,12 +582,28 @@ const styles = StyleSheet.create({
   content: {
     flex: 1,
     alignItems: 'center',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
     paddingHorizontal: 24,
     paddingTop: 60,
+    paddingBottom: 40,
+  },
+  topSection: {
+    alignItems: 'center',
+    width: '100%',
+  },
+  centerSection: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+  },
+  bottomSection: {
+    alignItems: 'center',
+    width: '100%',
+    paddingBottom: 20,
   },
   callTypeContainer: {
-    marginBottom: 40,
+    marginBottom: 0,
   },
   callTypeBadge: {
     flexDirection: 'row',
@@ -644,13 +663,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: 'rgba(255, 255, 255, 0.8)',
     textAlign: 'center',
-    marginBottom: 60,
+    marginBottom: 0,
     fontWeight: '500',
   },
   buttonContainer: {
     flexDirection: 'row',
     gap: 50,
-    marginBottom: 40,
+    marginBottom: 0,
+    marginTop: -50,
     alignItems: 'center',
     justifyContent: 'center',
   },

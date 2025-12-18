@@ -9,8 +9,7 @@ import { RootState } from '../store';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AppGrid from '../components/AppGrid';
-import DeviceAppsGrid from '../components/DeviceAppsGrid';
-import MixedAppsGrid from '../components/MixedAppsGrid';
+// DeviceAppsGrid and MixedAppsGrid removed - react-native-installed-apps uninstalled
 import { sampleApps, AppItem } from '../data/appData';
 import LudoGame from './LudoGame';
 import LudoGameSVG from './LudoGameSVG';
@@ -38,14 +37,6 @@ const Menu = () => {
     }
     if (app.id === 'Chess') {
       setChessGameActive(true);
-      return;
-    }
-    if (app.id === 'EmotionFaceMesh') {
-      (navigation as any).navigate('EmotionFaceMesh');
-      return;
-    }
-    if (app.id === 'FaceLandmarks') {
-      (navigation as any).navigate('Menu', { screen: 'FaceLandmarks' });
       return;
     }
     if (app.id === 'camera') {

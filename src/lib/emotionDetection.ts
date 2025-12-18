@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
-import type { Face } from '@react-native-ml-kit/face-detection';
+// Face type removed - @react-native-ml-kit/face-detection uninstalled
+type Face = any;
 
 // Emotion to emoji mapping (exact same as web version)
 export const emotionEmojiMap: Record<string, string> = {

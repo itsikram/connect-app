@@ -24,6 +24,7 @@ const ChessGame: React.FC = () => {
   const inCheck = engine.isCheck();
 
   const handleSquarePress = (square: string) => {
+    if (gameOver) return;
     if (promotionFromTo) return; // wait for promotion choice
 
     if (selected === square) {
@@ -90,6 +91,61 @@ const ChessGame: React.FC = () => {
     setFenVersion(v => v + 1);
   };
 
+  const getGameStatus = () => {
+    if (gameOver) {
+      if (engine.isCheckmate()) return 'Checkmate';
+      if (engine.isStalemate()) return 'Stalemate';
+      if (engine.isThreefoldRepetition()) return 'Threefold repetition';
+      if (engine.isInsufficientMaterial()) return 'Draw by insufficient material';
+      return 'Draw';
+    }
+    return `${turnColor === 'w' ? 'White' : 'Black'} to move${inCheck ? ' (check)' : ''}`;
+  };
+
+  const getWinnerMessage = () => {
+    if (!gameOver) return null;
+    
+    if (engine.isCheckmate()) {
+      // The player who just moved won (opposite of current turn)
+      const winner = turnColor === 'w' ? 'Black' : 'White';
+      return {
+        title: '🎉 Checkmate!',
+        message: `${winner} wins!`,
+        isDraw: false
+      };
+    }
+    
+    if (engine.isStalemate()) {
+      return {
+        title: '🤝 Stalemate',
+        message: 'The game is a draw',
+        isDraw: true
+      };
+    }
+    
+    if (engine.isThreefoldRepetition()) {
+      return {
+        title: '🔄 Draw',
+        message: 'Threefold repetition',
+        isDraw: true
+      };
+    }
+    
+    if (engine.isInsufficientMaterial()) {
+      return {
+        title: '🤝 Draw',
+        message: 'Insufficient material',
+        isDraw: true
+      };
+    }
+    
+    return {
+      title: '🤝 Draw',
+      message: 'The game ended in a draw',
+      isDraw: true
+    };
+  };
+
   const renderSquare = (row: number, col: number) => {
     const isDark = (row + col) % 2 === 1;
     const square = `${FILES[col]}${row + 1}`; // a1 bottom-left in our mapping
@@ -120,7 +176,12 @@ const ChessGame: React.FC = () => {
           }}
         >
           {piece && (
-            <Text style={{ fontSize: 32 }}>
+            <Text style={{ 
+              fontSize: 32,
+              color: piece.color === 'w' ? '#2C2C2C' : '#F0F0F0',
+              fontWeight: 'bold',
+              transform: [{ rotate: piece.color !== 'w' ? '180deg' : '0deg' }],
+            }}>
               {unicodeForPiece(piece.type, piece.color)}
             </Text>
           )}
@@ -178,17 +239,7 @@ const ChessGame: React.FC = () => {
         </View>
 
         <Text style={{ textAlign: 'center', marginBottom: 8, color: themeColors.text.secondary }}>
-        {gameOver
-          ? engine.isCheckmate()
-            ? 'Checkmate'
-            : engine.isStalemate()
-            ? 'Stalemate'
-            : engine.isThreefoldRepetition()
-            ? 'Threefold repetition'
-            : engine.isInsufficientMaterial()
-            ? 'Draw by insufficient material'
-            : 'Draw'
-          : `${turnColor === 'w' ? 'White' : 'Black'} to move${inCheck ? ' (check)' : ''}`}
+          {getGameStatus()}
         </Text>
 
         <View style={styles.board}>
@@ -209,6 +260,35 @@ const ChessGame: React.FC = () => {
                     <Text style={{ fontSize: 18 }}>{p.toUpperCase()}</Text>
                   </TouchableOpacity>
                 ))}
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        <Modal transparent visible={gameOver && !!getWinnerMessage()} animationType="fade">
+          <View style={styles.modalBackdrop}>
+            <View style={[styles.winnerModalCard, { backgroundColor: themeColors.surface.primary }]}>
+              <Text style={[styles.winnerTitle, { color: themeColors.text.primary }]}>
+                {getWinnerMessage()?.title}
+              </Text>
+              <Text style={[styles.winnerMessage, { color: themeColors.text.secondary }]}>
+                {getWinnerMessage()?.message}
+              </Text>
+              <View style={styles.winnerButtonContainer}>
+                <TouchableOpacity 
+                  style={[styles.winnerButton, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.primary }]} 
+                  onPress={() => {
+                    reset();
+                  }}
+                >
+                  <Text style={{ color: themeColors.text.primary, fontWeight: '600' }}>Play Again</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.winnerButton, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.primary }]} 
+                  onPress={() => setChessGameActive(false)}
+                >
+                  <Text style={{ color: themeColors.text.primary, fontWeight: '600' }}>Back to Menu</Text>
+                </TouchableOpacity>
               </View>
             </View>
           </View>
@@ -282,6 +362,37 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     flex: 1,
+  },
+  winnerModalCard: {
+    width: '85%',
+    borderRadius: 16,
+    padding: 32,
+    alignItems: 'center',
+  },
+  winnerTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  winnerMessage: {
+    fontSize: 18,
+    fontWeight: '500',
+    marginBottom: 24,
+    textAlign: 'center',
+    opacity: 0.9,
+  },
+  winnerButtonContainer: {
+    width: '100%',
+    gap: 12,
+  },
+  winnerButton: {
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
   },
 });
 

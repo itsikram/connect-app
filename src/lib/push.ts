@@ -80,30 +80,104 @@ export async function requestPushPermission(): Promise<boolean> {
 
 export async function getOrCreateFcmToken(): Promise<string | null> {
   try {
+    // Check if we have a cached token first
     const existing = await AsyncStorage.getItem(STORAGE_KEY);
-    if (existing) return existing;
-    const token = await messaging().getToken();
-    if (token) {
-      await AsyncStorage.setItem(STORAGE_KEY, token);
-      return token;
+    if (existing) {
+      console.log('✅ Using cached FCM token');
+      return existing;
     }
+
+    // Ensure Firebase is initialized before getting token
+    try {
+      getApp();
+    } catch (firebaseError) {
+      console.error('❌ Firebase not initialized when getting FCM token:', firebaseError);
+      // Wait a bit and retry once
+      await new Promise<void>((resolve) => {
+        setTimeout(() => {
+          resolve();
+        }, 1000);
+      });
+      try {
+        getApp();
+      } catch (retryError) {
+        console.error('❌ Firebase still not initialized after retry:', retryError);
+        return null;
+      }
+    }
+
+    // Retry logic for getting token (in case Firebase messaging isn't ready)
+    let retries = 3;
+    let lastError: any = null;
+    
+    while (retries > 0) {
+      try {
+        const token = await messaging().getToken();
+        if (token) {
+          await AsyncStorage.setItem(STORAGE_KEY, token);
+          console.log('✅ FCM token retrieved successfully');
+          return token;
+        }
+        console.warn('⚠️ FCM token is empty');
+        return null;
+      } catch (e: any) {
+        lastError = e;
+        const errorMessage = e?.message || String(e || '');
+        console.warn(`⚠️ Failed to get FCM token (${retries} retries left):`, errorMessage);
+        
+        retries--;
+        if (retries > 0) {
+          // Wait before retrying (exponential backoff)
+          const delay = (4 - retries) * 500; // 500ms, 1000ms, 1500ms
+          await new Promise<void>((resolve) => {
+            setTimeout(() => {
+              resolve();
+            }, delay);
+          });
+        }
+      }
+    }
+    
+    // All retries failed
+    console.error('❌ Failed to get FCM token after all retries:', lastError);
     return null;
-  } catch (e) {
+  } catch (e: any) {
+    console.error('❌ Unexpected error in getOrCreateFcmToken:', e?.message || String(e || ''));
     return null;
   }
 }
 
 export async function registerTokenWithServer(): Promise<string | null> {
-  const ok = await requestPushPermission();
-  if (!ok) return null;
-  const token = await getOrCreateFcmToken();
-  if (!token) return null;
   try {
-    const authToken = await AsyncStorage.getItem('authToken');
-    if (!authToken) return token;
-    await pushAPI.registerToken(token, authToken);
-  } catch (e) {}
-  return token;
+    const ok = await requestPushPermission();
+    if (!ok) {
+      console.warn('⚠️ Push permission not granted, cannot register FCM token');
+      return null;
+    }
+    
+    const token = await getOrCreateFcmToken();
+    if (!token) {
+      console.warn('⚠️ Failed to get FCM token in registerTokenWithServer');
+      return null;
+    }
+    
+    try {
+      const authToken = await AsyncStorage.getItem('authToken');
+      if (!authToken) {
+        console.log('ℹ️ No auth token available, skipping server registration (token retrieved successfully)');
+        return token;
+      }
+      await pushAPI.registerToken(token, authToken);
+      console.log('✅ FCM token registered with server');
+    } catch (e: any) {
+      console.warn('⚠️ Failed to register token with server (but token is available):', e?.message || String(e || ''));
+      // Return token anyway since we have it, server registration is optional
+    }
+    return token;
+  } catch (e: any) {
+    console.error('❌ Unexpected error in registerTokenWithServer:', e?.message || String(e || ''));
+    return null;
+  }
 }
 
 export async function unregisterTokenWithServer(): Promise<void> {
@@ -118,6 +192,13 @@ export async function unregisterTokenWithServer(): Promise<void> {
 
 export async function configureNotificationsChannel() {
   try {
+    // Check if React Native is ready by verifying notifee module is available
+    // In background processes, React Native may not be fully initialized yet
+    if (!notifee || typeof notifee.createChannel !== 'function') {
+      console.warn('⚠️ Notifee not ready, skipping channel configuration');
+      return;
+    }
+
     // Create default notification channel - SOUND DISABLED
     await notifee.createChannel({
       id: 'default',
@@ -145,9 +226,31 @@ export async function configureNotificationsChannel() {
       bypassDnd: true, // Bypass Do Not Disturb
     });
     
-    console.log('Notification channels configured successfully (sounds disabled)');
-  } catch (error) {
-    console.error('Error configuring notification channels:', error);
+    // Also create 'incoming_calls' channel (used by some parts of the code)
+    await notifee.createChannel({
+      id: 'incoming_calls',
+      name: 'Incoming Calls',
+      description: 'Incoming call notifications - full screen alerts',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: undefined, // No sound
+      vibration: false, // No vibration
+      vibrationPattern: undefined,
+      lights: true,
+      lightColor: '#FF0000',
+      bypassDnd: true, // Bypass Do Not Disturb
+    });
+    
+    console.log('✅ Notification channels configured successfully (sounds disabled)');
+  } catch (error: any) {
+    // Check if error is due to null context (React Native not ready)
+    const errorMessage = error?.message || String(error || '');
+    if (errorMessage.includes('null') || errorMessage.includes('NullPointerException') || errorMessage.includes('getSystemService')) {
+      console.warn('⚠️ React Native not ready for notification channels, will retry later');
+      return;
+    }
+    console.error('❌ Error configuring notification channels:', error);
+    // Don't throw - channels may already exist, which is fine
   }
 }
 
@@ -181,7 +284,7 @@ export async function displayLocalNotification(title: string, body: string, data
     body,
     android: {
       channelId: 'default',
-      smallIcon: 'ic_launcher',
+      smallIcon: 'ic_notification',
       pressAction: { id: 'default' },
     },
     data,
@@ -380,7 +483,12 @@ export async function initializeNotifications(): Promise<boolean> {
       // Get and register FCM token
       const token = await registerTokenWithServer();
       if (!token) {
-        console.warn('Failed to get FCM token');
+        console.error('❌ Failed to get FCM token - notifications will not work properly');
+        console.error('   This may be due to:');
+        console.error('   1. Firebase not being properly initialized');
+        console.error('   2. Missing or invalid google-services.json configuration');
+        console.error('   3. Network issues preventing token retrieval');
+        console.error('   4. Permission issues');
         return false;
       }
       

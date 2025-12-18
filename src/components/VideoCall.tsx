@@ -990,57 +990,47 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     // Check if the local video view should be rendered (same conditions as in JSX)
     const shouldRenderLocalVideo = !isEndingCallRef.current && !callEnded && isVideoCall && isCameraOn && !isAudioMode && callAccepted && isConnected && localUidRef.current;
     
-    if (shouldRenderLocalVideo && engineRef.current && !localPreviewStarted.current) {
+    if (shouldRenderLocalVideo && engineRef.current) {
+      // If preview is already started and camera is still on, don't restart
+      if (localPreviewStarted.current) {
+        console.log('📹 Local video preview already started');
+        return;
+      }
+
       console.log('📹 Local video view conditions met, starting preview...');
       
       // Multiple attempts with increasing delays to ensure it works
       const startWithRetry = (attempt: number = 1) => {
-        const delay = attempt * 400; // 400ms, 800ms, 1200ms
+        const delay = attempt * 300; // 300ms, 600ms, 900ms
         
         const timeout = setTimeout(async () => {
           try {
             console.log(`📹 Attempt ${attempt}: Starting local video preview...`);
-            if (engineRef.current && !localPreviewStarted.current) {
+            if (engineRef.current && !localPreviewStarted.current && isConnected && localUidRef.current) {
+              // Ensure local video is enabled
               await engineRef.current.enableLocalVideo(true);
               await engineRef.current.muteLocalVideoStream(false);
-              await engineRef.current.startPreview();
               
-              // CRITICAL FIX: Add a small delay then trigger camera activation
-              // This ensures the camera hardware is properly initialized
-              setTimeout(async () => {
-                try {
-                  if (engineRef.current) {
-                    console.log('📹 Activating camera hardware...');
-                    // Only switch camera if it's actually available and initialized
-                    // Check if we're connected and have local video enabled
-                    if (isConnected && localUidRef.current) {
-                      console.log('📹 Camera is ready, attempting activation...');
-                      try {
-                        // Switching camera twice activates the hardware properly
-                        await engineRef.current.switchCamera();
-                        await new Promise<void>(resolve => setTimeout(() => resolve(), 100));
-                        await engineRef.current.switchCamera();
-                        console.log('📹 Camera hardware activated successfully');
-                      } catch (switchError) {
-                        // Camera switching failed, but preview is working, so this is non-critical
-                        console.log('📹 Camera switching not needed or failed (non-critical):', switchError);
-                      }
-                    } else {
-                      console.log('📹 Camera not ready yet (not connected or no local UID)');
-                    }
-                  }
-                } catch (activationError) {
-                  console.warn('📹 Camera activation warning (non-critical):', activationError);
-                }
-              }, 500); // Increased delay to ensure everything is initialized
+              // Start preview - this is critical for local video display
+              await engineRef.current.startPreview();
               
               localPreviewStarted.current = true;
               console.log(`📹 Attempt ${attempt}: Local video preview started successfully! ✅`);
+              
+              // Verify preview is running after a brief delay
+              setTimeout(() => {
+                if (engineRef.current && localPreviewStarted.current) {
+                  console.log('📹 Local video preview confirmed running');
+                }
+              }, 200);
             }
           } catch (error) {
             console.error(`📹 Attempt ${attempt} failed:`, error);
-            if (attempt < 3 && !localPreviewStarted.current) {
+            localPreviewStarted.current = false; // Reset on failure
+            if (attempt < 3) {
               startWithRetry(attempt + 1);
+            } else {
+              console.error('📹 Failed to start local video preview after 3 attempts');
             }
           }
         }, delay);
@@ -1051,9 +1041,21 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       startWithRetry(1);
     }
     
-    // Reset preview flag when camera is turned off
-    if (!isCameraOn) {
-      localPreviewStarted.current = false;
+    // Reset preview flag when camera is turned off or conditions change
+    if (!isCameraOn || !isConnected || !callAccepted) {
+      if (localPreviewStarted.current) {
+        console.log('📹 Stopping local video preview due to state change');
+        if (engineRef.current) {
+          try {
+            engineRef.current.stopPreview().catch(err => {
+              console.warn('Error stopping preview:', err);
+            });
+          } catch (err) {
+            console.warn('Error stopping preview:', err);
+          }
+        }
+        localPreviewStarted.current = false;
+      }
     }
     
     return () => {
@@ -1275,7 +1277,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
               <RtcLocalView.SurfaceView
                 style={styles.localVideo}
                 channelId={currentChannel || ''}
-                renderMode={VideoRenderMode.Hidden}
+                renderMode={VideoRenderMode.Fit}
                 zOrderMediaOverlay={true}
                 mirrorMode={1}
               />

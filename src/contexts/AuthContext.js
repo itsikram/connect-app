@@ -1,6 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { authAPI, userAPI } from '../lib/api';
+import { authAPI, userAPI, clearTokenCache } from '../lib/api';
 import { registerTokenWithServer, unregisterTokenWithServer, listenForegroundMessages, listenTokenRefresh } from '../lib/push';
 import { googleAuthService } from '../services/googleAuth';
 
@@ -61,6 +61,9 @@ export const AuthProvider = ({ children }) => {
         ['user', JSON.stringify(userData)],
         ['authToken', token]
       ]);
+      
+      // Clear token cache to force refresh on next API call
+      clearTokenCache();
       
       console.log('💾 Data stored in AsyncStorage successfully');
       
@@ -191,6 +194,7 @@ export const AuthProvider = ({ children }) => {
         await googleAuthService.signOut(); // Sign out from Google as well
       } catch (e) {}
       // Clear stored data regardless of API call success
+      clearTokenCache(); // Clear token cache
       await AsyncStorage.multiRemove(['user', 'authToken']);
       setUser(null);
     }

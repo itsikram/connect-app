@@ -128,11 +128,22 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
       canPreventDefault: true,
     });
 
-    if (state.index !== index && !event.defaultPrevented) {
-      // For Message tab, always navigate to MessageList screen
-      if (tab.name === 'Message') {
-        navigation.navigate('Message', { screen: 'MessageList' });
-      } else {
+    if (!event.defaultPrevented) {
+      // Map of tab names to their main screens
+      const mainScreens: { [key: string]: string } = {
+        'Home': 'HomeMain',
+        'Friends': 'FriendsMain',
+        'Videos': 'VideosMain',
+        'Message': 'MessageList',
+        'Menu': 'MenuHome',
+      };
+
+      const mainScreen = mainScreens[tab.name];
+      if (mainScreen) {
+        // Always navigate to the main screen of the tab
+        navigation.navigate(tab.name, { screen: mainScreen });
+      } else if (state.index !== index) {
+        // Fallback to default navigation for tabs without main screen mapping
         navigation.navigate(state.routes[index].name);
       }
     }

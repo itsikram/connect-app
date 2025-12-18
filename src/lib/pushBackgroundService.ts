@@ -1,12 +1,42 @@
 import BackgroundService from 'react-native-background-actions';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
+import messaging from '@react-native-firebase/messaging';
 
 // Background socket state (module-scoped to persist during service lifetime)
 let backgroundSocket: any = null;
 let isSettingUpSocket = false;
 let hasRegisteredSocketHandlers = false;
+let fcmMessageListener: (() => void) | null = null;
+let isFcmListenerSetup = false;
+
+// Notification deduplication cache for FCM messages
+const fcmNotificationCache = new Map<string, number>();
+const FCM_NOTIFICATION_CACHE_DURATION = 10000; // 10 seconds
+
+// Helper function to check if FCM notification was recently displayed
+const isFcmNotificationRecentlyShown = (key: string): boolean => {
+  const now = Date.now();
+  const lastShown = fcmNotificationCache.get(key);
+  
+  if (lastShown && (now - lastShown) < FCM_NOTIFICATION_CACHE_DURATION) {
+    return true;
+  }
+  
+  fcmNotificationCache.set(key, now);
+  return false;
+};
+
+// Clean up old FCM cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, timestamp] of fcmNotificationCache.entries()) {
+    if (now - timestamp > FCM_NOTIFICATION_CACHE_DURATION) {
+      fcmNotificationCache.delete(key);
+    }
+  }
+}, 30000); // Clean up every 30 seconds
 
 // Resolve a safe caller name from payload
 const resolveCallerName = (payload: any): string => {
@@ -35,28 +65,256 @@ const normalizeIncomingCallPayload = (raw: any) => {
 // Android-only: ensure channels exist and ask user to disable battery optimizations
 async function ensureAndroidForegroundPrereqs(): Promise<void> {
   if (Platform.OS !== 'android') return;
+  
+  // Create notification channels (these don't require React Native context)
+  // Use HIGH importance for better visibility in production
   try {
     await notifee.createChannel({
       id: 'default',
-      name: 'Default',
-      importance: AndroidImportance.DEFAULT,
+      name: 'Default Notifications',
+      description: 'General app notifications',
+      importance: AndroidImportance.HIGH,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: undefined, // No sound
+      vibration: false, // No vibration
     });
-  } catch (_) {}
+  } catch (e) {
+    // Ignore errors - channels may already exist
+  }
   try {
     await notifee.createChannel({
       id: 'incoming_calls',
       name: 'Incoming Calls',
+      description: 'Incoming call notifications',
       importance: AndroidImportance.HIGH,
-      sound: 'default',
-      vibration: true,
+      visibility: AndroidVisibility.PUBLIC,
+      sound: undefined, // No sound
+      vibration: false, // No vibration
+      bypassDnd: true, // Bypass Do Not Disturb
     });
-  } catch (_) {}
+  } catch (e) {
+    // Ignore errors - channels may already exist
+  }
+  
+  // Battery optimization check is completely skipped in background processes
+  // This check requires React Native context which may be null in background threads,
+  // causing NullPointerException crashes at the native bridge level.
+  // The battery optimization check should only be performed in foreground contexts
+  // (e.g., in PermissionsInitializer component when user is actively using the app).
+  // Background services don't need this check - notifications will still work.
+}
+
+// Handle FCM messages in background context
+export async function handleFcmMessage(remoteMessage: any): Promise<void> {
   try {
-    const batteryOptimizationEnabled = await (notifee as any).isBatteryOptimizationEnabled?.();
-    if (batteryOptimizationEnabled) {
-      await (notifee as any).openBatteryOptimizationSettings?.();
+    const messageId = remoteMessage?.messageId || remoteMessage?.data?.messageId || 'unknown';
+    console.log('📱 FCM message received in background service:', messageId);
+    
+    // CRITICAL: If Android already displayed the notification (notification payload exists),
+    // skip ALL processing to prevent duplicates
+    // Android automatically displays notifications with a notification payload when app is closed
+    if (remoteMessage?.notification) {
+      console.log('📱 Android already displayed notification (has notification payload), skipping processing to prevent duplicates');
+      return; // Android handled it, don't process or display again
     }
-  } catch (_) {}
+    
+    const data = remoteMessage?.data || {};
+    
+    // Ensure notification channels exist
+    try {
+      const { configureNotificationsChannel } = await import('./push');
+      await configureNotificationsChannel();
+    } catch (e) {
+      console.warn('⚠️ Failed to configure notification channels in FCM handler');
+    }
+    
+    // Ensure TTS is initialized
+    try {
+      const { backgroundTtsService } = await import('./backgroundTtsService');
+      await backgroundTtsService.initialize();
+    } catch (e) {
+      console.error('❌ TTS init in FCM handler failed:', e);
+    }
+    
+    // Handle speak_message type
+    if (data.type === 'speak_message' || data.type === 'speak-message') {
+      try {
+        const { backgroundTtsService } = await import('./backgroundTtsService');
+        const message = data.message || data.text || data.body || '';
+        if (message && message.trim().length > 0) {
+          const priority = data.priority === 'high' ? 'high' : (data.priority === 'low' ? 'low' : 'normal');
+          const interrupt = String(data.interrupt ?? 'true') !== 'false';
+          await backgroundTtsService.speakMessage(message, { priority, interrupt });
+          console.log('🔊 Spoke message from FCM speak_message');
+        }
+      } catch (ttsError) {
+        console.error('❌ Error speaking FCM speak_message:', ttsError);
+      }
+      return;
+    }
+    
+    // Handle incoming call notifications with highest priority
+    if (data.type === 'incoming_call') {
+      console.log('📞 Processing incoming call from FCM in background:', {
+        callerName: data.callerName,
+        isAudio: data.isAudio,
+        callerId: data.callerId || data.from,
+      });
+      
+      try {
+        const { callNotificationService } = await import('./callNotificationService');
+        await callNotificationService.displayIncomingCallNotification({
+          callerName: data.callerName || 'Unknown Caller',
+          callerProfilePic: data.callerProfilePic || '',
+          channelName: data.channelName || '',
+          isAudio: String(data.isAudio) === 'true',
+          callerId: data.callerId || data.from || '',
+        });
+        console.log('✅ Incoming call notification displayed from FCM');
+      } catch (error) {
+        console.error('❌ Error displaying incoming call notification from FCM:', error);
+        // Fallback to basic notification
+        try {
+          await notifee.displayNotification({
+            title: String(data.isAudio) === 'true' ? 'Incoming Audio Call' : 'Incoming Video Call',
+            body: `Call from ${data.callerName || 'Unknown Caller'}`,
+            android: {
+              channelId: 'incoming_calls',
+              smallIcon: 'ic_notification',
+              ongoing: true,
+              pressAction: { id: 'open_incoming_call', launchActivity: 'default' },
+              fullScreenAction: { id: 'incoming_call_fullscreen', launchActivity: 'default' },
+            },
+            data: { type: 'incoming_call', ...data, isAudio: String(data.isAudio) },
+          });
+        } catch (fallbackError) {
+          console.error('❌ Error displaying fallback call notification:', fallbackError);
+        }
+      }
+      return;
+    }
+    
+    // Handle chat messages (when app is closed) - data-only messages
+    if (data.type === 'chat' || data.type === 'new_message') {
+      const notificationKey = `chat_${messageId}_${data.messageId || ''}`;
+      
+      // Check if this notification was recently displayed
+      if (isFcmNotificationRecentlyShown(notificationKey)) {
+        console.log('⏭️ Skipping duplicate chat notification (recently displayed):', notificationKey);
+        return;
+      }
+      
+      console.log('💬 Processing chat message from FCM (data-only):', {
+        senderName: data.senderName,
+        message: data.message?.substring(0, 50) + '...',
+        messageId: messageId,
+      });
+      
+      const chatTitle = data.senderName || data.title || 'New Message';
+      const chatBody = data.message || data.body || 'You have a new message';
+      
+      try {
+        await notifee.displayNotification({
+          title: chatTitle,
+          body: chatBody,
+          android: {
+            channelId: 'default',
+            smallIcon: 'ic_notification',
+            pressAction: { id: 'default' },
+            sound: undefined, // No sound
+          },
+          data,
+        });
+        console.log('✅ Chat notification displayed from FCM (data-only):', chatTitle);
+      } catch (notifyErr) {
+        console.error('❌ Error displaying chat notification from FCM:', notifyErr);
+      }
+      return;
+    }
+    
+    // Handle other notification types - data-only messages
+    const title = data.title || data.senderName || 'Message';
+    const body = data.body || data.message || '';
+
+    const notificationKey = `general_${messageId}_${data.messageId || ''}`;
+    
+    // Check if this notification was recently displayed
+    if (isFcmNotificationRecentlyShown(notificationKey)) {
+      console.log('⏭️ Skipping duplicate notification (recently displayed):', notificationKey);
+      return;
+    }
+
+    // Display notification only if Android didn't already display it (data-only message)
+    if (title || body) {
+      try {
+        await notifee.displayNotification({
+          title,
+          body,
+          android: {
+            channelId: 'default',
+            smallIcon: 'ic_notification',
+            pressAction: { id: 'default' },
+            sound: undefined, // No sound
+          },
+          data,
+        });
+        console.log('✅ Background notification displayed from FCM (data-only):', title);
+      } catch (notifyErr) {
+        console.error('❌ Error displaying background notification from FCM:', notifyErr);
+      }
+    }
+  } catch (e) {
+    console.error('❌ Error in FCM message handler:', e);
+  }
+}
+
+// Set up FCM message listener for background service
+async function setupFcmMessageListener(): Promise<void> {
+  if (isFcmListenerSetup) {
+    return; // Already set up
+  }
+  
+  try {
+    // Ensure Firebase is initialized
+    const { getApp } = await import('@react-native-firebase/app');
+    try {
+      getApp();
+    } catch (firebaseError) {
+      console.error('❌ Firebase not initialized in FCM listener setup:', firebaseError);
+      return;
+    }
+    
+    // Check for initial notification (app opened from notification when killed)
+    try {
+      const initialNotification = await messaging().getInitialNotification();
+      if (initialNotification) {
+        console.log('📱 Processing initial FCM notification (app opened from killed state)');
+        await handleFcmMessage(initialNotification);
+      }
+    } catch (e) {
+      console.error('❌ Error checking initial FCM notification:', e);
+    }
+    
+    // Set up message listener for background/foreground messages
+    // Note: This works when app is in background or foreground, but not when completely killed
+    // When killed, messages are handled via getInitialNotification above or when service restarts
+    const unsubscribe = messaging().onMessage(async (remoteMessage) => {
+      // Only handle messages when app is in background
+      const appState = AppState.currentState;
+      if (appState === 'active') {
+        // Skip - foreground messages are handled by listenForegroundMessages in push.ts
+        return;
+      }
+      
+      await handleFcmMessage(remoteMessage);
+    });
+    
+    fcmMessageListener = unsubscribe;
+    isFcmListenerSetup = true;
+    console.log('✅ FCM message listener set up for background service');
+  } catch (e) {
+    console.error('❌ Error setting up FCM message listener:', e);
+  }
 }
 
 // Set up a resilient socket connection usable in background context
@@ -105,18 +363,27 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
           // Fallback: minimal notifee notification if service import fails
           try {
             const normalized = normalizeIncomingCallPayload(payload);
+            // Ensure channel exists before displaying notification
+            await notifee.createChannel({
+              id: 'incoming_calls',
+              name: 'Incoming Calls',
+              importance: AndroidImportance.HIGH,
+            });
             await notifee.displayNotification({
               title: normalized.isAudio ? 'Incoming Audio Call' : 'Incoming Video Call',
               body: `Call from ${normalized.callerName}`,
               android: {
                 channelId: 'incoming_calls',
+                smallIcon: 'ic_notification',
                 ongoing: true,
                 pressAction: { id: 'open_incoming_call', launchActivity: 'default' },
                 fullScreenAction: { id: 'incoming_call_fullscreen', launchActivity: 'default' },
               },
               data: { type: 'incoming_call', ...normalized, isAudio: String(normalized.isAudio) },
             });
-          } catch (_) {}
+          } catch (fallbackError) {
+            console.error('❌ Error displaying fallback notification:', fallbackError);
+          }
         }
       };
 
@@ -131,7 +398,7 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
         try { backgroundSocket.on(evt, handleIncoming); } catch (_) {}
       });
 
-      // Speak message handler (server-driven TTS)
+      // Speak message handler (server-driven TTS) - re-enabled for socket 'speak_message' events
       const handleSpeakMessage = async (payload: any) => {
         try {
           const { backgroundTtsService } = await import('./backgroundTtsService');
@@ -144,9 +411,11 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
           const priority = (payload?.priority === 'high' || payload?.priority === 'low') ? payload.priority : 'normal';
           const interrupt = payload?.interrupt !== false; // default true
 
-          console.log('speak message', payload)
+          console.log('🔊 Speaking message from socket speak_message event:', payload);
           await backgroundTtsService.speakMessage(message, { priority, interrupt });
-        } catch (_) {}
+        } catch (error) {
+          console.error('❌ Error speaking message from socket:', error);
+        }
       };
       const speakEvents = [ 'speak_message', 'speak-message' ];
       speakEvents.forEach(evt => {
@@ -172,16 +441,52 @@ async function backgroundTask({ taskName }: { taskName: string }) {
     await backgroundTtsService.initialize();
   } catch (_) {}
 
-  // Ensure Android notification channels and request ignore battery optimizations
-  try { await ensureAndroidForegroundPrereqs(); } catch (_) {}
+  // Ensure Android notification channels exist
+  // Note: Battery optimization check is skipped in background processes
+  // to avoid null context errors - it's not critical for background functionality
+  try { 
+    await ensureAndroidForegroundPrereqs(); 
+  } catch (e) {
+    // Silently ignore errors - notification channels will still work
+    // Battery optimization check is optional and not critical
+  }
 
   // Best-effort: bring up socket once on start
   await ensureBackgroundSocketConnected();
+  
+  // Set up FCM message listener for background notifications
+  await setupFcmMessageListener();
 
-  // Loop with small sleep; periodically ensure socket is connected
+  // Optimized loop: check socket connection less frequently to reduce battery drain
+  // Start with 5 seconds, then increase to 30 seconds after initial connection
+  let checkInterval = 5000; // Start with 5 seconds
+  let consecutiveSuccesses = 0;
+  
   for (;;) {
-    await new Promise<void>(resolve => setTimeout(() => resolve(), 5000));
-    try { await ensureBackgroundSocketConnected(); } catch (_) {}
+    await new Promise<void>(resolve => setTimeout(() => resolve(), checkInterval));
+    try {
+      const wasConnected = backgroundSocket && backgroundSocket.connected;
+      await ensureBackgroundSocketConnected();
+      const isConnected = backgroundSocket && backgroundSocket.connected;
+      
+      // If socket is connected and was already connected, increase interval to save battery
+      if (isConnected && wasConnected) {
+        consecutiveSuccesses++;
+        // After 3 successful checks (15 seconds), increase interval to 30 seconds
+        if (consecutiveSuccesses >= 3 && checkInterval < 30000) {
+          checkInterval = 30000; // 30 seconds
+          console.log('Background service: Socket stable, reducing check frequency to save battery');
+        }
+      } else {
+        // Reset interval if connection changed
+        consecutiveSuccesses = 0;
+        checkInterval = 5000; // Back to 5 seconds
+      }
+    } catch (_) {
+      // Reset on error
+      consecutiveSuccesses = 0;
+      checkInterval = 5000;
+    }
   }
 }
 
@@ -194,29 +499,74 @@ const options = {
   linkingURI: 'connect://home',
   parameters: { taskName: 'ConnectBackground' },
   allowExecutionInForeground: false,
-  stopWithTerminate: false,
+  stopWithTerminate: true, // Stop service when app is terminated/closed
   // Android specific
   foregroundService: true,
 };
 
 class PushBackgroundService {
   private isRunning = false;
+  private appStateListener: any = null;
 
   async start(): Promise<void> {
     if (this.isRunning) return;
     try {
       await BackgroundService.start(backgroundTask as any, options as any);
       this.isRunning = true;
-      console.log("background server running")
+      console.log("background server running");
+      
+      // Set up AppState listener to stop service when app is closed
+      this.setupAppStateListener();
     } catch (e) {
       // If already running or failed to start, ignore
       this.isRunning = true;
     }
   }
+  
+  private setupAppStateListener(): void {
+    // Remove existing listener if any
+    if (this.appStateListener) {
+      this.appStateListener.remove();
+    }
+    
+    // Listen for app state changes
+    this.appStateListener = AppState.addEventListener('change', (nextAppState: string) => {
+      if (nextAppState === 'inactive' || nextAppState === 'background') {
+        // App is going to background - keep service running for notifications
+        console.log('📱 App moved to background, keeping service running');
+      } else if (nextAppState === 'active') {
+        // App is active - service can continue running
+        console.log('📱 App is active');
+      }
+    });
+  }
 
   async stop(): Promise<void> {
     if (!this.isRunning) return;
     try {
+      // Remove AppState listener
+      if (this.appStateListener) {
+        try {
+          this.appStateListener.remove();
+          this.appStateListener = null;
+          console.log('✅ AppState listener removed');
+        } catch (e) {
+          console.error('Error removing AppState listener:', e);
+        }
+      }
+      
+      // Clean up FCM listener
+      if (fcmMessageListener) {
+        try {
+          fcmMessageListener();
+          fcmMessageListener = null;
+          isFcmListenerSetup = false;
+          console.log('✅ FCM message listener cleaned up');
+        } catch (e) {
+          console.error('Error cleaning up FCM listener:', e);
+        }
+      }
+      
       await BackgroundService.stop();
     } catch (e) {
       // ignore
@@ -237,21 +587,12 @@ class PushBackgroundService {
     }
   }
 
-  // One-shot helper to show a notification from background
-  async displayNotification(title: string, body: string, data: Record<string, string> = {}): Promise<void> {
-    await this.ensure();
-    await notifee.displayNotification({
-      title,
-      body:body + ' from background service',
-      android: {
-        channelId: 'default',
-        smallIcon: 'ic_launcher',
-        ongoing: true,
-        pressAction: { id: 'default' },
-      },
-      data,
-    });
-  }
+  // This service handles all background notifications via background-fetch plugin:
+  // 1. Keeping background socket connection alive
+  // 2. Handling incoming call notifications via socket
+  // 3. Handling speak_message events for TTS
+  // 4. Handling FCM push notifications (incoming_call, chat, speak_message, etc.)
+  // Native FCM background handlers have been removed to avoid conflicts
 }
 
 export const pushBackgroundService = new PushBackgroundService();

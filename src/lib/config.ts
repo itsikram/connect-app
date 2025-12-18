@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // Environment configuration types
 interface EnvironmentConfig {
   API_BASE_URL: string;
@@ -18,17 +20,45 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-const serverUrl = "http://192.168.0.100:4000"
-// const serverUrl = "http://172.20.10.2:4000"
-const mediapipeServerUrl = "http://192.168.0.100:5000"
-// const serverUrl = "https://connect-server-y1ku.onrender.com"
+// Get the appropriate development server URL based on platform
+// IMPORTANT: Android emulator uses 10.0.2.2 to access host machine's localhost
+// For physical Android devices, change the Android URL below to your local network IP (e.g., 192.168.0.101)
+const getDevServerUrl = (): string => {
+  return "http://192.168.0.100:4000";
+
+  if (Platform.OS === 'android') {
+    // For Android emulator: use 10.0.2.2 (maps to host machine's localhost)
+    // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:4000")
+    return "http://10.0.2.2:4000";
+  }
+  // For iOS simulator and other platforms, use local network IP
+  // Alternative: use production server for development
+  // return "https://connect-server-y1ku.onrender.com";
+};
+
+const getDevMediapipeServerUrl = (): string => {
+  if (Platform.OS === 'android') {
+    // For Android emulator: use 10.0.2.2
+    // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:5000")
+    return "https://emotion-detection-z1b2.onrender.com";
+  }
+  return "https://emotion-detection-z1b2.onrender.com";
+};
+
+// Development server URLs (local network)
+const devServerUrl = getDevServerUrl();
+const devMediapipeServerUrl = getDevMediapipeServerUrl();
+
+// Production server URLs
+const prodServerUrl = "https://connect-server-y1ku.onrender.com"
+const prodMediapipeServerUrl = "https://emotion-detection-z1b2.onrender.com" // Keep local for now, update if needed
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
-    API_BASE_URL: `${serverUrl}/api/`,
-    SOCKET_BASE_URL: serverUrl,
+    API_BASE_URL: `${devServerUrl}/api/`,
+    SOCKET_BASE_URL: devServerUrl,
     API_TIMEOUT: 10000,
-    MEDIAPIPE_BASE_URL: mediapipeServerUrl,
+    MEDIAPIPE_BASE_URL: devMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
@@ -41,10 +71,10 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     REACT_HAHA_URL: '/assets/images/reacts/reactHaha.svg',
   },
   staging: {
-    API_BASE_URL: `${serverUrl}/api/`,
-    SOCKET_BASE_URL: serverUrl,
+    API_BASE_URL: `${prodServerUrl}/api/`,
+    SOCKET_BASE_URL: prodServerUrl,
     API_TIMEOUT: 15000,
-    MEDIAPIPE_BASE_URL: mediapipeServerUrl,
+    MEDIAPIPE_BASE_URL: prodMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
@@ -57,10 +87,10 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     REACT_HAHA_URL: '/assets/images/reacts/reactHaha.svg',
   },
   production: {
-    API_BASE_URL: `${serverUrl}/api/`,
-    SOCKET_BASE_URL: serverUrl,
+    API_BASE_URL: `${prodServerUrl}/api/`,
+    SOCKET_BASE_URL: prodServerUrl,
     API_TIMEOUT: 20000,
-    MEDIAPIPE_BASE_URL: mediapipeServerUrl,
+    MEDIAPIPE_BASE_URL: prodMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',

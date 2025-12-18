@@ -22,8 +22,8 @@ try {
 } catch (_) {}
 import App from './App';
 import { name as appName } from './app.json';
-import messaging from '@react-native-firebase/messaging';
 import { getApp, initializeApp } from '@react-native-firebase/app';
+import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
 import { displayIncomingCallNotification, configureNotificationsChannel } from './src/lib/push';
 import mobileAds from 'react-native-google-mobile-ads';
@@ -45,19 +45,40 @@ console.warn = (...args) => {
 
 // Initialize Firebase explicitly to ensure it's ready before use
 // React Native Firebase should auto-initialize from google-services.json on Android
-// This check ensures Firebase is ready before we use it
-let firebaseInitialized = false;
-try {
-  // Try to get the default app first (it may already be initialized)
-  getApp();
-  firebaseInitialized = true;
-  console.log('✅ Firebase app already initialized');
-} catch (error) {
-  // Firebase should auto-initialize from google-services.json on Android
-  // If it's not initialized, log the error but don't fail
-  console.warn('⚠️ Firebase app not initialized yet:', error.message);
-  // Firebase will be initialized when the native code loads
-  // We'll check again when we actually need to use it
+// This helper function ensures Firebase is initialized before use
+async function ensureFirebaseInitialized() {
+  try {
+    // Try to get the default app first (it may already be initialized)
+    getApp();
+    return true;
+  } catch (error) {
+    // Firebase should auto-initialize from google-services.json on Android
+    // If it's not initialized, wait a bit and retry (native code may still be loading)
+    console.warn('⚠️ Firebase app not initialized yet, waiting for native initialization...');
+    
+    // Wait for Firebase to be initialized by native code (max 3 seconds)
+    for (let i = 0; i < 6; i++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      try {
+        getApp();
+        console.log('✅ Firebase app initialized after wait');
+        return true;
+      } catch (e) {
+        // Continue waiting
+      }
+    }
+    
+    // If still not initialized, try to initialize explicitly
+    try {
+      // React Native Firebase should auto-initialize, but if it doesn't,
+      // we can't manually initialize without config, so just log the error
+      console.error('❌ Firebase app not initialized after waiting');
+      return false;
+    } catch (initError) {
+      console.error('❌ Failed to initialize Firebase:', initError);
+      return false;
+    }
+  }
 }
 
 // Handle Notifee background events (e.g., action presses when app is killed)
@@ -93,91 +114,72 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
   }
 });
 
-// Background handler: show a notification when message received in background/quit
-// Ensure Firebase is initialized before setting the handler
-// Note: On Android, Firebase auto-initializes from google-services.json
-// The background handler will check Firebase initialization when it runs
-try {
-  // Check if Firebase is initialized before setting the handler
-  getApp();
-  console.log('✅ Firebase initialized before setting background message handler');
-  firebaseInitialized = true;
-} catch (error) {
-  console.warn('⚠️ Firebase not initialized before setting background message handler:', error.message);
-  // Firebase should auto-initialize from google-services.json on Android
-  // The handler will check again when it runs
-}
-
-// Set the background message handler
-// This must be called at the top level, not inside a function
-try {
-  messaging().setBackgroundMessageHandler(async remoteMessage => {
+// Background message handler for when app is completely killed
+// This is required for FCM to work when app is killed - it wakes up the JS runtime
+// The handler delegates to pushBackgroundService which uses react-native-background-actions
+const backgroundMessageHandler = async (remoteMessage) => {
   try {
-    // Ensure Firebase is initialized in the background handler
+    console.log('📱 FCM background message received (app killed):', remoteMessage?.messageId || 'unknown');
+    
+    // Ensure Firebase is initialized
     try {
       getApp();
     } catch (firebaseError) {
       console.error('❌ Firebase not initialized in background handler:', firebaseError);
-      // Return early if Firebase is not initialized
       return;
     }
     
-    console.log('📱 Background message received:', remoteMessage?.messageId);
+    // Ensure background service is running to handle the message
+    try {
+      await pushBackgroundService.ensure();
+    } catch (e) {
+      console.error('❌ Failed to ensure background service in FCM handler:', e);
+    }
     
-    await configureNotificationsChannel();
-    // Ensure background actions service is running to keep JS alive
-    try { await pushBackgroundService.ensure(); } catch (e) {}
-    // Ensure TTS is initialized in headless/background context
-    try { await backgroundTtsService.initialize(); } catch (e) { console.error('❌ TTS init in BG failed:', e); }
+    // Import and use the FCM handler from pushBackgroundService
+    // This ensures consistent handling whether app is killed or in background
+    try {
+      // The pushBackgroundService will handle the message via its FCM listener
+      // But we also need to handle it here since the service might not have the listener set up yet
+      const { handleFcmMessage } = await import('./src/lib/pushBackgroundService');
+      if (handleFcmMessage) {
+        await handleFcmMessage(remoteMessage);
+      } else {
+        // Fallback: handle directly if function not exported
+        await handleFcmMessageDirectly(remoteMessage);
+      }
+    } catch (e) {
+      console.error('❌ Error handling FCM message in background handler:', e);
+      // Fallback to direct handling
+      await handleFcmMessageDirectly(remoteMessage);
+    }
+  } catch (e) {
+    console.error('❌ Error in background message handler:', e);
+  }
+};
+
+// Direct FCM message handler (fallback when service handler not available)
+async function handleFcmMessageDirectly(remoteMessage) {
+  try {
+    const messageId = remoteMessage?.messageId || remoteMessage?.data?.messageId || 'unknown';
     const data = remoteMessage?.data || {};
     
-    // Stop any currently playing TTS
-    try {
-      await backgroundTtsService.stopSpeaking();
-    } catch (e) {
-      // Ignore errors when stopping
-    }
-    
-    // Speak message directly via FCM when app is killed - DISABLED
-    if (data.type === 'speak_message' || data.type === 'speak-message') {
-      // TTS disabled - no longer speaking messages
-      console.log('🔇 TTS disabled - skipping speak_message');
+    // If Android already displayed the notification, skip processing
+    if (remoteMessage?.notification) {
+      console.log('📱 Android already displayed notification, skipping');
       return;
     }
     
-    // Handle incoming call notifications with highest priority
+    // Ensure notification channels exist
+    try {
+      await configureNotificationsChannel();
+    } catch (e) {
+      console.warn('⚠️ Failed to configure notification channels');
+    }
+    
+    // Handle incoming call
     if (data.type === 'incoming_call') {
-      console.log('📞 Processing incoming call in background:', {
-        callerName: data.callerName,
-        isAudio: data.isAudio,
-        callerId: data.callerId || data.from,
-      });
-      
-      // TTS disabled - no longer speaking incoming calls
-      // try {
-      //   await backgroundTtsService.speakIncomingCall(
-      //     data.callerName || 'Unknown Caller',
-      //     String(data.isAudio) === 'true'
-      //   );
-      // } catch (ttsError) {
-      //   console.error('❌ Error speaking incoming call:', ttsError);
-      // }
-      
-      // Import and use the call notification service
       try {
-        const { callNotificationService } = require('./src/lib/callNotificationService');
-        await callNotificationService.displayIncomingCallNotification({
-          callerName: data.callerName || 'Unknown Caller',
-          callerProfilePic: data.callerProfilePic || '',
-          channelName: data.channelName || '',
-          isAudio: String(data.isAudio) === 'true',
-          callerId: data.callerId || data.from || '',
-        });
-        
-        console.log('✅ Incoming call notification displayed from background');
-      } catch (error) {
-        console.error('❌ Error displaying incoming call notification from background:', error);
-        // Fallback to original method
         await displayIncomingCallNotification({
           callerName: data.callerName || 'Unknown Caller',
           callerProfilePic: data.callerProfilePic || '',
@@ -185,111 +187,93 @@ try {
           isAudio: String(data.isAudio) === 'true',
           callerId: data.callerId || data.from || '',
         });
+        console.log('✅ Incoming call notification displayed from FCM background handler');
+      } catch (error) {
+        console.error('❌ Error displaying incoming call notification:', error);
       }
-      
       return;
     }
     
-    // Handle new message notifications
-    if (data.type === 'new_message') {
-      console.log('💬 Processing new message in background:', {
-        senderName: data.senderName,
-        message: data.message?.substring(0, 50) + '...',
-      });
+    // Handle chat messages
+    if (data.type === 'chat' || data.type === 'new_message') {
+      const title = data.senderName || data.title || 'New Message';
+      const body = data.message || data.body || 'You have a new message';
       
-      // TTS disabled - no longer speaking new messages
-      // try {
-      //   await backgroundTtsService.speakNewMessage(
-      //     data.senderName || 'Someone',
-      //     data.message || 'New message received'
-      //   );
-      // } catch (ttsError) {
-      //   console.error('❌ Error speaking new message:', ttsError);
-      // }
-    }
-    
-    // Handle chat messages (when app is closed)
-    if (data.type === 'chat') {
-      console.log('💬 Processing chat message in background:', {
-        senderName: data.senderName,
-        message: data.message?.substring(0, 50) + '...',
-      });
-      
-      // Extract title and body for chat messages
-      const chatTitle = remoteMessage?.notification?.title || data.senderName || data.title || 'New Message';
-      const chatBody = remoteMessage?.notification?.body || data.message || data.body || 'You have a new message';
-      
-      // TTS disabled - no longer speaking chat messages
-      // try {
-      //   await backgroundTtsService.speakNewMessage(
-      //     data.senderName || chatTitle,
-      //     chatBody
-      //   );
-      // } catch (ttsError) {
-      //   console.error('❌ Error speaking chat message:', ttsError);
-      // }
-      
-      // Display notification with proper body
       try {
-        await configureNotificationsChannel();
         await notifee.displayNotification({
-          title: chatTitle,
-          body: chatBody,
+          title,
+          body,
           android: {
             channelId: 'default',
-            smallIcon: 'ic_launcher',
+            smallIcon: 'ic_notification',
             pressAction: { id: 'default' },
-            sound: undefined, // No sound
+            sound: undefined,
           },
           data,
         });
-        console.log('✅ Chat notification displayed:', chatTitle, chatBody);
-        return; // Return early to avoid duplicate notification
+        console.log('✅ Chat notification displayed from FCM background handler');
       } catch (notifyErr) {
         console.error('❌ Error displaying chat notification:', notifyErr);
       }
+      return;
     }
     
-    // Handle other notification types
-    const title = remoteMessage?.notification?.title || data.title || data.senderName || 'Message';
-    const body = remoteMessage?.notification?.body || data.body || data.message || '';
-
-    // TTS disabled - no longer speaking general notifications
-    // if (data.type === 'notification' || data.type === 'general' || (!data.type && (title || body))) {
-    //   try {
-    //     await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
-    //   } catch (ttsError) {
-    //     console.error('❌ Error speaking notification:', ttsError);
-    //   }
-    // }
-
-    // Always display a visible notification for background messages so users see it even when app is quit
-    try {
-      await configureNotificationsChannel();
-      await notifee.displayNotification({
-        title,
-        body,
-        android: {
-          channelId: 'default',
-          smallIcon: 'ic_launcher',
-          pressAction: { id: 'default' },
-          sound: undefined, // No sound
-        },
-        data,
-      });
-      console.log('✅ Background notification displayed:', title);
-    } catch (notifyErr) {
-      console.error('❌ Error displaying background notification:', notifyErr);
+    // Handle general notifications
+    const title = data.title || data.senderName || 'Message';
+    const body = data.body || data.message || '';
+    
+    if (title || body) {
+      try {
+        await notifee.displayNotification({
+          title,
+          body,
+          android: {
+            channelId: 'default',
+            smallIcon: 'ic_notification',
+            pressAction: { id: 'default' },
+            sound: undefined,
+          },
+          data,
+        });
+        console.log('✅ Notification displayed from FCM background handler');
+      } catch (notifyErr) {
+        console.error('❌ Error displaying notification:', notifyErr);
+      }
     }
   } catch (e) {
-    console.error('❌ Error in background message handler:', e);
+    console.error('❌ Error in direct FCM message handler:', e);
   }
-  });
-} catch (error) {
-  console.error('❌ Failed to set background message handler:', error);
-  // If Firebase is not initialized, the handler will fail
-  // This is expected if Firebase hasn't been initialized yet
 }
+
+// Set up background message handler for FCM (required when app is killed)
+// This ensures FCM messages are received even when app is completely closed
+function setupBackgroundMessageHandler() {
+  try {
+    const messagingInstance = messaging();
+    messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
+    console.log('✅ FCM background message handler set (for killed app state)');
+  } catch (error) {
+    console.warn('⚠️ Failed to set FCM background message handler:', error.message);
+    // Retry after a short delay
+    setTimeout(() => {
+      try {
+        const messagingInstance = messaging();
+        messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
+        console.log('✅ FCM background message handler set (retry)');
+      } catch (retryError) {
+        console.error('❌ Failed to set FCM background message handler after retry:', retryError.message);
+      }
+    }, 2000);
+  }
+}
+
+// Call the setup function at the top level
+setupBackgroundMessageHandler();
+
+// Background notification handling:
+// 1. When app is killed: setBackgroundMessageHandler above processes FCM messages
+// 2. When app is in background: pushBackgroundService FCM listener handles messages
+// 3. Both use the same handler logic for consistency
 
 AppRegistry.registerComponent(appName, () => App);
 
@@ -326,9 +310,31 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
 })();
 
 // Ensure notification channels exist as soon as the JS runtime starts
+// Use a delayed initialization to ensure React Native is ready
 (async () => {
-  try { 
-    await configureNotificationsChannel(); 
+  try {
+    // Wait a bit for React Native to fully initialize, especially in background processes
+    // This prevents null context errors when accessing native modules
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Retry logic for notification channel configuration
+    let retries = 3;
+    let configured = false;
+    while (retries > 0 && !configured) {
+      try {
+        await configureNotificationsChannel();
+        configured = true;
+      } catch (e) {
+        retries--;
+        if (retries > 0) {
+          // Wait a bit longer before retrying
+          await new Promise(resolve => setTimeout(resolve, 500));
+        } else {
+          console.warn('⚠️ Failed to configure notification channels after retries, will retry on next app start');
+        }
+      }
+    }
+    
     // Stop any currently playing TTS immediately
     try {
       await backgroundTtsService.stopSpeaking();
@@ -336,7 +342,11 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
       // Ignore errors
     }
     // Initialize background TTS service
-    await backgroundTtsService.initialize();
+    try {
+      await backgroundTtsService.initialize();
+    } catch (e) {
+      console.warn('⚠️ Failed to initialize background TTS service:', e);
+    }
     // Stop TTS after initialization to ensure it's not playing
     try {
       await backgroundTtsService.stopSpeaking();
@@ -344,9 +354,17 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
       // Ignore errors
     }
     // Initialize background service manager
-    await backgroundServiceManager.initialize();
+    try {
+      await backgroundServiceManager.initialize();
+    } catch (e) {
+      console.warn('⚠️ Failed to initialize background service manager:', e);
+    }
     // Also directly ensure background actions is running
-    try { await pushBackgroundService.ensure(); } catch (e) {}
+    try { 
+      await pushBackgroundService.ensure(); 
+    } catch (e) {
+      console.warn('⚠️ Failed to ensure background service:', e);
+    }
   } catch (e) {
     console.error('Error initializing background services:', e);
   }

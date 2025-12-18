@@ -51,23 +51,6 @@ const PrivacySettings = () => {
     try {
       const success = await updateSettings(privacySettings);
       if (success) {
-        // Restart or stop location service based on setting
-        // Lazy load locationService to avoid initialization issues
-        if (privacySettings.isShareLocation) {
-          try {
-            const locationService = (await import('../../lib/locationService')).default;
-            await locationService.start();
-          } catch (e) {
-            console.error('Error starting location service:', e);
-          }
-        } else {
-          try {
-            const locationService = (await import('../../lib/locationService')).default;
-            await locationService.stop();
-          } catch (e) {
-            console.error('Error stopping location service:', e);
-          }
-        }
         showSuccess('Privacy settings saved');
       } else {
         showError('Failed to save privacy settings');
@@ -83,22 +66,6 @@ const PrivacySettings = () => {
     // Auto-save location sharing setting
     try {
       await updateSettings({ isShareLocation: value });
-      // Lazy load locationService to avoid initialization issues
-      if (value) {
-        try {
-          const locationService = (await import('../../lib/locationService')).default;
-          await locationService.start();
-        } catch (e) {
-          console.error('Error starting location service:', e);
-        }
-      } else {
-        try {
-          const locationService = (await import('../../lib/locationService')).default;
-          await locationService.stop();
-        } catch (e) {
-          console.error('Error stopping location service:', e);
-        }
-      }
     } catch (error) {
       console.error('Error updating location sharing setting:', error);
     }

@@ -1,13 +1,21 @@
+import { Platform } from 'react-native';
 import RNFS from 'react-native-fs';
 import notifee, { AndroidImportance } from '@notifee/react-native';
 
-export const DOWNLOADS_DIR = `${RNFS.DocumentDirectoryPath}/downloads`;
+// Use public Downloads folder on Android, app documents on iOS
+export const DOWNLOADS_DIR = Platform.OS === 'android' 
+  ? RNFS.DownloadDirectoryPath 
+  : `${RNFS.DocumentDirectoryPath}/downloads`;
 
 export async function ensureDownloadsDir(): Promise<string> {
   try {
-    const exists = await RNFS.exists(DOWNLOADS_DIR);
-    if (!exists) {
-      await RNFS.mkdir(DOWNLOADS_DIR);
+    // On Android, DownloadDirectoryPath already exists, no need to create
+    // On iOS, create the downloads subdirectory if it doesn't exist
+    if (Platform.OS === 'ios') {
+      const exists = await RNFS.exists(DOWNLOADS_DIR);
+      if (!exists) {
+        await RNFS.mkdir(DOWNLOADS_DIR);
+      }
     }
   } catch (_) {}
   return DOWNLOADS_DIR;

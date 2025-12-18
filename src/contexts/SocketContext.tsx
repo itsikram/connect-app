@@ -66,9 +66,13 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
       await socketService.connect(profileId);
       setIsConnected(true);
     } catch (error) {
-      console.error('Failed to connect to WebSocket:', error);
+      // Only log in development to reduce noise, but always set state
+      if (__DEV__) {
+        console.error('Failed to connect to WebSocket:', error);
+      }
       setIsConnected(false);
-      throw error;
+      // Don't throw error - let the app continue with offline functionality
+      // Components can check isConnected to handle offline state
     }
   }, []);
 

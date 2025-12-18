@@ -12,6 +12,8 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
+import com.facebook.react.ReactApplication;
+
 /**
  * Notification Service to ensure push notifications work when app is closed
  * This service handles incoming notifications and TTS processing
@@ -23,26 +25,53 @@ public class NotificationService extends Service {
 
     @Override
     public void onCreate() {
-        super.onCreate();
-        Log.d(TAG, "NotificationService created");
-        createNotificationChannel();
+        try {
+            super.onCreate();
+            Log.d(TAG, "NotificationService created");
+            createNotificationChannel();
+        } catch (Exception e) {
+            Log.e(TAG, "Error in NotificationService.onCreate", e);
+            // Continue anyway - service might still be usable
+        }
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d(TAG, "NotificationService started");
-        
-        // Start as foreground service
-        startForeground(NOTIFICATION_ID, createNotification());
-        
-        // Nudge Headless JS keep-alive to ensure background JS can spin up
         try {
-            Intent keepAlive = new Intent(this, KeepAliveService.class);
-            startService(keepAlive);
-        } catch (Exception ignored) {}
-        
-        // Keep service running
-        return START_STICKY;
+            Log.d(TAG, "NotificationService started");
+            
+            // Start as foreground service
+            try {
+                startForeground(NOTIFICATION_ID, createNotification());
+            } catch (Exception e) {
+                Log.e(TAG, "Error starting foreground service", e);
+                // If foreground start fails, stop the service to prevent crashes
+                stopSelf(startId);
+                return START_NOT_STICKY;
+            }
+            
+            // Nudge Headless JS keep-alive to ensure background JS can spin up
+            // Only do this if React Native is available (to prevent crashes)
+            try {
+                // Check if we're in a process that has React Native
+                if (getApplication() instanceof com.facebook.react.ReactApplication) {
+                    Intent keepAlive = new Intent(this, KeepAliveService.class);
+                    startService(keepAlive);
+                } else {
+                    Log.w(TAG, "ReactApplication not available, skipping KeepAliveService start");
+                }
+            } catch (Exception e) {
+                Log.w(TAG, "Could not start KeepAliveService (non-critical)", e);
+                // Continue - this is not critical for notification service
+            }
+            
+            // Keep service running
+            return START_STICKY;
+        } catch (Exception e) {
+            Log.e(TAG, "Error in onStartCommand", e);
+            // Return START_NOT_STICKY on error to prevent restart loop
+            return START_NOT_STICKY;
+        }
     }
 
     @Override

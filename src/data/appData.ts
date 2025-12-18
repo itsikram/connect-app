@@ -48,27 +48,6 @@ export const sampleApps: AppItem[] = [
       // Navigation will be handled by the AppGrid component
       console.log('Chess pressed - navigation handled by AppGrid');
     },
-  }
-  ,
-  {
-    id: 'EmotionFaceMesh',
-    name: 'FaceMesh',
-    icon: 'face',
-    color: '#FF6F61',
-    onPress: () => {
-      // Navigation handled in Menu via handleAppPress
-      console.log('FaceMesh demo pressed');
-    },
-  },
-  {
-    id: 'FaceLandmarks',
-    name: 'Face Landmarks',
-    icon: 'face-unlock',
-    color: '#00E5FF',
-    onPress: () => {
-      // Navigation handled in Menu via handleAppPress
-      console.log('Face Landmarks pressed');
-    },
   },
   {
     id: 'camera',

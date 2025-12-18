@@ -27,17 +27,9 @@ class MainActivity : ReactActivity() {
     super.onCreate(savedInstanceState)
     // Set the status bar to be transparent and draw system bar backgrounds
     // This ensures proper status bar handling with React Native's StatusBar component
-    try {
-      val serviceIntent = Intent(this, NotificationService::class.java)
-      if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-        startForegroundService(serviceIntent)
-      } else {
-        startService(serviceIntent)
-      }
-      Log.d("MainActivity", "NotificationService started from MainActivity")
-    } catch (e: Exception) {
-      Log.e("MainActivity", "Failed to start NotificationService", e)
-    }
+    
+    // NotificationService removed - all background notifications are now handled by 
+    // react-native-background-actions plugin (pushBackgroundService.ts)
     
     // Handle incoming call intents when app is launched from notification
     handleIncomingCallIntent(intent)

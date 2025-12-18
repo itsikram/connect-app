@@ -6,22 +6,30 @@ class SocketService {
   private pendingEmits: { event: string; data: any }[] = [];
   private pendingListeners: { event: string; callback: (...args: any[]) => void }[] = [];
 
-  async connect(profileId: string): Promise<void> {
+    async connect(profileId: string): Promise<void> {
     if (this.socket && this.socket.connected) {
-      console.log('✅ Socket already connected');
+      if (__DEV__) {
+        console.log('✅ Socket already connected');
+      }
       return;
     }
 
     if (this.isConnecting) {
-      console.log('⏳ Socket connection already in progress');
+      if (__DEV__) {
+        console.log('⏳ Socket connection already in progress');
+      }
       return;
     }
 
     try {
       this.isConnecting = true;
-      console.log('🔌 Starting socket connection with profileId:', profileId);
+      if (__DEV__) {
+        console.log('🔌 Starting socket connection with profileId:', profileId);
+      }
       this.socket = await initializeSocket(profileId);
-      console.log('✅ Socket connected successfully in socketService');
+      if (__DEV__) {
+        console.log('✅ Socket connected successfully in socketService');
+      }
 
       // Flush any queued listeners first
       if (this.pendingListeners.length > 0) {
@@ -47,6 +55,7 @@ class SocketService {
         this.pendingEmits = [];
       }
     } catch (error) {
+      // Always log connection failures as they're important
       console.error('Failed to connect socket:', error);
       throw error;
     } finally {

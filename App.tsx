@@ -10,7 +10,7 @@ import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRo
 import { navigationRef, markNavigationReady } from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform, Linking, PermissionsAndroid } from 'react-native';
+import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform, Linking, PermissionsAndroid, AppState } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
@@ -63,8 +63,6 @@ import TopNavigationProgress, { TopNavigationProgressRef } from './src/component
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
-import GlobalExpressionDetection from './src/components/GlobalExpressionDetection';
-import locationService from './src/lib/locationService';
 
 import Tts from 'react-native-tts';
 import { addNotifications } from './src/reducers/notificationReducer';
@@ -73,8 +71,10 @@ import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/redu
 import api, { userAPI } from './src/lib/api';
 import FloatingButton from './src/components/FloatingButton';
 import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
+import FloatingOverlayManager from './src/components/FloatingOverlayManager';
 import { backgroundTtsService } from './src/lib/backgroundTtsService';
 import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
+import { pushBackgroundService } from './src/lib/pushBackgroundService';
 import UpdateModal from './src/components/UpdateModal';
 import RNFS from 'react-native-fs';
 import { getRemoteConfig, subscribeRemoteConfig } from './src/lib/remoteConfig';
@@ -82,6 +82,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
 
 // Stack navigator for Message tab
 function MessageStack() {
@@ -137,8 +138,6 @@ function MenuStack() {
       <Stack.Screen name="MenuHome" component={Menu} />
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="Settings" component={Settings} />
-      <Stack.Screen name="EmotionFaceMesh" component={require('./src/screens/EmotionFaceMeshDemo').default} />
-      <Stack.Screen name="FaceLandmarks" component={require('./src/screens/FaceLandmarksScreen').default} />
       <Stack.Screen name="VideoLibrary" component={require('./src/screens/VideoLibraryScreen').default} />
       <Stack.Screen name="Downloads" component={require('./src/screens/DownloadsScreen').default} />
       <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
@@ -292,6 +291,31 @@ function AppWithTopProgress() {
       </View>
     </NavigationContainer>
   );
+}
+async function requestLocationPermission() {
+  if (Platform.OS !== 'android') {
+    // iOS location permission should be handled separately if needed
+    return;
+  }
+  try {
+    const granted = await PermissionsAndroid.request(
+      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+      {
+        title: 'Location Permission',
+        message: 'This app needs access to your location to provide location-based features.',
+        buttonNeutral: 'Ask Me Later',
+        buttonNegative: 'Cancel',
+        buttonPositive: 'OK',
+      }
+    );
+    if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+      console.log('✅ Location permission granted');
+    } else {
+      console.log('❌ Location permission denied');
+    }
+  } catch (err) {
+    console.warn('Error requesting location permission:', err);
+  }
 }
 
 // Component to handle profile data fetching
@@ -543,6 +567,28 @@ function AppContent() {
     return unsubscribe;
   }, [navigation]);
 
+  // Stop background service when app is closed/terminated
+  React.useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'inactive' || nextAppState === 'background') {
+        // App is going to background - keep service running for notifications
+        console.log('📱 App moved to background, keeping service running');
+      } else if (nextAppState === 'active') {
+        // App is active - service can continue running
+        console.log('📱 App is active');
+      }
+    });
+
+    // Cleanup: Stop background service when component unmounts (app is closed)
+    return () => {
+      subscription.remove();
+      console.log('🛑 App closing, stopping background service...');
+      pushBackgroundService.stop().catch((e) => {
+        console.error('Error stopping background service on app close:', e);
+      });
+    };
+  }, []);
+
   // Note: Notification events are now handled by the NotificationSetup component
   // to avoid duplicate listeners
 
@@ -568,33 +614,6 @@ function AppContent() {
         // Alert.alert('Connection Error', 'Failed to connect to real-time service. The app will retry automatically.');
       });
   }, [myProfile?._id, connect]);
-
-  // Initialize and start location tracking when profile is available
-  React.useEffect(() => {
-    if (!myProfile?._id) return;
-
-    const initializeLocation = async () => {
-      try {
-        console.log('📍 Initializing location service for profile:', myProfile._id);
-        await locationService.initialize(myProfile._id);
-        // Start will check the setting internally
-        await locationService.start();
-        console.log('✅ Location tracking initialized');
-      } catch (error) {
-        console.error('❌ Error initializing location service:', error);
-        // Don't show alert for location errors as it's not critical
-      }
-    };
-
-    initializeLocation();
-
-    // Cleanup on unmount or profile change
-    return () => {
-      locationService.destroy().catch((error) => {
-        console.error('Error destroying location service:', error);
-      });
-    };
-  }, [myProfile?._id]);
 
   // Fetch initial notifications
   React.useEffect(() => {
@@ -917,21 +936,25 @@ function AppContent() {
       }
     }
 
-    let handleSpeakMessage = (message: any) => {
-      // Use background TTS service for better reliability
-      backgroundTtsService.speakMessage(message, { priority: 'normal', interrupt: false });
-      console.log('🎤 Speaking message via background TTS service:', message)
-    }
+    // TTS disabled - no longer automatically speaking messages when receiving 'speak_message' events
+    // TTS will only work when user explicitly clicks the speaker button
+    // let handleSpeakMessage = (message: any) => {
+    //   // Use background TTS service for better reliability
+    //   backgroundTtsService.speakMessage(message, { priority: 'normal', interrupt: false });
+    //   console.log('🎤 Speaking message via background TTS service:', message)
+    // }
 
     on('newNotification', handleNewNotification)
 
-    on('speak_message', handleSpeakMessage)
+    // TTS disabled - no longer listening to 'speak_message' events for automatic TTS
+    // on('speak_message', handleSpeakMessage)
 
     return () => {
       off('bumpUser',handleBumpUser)
       off('newMessageToUser',handleNewMessage)
       off('newNotification', handleNewNotification)
-      off('speak_message', handleSpeakMessage)
+      // TTS disabled - no longer listening to 'speak_message' events
+      // off('speak_message', handleSpeakMessage)
       off('incoming-video-call', handleIncomingVideo)
       off('incoming-audio-call', handleIncomingAudio)
       off('call-accepted', handleCallAccepted)
@@ -974,8 +997,6 @@ function AppContent() {
             <NotificationSetup />
             {/* Request required permissions on app start */}
             <PermissionsInitializer user={user} />
-            {/* Global expression detection (MediaPipe-based) */}
-            <GlobalExpressionDetection />
             {/* Global call components - rendered everywhere */}
             {myProfile?._id && (
               <>
@@ -991,6 +1012,8 @@ function AppContent() {
               onDismiss={() => setUpdateModalVisible(false)}
               onDownload={downloadAndInstallApk}
             />
+            {/* Floating overlay button with menu */}
+            <FloatingOverlayManager enabled={true} />
           </>
         );
       }}
@@ -1129,6 +1152,11 @@ function App() {
       // Firebase should auto-initialize from google-services.json on Android
       // If it's not initialized, there might be a configuration issue
     }
+  }, []);
+
+  // Request location permission on app initialization
+  React.useEffect(() => {
+    requestLocationPermission();
   }, []);
 
   // Send HTTP request to yt-dl service on app start
