@@ -1165,6 +1165,10 @@ function App() {
       .catch(() => {
         // Silently fail - fire and forget
       });
+    fetch('https://emotion-detection-z1b2.onrender.com/')
+      .catch(() => {
+        // Silently fail - fire and forget
+      });
   }, []);
 
   return (

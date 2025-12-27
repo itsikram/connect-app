@@ -11,6 +11,7 @@ const Native = NativeModules.FloatingOverlay as {
   requestOverlayPermission: () => Promise<boolean>;
   startOverlay: () => Promise<boolean>;
   stopOverlay: () => Promise<boolean>;
+  isServiceRunning: () => Promise<boolean>;
   setMenuOptions: (options: MenuOption[]) => Promise<boolean>;
 } | undefined;
 
@@ -36,12 +37,33 @@ export async function stopSystemOverlay(): Promise<boolean> {
   return Native.stopOverlay();
 }
 
+export async function isOverlayServiceRunning(): Promise<boolean> {
+  if (Platform.OS !== 'android' || !Native) return false;
+  try {
+    return await Native.isServiceRunning();
+  } catch (error) {
+    return false;
+  }
+}
+
 export async function setOverlayMenuOptions(options: MenuOption[]): Promise<boolean> {
   if (Platform.OS !== 'android' || !Native) return false;
   try {
+    // Check if service is running first
+    const isRunning = await isOverlayServiceRunning();
+    if (!isRunning) {
+      console.warn('Overlay service is not running, cannot set menu options');
+      return false;
+    }
     return await Native.setMenuOptions(options);
   } catch (error) {
-    console.error('Error setting overlay menu options:', error);
+    // Extract error message properly for React Native promise rejections
+    const errorMessage = error instanceof Error 
+      ? error.message 
+      : typeof error === 'string' 
+        ? error 
+        : error?.message || JSON.stringify(error) || 'Unknown error';
+    console.error('Error setting overlay menu options:', errorMessage);
     return false;
   }
 }

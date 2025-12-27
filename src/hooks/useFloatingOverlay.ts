@@ -4,6 +4,7 @@ import {
   startSystemOverlay, 
   stopSystemOverlay, 
   setOverlayMenuOptions,
+  isOverlayServiceRunning,
   addOverlayMenuClickListener,
   MenuOption 
 } from '../lib/overlay';
@@ -37,6 +38,19 @@ export function useFloatingOverlay({
       const started = await startSystemOverlay();
       if (!started) {
         console.warn('Failed to start overlay service');
+        return false;
+      }
+
+      // Wait for service to be ready (with timeout)
+      let serviceReady = false;
+      for (let i = 0; i < 10; i++) {
+        serviceReady = await isOverlayServiceRunning();
+        if (serviceReady) break;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      if (!serviceReady) {
+        console.warn('Overlay service did not become ready in time');
         return false;
       }
 
@@ -77,6 +91,12 @@ export function useFloatingOverlay({
   const updateMenuOptions = useCallback(async (options: MenuOption[]) => {
     if (Platform.OS !== 'android' || !enabled) return false;
     try {
+      // Check if service is running before updating
+      const isRunning = await isOverlayServiceRunning();
+      if (!isRunning) {
+        console.warn('Cannot update menu options: overlay service is not running');
+        return false;
+      }
       return await setOverlayMenuOptions(options);
     } catch (error) {
       console.error('Error updating menu options:', error);

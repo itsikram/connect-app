@@ -24,7 +24,10 @@ type Environment = 'development' | 'staging' | 'production';
 // IMPORTANT: Android emulator uses 10.0.2.2 to access host machine's localhost
 // For physical Android devices, change the Android URL below to your local network IP (e.g., 192.168.0.101)
 const getDevServerUrl = (): string => {
-  return "http://192.168.0.100:4000";
+
+  return "https://connect-server-y1ku.onrender.com";
+
+  // return "http://192.168.0.100:4000";
 
   if (Platform.OS === 'android') {
     // For Android emulator: use 10.0.2.2 (maps to host machine's localhost)
@@ -33,7 +36,7 @@ const getDevServerUrl = (): string => {
   }
   // For iOS simulator and other platforms, use local network IP
   // Alternative: use production server for development
-  // return "https://connect-server-y1ku.onrender.com";
+  return "https://connect-server-y1ku.onrender.com";
 };
 
 const getDevMediapipeServerUrl = (): string => {

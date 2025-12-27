@@ -105,16 +105,22 @@ async function ensureAndroidForegroundPrereqs(): Promise<void> {
 }
 
 // Handle FCM messages in background context
+// CRITICAL: This function must work in production builds
 export async function handleFcmMessage(remoteMessage: any): Promise<void> {
   try {
     const messageId = remoteMessage?.messageId || remoteMessage?.data?.messageId || 'unknown';
-    console.log('📱 FCM message received in background service:', messageId);
+    // Log in dev mode, but always process in production
+    if (__DEV__) {
+      console.log('📱 FCM message received in background service:', messageId);
+    }
     
     // CRITICAL: If Android already displayed the notification (notification payload exists),
     // skip ALL processing to prevent duplicates
     // Android automatically displays notifications with a notification payload when app is closed
     if (remoteMessage?.notification) {
-      console.log('📱 Android already displayed notification (has notification payload), skipping processing to prevent duplicates');
+      if (__DEV__) {
+        console.log('📱 Android already displayed notification (has notification payload), skipping processing to prevent duplicates');
+      }
       return; // Android handled it, don't process or display again
     }
     
@@ -125,7 +131,10 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
       const { configureNotificationsChannel } = await import('./push');
       await configureNotificationsChannel();
     } catch (e) {
-      console.warn('⚠️ Failed to configure notification channels in FCM handler');
+      // Log but continue - channels might already exist
+      if (__DEV__) {
+        console.warn('⚠️ Failed to configure notification channels in FCM handler');
+      }
     }
     
     // Ensure TTS is initialized
@@ -133,7 +142,8 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
       const { backgroundTtsService } = await import('./backgroundTtsService');
       await backgroundTtsService.initialize();
     } catch (e) {
-      console.error('❌ TTS init in FCM handler failed:', e);
+      // Log errors even in production for debugging
+      console.error('❌ TTS init in FCM handler failed:', e?.message || e);
     }
     
     // Handle speak_message type

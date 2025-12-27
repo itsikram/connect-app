@@ -3,8 +3,76 @@
  */
 
 import 'react-native-gesture-handler';
-import { AppRegistry } from 'react-native';
+import { AppRegistry, ErrorUtils } from 'react-native';
 import 'react-native-reanimated';
+
+// Global error handler for unhandled errors
+// Check if ErrorUtils is available before using it
+let originalErrorHandler = null;
+if (ErrorUtils && typeof ErrorUtils.getGlobalHandler === 'function') {
+  try {
+    originalErrorHandler = ErrorUtils.getGlobalHandler();
+    ErrorUtils.setGlobalHandler((error, isFatal) => {
+      try {
+        // Log error in development only to reduce performance impact
+        if (__DEV__) {
+          console.error('Global error handler:', error, isFatal);
+        }
+        
+        // Prevent app crash by handling the error gracefully
+        // The ErrorBoundary will catch React errors
+        if (isFatal && originalErrorHandler) {
+          // Only call original handler for truly fatal errors
+          originalErrorHandler(error, isFatal);
+        }
+      } catch (e) {
+        // If error handler itself fails, use original
+        if (originalErrorHandler) {
+          originalErrorHandler(error, isFatal);
+        }
+      }
+    });
+  } catch (e) {
+    // If setting error handler fails, continue anyway
+    if (__DEV__) {
+      console.warn('Failed to set global error handler:', e);
+    }
+  }
+}
+
+// Handle unhandled promise rejections
+if (typeof global !== 'undefined' && !global.HermesInternal) {
+  const originalUnhandledRejection = global.onunhandledrejection;
+  global.onunhandledrejection = (event) => {
+    try {
+      if (__DEV__) {
+        console.warn('Unhandled promise rejection:', event?.reason || event);
+      }
+      // Prevent default crash behavior
+      if (event && typeof event.preventDefault === 'function') {
+        event.preventDefault();
+      }
+    } catch (e) {
+      // Fallback to original handler if available
+      if (originalUnhandledRejection) {
+        originalUnhandledRejection(event);
+      }
+    }
+  };
+}
+
+// Reduce console.log overhead in production
+if (!__DEV__) {
+  const noop = () => {};
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  
+  // Keep error logs but reduce others
+  console.log = noop;
+  console.warn = noop;
+  // Keep console.error for critical errors
+}
 // Ensure vector icon fonts are loaded early to avoid missing icons on Android/iOS
 try {
   // MaterialIcons
@@ -54,14 +122,18 @@ async function ensureFirebaseInitialized() {
   } catch (error) {
     // Firebase should auto-initialize from google-services.json on Android
     // If it's not initialized, wait a bit and retry (native code may still be loading)
-    console.warn('⚠️ Firebase app not initialized yet, waiting for native initialization...');
+    if (__DEV__) {
+      console.warn('⚠️ Firebase app not initialized yet, waiting for native initialization...');
+    }
     
     // Wait for Firebase to be initialized by native code (max 3 seconds)
     for (let i = 0; i < 6; i++) {
       await new Promise(resolve => setTimeout(resolve, 500));
       try {
         getApp();
-        console.log('✅ Firebase app initialized after wait');
+        if (__DEV__) {
+          console.log('✅ Firebase app initialized after wait');
+        }
         return true;
       } catch (e) {
         // Continue waiting
@@ -72,10 +144,14 @@ async function ensureFirebaseInitialized() {
     try {
       // React Native Firebase should auto-initialize, but if it doesn't,
       // we can't manually initialize without config, so just log the error
-      console.error('❌ Firebase app not initialized after waiting');
+      if (__DEV__) {
+        console.error('❌ Firebase app not initialized after waiting');
+      }
       return false;
     } catch (initError) {
-      console.error('❌ Failed to initialize Firebase:', initError);
+      if (__DEV__) {
+        console.error('❌ Failed to initialize Firebase:', initError);
+      }
       return false;
     }
   }
@@ -117,23 +193,35 @@ notifee.onBackgroundEvent(async ({ type, detail }) => {
 // Background message handler for when app is completely killed
 // This is required for FCM to work when app is killed - it wakes up the JS runtime
 // The handler delegates to pushBackgroundService which uses react-native-background-actions
+// CRITICAL: This function MUST work in production builds and handle errors gracefully
 const backgroundMessageHandler = async (remoteMessage) => {
+  // Always try to handle the message, even if logging is disabled
   try {
-    console.log('📱 FCM background message received (app killed):', remoteMessage?.messageId || 'unknown');
+    // Log in dev mode, but always process the message
+    if (__DEV__) {
+      console.log('📱 FCM background message received (app killed):', remoteMessage?.messageId || 'unknown');
+    }
     
-    // Ensure Firebase is initialized
+    // Ensure Firebase is initialized - this is critical for production
     try {
       getApp();
     } catch (firebaseError) {
-      console.error('❌ Firebase not initialized in background handler:', firebaseError);
-      return;
+      // In production, we need to handle this gracefully
+      // Try to continue anyway - Firebase might auto-initialize
+      if (__DEV__) {
+        console.error('❌ Firebase not initialized in background handler:', firebaseError);
+      }
+      // Don't return early - try to handle the message anyway
     }
     
     // Ensure background service is running to handle the message
     try {
       await pushBackgroundService.ensure();
     } catch (e) {
-      console.error('❌ Failed to ensure background service in FCM handler:', e);
+      // Log but continue - fallback handler will work
+      if (__DEV__) {
+        console.error('❌ Failed to ensure background service in FCM handler:', e);
+      }
     }
     
     // Import and use the FCM handler from pushBackgroundService
@@ -144,21 +232,48 @@ const backgroundMessageHandler = async (remoteMessage) => {
       const { handleFcmMessage } = await import('./src/lib/pushBackgroundService');
       if (handleFcmMessage) {
         await handleFcmMessage(remoteMessage);
-      } else {
-        // Fallback: handle directly if function not exported
-        await handleFcmMessageDirectly(remoteMessage);
+        return; // Successfully handled
       }
     } catch (e) {
-      console.error('❌ Error handling FCM message in background handler:', e);
-      // Fallback to direct handling
-      await handleFcmMessageDirectly(remoteMessage);
+      // If import or service handler fails, fall through to direct handler
+      if (__DEV__) {
+        console.error('❌ Error with pushBackgroundService handler:', e);
+      }
     }
+    
+    // Fallback: handle directly if service handler not available
+    // This ensures notifications work even if the service fails
+    await handleFcmMessageDirectly(remoteMessage);
+    
   } catch (e) {
-    console.error('❌ Error in background message handler:', e);
+    // Last resort error handling - log critical errors even in production
+    // This helps debug production issues
+    console.error('❌ Critical error in FCM background message handler:', e?.message || e);
+    
+    // Try to at least show a basic notification if everything else fails
+    try {
+      const data = remoteMessage?.data || {};
+      if (data?.title || data?.body || data?.message) {
+        await notifee.displayNotification({
+          title: data.title || data.senderName || 'New Message',
+          body: data.body || data.message || 'You have a new message',
+          android: {
+            channelId: 'default',
+            smallIcon: 'ic_notification',
+            pressAction: { id: 'default' },
+          },
+          data,
+        });
+      }
+    } catch (fallbackError) {
+      // If even the fallback fails, there's nothing more we can do
+      // But at least we tried
+    }
   }
 };
 
 // Direct FCM message handler (fallback when service handler not available)
+// CRITICAL: This must work in production builds - no __DEV__ checks that prevent execution
 async function handleFcmMessageDirectly(remoteMessage) {
   try {
     const messageId = remoteMessage?.messageId || remoteMessage?.data?.messageId || 'unknown';
@@ -166,15 +281,20 @@ async function handleFcmMessageDirectly(remoteMessage) {
     
     // If Android already displayed the notification, skip processing
     if (remoteMessage?.notification) {
-      console.log('📱 Android already displayed notification, skipping');
+      if (__DEV__) {
+        console.log('📱 Android already displayed notification, skipping');
+      }
       return;
     }
     
-    // Ensure notification channels exist
+    // Ensure notification channels exist - critical for production
     try {
       await configureNotificationsChannel();
     } catch (e) {
-      console.warn('⚠️ Failed to configure notification channels');
+      // Log but continue - channels might already exist
+      if (__DEV__) {
+        console.warn('⚠️ Failed to configure notification channels:', e);
+      }
     }
     
     // Handle incoming call
@@ -187,9 +307,12 @@ async function handleFcmMessageDirectly(remoteMessage) {
           isAudio: String(data.isAudio) === 'true',
           callerId: data.callerId || data.from || '',
         });
-        console.log('✅ Incoming call notification displayed from FCM background handler');
+        if (__DEV__) {
+          console.log('✅ Incoming call notification displayed from FCM background handler');
+        }
       } catch (error) {
-        console.error('❌ Error displaying incoming call notification:', error);
+        // Log errors even in production for debugging
+        console.error('❌ Error displaying incoming call notification:', error?.message || error);
       }
       return;
     }
@@ -211,9 +334,12 @@ async function handleFcmMessageDirectly(remoteMessage) {
           },
           data,
         });
-        console.log('✅ Chat notification displayed from FCM background handler');
+        if (__DEV__) {
+          console.log('✅ Chat notification displayed from FCM background handler');
+        }
       } catch (notifyErr) {
-        console.error('❌ Error displaying chat notification:', notifyErr);
+        // Log errors even in production
+        console.error('❌ Error displaying chat notification:', notifyErr?.message || notifyErr);
       }
       return;
     }
@@ -235,39 +361,65 @@ async function handleFcmMessageDirectly(remoteMessage) {
           },
           data,
         });
-        console.log('✅ Notification displayed from FCM background handler');
+        if (__DEV__) {
+          console.log('✅ Notification displayed from FCM background handler');
+        }
       } catch (notifyErr) {
-        console.error('❌ Error displaying notification:', notifyErr);
+        // Log errors even in production
+        console.error('❌ Error displaying notification:', notifyErr?.message || notifyErr);
       }
     }
   } catch (e) {
-    console.error('❌ Error in direct FCM message handler:', e);
+    // Always log critical errors, even in production
+    console.error('❌ Error in direct FCM message handler:', e?.message || e);
   }
 }
 
 // Set up background message handler for FCM (required when app is killed)
 // This ensures FCM messages are received even when app is completely closed
+// CRITICAL: This MUST be called before AppRegistry.registerComponent
+// and MUST work in production builds (no __DEV__ checks that prevent execution)
 function setupBackgroundMessageHandler() {
   try {
     const messagingInstance = messaging();
+    
+    // setBackgroundMessageHandler must be called at the top level, before app registration
+    // This handler runs in a headless JS context when app is killed
     messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
-    console.log('✅ FCM background message handler set (for killed app state)');
+    
+    // Log in dev mode only, but always execute the setup
+    if (__DEV__) {
+      console.log('✅ FCM background message handler set (for killed app state)');
+    }
   } catch (error) {
-    console.warn('⚠️ Failed to set FCM background message handler:', error.message);
-    // Retry after a short delay
+    // Always retry on error, even in production
+    // Use setTimeout to avoid blocking, but ensure it executes
     setTimeout(() => {
       try {
         const messagingInstance = messaging();
         messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
-        console.log('✅ FCM background message handler set (retry)');
+        if (__DEV__) {
+          console.log('✅ FCM background message handler set (retry)');
+        }
       } catch (retryError) {
-        console.error('❌ Failed to set FCM background message handler after retry:', retryError.message);
+        // In production, we still want to know if this fails
+        // Use console.error which we keep enabled
+        console.error('❌ Failed to set FCM background message handler after retry:', retryError?.message || retryError);
       }
     }, 2000);
+    
+    // Log initial error
+    if (__DEV__) {
+      console.warn('⚠️ Failed to set FCM background message handler:', error?.message || error);
+    } else {
+      // In production, log critical errors
+      console.error('⚠️ FCM background handler setup failed:', error?.message || error);
+    }
   }
 }
 
-// Call the setup function at the top level
+// CRITICAL: Call the setup function at the top level, BEFORE AppRegistry
+// This ensures the handler is registered before the app component is registered
 setupBackgroundMessageHandler();
 
 // Background notification handling:
@@ -275,7 +427,30 @@ setupBackgroundMessageHandler();
 // 2. When app is in background: pushBackgroundService FCM listener handles messages
 // 3. Both use the same handler logic for consistency
 
-AppRegistry.registerComponent(appName, () => App);
+// CRITICAL: Always register the app component, even if initialization errors occurred
+// This ensures the app can start and show error messages if needed
+try {
+  AppRegistry.registerComponent(appName, () => App);
+  if (__DEV__) {
+    console.log(`✅ App "${appName}" registered successfully`);
+  }
+} catch (error) {
+  // If registration fails, log the error but don't crash
+  console.error('❌ Failed to register app component:', error);
+  // Try to register with a fallback error component
+  try {
+    const { View, Text } = require('react-native');
+    const FallbackApp = () => (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
+        <Text style={{ color: '#fff', fontSize: 18, marginBottom: 10 }}>App Registration Error</Text>
+        <Text style={{ color: '#fff', fontSize: 14 }}>{error?.message || 'Unknown error'}</Text>
+      </View>
+    );
+    AppRegistry.registerComponent(appName, () => FallbackApp);
+  } catch (fallbackError) {
+    console.error('❌ Failed to register fallback app component:', fallbackError);
+  }
+}
 
 // Headless JS task to keep background JS alive (triggered by KeepAliveService)
 AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
@@ -292,8 +467,20 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
 // Initialize Mobile Ads SDK and show App Open Ad at cold start if enabled by server
 (async () => {
   try {
-    const res = await api.get('/connect/');
-    try { setRemoteConfig(res?.data || null); } catch (_) {}
+    // Add timeout to prevent hanging on slow networks
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Config fetch timeout')), 5000)
+    );
+    
+    const res = await Promise.race([
+      api.get('/connect/'),
+      timeoutPromise
+    ]);
+    
+    try { 
+      setRemoteConfig(res?.data || null); 
+    } catch (_) {}
+    
     const shouldShowAds = Boolean(res?.data?.showAds);
     if (!shouldShowAds) return;
 
@@ -302,10 +489,22 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
       .then(() => {
         try {
           appOpenAdManager.preloadAndShowOnLoad();
-        } catch (e) {}
+        } catch (e) {
+          if (__DEV__) {
+            console.warn('Error preloading app open ad:', e);
+          }
+        }
+      })
+      .catch((e) => {
+        if (__DEV__) {
+          console.warn('Error initializing mobile ads:', e);
+        }
       });
   } catch (e) {
     // If config fetch fails, skip ad initialization silently
+    if (__DEV__) {
+      console.warn('Config fetch failed, skipping ad initialization:', e?.message);
+    }
   }
 })();
 
@@ -330,7 +529,9 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
           // Wait a bit longer before retrying
           await new Promise(resolve => setTimeout(resolve, 500));
         } else {
-          console.warn('⚠️ Failed to configure notification channels after retries, will retry on next app start');
+          if (__DEV__) {
+            console.warn('⚠️ Failed to configure notification channels after retries, will retry on next app start');
+          }
         }
       }
     }
@@ -339,33 +540,41 @@ AppRegistry.registerHeadlessTask('KeepAliveTask', () => async () => {
     try {
       await backgroundTtsService.stopSpeaking();
     } catch (e) {
-      // Ignore errors
+      // Ignore errors silently
     }
     // Initialize background TTS service
     try {
       await backgroundTtsService.initialize();
     } catch (e) {
-      console.warn('⚠️ Failed to initialize background TTS service:', e);
+      if (__DEV__) {
+        console.warn('⚠️ Failed to initialize background TTS service:', e);
+      }
     }
     // Stop TTS after initialization to ensure it's not playing
     try {
       await backgroundTtsService.stopSpeaking();
     } catch (e) {
-      // Ignore errors
+      // Ignore errors silently
     }
     // Initialize background service manager
     try {
       await backgroundServiceManager.initialize();
     } catch (e) {
-      console.warn('⚠️ Failed to initialize background service manager:', e);
+      if (__DEV__) {
+        console.warn('⚠️ Failed to initialize background service manager:', e);
+      }
     }
     // Also directly ensure background actions is running
     try { 
       await pushBackgroundService.ensure(); 
     } catch (e) {
-      console.warn('⚠️ Failed to ensure background service:', e);
+      if (__DEV__) {
+        console.warn('⚠️ Failed to ensure background service:', e);
+      }
     }
   } catch (e) {
-    console.error('Error initializing background services:', e);
+    if (__DEV__) {
+      console.error('Error initializing background services:', e);
+    }
   }
 })();

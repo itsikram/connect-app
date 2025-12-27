@@ -204,6 +204,7 @@ const SingleMessage = () => {
     const videoRefs = useRef(new Map<string, any>()).current;
     const [isMicPermissionGranted, setIsMicPermissionGranted] = useState<boolean>(false);
     const [isCameraPermissionGranted, setIsCameraPermissionGranted] = useState<boolean>(false);
+    const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
     const isCameraReadyRef = useRef<boolean>(false);
     
     // Live voice transfer state
@@ -571,8 +572,10 @@ const SingleMessage = () => {
     const handleEmotionServerResponseRef = React.useRef<((data: any) => void) | null>(null);
     const cameraSetupTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const previousCameraRef = React.useRef<Camera | null>(null);
+    const lastPermissionCheckRef = React.useRef<number>(0);
     const MAJORITY_WINDOW_MS = 1500;
     const SERVER_REQUEST_TIMEOUT_MS = 8000; // 8 seconds timeout for server response
+    const PERMISSION_CHECK_COOLDOWN_MS = 10000; // Only check permission every 10 seconds
     
     // Emotion emoji map (matching web version)
     const emotionEmojiMap: Record<string, string> = {
@@ -1189,6 +1192,7 @@ const SingleMessage = () => {
         if (!settings.settings?.isShareEmotion) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - isShareEmotion setting is false');
             // Clean up if conditions not met
+            setIsCameraActive(false);
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -1211,6 +1215,7 @@ const SingleMessage = () => {
         if (!currentProfileId) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - no profileId');
             // Clean up if conditions not met
+            setIsCameraActive(false);
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -1233,6 +1238,7 @@ const SingleMessage = () => {
         if (!currentFriendId) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - no friendId');
             // Clean up if conditions not met
+            setIsCameraActive(false);
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -1254,7 +1260,8 @@ const SingleMessage = () => {
         
         if (isCallActive) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - call is active');
-            // Clean up if conditions not met
+            // Note: Don't deactivate camera during call, just pause detection
+            // Camera will be paused via isActive prop
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -1291,7 +1298,7 @@ const SingleMessage = () => {
         console.log('[SingleMessage] ✅ IDs validated, starting emotion detection initialization');
         console.log('[SingleMessage] 📋 ProfileId:', currentProfileId, 'FriendId:', currentFriendId);
 
-        const initializeEmotionServerSocket = React.useCallback(() => {
+        const initializeEmotionServerSocket = () => {
             if (emotionServerSocketRef.current?.connected) {
                 return; // Already connected
             }
@@ -1349,14 +1356,13 @@ const SingleMessage = () => {
             } catch (error) {
                 console.error('[SingleMessage] Error initializing emotion server socket:', error);
             }
-        }, []);
+        };
         
         /**
          * Handle response from Python emotion detection server
          * Matches web version logic with fast emission on emotion change
-         * Using useCallback to ensure stable handler with latest values
          */
-        const handleEmotionServerResponse = React.useCallback((data: any) => {
+        const handleEmotionServerResponse = (data: any) => {
             // Clear timeout if response arrives
             if (serverRequestTimeoutRef.current) {
                 clearTimeout(serverRequestTimeoutRef.current);
@@ -1548,18 +1554,15 @@ const SingleMessage = () => {
                     console.log(`[SingleMessage] ✅ Majority confirmed: ${majorityEmoji} ${majorityLabel} | Window Confidence: ${(confidenceApprox * 100).toFixed(1)}% | Window Size: ${windowSize}`);
                 }
             }
-        }, [friend?._id, myProfile?._id, isConnected, emit]);
+        };
 
-        // Update ref whenever handler changes (exact same as web version)
-        React.useEffect(() => {
-            handleEmotionServerResponseRef.current = handleEmotionServerResponse;
-        }, [handleEmotionServerResponse]);
+        // Update ref whenever handler changes
+        handleEmotionServerResponseRef.current = handleEmotionServerResponse;
         
         /**
          * Send frame to Python server for emotion detection
-         * Using useCallback to match web version exactly
          */
-        const detectEmotionFromServer = React.useCallback(async (base64Image: string) => {
+        const detectEmotionFromServer = async (base64Image: string) => {
             if (serverRequestInFlightRef.current) {
                 return; // Skip if request already in flight
             }
@@ -1615,7 +1618,7 @@ const SingleMessage = () => {
                 serverRequestInFlightRef.current = false;
             }
             // Note: Response will be handled by handleEmotionServerResponse via socket listener
-        }, [friend?._id, initializeEmotionServerSocket]);
+        };
         
         /**
          * Capture frame and send to server
@@ -1773,15 +1776,25 @@ const SingleMessage = () => {
                 }
                 
                 // Re-check camera permission if not granted (permissions can change)
+                // But only check occasionally to avoid spam (every 10 seconds)
                 if (!isCameraPermissionGranted) {
-                    console.log('[SingleMessage] ⏸️ Camera permission not granted in interval, re-checking...');
-                    const permissionOk = await ensureCameraPermission();
-                    if (!permissionOk) {
-                        console.log('[SingleMessage] ⏸️ Camera permission still not granted after re-check');
+                    const now = Date.now();
+                    const timeSinceLastCheck = now - lastPermissionCheckRef.current;
+                    
+                    if (timeSinceLastCheck >= PERMISSION_CHECK_COOLDOWN_MS) {
+                        lastPermissionCheckRef.current = now;
+                        console.log('[SingleMessage] ⏸️ Camera permission not granted, re-checking...');
+                        const permissionOk = await ensureCameraPermission();
+                        if (!permissionOk) {
+                            console.log('[SingleMessage] ⏸️ Camera permission still not granted after re-check');
+                            return;
+                        }
+                        // Permission granted, continue with detection
+                        console.log('[SingleMessage] ✅ Camera permission granted after re-check');
+                    } else {
+                        // Still waiting for cooldown, skip this frame
                         return;
                     }
-                    // Permission granted, continue with detection
-                    console.log('[SingleMessage] ✅ Camera permission granted after re-check');
                 }
                 
                 if (!cameraDevice) {
@@ -1832,15 +1845,20 @@ const SingleMessage = () => {
             const cameraOk = await ensureCameraPermission();
             if (!cameraOk) {
                 console.warn('[SingleMessage] ⚠️ Camera permission not granted');
+                setIsCameraActive(false);
                 return;
             }
 
             if (!cameraDevice) {
                 console.warn('[SingleMessage] ⚠️ Camera device not available');
+                setIsCameraActive(false);
                 return;
             }
 
             console.log('[SingleMessage] 📷 Camera permission granted, device available:', cameraDevice?.id);
+            
+            // Activate camera and keep it active while on this page
+            setIsCameraActive(true);
 
             // Wait for camera component to be rendered and ready
             console.log('[SingleMessage] ⏳ Waiting for camera to be ready...');
@@ -1940,6 +1958,9 @@ const SingleMessage = () => {
                 clearTimeout(cameraSetupTimeoutRef.current);
                 cameraSetupTimeoutRef.current = null;
             }
+            
+            // Deactivate camera when leaving the page
+            setIsCameraActive(false);
             
             // Reset rolling majority buffers
             labelHistoryRef.current = [];
@@ -5107,13 +5128,13 @@ const SingleMessage = () => {
                 onStop={liveVoiceRole === 'sender' ? handleLiveVoiceButtonClick : undefined}
             />
 
-            {/* Hidden camera for emotion detection - only render when needed and ready */}
-            {settings.settings?.isShareEmotion && cameraDevice && !isCallActive && isCameraPermissionGranted && (
+            {/* Hidden camera for emotion detection - keep mounted and active while on page */}
+            {settings.settings?.isShareEmotion && cameraDevice && isCameraActive && (
                 <View style={{ position: 'absolute', width: 200, height: 200, opacity: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: -1, left: -1000, top: -1000 }}>
                     <Camera
                         ref={handleCameraRef}
                         device={cameraDevice}
-                        isActive={settings.settings?.isShareEmotion && !isCallActive && isCameraPermissionGranted}
+                        isActive={isCameraActive && !isCallActive}
                         photo={true}
                         enableZoomGesture={false}
                         enableFpsGraph={false}

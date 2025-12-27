@@ -13,9 +13,12 @@ interface State {
 }
 
 class ErrorBoundary extends Component<Props, State> {
+  private _isMounted: boolean = false;
+
   constructor(props: Props) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null };
+    this._isMounted = true;
   }
 
   static getDerivedStateFromError(error: Error): State {
@@ -23,11 +26,26 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('ErrorBoundary caught an error:', error, errorInfo);
-    this.setState({
-      error,
-      errorInfo,
-    });
+    // Only log in development to reduce performance impact
+    if (__DEV__) {
+      console.error('ErrorBoundary caught an error:', error, errorInfo);
+    }
+    
+    // Prevent state update if component is unmounting
+    if (this._isMounted !== false) {
+      this.setState({
+        error,
+        errorInfo,
+      });
+    }
+  }
+  
+  componentDidMount() {
+    this._isMounted = true;
+  }
+  
+  componentWillUnmount() {
+    this._isMounted = false;
   }
 
   handleRetry = () => {

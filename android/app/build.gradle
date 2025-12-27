@@ -88,7 +88,10 @@ android {
         versionCode = 1
         versionName = "1.0"
         multiDexEnabled true
+        // Enable ProGuard/R8 optimizations for better performance
+        proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         ndk {
+            // Include all architectures for debug (including emulator support)
             abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
         externalNativeBuild {
@@ -114,8 +117,14 @@ android {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig = signingConfigs.debug
-            minifyEnabled = enableProguardInReleaseBuilds
-            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+            minifyEnabled = true  // Enable minification for better performance
+            shrinkResources = true  // Remove unused resources
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            // Exclude x86_64 from release builds to avoid Windows path length issues
+            // x86_64 is mainly for emulators, not needed for production APKs
+            ndk {
+                abiFilters "armeabi-v7a", "arm64-v8a", "x86"
+            }
         }
     }
     packaging {
@@ -125,6 +134,14 @@ android {
         }
         jniLibs {
             useLegacyPackaging = true
+        }
+    }
+    
+    // Configure Kotlin compilation for app module
+    tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+        kotlinOptions {
+            jvmTarget = "17"
+            allWarningsAsErrors = false
         }
     }
 }

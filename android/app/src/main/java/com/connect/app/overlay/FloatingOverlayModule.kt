@@ -62,9 +62,37 @@ class FloatingOverlayModule(private val reactContext: ReactApplicationContext) :
   }
 
   @ReactMethod
-  fun setMenuOptions(options: ReadableArray, promise: Promise) {
+  fun isServiceRunning(promise: Promise) {
     try {
       val service = FloatingOverlayService.getInstance()
+      promise.resolve(service != null)
+    } catch (e: Exception) {
+      promise.resolve(false)
+    }
+  }
+
+  @ReactMethod
+  fun setMenuOptions(options: ReadableArray, promise: Promise) {
+    try {
+      // Try to get the service instance with retries
+      var service = FloatingOverlayService.getInstance()
+      var retries = 5
+      var delay = 100L // Start with 100ms delay
+      
+      // Retry if service is not ready yet (handles race condition)
+      while (service == null && retries > 0) {
+        try {
+          Thread.sleep(delay)
+        } catch (ie: InterruptedException) {
+          Thread.currentThread().interrupt()
+          promise.reject("menu_options_error", "Interrupted while waiting for service")
+          return
+        }
+        service = FloatingOverlayService.getInstance()
+        retries--
+        delay += 100L // Increase delay for each retry
+      }
+      
       if (service != null) {
         val menuOptionsList = mutableListOf<MenuOption>()
         for (i in 0 until options.size()) {

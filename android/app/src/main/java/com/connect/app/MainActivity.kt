@@ -24,15 +24,25 @@ class MainActivity : ReactActivity() {
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
 
   override fun onCreate(savedInstanceState: Bundle?) {
-    super.onCreate(savedInstanceState)
-    // Set the status bar to be transparent and draw system bar backgrounds
-    // This ensures proper status bar handling with React Native's StatusBar component
-    
-    // NotificationService removed - all background notifications are now handled by 
-    // react-native-background-actions plugin (pushBackgroundService.ts)
-    
-    // Handle incoming call intents when app is launched from notification
-    handleIncomingCallIntent(intent)
+    try {
+      super.onCreate(savedInstanceState)
+      // Set the status bar to be transparent and draw system bar backgrounds
+      // This ensures proper status bar handling with React Native's StatusBar component
+      
+      // NotificationService removed - all background notifications are now handled by 
+      // react-native-background-actions plugin (pushBackgroundService.ts)
+      
+      // Handle incoming call intents when app is launched from notification
+      handleIncomingCallIntent(intent)
+    } catch (e: Exception) {
+      Log.e("MainActivity", "Error in onCreate: ${e.message}", e)
+      // Try to continue anyway - don't crash the app
+      try {
+        super.onCreate(savedInstanceState)
+      } catch (e2: Exception) {
+        Log.e("MainActivity", "Fatal error in onCreate recovery: ${e2.message}", e2)
+      }
+    }
   }
   
   private fun handleIncomingCallIntent(intent: Intent?) {
@@ -49,10 +59,45 @@ class MainActivity : ReactActivity() {
   }
 
   override fun onNewIntent(intent: Intent) {
-    super.onNewIntent(intent)
-    setIntent(intent)
+    try {
+      super.onNewIntent(intent)
+      setIntent(intent)
 
-    // Handle incoming call intents when app is already running
-    handleIncomingCallIntent(intent)
+      // Handle incoming call intents when app is already running
+      handleIncomingCallIntent(intent)
+    } catch (e: Exception) {
+      Log.e("MainActivity", "Error in onNewIntent: ${e.message}", e)
+      // Try to continue anyway
+      try {
+        super.onNewIntent(intent)
+        setIntent(intent)
+      } catch (e2: Exception) {
+        Log.e("MainActivity", "Fatal error in onNewIntent recovery: ${e2.message}", e2)
+      }
+    }
+  }
+  
+  override fun onResume() {
+    try {
+      super.onResume()
+    } catch (e: Exception) {
+      Log.e("MainActivity", "Error in onResume: ${e.message}", e)
+    }
+  }
+  
+  override fun onPause() {
+    try {
+      super.onPause()
+    } catch (e: Exception) {
+      Log.e("MainActivity", "Error in onPause: ${e.message}", e)
+    }
+  }
+  
+  override fun onDestroy() {
+    try {
+      super.onDestroy()
+    } catch (e: Exception) {
+      Log.e("MainActivity", "Error in onDestroy: ${e.message}", e)
+    }
   }
 }
