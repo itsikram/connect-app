@@ -2,24 +2,19 @@ workflows:
   android-workflow:
     name: Android Workflow
     max_build_duration: 120
-    instance_type: mac_mini_m1  # For Android, you can also use a linux instance if preferred
+    instance_type: linux-medium
     environment:
       node: 18.20.0
       java: temurin-11
-      flutter: none
-      android:
-        build_tools_version: "33.0.2"
-        ndk: "23.1.7779620" # optional, only if using native modules
-        sdk: "33"
       vars:
         ANDROID_PACKAGE: "com.connect.app"
         NODE_ENV: "production"
     scripts:
-      - name: Install dependencies
+      - name: Install npm dependencies
         script: |
           cd app
           npm install
-      - name: Install Android dependencies
+      - name: Clean Gradle
         script: |
           cd android
           ./gradlew clean
