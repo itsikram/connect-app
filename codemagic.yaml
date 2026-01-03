@@ -72,15 +72,20 @@ workflows:
             echo "✗ app.json not found at root"
             exit 1
           fi
+          echo "Verifying React Native CLI is available..."
+          npx react-native --version || echo "Warning: React Native CLI check failed"
+          echo "Testing React Native config command..."
+          npx react-native config || echo "Config command failed, but continuing..."
           echo "Setting up Android build..."
           cd android
           chmod +x gradlew
           echo "Cleaning previous builds..."
           ./gradlew clean || true
-          echo "Starting release build from android directory..."
+          echo "Starting release build..."
+          # Set working directory for npx commands - React Native Gradle plugin needs to find CLI from project root
+          export REACT_NATIVE_ROOT="$(pwd)/.."
           # Pass keystore properties as project properties for release signing
           # Use --no-daemon and --no-build-cache for CI/CD stability
-          # React Native autolinking should find app.json in parent directory automatically
           if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
             echo "Building with keystore signing..."
             ./gradlew assembleRelease \
