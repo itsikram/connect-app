@@ -5,7 +5,7 @@ workflows:
     # Using default Linux instance (free tier compatible)
     # Remove instance_type to use free tier, or use 'linux' for basic instance
     environment:
-      node: 18.20.0
+      node: 20.18.0  # Updated to Node 20 for Firebase compatibility
       java: 11  # If this fails, try: java: 17 (default) or java: 21
       groups:
         # Add these environment variables in Codemagic UI:
@@ -23,7 +23,7 @@ workflows:
       - name: Install npm dependencies
         script: |
           echo "Installing npm dependencies..."
-          npm ci --prefer-offline --no-audit
+          npm install --legacy-peer-deps
       - name: Install CocoaPods dependencies (if needed)
         script: |
           if [ -f "ios/Podfile" ]; then
