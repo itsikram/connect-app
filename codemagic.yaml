@@ -14,6 +14,8 @@ workflows:
       vars:
         ANDROID_PACKAGE: "com.connect.app"
         NODE_ENV: "production"
+        # Ensure npx can find React Native CLI
+        PATH: "$HOME/.npm-global/bin:$PATH"
         # These will be set via Codemagic UI environment variables:
         # CM_KEYSTORE_PATH: path to your keystore file
         # CM_KEYSTORE_PASSWORD: your keystore password
@@ -24,10 +26,32 @@ workflows:
         script: |
           echo "Installing npm dependencies..."
           npm install --legacy-peer-deps
+          echo "Verifying React Native CLI installation..."
+          if [ -d "node_modules/@react-native-community/cli" ]; then
+            echo "✓ React Native CLI found"
+          else
+            echo "Installing React Native CLI..."
+            npm install --save-dev @react-native-community/cli --legacy-peer-deps
+          fi
       - name: Skip CocoaPods (Android build only)
         script: |
           echo "Skipping CocoaPods installation - Android build only"
           echo "CocoaPods is only needed for iOS builds"
+      - name: Set up build environment
+        script: |
+          echo "Setting up build environment..."
+          echo "Current directory: $(pwd)"
+          echo "Verifying React Native CLI installation..."
+          if [ -f "node_modules/@react-native-community/cli/build/bin.js" ]; then
+            echo "✓ React Native CLI found"
+          else
+            echo "✗ React Native CLI not found, checking node_modules..."
+            ls -la node_modules/@react-native-community/ 2>/dev/null || echo "CLI directory not found"
+          fi
+          echo "Testing npx from project root..."
+          npx --version || echo "npx not available"
+          echo "Testing React Native CLI directly..."
+          node node_modules/@react-native-community/cli/build/bin.js --version 2>/dev/null || echo "Direct CLI call failed"
       - name: Set up keystore
         script: |
           echo "Setting up keystore for signing..."
@@ -74,16 +98,19 @@ workflows:
           fi
           echo "Verifying React Native CLI is available..."
           npx react-native --version || echo "Warning: React Native CLI check failed"
-          echo "Testing React Native config command..."
+          echo "Testing React Native config command from project root..."
           npx react-native config || echo "Config command failed, but continuing..."
+          echo "Setting up Android build environment..."
+          # Set PATH to include project root node_modules/.bin so npx can find React Native CLI
+          # This must be done before cd into android directory
+          export PATH="$(pwd)/node_modules/.bin:$PATH"
+          echo "PATH updated: $PATH"
           echo "Setting up Android build..."
           cd android
           chmod +x gradlew
           echo "Cleaning previous builds..."
           ./gradlew clean || true
           echo "Starting release build..."
-          # Set working directory for npx commands - React Native Gradle plugin needs to find CLI from project root
-          export REACT_NATIVE_ROOT="$(pwd)/.."
           # Pass keystore properties as project properties for release signing
           # Use --no-daemon and --no-build-cache for CI/CD stability
           if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
