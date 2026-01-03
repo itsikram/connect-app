@@ -1,0 +1,41 @@
+name: Build React Native Android
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '20'
+
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+
+    - name: Set up Java
+      uses: actions/setup-java@v3
+      with:
+        distribution: 'temurin'
+        java-version: '11'
+
+    - name: Install Android SDK
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y unzip wget
+        wget https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        mkdir -p $HOME/cmdline-tools
+        unzip commandlinetools-linux-9477386_latest.zip -d $HOME/cmdline-tools
+        yes | $HOME/cmdline-tools/cmdline-tools/bin/sdkmanager --sdk_root=$HOME/Android/Sdk "platform-tools" "platforms;android-33" "build-tools;33.0.2"
+
+    - name: Set ANDROID_HOME
+      run: echo "ANDROID_HOME=$HOME/Android/Sdk" >> $GITHUB_ENV
+
+    - name: Build APK
+      run: ./gradlew assembleRelease
