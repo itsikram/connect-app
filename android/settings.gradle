@@ -1,10 +1,10 @@
 pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
 plugins { id("com.facebook.react.settings") }
-extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> 
-    // Configure React Native root to parent directory
-    ex.root.set(file("../"))
-    ex.autolinkLibrariesFromCommand()
-}
+// Disable autolinking in settings.gradle - it will be handled in app/build.gradle instead
+// This avoids the npx command execution issue during Gradle evaluation
+// extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> 
+//     ex.autolinkLibrariesFromCommand()
+// }
 rootProject.name = 'Connect'
 include ':app'
 includeBuild('../node_modules/@react-native/gradle-plugin')

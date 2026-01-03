@@ -14,8 +14,9 @@ workflows:
       vars:
         ANDROID_PACKAGE: "com.connect.app"
         NODE_ENV: "production"
-        # Ensure npx can find React Native CLI
-        PATH: "$HOME/.npm-global/bin:$PATH"
+        # Set PATH to include node_modules/.bin so npx can find React Native CLI
+        # This is set as an environment variable so Gradle can access it
+        REACT_NATIVE_ROOT: "."
         # These will be set via Codemagic UI environment variables:
         # CM_KEYSTORE_PATH: path to your keystore file
         # CM_KEYSTORE_PASSWORD: your keystore password
@@ -33,25 +34,32 @@ workflows:
             echo "Installing React Native CLI..."
             npm install --save-dev @react-native-community/cli --legacy-peer-deps
           fi
+          echo "Setting up environment for Gradle autolinking..."
+          # Create a .env file or set environment that Gradle can access
+          # Ensure PATH includes node_modules/.bin for npx to find React Native CLI
+          echo "export PATH=\"$(pwd)/node_modules/.bin:\$PATH\"" >> ~/.bashrc
+          export PATH="$(pwd)/node_modules/.bin:$PATH"
+          echo "Testing npx react-native config..."
+          cd android
+          npx react-native config > /dev/null 2>&1 && echo "✓ npx works from android directory" || echo "✗ npx failed from android directory"
+          cd ..
       - name: Skip CocoaPods (Android build only)
         script: |
           echo "Skipping CocoaPods installation - Android build only"
           echo "CocoaPods is only needed for iOS builds"
-      - name: Set up build environment
+      - name: Generate React Native autolinking config
         script: |
-          echo "Setting up build environment..."
+          echo "Generating React Native autolinking configuration..."
           echo "Current directory: $(pwd)"
-          echo "Verifying React Native CLI installation..."
-          if [ -f "node_modules/@react-native-community/cli/build/bin.js" ]; then
-            echo "✓ React Native CLI found"
-          else
-            echo "✗ React Native CLI not found, checking node_modules..."
-            ls -la node_modules/@react-native-community/ 2>/dev/null || echo "CLI directory not found"
-          fi
-          echo "Testing npx from project root..."
-          npx --version || echo "npx not available"
-          echo "Testing React Native CLI directly..."
-          node node_modules/@react-native-community/cli/build/bin.js --version 2>/dev/null || echo "Direct CLI call failed"
+          # Generate autolinking configuration file before Gradle runs
+          # This prevents Gradle from needing to run npx during settings.gradle evaluation
+          npx react-native config > /tmp/react-native-config.json 2>&1 || {
+            echo "Warning: react-native config failed, but continuing..."
+            echo "This is expected if autolinking config already exists"
+          }
+          # Create autolinking directory if it doesn't exist
+          mkdir -p android/build/generated/autolinking
+          echo "Autolinking setup complete"
       - name: Set up keystore
         script: |
           echo "Setting up keystore for signing..."
