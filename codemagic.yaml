@@ -20,12 +20,6 @@ workflows:
         # CM_KEY_ALIAS: your key alias
         # CM_KEY_PASSWORD: your key password
     scripts:
-      - name: Set up Android SDK
-        script: |
-          echo "Setting up Android SDK..."
-          # Accept licenses to avoid interactive prompts
-          yes | sdkmanager --licenses || true
-          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;26.2.11394342"
       - name: Install npm dependencies
         script: |
           echo "Installing npm dependencies..."
