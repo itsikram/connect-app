@@ -24,16 +24,10 @@ workflows:
         script: |
           echo "Installing npm dependencies..."
           npm install --legacy-peer-deps
-      - name: Install CocoaPods dependencies (if needed)
+      - name: Skip CocoaPods (Android build only)
         script: |
-          # Skip CocoaPods for Android-only builds
-          # Only install if building for iOS (not needed for Android)
-          if [ -f "ios/Podfile" ]; then
-            echo "iOS Podfile detected, installing CocoaPods dependencies..."
-            cd ios && pod install && cd ..
-          else
-            echo "No iOS Podfile found, skipping CocoaPods (Android build only)"
-          fi
+          echo "Skipping CocoaPods installation - Android build only"
+          echo "CocoaPods is only needed for iOS builds"
       - name: Set up keystore
         script: |
           echo "Setting up keystore for signing..."
