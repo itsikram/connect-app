@@ -26,9 +26,13 @@ workflows:
           npm install --legacy-peer-deps
       - name: Install CocoaPods dependencies (if needed)
         script: |
+          # Skip CocoaPods for Android-only builds
+          # Only install if building for iOS (not needed for Android)
           if [ -f "ios/Podfile" ]; then
-            echo "Installing CocoaPods dependencies..."
+            echo "iOS Podfile detected, installing CocoaPods dependencies..."
             cd ios && pod install && cd ..
+          else
+            echo "No iOS Podfile found, skipping CocoaPods (Android build only)"
           fi
       - name: Set up keystore
         script: |
@@ -62,31 +66,13 @@ workflows:
               echo "Warning: No keystore found. Build will use debug keystore."
             fi
           fi
-      - name: Build Android App Bundle (AAB)
+      - name: Build Android Production APK
         script: |
-          echo "Building Android App Bundle..."
+          echo "Building Android Production APK..."
           cd android
           chmod +x gradlew
           ./gradlew clean
-          # Pass keystore properties as project properties
-          # Use --no-daemon and --no-build-cache for CI/CD stability
-          if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
-            ./gradlew bundleRelease \
-              --no-daemon \
-              --no-build-cache \
-              -PCM_KEYSTORE_PATH="$CM_KEYSTORE_PATH" \
-              -PCM_KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
-              -PCM_KEY_ALIAS="$CM_KEY_ALIAS" \
-              -PCM_KEY_PASSWORD="$CM_KEY_PASSWORD"
-          else
-            ./gradlew bundleRelease --no-daemon --no-build-cache
-          fi
-          cd ..
-      - name: Build Android APK
-        script: |
-          echo "Building Android APK..."
-          cd android
-          # Pass keystore properties as project properties
+          # Pass keystore properties as project properties for release signing
           # Use --no-daemon and --no-build-cache for CI/CD stability
           if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
             ./gradlew assembleRelease \
@@ -100,26 +86,20 @@ workflows:
             ./gradlew assembleRelease --no-daemon --no-build-cache
           fi
           cd ..
-      - name: Verify build outputs
+      - name: Verify APK build output
         script: |
-          echo "Verifying build outputs..."
-          if [ -f "android/app/build/outputs/bundle/release/app-release.aab" ]; then
-            echo "✓ AAB file created successfully"
-            ls -lh android/app/build/outputs/bundle/release/
-          else
-            echo "✗ AAB file not found"
-            exit 1
-          fi
+          echo "Verifying APK build output..."
           if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
-            echo "✓ APK file created successfully"
+            echo "✓ Production APK file created successfully"
             ls -lh android/app/build/outputs/apk/release/
+            echo "APK file size:"
+            du -h android/app/build/outputs/apk/release/app-release.apk
           else
             echo "✗ APK file not found"
             exit 1
           fi
     artifacts:
-      - android/app/build/outputs/**/*.apk
-      - android/app/build/outputs/**/*.aab
+      - android/app/build/outputs/apk/release/*.apk
     publishing:
       email:
         recipients:
