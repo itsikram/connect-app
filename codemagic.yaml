@@ -65,32 +65,59 @@ workflows:
           echo "Building Android Production APK..."
           cd android
           chmod +x gradlew
-          ./gradlew clean
+          echo "Cleaning previous builds..."
+          ./gradlew clean || true
+          echo "Starting release build..."
           # Pass keystore properties as project properties for release signing
           # Use --no-daemon and --no-build-cache for CI/CD stability
           if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
+            echo "Building with keystore signing..."
             ./gradlew assembleRelease \
               --no-daemon \
               --no-build-cache \
               -PCM_KEYSTORE_PATH="$CM_KEYSTORE_PATH" \
               -PCM_KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
               -PCM_KEY_ALIAS="$CM_KEY_ALIAS" \
-              -PCM_KEY_PASSWORD="$CM_KEY_PASSWORD"
+              -PCM_KEY_PASSWORD="$CM_KEY_PASSWORD" || exit 1
           else
-            ./gradlew assembleRelease --no-daemon --no-build-cache
+            echo "Building with debug keystore (no release keystore configured)..."
+            ./gradlew assembleRelease --no-daemon --no-build-cache || exit 1
           fi
+          echo "Build completed. Checking for APK files..."
+          find app/build/outputs/apk -name "*.apk" -type f || echo "No APK files found in app/build/outputs/apk"
           cd ..
       - name: Verify APK build output
         script: |
           echo "Verifying APK build output..."
+          echo "Searching for APK files..."
+          find android/app/build/outputs -name "*.apk" -type f 2>/dev/null || echo "No APK files found"
+          echo ""
+          echo "Checking common APK locations:"
+          ls -la android/app/build/outputs/apk/ 2>/dev/null || echo "apk directory not found"
+          ls -la android/app/build/outputs/apk/release/ 2>/dev/null || echo "release directory not found"
+          echo ""
+          # Check for APK in the expected location
           if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
-            echo "✓ Production APK file created successfully"
-            ls -lh android/app/build/outputs/apk/release/
+            echo "✓ Production APK file found at expected location"
+            ls -lh android/app/build/outputs/apk/release/app-release.apk
             echo "APK file size:"
             du -h android/app/build/outputs/apk/release/app-release.apk
           else
-            echo "✗ APK file not found"
-            exit 1
+            echo "✗ APK file not found at expected location: android/app/build/outputs/apk/release/app-release.apk"
+            echo "Searching for any APK files..."
+            APK_FILE=$(find android/app/build/outputs -name "*.apk" -type f | head -1)
+            if [ -n "$APK_FILE" ]; then
+              echo "Found APK at: $APK_FILE"
+              ls -lh "$APK_FILE"
+              echo "Copying to expected location..."
+              mkdir -p android/app/build/outputs/apk/release
+              cp "$APK_FILE" android/app/build/outputs/apk/release/app-release.apk
+              echo "✓ APK file copied to expected location"
+            else
+              echo "✗ No APK files found anywhere in build outputs"
+              echo "Build may have failed. Check build logs above."
+              exit 1
+            fi
           fi
     artifacts:
       - android/app/build/outputs/apk/release/*.apk
