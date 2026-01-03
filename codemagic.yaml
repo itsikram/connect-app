@@ -6,7 +6,7 @@ workflows:
     # Remove instance_type to use free tier, or use 'linux' for basic instance
     environment:
       node: 20.18.0  # Updated to Node 20 for Firebase compatibility
-      java: 11  # If this fails, try: java: 17 (default) or java: 21
+      java: 17  # Required by Android Gradle plugin (minimum Java 17)
       groups:
         # Add these environment variables in Codemagic UI:
         # - keystore_credentials (CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD)
