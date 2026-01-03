@@ -6,7 +6,7 @@ workflows:
     # Remove instance_type to use free tier, or use 'linux' for basic instance
     environment:
       node: 18.20.0
-      java: temurin-11
+      java: 11  # If this fails, try: java: 17 (default) or java: 21
       groups:
         # Add these environment variables in Codemagic UI:
         # - keystore_credentials (CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD)
