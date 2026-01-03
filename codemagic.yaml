@@ -1,34 +1,140 @@
 workflows:
   android-workflow:
-    name: Android Workflow
+    name: Android Build
     max_build_duration: 120
-    instance_type: linux
+    # Using default Linux instance (free tier compatible)
+    # Remove instance_type to use free tier, or use 'linux' for basic instance
     environment:
       node: 18.20.0
       java: temurin-11
+      groups:
+        # Add these environment variables in Codemagic UI:
+        # - keystore_credentials (CM_KEYSTORE_PATH, CM_KEYSTORE_PASSWORD, CM_KEY_ALIAS, CM_KEY_PASSWORD)
+        - keystore_credentials
       vars:
         ANDROID_PACKAGE: "com.connect.app"
         NODE_ENV: "production"
+        # These will be set via Codemagic UI environment variables:
+        # CM_KEYSTORE_PATH: path to your keystore file
+        # CM_KEYSTORE_PASSWORD: your keystore password
+        # CM_KEY_ALIAS: your key alias
+        # CM_KEY_PASSWORD: your key password
     scripts:
+      - name: Set up Android SDK
+        script: |
+          echo "Setting up Android SDK..."
+          # Accept licenses to avoid interactive prompts
+          yes | sdkmanager --licenses || true
+          sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;26.2.11394342"
       - name: Install npm dependencies
         script: |
-          cd app
-          npm install
-      - name: Clean Gradle
+          echo "Installing npm dependencies..."
+          npm ci --prefer-offline --no-audit
+      - name: Install CocoaPods dependencies (if needed)
         script: |
+          if [ -f "ios/Podfile" ]; then
+            echo "Installing CocoaPods dependencies..."
+            cd ios && pod install && cd ..
+          fi
+      - name: Set up keystore
+        script: |
+          echo "Setting up keystore for signing..."
+          # Codemagic stores uploaded files in $CM_KEYSTORE_PATH environment variable
+          # The path points to the uploaded file location
+          if [ -n "$CM_KEYSTORE_PATH" ]; then
+            if [ -f "$CM_KEYSTORE_PATH" ]; then
+              echo "Keystore file found at: $CM_KEYSTORE_PATH"
+              echo "Copying keystore to android/app directory..."
+              cp "$CM_KEYSTORE_PATH" android/app/connect-app.keystore
+              echo "Keystore copied successfully"
+              # Update CM_KEYSTORE_PATH to point to the new location for build.gradle
+              export CM_KEYSTORE_PATH="android/app/connect-app.keystore"
+            else
+              echo "Warning: Keystore file not found at $CM_KEYSTORE_PATH"
+              echo "Checking if keystore exists in android/app directory..."
+              if [ -f "android/app/connect-app.keystore" ]; then
+                echo "Using existing keystore in android/app directory"
+                export CM_KEYSTORE_PATH="android/app/connect-app.keystore"
+              else
+                echo "Warning: No keystore found. Build will use debug keystore."
+              fi
+            fi
+          else
+            echo "CM_KEYSTORE_PATH not set. Checking for keystore in android/app directory..."
+            if [ -f "android/app/connect-app.keystore" ]; then
+              echo "Using existing keystore in android/app directory"
+              export CM_KEYSTORE_PATH="android/app/connect-app.keystore"
+            else
+              echo "Warning: No keystore found. Build will use debug keystore."
+            fi
+          fi
+      - name: Build Android App Bundle (AAB)
+        script: |
+          echo "Building Android App Bundle..."
           cd android
+          chmod +x gradlew
           ./gradlew clean
-      - name: Build APK
+          # Pass keystore properties as project properties
+          # Use --no-daemon and --no-build-cache for CI/CD stability
+          if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
+            ./gradlew bundleRelease \
+              --no-daemon \
+              --no-build-cache \
+              -PCM_KEYSTORE_PATH="$CM_KEYSTORE_PATH" \
+              -PCM_KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
+              -PCM_KEY_ALIAS="$CM_KEY_ALIAS" \
+              -PCM_KEY_PASSWORD="$CM_KEY_PASSWORD"
+          else
+            ./gradlew bundleRelease --no-daemon --no-build-cache
+          fi
+          cd ..
+      - name: Build Android APK
         script: |
+          echo "Building Android APK..."
           cd android
-          ./gradlew assembleRelease
+          # Pass keystore properties as project properties
+          # Use --no-daemon and --no-build-cache for CI/CD stability
+          if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
+            ./gradlew assembleRelease \
+              --no-daemon \
+              --no-build-cache \
+              -PCM_KEYSTORE_PATH="$CM_KEYSTORE_PATH" \
+              -PCM_KEYSTORE_PASSWORD="$CM_KEYSTORE_PASSWORD" \
+              -PCM_KEY_ALIAS="$CM_KEY_ALIAS" \
+              -PCM_KEY_PASSWORD="$CM_KEY_PASSWORD"
+          else
+            ./gradlew assembleRelease --no-daemon --no-build-cache
+          fi
+          cd ..
+      - name: Verify build outputs
+        script: |
+          echo "Verifying build outputs..."
+          if [ -f "android/app/build/outputs/bundle/release/app-release.aab" ]; then
+            echo "✓ AAB file created successfully"
+            ls -lh android/app/build/outputs/bundle/release/
+          else
+            echo "✗ AAB file not found"
+            exit 1
+          fi
+          if [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+            echo "✓ APK file created successfully"
+            ls -lh android/app/build/outputs/apk/release/
+          else
+            echo "✗ APK file not found"
+            exit 1
+          fi
     artifacts:
-      - android/app/build/outputs/apk/release/*.apk
-      - android/app/build/outputs/bundle/release/*.aab
+      - android/app/build/outputs/**/*.apk
+      - android/app/build/outputs/**/*.aab
     publishing:
       email:
         recipients:
           - user@example.com # Replace with your email
         notify:
           success: true
-          failure: false
+          failure: true
+      google_play:
+        # Uncomment and configure when ready to publish to Google Play
+        # credentials: $GCLOUD_SERVICE_ACCOUNT_CREDENTIALS
+        # track: internal # or alpha, beta, production
+        # submit_as_draft: true
