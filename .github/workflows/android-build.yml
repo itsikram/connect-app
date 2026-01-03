@@ -18,11 +18,17 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: '18'
-        cache: 'npm'
-        cache-dependency-path: 'app/package-lock.json'
+
+    - name: Cache node modules
+      uses: actions/cache@v4
+      id: node-cache
+      with:
+        path: node_modules
+        key: ${{ runner.os }}-node-${{ hashFiles('package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-node-
 
     - name: Install dependencies
-      working-directory: ./app
       run: npm ci
 
     - name: Set up Java
@@ -30,22 +36,29 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
-        cache: 'gradle'
-        cache-dependency-path: 'app/android/**/*.gradle*'
+
+    - name: Cache Gradle dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          android/.gradle
+          ~/.gradle/caches
+        key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
+        restore-keys: |
+          ${{ runner.os }}-gradle-
 
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
 
     - name: Make gradlew executable
-      working-directory: ./app
       run: chmod +x android/gradlew
 
     - name: Build Debug APK
-      working-directory: ./app/android
+      working-directory: ./android
       run: ./gradlew assembleDebug
 
     - name: Build Release APK (unsigned)
-      working-directory: ./app/android
+      working-directory: ./android
       run: ./gradlew assembleRelease
       continue-on-error: true
 
@@ -53,7 +66,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: debug-apk
-        path: app/android/app/build/outputs/apk/debug/app-debug.apk
+        path: android/app/build/outputs/apk/debug/app-debug.apk
         retention-days: 30
 
     - name: Upload Release APK (if available)
@@ -61,6 +74,6 @@ jobs:
       if: always()
       with:
         name: release-apk
-        path: app/android/app/build/outputs/apk/release/app-release.apk
+        path: android/app/build/outputs/apk/release/app-release.apk
         retention-days: 30
         if-no-files-found: ignore
