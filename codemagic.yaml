@@ -1,56 +1,35 @@
 workflows:
-  ios-workflow:
-    name: iOS Workflow
+  android-workflow:
+    name: Android Workflow
     max_build_duration: 120
-    instance_type: mac_mini_m1
+    instance_type: mac_mini_m1  # For Android, you can also use a linux instance if preferred
     environment:
-      ios_signing:
-        distribution_type: development # development, ad_hoc, or enterprise (not app_store)
-        bundle_identifier: com.connect.app
-        # Automatic code signing - Codemagic will generate certificates/profiles automatically
-        # Requires App Store Connect API key configured in Codemagic UI
-      groups:
-        - ios_credentials # MUST match the group name in Codemagic Settings → Code signing identities
-      vars:
-        XCODE_WORKSPACE: "app/ios/Connect.xcworkspace"
-        XCODE_SCHEME: "Connect"
-        BUNDLE_ID: "com.connect.app"
       node: 18.20.0
-      cocoapods: default
+      java: temurin-11
+      flutter: none
+      android:
+        build_tools_version: "33.0.2"
+        ndk: "23.1.7779620" # optional, only if using native modules
+        sdk: "33"
+      vars:
+        ANDROID_PACKAGE: "com.connect.app"
+        NODE_ENV: "production"
     scripts:
       - name: Install dependencies
         script: |
           cd app
           npm install
-      - name: Install CocoaPods dependencies
+      - name: Install Android dependencies
         script: |
-          cd app/ios
-          pod install
-      - name: Set up code signing settings on Xcode project
+          cd android
+          ./gradlew clean
+      - name: Build APK
         script: |
-          cd app/ios
-          xcode-project use-profiles
-      - name: Build IPA for Development distribution
-        script: |
-          cd app/ios
-          xcodebuild \
-            -workspace Connect.xcworkspace \
-            -scheme Connect \
-            -configuration Release \
-            -destination generic/platform=iOS \
-            -archivePath build/Connect.xcarchive \
-            archive
-      - name: Export IPA
-        script: |
-          cd app/ios
-          xcodebuild -exportArchive \
-            -archivePath build/Connect.xcarchive \
-            -exportPath build/ipa \
-            -exportMethod development \
-            -allowProvisioningUpdates
+          cd android
+          ./gradlew assembleRelease
     artifacts:
-      - app/ios/build/ipa/*.ipa
-      - app/ios/build/Connect.xcarchive
+      - android/app/build/outputs/apk/release/*.apk
+      - android/app/build/outputs/bundle/release/*.aab
     publishing:
       email:
         recipients:
@@ -58,4 +37,3 @@ workflows:
         notify:
           success: true
           failure: false
-
