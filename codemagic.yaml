@@ -63,13 +63,24 @@ workflows:
       - name: Build Android Production APK
         script: |
           echo "Building Android Production APK..."
+          echo "Current directory: $(pwd)"
+          echo "Verifying React Native config..."
+          if [ -f "app.json" ]; then
+            echo "✓ app.json found at root"
+            echo "Android package: $(cat app.json | grep -A 2 '"android"' | grep '"package"' | cut -d'"' -f4)"
+          else
+            echo "✗ app.json not found at root"
+            exit 1
+          fi
+          echo "Setting up Android build..."
           cd android
           chmod +x gradlew
           echo "Cleaning previous builds..."
           ./gradlew clean || true
-          echo "Starting release build..."
+          echo "Starting release build from android directory..."
           # Pass keystore properties as project properties for release signing
           # Use --no-daemon and --no-build-cache for CI/CD stability
+          # React Native autolinking should find app.json in parent directory automatically
           if [ -n "$CM_KEYSTORE_PATH" ] && [ -n "$CM_KEYSTORE_PASSWORD" ] && [ -n "$CM_KEY_ALIAS" ] && [ -n "$CM_KEY_PASSWORD" ]; then
             echo "Building with keystore signing..."
             ./gradlew assembleRelease \
