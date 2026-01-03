@@ -58,20 +58,36 @@ interface Post {
     }>;
     comments?: Array<{
         _id: string;
-        content: string;
+        content?: string;
+        text?: string;
+        body?: string;
         author: {
             _id: string;
-            fullName: string;
+            fullName?: string;
+            firstName?: string;
+            name?: string;
             profilePic?: string;
+            user?: {
+                firstName?: string;
+                surname?: string;
+            };
         };
         createdAt: string;
         replies?: Array<{
             _id: string;
-            content: string;
+            content?: string;
+            text?: string;
+            body?: string;
             author: {
                 _id: string;
-                fullName: string;
+                fullName?: string;
+                firstName?: string;
+                name?: string;
                 profilePic?: string;
+                user?: {
+                    firstName?: string;
+                    surname?: string;
+                };
             };
             createdAt: string;
         }>;
@@ -85,20 +101,36 @@ interface Post {
 
 interface Comment {
     _id: string;
-    content: string;
+    content?: string;
+    text?: string;
+    body?: string;
     author: {
         _id: string;
-        fullName: string;
+        fullName?: string;
+        firstName?: string;
+        name?: string;
         profilePic?: string;
+        user?: {
+            firstName?: string;
+            surname?: string;
+        };
     };
     createdAt: string;
     replies?: Array<{
         _id: string;
-        content: string;
+        content?: string;
+        text?: string;
+        body?: string;
         author: {
             _id: string;
-            fullName: string;
+            fullName?: string;
+            firstName?: string;
+            name?: string;
             profilePic?: string;
+            user?: {
+                firstName?: string;
+                surname?: string;
+            };
         };
         createdAt: string;
     }>;
@@ -123,6 +155,8 @@ const SinglePost = () => {
     const [loadingComments, setLoadingComments] = useState(false);
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
     const [replyText, setReplyText] = useState('');
+    const [isPostingComment, setIsPostingComment] = useState(false);
+    const [isPostingReply, setIsPostingReply] = useState(false);
     const [showReactions, setShowReactions] = useState(false);
     const [isReacted, setIsReacted] = useState(false);
     const [reactType, setReactType] = useState<string | false>(false);
@@ -657,6 +691,14 @@ const SinglePost = () => {
         },
     });
 
+    const isValidImageUrl = (url?: string | string[]): boolean => {
+        if (!url) return false;
+        const imageUrl = typeof url === 'string' ? url : url[0];
+        if (!imageUrl || imageUrl.trim() === '') return false;
+        // Check if it's a valid URL format
+        return imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/');
+    };
+
     const fetchPost = useCallback(async () => {
         try {
             setError(null);
@@ -768,49 +810,89 @@ const SinglePost = () => {
     };
 
     const handleComment = async () => {
-        if (!commentText.trim() || !post || !myProfile?._id) return;
-
+        if (!commentText.trim() || !post || !myProfile?._id || isPostingComment) return;
+        setIsPostingComment(true);
         try {
-            const response = await api.post(`/post/${post._id}/comment`, {
-                content: commentText.trim(),
+            const res = await api.post('/comment/addComment', {
+                body: commentText.trim(),
+                post: post._id,
+                // attachment: '', // Add support for image/file attachment if needed
             });
 
-            if (response.status === 200 || response.status === 201) {
-                const newComment = response.data.comment || response.data;
-                setComments(prev => [...prev, newComment]);
+            if (res.status === 200 && res.data) {
+                console.log('Comment response data:', res.data);
+                // Ensure the comment has proper author information
+                const newComment = {
+                    ...res.data,
+                    author: {
+                        fullName: myProfile?.fullName || 'You',
+                        profilePic: myProfile?.profilePic || '',
+                        _id: myProfile?._id
+                    },
+                    content: res.data.text || res.data.body || res.data.content || commentText.trim(),
+                    createdAt: res.data.createdAt || new Date().toISOString()
+                };
+                console.log('Processed comment:', newComment);
+                setComments(prev => [newComment, ...prev]);
                 setTotalComments(prev => prev + 1);
                 setCommentText('');
                 emit('newComment', { postId: post._id, comment: newComment });
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error adding comment:', err);
-            Alert.alert('Error', 'Failed to add comment');
+            Alert.alert('Error', err?.response?.data?.message || 'Failed to add comment');
+        } finally {
+            setIsPostingComment(false);
         }
     };
 
     const handleReply = async () => {
-        if (!replyText.trim() || !replyingTo || !post || !myProfile?._id) return;
-
+        if (!replyText.trim() || !replyingTo || !post || !myProfile?._id || isPostingReply) return;
+        setIsPostingReply(true);
         try {
-            const response = await api.post(`/post/${post._id}/comment/${replyingTo._id}/reply`, {
-                content: replyText.trim(),
+            const res = await api.post('/comment/addReply', {
+                body: replyText.trim(),
+                post: post._id,
+                parentComment: replyingTo._id,
+                // attachment: '', // Add support for image/file attachment if needed
             });
 
-            if (response.status === 200 || response.status === 201) {
-                const newReply = response.data.reply || response.data;
-                setComments(prev => 
-                    prev.map(comment => 
-                        comment._id === replyingTo._id 
-                            ? { ...comment, replies: [...(comment.replies || []), newReply] }
-                            : comment
-                    )
-                );
+            if (res.status === 200 && res.data) {
+                console.log('Reply response data:', res.data);
+                // Ensure the reply has proper author information
+                const newReply = {
+                    ...res.data,
+                    author: {
+                        fullName: myProfile?.fullName || 'You',
+                        profilePic: myProfile?.profilePic || '',
+                        _id: myProfile?._id
+                    },
+                    content: res.data.text || res.data.body || res.data.content || replyText.trim(),
+                    createdAt: res.data.createdAt || new Date().toISOString(),
+                    isReply: true,
+                    parentCommentId: replyingTo._id
+                };
+                console.log('Processed reply:', newReply);
+
+                // Add reply to the parent comment
+                setComments(prev => prev.map(comment => {
+                    if (comment._id === replyingTo._id) {
+                        return {
+                            ...comment,
+                            replies: [...(comment.replies || []), newReply]
+                        };
+                    }
+                    return comment;
+                }));
+
                 setReplyText('');
                 setReplyingTo(null);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error('Error adding reply:', err);
-            Alert.alert('Error', 'Failed to add reply');
+            Alert.alert('Error', err?.response?.data?.message || 'Failed to add reply');
+        } finally {
+            setIsPostingReply(false);
         }
     };
 
@@ -927,14 +1009,20 @@ const SinglePost = () => {
                 <View style={{ flex: 1, marginLeft: 12 }}>
                     <View style={styles.commentHeader}>
                         <Text style={styles.commentAuthor}>
-                            {comment.author?.fullName || 'Unknown User'}
+                            {comment.author?.fullName ||
+                                comment.author?.firstName ||
+                                comment.author?.name ||
+                                (comment.author?.user
+                                    ? `${comment.author.user.firstName || ''} ${comment.author.user.surname || ''}`.trim()
+                                    : 'Unknown User')
+                            }
                         </Text>
                         <Text style={styles.commentTime}>
-                            {moment(comment.createdAt).fromNow()}
+                            {comment.createdAt ? moment(comment.createdAt).fromNow() : 'Unknown time'}
                         </Text>
                     </View>
                     <Text style={styles.commentContent}>
-                        {comment.content}
+                        {comment.content || comment.text || comment.body || 'No comment text'}
                     </Text>
                     {!isReply && (
                         <TouchableOpacity
@@ -1079,9 +1167,9 @@ const SinglePost = () => {
                     )}
 
                     {/* Photos - Display exactly like Post component */}
-                    {post.photos && (
+                    {isValidImageUrl(post.photos) && (
                         <View style={styles.attachmentContainer}>
-                            {(post.type === 'post' || !post.type) && post.photos && (
+                            {(post.type === 'post' || !post.type) && (
                                 <TouchableOpacity onPress={() => openImageModal(typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0])}>
                                     <Image
                                         source={{ uri: typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0] }}
@@ -1090,7 +1178,7 @@ const SinglePost = () => {
                                     />
                                 </TouchableOpacity>
                             )}
-                            {post.type === 'profilePic' && post.photos && (
+                            {post.type === 'profilePic' && (
                                 <TouchableOpacity onPress={() => openImageModal(typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0])}>
                                     <Image
                                         source={{ uri: typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0] }}
@@ -1198,13 +1286,17 @@ const SinglePost = () => {
                                 />
                                 <TouchableOpacity
                                     onPress={handleComment}
-                                    disabled={!commentText.trim()}
+                                    disabled={!commentText.trim() || isPostingComment}
                                     style={[
                                         styles.sendButton,
-                                        { opacity: commentText.trim() ? 1 : 0.5 }
+                                        { opacity: (commentText.trim() && !isPostingComment) ? 1 : 0.5 }
                                     ]}
                                 >
-                                    <Icon name="send" size={20} color={themeColors.primary} />
+                                    {isPostingComment ? (
+                                        <ActivityIndicator size="small" color={themeColors.primary} />
+                                    ) : (
+                                        <Icon name="send" size={20} color={themeColors.primary} />
+                                    )}
                                 </TouchableOpacity>
                             </View>
                         </View>
@@ -1234,13 +1326,17 @@ const SinglePost = () => {
                                     />
                                     <TouchableOpacity
                                         onPress={handleReply}
-                                        disabled={!replyText.trim()}
+                                        disabled={!replyText.trim() || isPostingReply}
                                         style={[
                                             styles.sendButton,
-                                            { opacity: replyText.trim() ? 1 : 0.5 }
+                                            { opacity: (replyText.trim() && !isPostingReply) ? 1 : 0.5 }
                                         ]}
                                     >
-                                        <Icon name="send" size={18} color={themeColors.primary} />
+                                        {isPostingReply ? (
+                                            <ActivityIndicator size="small" color={themeColors.primary} />
+                                        ) : (
+                                            <Icon name="send" size={18} color={themeColors.primary} />
+                                        )}
                                     </TouchableOpacity>
                                 </View>
                                 <TouchableOpacity

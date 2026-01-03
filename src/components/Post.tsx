@@ -86,6 +86,14 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     return `${config.SOCKET_BASE_URL}${path}`;
   };
 
+  const isValidImageUrl = (url?: string | string[]): boolean => {
+    if (!url) return false;
+    const imageUrl = typeof url === 'string' ? url : url[0];
+    if (!imageUrl || imageUrl.trim() === '') return false;
+    // Check if it's a valid URL format
+    return imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/');
+  };
+
   const RemoteSvg = ({ uri, size = 28 }: { uri: string; size?: number }) => {
     const [xml, setXml] = useState<string | null>(null);
     useEffect(() => {
@@ -579,25 +587,24 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       <View style={styles.body}>
         <Text style={[styles.caption, { color: textColor }]}>{post.caption || ''}</Text>
 
-
-
-        <View style={styles.attachmentContainer}>
-
-          {post.photos && post.type === 'post' && (
-            <Image
-              source={{ uri: post.photos }}
-              style={styles.postImage}
-              onError={() => console.log('Failed to load post image')}
-            />
-          )}
-          {post.photos && post.type === 'profilePic' && (
-            <Image
-              source={{ uri: post.photos }}
-              style={styles.postProfilePic}
-              onError={() => console.log('Failed to load profile picture')}
-            />
-          )}
-        </View>
+        {isValidImageUrl(post.photos) && (
+          <View style={styles.attachmentContainer}>
+            {post.type === 'post' && (
+              <Image
+                source={{ uri: typeof post.photos === 'string' ? post.photos : post.photos[0] }}
+                style={styles.postImage}
+                onError={() => console.log('Failed to load post image')}
+              />
+            )}
+            {post.type === 'profilePic' && (
+              <Image
+                source={{ uri: typeof post.photos === 'string' ? post.photos : post.photos[0] }}
+                style={styles.postProfilePic}
+                onError={() => console.log('Failed to load profile picture')}
+              />
+            )}
+          </View>
+        )}
 
       </View>
       {/* Navigation to SinglePost */}

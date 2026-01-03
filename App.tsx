@@ -42,6 +42,7 @@ import IncomingCall from './src/screens/IncomingCall';
 import OutgoingCall from './src/screens/OutgoingCall';
 import VideoCall from './src/components/VideoCall';
 import AudioCall from './src/components/AudioCall';
+import LiveVoice from './src/components/LiveVoice';
 import CameraScreen from './src/screens/CameraScreen';
 import GalleryScreen from './src/screens/GalleryScreen';
 import GalleryPreview from './src/screens/GalleryPreview';
@@ -70,8 +71,6 @@ import { addNewMessage } from './src/reducers/chatReducer';
 import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/reducers/presenceReducer';
 import api, { userAPI } from './src/lib/api';
 import FloatingButton from './src/components/FloatingButton';
-import { ensureOverlayPermission, startSystemOverlay } from './src/lib/overlay';
-import FloatingOverlayManager from './src/components/FloatingOverlayManager';
 import { backgroundTtsService } from './src/lib/backgroundTtsService';
 import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
 import { pushBackgroundService } from './src/lib/pushBackgroundService';
@@ -1002,6 +1001,7 @@ function AppContent() {
               <>
                 <VideoCall myId={myProfile._id} />
                 <AudioCall myId={myProfile._id} />
+                <LiveVoice myId={myProfile._id} />
               </>
             )}
             {/* Global update modal */}
@@ -1012,8 +1012,6 @@ function AppContent() {
               onDismiss={() => setUpdateModalVisible(false)}
               onDownload={downloadAndInstallApk}
             />
-            {/* Floating overlay button with menu */}
-            <FloatingOverlayManager enabled={true} />
           </>
         );
       }}

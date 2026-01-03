@@ -19,6 +19,7 @@ type PostData = {
   type: 'image' | 'video' | null;
   location: string;
   feelings: string;
+  audience: number;
 };
 
 const CreatePost = ({ onPostCreated }: CreatePostProps) => {
@@ -30,12 +31,14 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isFeelingsPickerVisible, setIsFeelingsPickerVisible] = useState(false);
+  const [isAudiencePickerVisible, setIsAudiencePickerVisible] = useState(false);
   const [postData, setPostData] = useState<PostData>({
     caption: '',
     urls: null,
     type: null,
     location: '',
     feelings: '',
+    audience: 3, // Default: Only Me
   });
 
   const defaultFeelings: { label: string; value: string; emoji?: string }[] = [
@@ -51,20 +54,33 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
     { label: 'Tired', value: 'tired', emoji: '😴' },
   ];
 
+  const audienceOptions: { label: string; value: number; icon: string }[] = [
+    { label: 'Public', value: 1, icon: 'public' },
+    { label: 'Friends', value: 2, icon: 'people' },
+    { label: 'Only Me', value: 3, icon: 'lock' },
+  ];
+
   const openModal = () => setModalVisible(true);
   const closeModal = () => {
     setModalVisible(false);
-    setPostData({ caption: '', urls: null, type: null, location: '', feelings: '' });
+    setPostData({ caption: '', urls: null, type: null, location: '', feelings: '', audience: 3 });
   };
 
   const handleCaptionChange = (text: string) => setPostData((prev) => ({ ...prev, caption: text }));
   const handleLocationChange = (text: string) => setPostData((prev) => ({ ...prev, location: text }));
   const handleFeelingsChange = (value: string) => setPostData((prev) => ({ ...prev, feelings: value }));
+  const handleAudienceChange = (value: number) => setPostData((prev) => ({ ...prev, audience: value }));
   const openFeelingsPicker = () => setIsFeelingsPickerVisible(true);
   const closeFeelingsPicker = () => setIsFeelingsPickerVisible(false);
+  const openAudiencePicker = () => setIsAudiencePickerVisible(true);
+  const closeAudiencePicker = () => setIsAudiencePickerVisible(false);
   const selectFeeling = (value: string) => {
     handleFeelingsChange(value);
     closeFeelingsPicker();
+  };
+  const selectAudience = (value: number) => {
+    handleAudienceChange(value);
+    closeAudiencePicker();
   };
 
   const pickMedia = async (mediaType: 'image' | 'video') => {
@@ -157,6 +173,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
       postFormData.append('photos', uploadedUrl || '');
       postFormData.append('feelings', postData.feelings);
       postFormData.append('location', postData.location);
+      postFormData.append('audience', postData.audience.toString());
       const res = await api.post('/post/create', postFormData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
@@ -276,6 +293,18 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                   />
                 </View>
               </View>
+              <View style={styles.audienceContainer}>
+                <Text style={[styles.label, { color: textColor }]}>Audience:</Text>
+                <TouchableOpacity
+                  onPress={openAudiencePicker}
+                  style={[styles.input, { backgroundColor: inputBg, borderColor, flexDirection: 'row', alignItems: 'center' }]}
+                >
+                  <Icon name={audienceOptions.find(a => a.value === postData.audience)?.icon || 'public'} size={18} color={themeColors.primary} />
+                  <Text style={{ marginLeft: 8, color: inputText }}>
+                    {audienceOptions.find(a => a.value === postData.audience)?.label || 'Public'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
               <TextInput
                 style={[styles.captionInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder={textInputPlaceholder}
@@ -350,6 +379,36 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
                 >
                   {item.emoji ? <Text style={{ fontSize: 18, marginRight: 8 }}>{item.emoji}</Text> : null}
                   <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
+                </TouchableOpacity>
+              )}
+              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
+            />
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <Modal
+        visible={isAudiencePickerVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={closeAudiencePicker}
+      >
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeAudiencePicker}>
+          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
+            <Text style={[styles.modalTitle, { color: textColor }]}>Select Audience</Text>
+            <FlatList
+              data={audienceOptions}
+              keyExtractor={(item) => item.value.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  onPress={() => selectAudience(item.value)}
+                  style={{ paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
+                >
+                  <Icon name={item.icon} size={20} color={themeColors.primary} style={{ marginRight: 12 }} />
+                  <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
+                  {postData.audience === item.value && (
+                    <Icon name="check" size={20} color={themeColors.primary} style={{ marginLeft: 'auto' }} />
+                  )}
                 </TouchableOpacity>
               )}
               ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
@@ -485,6 +544,9 @@ const styles = StyleSheet.create({
   },
   locationContainer: {
     flex: 1,
+  },
+  audienceContainer: {
+    marginBottom: 8,
   },
   label: {
     fontSize: 12,

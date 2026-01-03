@@ -111,8 +111,7 @@
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"
         android:exported="false"
-        >
-      </service>
+        android:foregroundServiceType="dataSync" />
 
       <!-- Background TTS Service for push notifications -->
       <service
@@ -125,11 +124,11 @@
         </intent-filter>
       </service>
 
-      <!-- React Native Background Actions foreground service (stops when app is closed) -->
+      <!-- React Native Background Actions foreground service (continues running when app is closed) -->
       <service
         android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
         android:exported="false"
-        android:stopWithTask="true"
+        android:stopWithTask="false"
         android:process=":bg"
         android:foregroundServiceType="dataSync|mediaPlayback|phoneCall" />
 

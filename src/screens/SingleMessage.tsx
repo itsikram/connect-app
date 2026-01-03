@@ -18,10 +18,11 @@ import {
     ScrollView,
     ActivityIndicator,
     Linking,
+    AppState,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Swipeable } from 'react-native-gesture-handler';
-import { useRoute, useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useRoute, useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 import { check, request, PERMISSIONS, RESULTS, openSettings } from 'react-native-permissions';
@@ -217,8 +218,29 @@ const SingleMessage = () => {
     const isLiveVoiceActiveRef = useRef(false);
     const liveVoiceDurationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     
+    // Check if screen is focused and app is in foreground before using camera
+    const isFocused = useIsFocused();
+    const [appState, setAppState] = useState(AppState.currentState);
+    const isAppActive = appState === 'active';
+    const shouldUseCamera = isFocused && isAppActive;
+    
+    // Monitor app state changes
+    useEffect(() => {
+        const subscription = AppState.addEventListener('change', (nextAppState) => {
+            setAppState(nextAppState);
+        });
+        return () => subscription.remove();
+    }, []);
+    
     // Get camera device for emotion detection
-    const cameraDevice = useCameraDevice('front');
+    // Note: Hook must always be called, but we'll conditionally use the camera based on shouldUseCamera
+    let cameraDevice = null;
+    try {
+        cameraDevice = useCameraDevice('front');
+    } catch (error) {
+        console.warn('[SingleMessage] ⚠️ Camera device hook failed (React Native may not be ready):', error);
+        cameraDevice = null;
+    }
 
     const ensureCameraPermission = async () => {
         try {
@@ -1033,117 +1055,7 @@ const SingleMessage = () => {
 
         on('deleteMessage', handleDeleteMessage);
 
-        // Live voice listeners
-        const handleLiveVoiceStart = async ({ channelName }: { channelName: string }) => {
-            try {
-                // Leave any existing connection
-                if (liveVoiceEngineRef.current) {
-                    try {
-                        await liveVoiceEngineRef.current.leaveChannel();
-                        await liveVoiceEngineRef.current.destroy();
-                    } catch (e) {
-                        console.warn('Error leaving existing live voice:', e);
-                    }
-                    liveVoiceEngineRef.current = null;
-                }
-
-                // Generate consistent UID from profileId hash (subscriber uses baseUid)
-                const generateUid = (str: string) => {
-                    let hash = 0;
-                    for (let i = 0; i < str.length; i++) {
-                        hash = ((hash << 5) - hash) + str.charCodeAt(i);
-                        hash |= 0;
-                    }
-                    return Math.abs(hash);
-                };
-                const numericUid = generateUid(myProfile?._id || '0');
-
-                // Get token
-                const { data } = await api.post('/agora/token', { channelName, uid: numericUid, role: 'subscriber' });
-                
-                // Initialize engine
-                const engine = await RtcEngine.create(data.appId);
-                await engine.enableAudio();
-                
-                // Set channel profile to Communication mode (0) to match web RTC mode
-                await engine.setChannelProfile(0); // 0 = Communication (RTC mode)
-                
-                // Enable all remote audio streams (important for receiving audio in Communication mode)
-                await engine.muteAllRemoteAudioStreams(false);
-                
-                // Set up event handlers
-                engine.addListener('UserJoined', (uid) => {
-                    console.log('Live voice: User joined', uid);
-                    // Ensure remote audio is enabled for the joined user
-                    engine.muteRemoteAudioStream(uid, false).catch(e => console.warn('Failed to unmute remote audio:', e));
-                });
-                
-                engine.addListener('UserOffline', (uid) => {
-                    console.log('Live voice: User offline', uid);
-                });
-                
-                engine.addListener('RemoteAudioStateChanged', (uid, state, reason, elapsed) => {
-                    console.log('Live voice: Remote audio state changed', { uid, state, reason });
-                    // state: 0 = STATE_STOPPED, 1 = STATE_STARTING, 2 = STATE_DECODING, 3 = STATE_FAILED
-                    if (state === 1 || state === 2) { // STATE_STARTING or STATE_DECODING
-                        console.log('Live voice: Remote audio starting/decoding');
-                        // Ensure audio is unmuted
-                        engine.muteRemoteAudioStream(uid, false).catch(e => console.warn('Failed to unmute remote audio:', e));
-                    }
-                });
-                
-                // Join channel (no role needed in Communication mode)
-                await engine.joinChannel(data.token, channelName, null, numericUid);
-
-                liveVoiceEngineRef.current = engine;
-                setIsLiveVoiceActive(true);
-                setLiveVoiceDuration(0);
-                setLiveVoiceRole('receiver');
-                setIsLiveVoiceModalOpen(true);
-                
-                // Start duration timer
-                if (liveVoiceDurationTimerRef.current) {
-                    clearInterval(liveVoiceDurationTimerRef.current);
-                }
-                liveVoiceDurationTimerRef.current = setInterval(() => {
-                    setLiveVoiceDuration(prev => prev + 1);
-                }, 1000);
-            } catch (e) {
-                console.error('Live voice subscribe failed:', e);
-                setIsLiveVoiceActive(false);
-                setIsLiveVoiceModalOpen(false);
-            }
-        };
-
-        const handleLiveVoiceStop = async () => {
-            try {
-                if (liveVoiceEngineRef.current) {
-                    await liveVoiceEngineRef.current.leaveChannel();
-                    await liveVoiceEngineRef.current.destroy();
-                    liveVoiceEngineRef.current = null;
-                }
-            } catch (e) {
-                console.warn('Error stopping live voice:', e);
-            }
-            setIsLiveVoiceActive(false);
-            setIsLiveVoiceModalOpen(false);
-            setLiveVoiceDuration(0);
-            setLiveVoiceRole('sender');
-            if (liveVoiceDurationTimerRef.current) {
-                clearInterval(liveVoiceDurationTimerRef.current);
-                liveVoiceDurationTimerRef.current = null;
-            }
-        };
-
-        const handleLiveVoiceLeaveSubscriber = async ({ channelName }: { channelName: string }) => {
-            if (liveVoiceEngineRef.current && isLiveVoiceActive) {
-                await handleLiveVoiceStop();
-            }
-        };
-
-        on('live-voice-start', handleLiveVoiceStart);
-        on('live-voice-stop', handleLiveVoiceStop);
-        on('live-voice-leave-subscriber', handleLiveVoiceLeaveSubscriber);
+        // Note: Live voice receiver logic is now handled globally in LiveVoice component
 
         return () => {
             off('newMessage', handleNewMessage);
@@ -1153,20 +1065,6 @@ const SingleMessage = () => {
             off('emotion_change', handleEmotionChange);
             off('friend_location_update', handleFriendLocationUpdate);
             off('deleteMessage', handleDeleteMessage);
-            off('live-voice-start', handleLiveVoiceStart);
-            off('live-voice-stop', handleLiveVoiceStop);
-            off('live-voice-leave-subscriber', handleLiveVoiceLeaveSubscriber);
-            
-            // Cleanup live voice
-            if (liveVoiceDurationTimerRef.current) {
-                clearInterval(liveVoiceDurationTimerRef.current);
-                liveVoiceDurationTimerRef.current = null;
-            }
-            if (liveVoiceEngineRef.current) {
-                liveVoiceEngineRef.current.leaveChannel().catch(() => {});
-                liveVoiceEngineRef.current.destroy().catch(() => {});
-                liveVoiceEngineRef.current = null;
-            }
         };
     }, [isConnected, myProfile?._id, friend?._id, on, off, isLiveVoiceActive]);
 
@@ -1827,6 +1725,12 @@ const SingleMessage = () => {
          * Start emotion detection
          */
         const startEmotionDetection = async () => {
+            // Don't start emotion detection if screen is not focused or app is in background
+            if (!shouldUseCamera) {
+                console.log('[SingleMessage] ⏸️ Skipping emotion detection - screen not focused or app in background');
+                return;
+            }
+            
             const currentFriendId = friend?._id;
             const currentProfileId = myProfile?._id;
             
@@ -2511,6 +2415,14 @@ const SingleMessage = () => {
 
             // Start live voice
             setIsLiveVoiceConnecting(true);
+            
+            // Check microphone permission first
+            const hasMicPermission = await ensureMicPermission();
+            if (!hasMicPermission) {
+                setIsLiveVoiceConnecting(false);
+                return;
+            }
+            
             const channelName = room || [myProfile?._id, friend?._id].sort().join('_');
             
             // Emit event to ensure receiver leaves subscriber connection if active
@@ -5129,12 +5041,12 @@ const SingleMessage = () => {
             />
 
             {/* Hidden camera for emotion detection - keep mounted and active while on page */}
-            {settings.settings?.isShareEmotion && cameraDevice && isCameraActive && (
+            {settings.settings?.isShareEmotion && cameraDevice && isCameraActive && shouldUseCamera && (
                 <View style={{ position: 'absolute', width: 200, height: 200, opacity: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: -1, left: -1000, top: -1000 }}>
                     <Camera
                         ref={handleCameraRef}
                         device={cameraDevice}
-                        isActive={isCameraActive && !isCallActive}
+                        isActive={isCameraActive && !isCallActive && shouldUseCamera}
                         photo={true}
                         enableZoomGesture={false}
                         enableFpsGraph={false}

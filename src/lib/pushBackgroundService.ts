@@ -1,7 +1,7 @@
 import BackgroundService from 'react-native-background-actions';
 import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform, AppState } from 'react-native';
+import { Platform } from 'react-native';
 import messaging from '@react-native-firebase/messaging';
 
 // Background socket state (module-scoped to persist during service lifetime)
@@ -14,6 +14,14 @@ let isFcmListenerSetup = false;
 // Notification deduplication cache for FCM messages
 const fcmNotificationCache = new Map<string, number>();
 const FCM_NOTIFICATION_CACHE_DURATION = 10000; // 10 seconds
+
+// Helper function to safely get error message
+const getErrorMessage = (e: unknown): string => {
+  if (e instanceof Error) {
+    return e.message;
+  }
+  return String(e);
+};
 
 // Helper function to check if FCM notification was recently displayed
 const isFcmNotificationRecentlyShown = (key: string): boolean => {
@@ -143,7 +151,7 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
       await backgroundTtsService.initialize();
     } catch (e) {
       // Log errors even in production for debugging
-      console.error('❌ TTS init in FCM handler failed:', e?.message || e);
+      console.error('❌ TTS init in FCM handler failed:', getErrorMessage(e));
     }
     
     // Handle speak_message type
@@ -309,14 +317,15 @@ async function setupFcmMessageListener(): Promise<void> {
     // Note: This works when app is in background or foreground, but not when completely killed
     // When killed, messages are handled via getInitialNotification above or when service restarts
     const unsubscribe = messaging().onMessage(async (remoteMessage) => {
-      // Only handle messages when app is in background
-      const appState = AppState.currentState;
-      if (appState === 'active') {
-        // Skip - foreground messages are handled by listenForegroundMessages in push.ts
-        return;
+      try {
+        // CRITICAL FIX: Don't access AppState in background process - it may not be available
+        // In background service context, we should handle all messages
+        // The foreground handler in push.ts will handle foreground messages separately
+        // This listener is specifically for background context, so process all messages
+        await handleFcmMessage(remoteMessage);
+      } catch (e) {
+        console.error('❌ Error handling FCM message in background listener:', e);
       }
-      
-      await handleFcmMessage(remoteMessage);
     });
     
     fcmMessageListener = unsubscribe;
@@ -324,6 +333,8 @@ async function setupFcmMessageListener(): Promise<void> {
     console.log('✅ FCM message listener set up for background service');
   } catch (e) {
     console.error('❌ Error setting up FCM message listener:', e);
+    // Don't mark as set up if there was an error - allow retry
+    isFcmListenerSetup = false;
   }
 }
 
@@ -445,11 +456,16 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
 
 // Minimal task to keep JS runtime alive in background and maintain socket
 async function backgroundTask({ taskName }: { taskName: string }) {
+  // CRITICAL: Wrap entire task in try-catch to prevent service crashes
+  try {
   // Initialize TTS for background speech
   try {
     const { backgroundTtsService } = await import('./backgroundTtsService');
     await backgroundTtsService.initialize();
-  } catch (_) {}
+    } catch (e) {
+      console.error('❌ Failed to initialize TTS in background task:', getErrorMessage(e));
+      // Continue even if TTS fails - it's not critical for service operation
+    }
 
   // Ensure Android notification channels exist
   // Note: Battery optimization check is skipped in background processes
@@ -459,21 +475,45 @@ async function backgroundTask({ taskName }: { taskName: string }) {
   } catch (e) {
     // Silently ignore errors - notification channels will still work
     // Battery optimization check is optional and not critical
+      console.error('❌ Failed to ensure Android prerequisites:', getErrorMessage(e));
   }
 
   // Best-effort: bring up socket once on start
+    try {
   await ensureBackgroundSocketConnected();
+    } catch (e) {
+      console.error('❌ Failed to connect socket initially:', getErrorMessage(e));
+      // Continue - socket will retry in loop
+    }
   
   // Set up FCM message listener for background notifications
+    try {
   await setupFcmMessageListener();
+    } catch (e) {
+      console.error('❌ Failed to setup FCM listener initially:', getErrorMessage(e));
+      // Continue - will retry in loop
+    }
 
   // Optimized loop: check socket connection less frequently to reduce battery drain
   // Start with 5 seconds, then increase to 30 seconds after initial connection
   let checkInterval = 5000; // Start with 5 seconds
   let consecutiveSuccesses = 0;
+    let consecutiveErrors = 0;
+    const MAX_CONSECUTIVE_ERRORS = 10; // After 10 errors, retry FCM setup
   
   for (;;) {
+      try {
     await new Promise<void>(resolve => setTimeout(() => resolve(), checkInterval));
+        
+        // Periodically retry FCM listener setup if it failed
+        if (!isFcmListenerSetup && consecutiveErrors % 5 === 0) {
+          try {
+            await setupFcmMessageListener();
+          } catch (e) {
+            console.error('❌ Retry FCM listener setup failed:', getErrorMessage(e));
+          }
+        }
+        
     try {
       const wasConnected = backgroundSocket && backgroundSocket.connected;
       await ensureBackgroundSocketConnected();
@@ -482,6 +522,7 @@ async function backgroundTask({ taskName }: { taskName: string }) {
       // If socket is connected and was already connected, increase interval to save battery
       if (isConnected && wasConnected) {
         consecutiveSuccesses++;
+            consecutiveErrors = 0; // Reset error count on success
         // After 3 successful checks (15 seconds), increase interval to 30 seconds
         if (consecutiveSuccesses >= 3 && checkInterval < 30000) {
           checkInterval = 30000; // 30 seconds
@@ -492,11 +533,35 @@ async function backgroundTask({ taskName }: { taskName: string }) {
         consecutiveSuccesses = 0;
         checkInterval = 5000; // Back to 5 seconds
       }
-    } catch (_) {
+        } catch (e) {
       // Reset on error
       consecutiveSuccesses = 0;
+          consecutiveErrors++;
       checkInterval = 5000;
+          
+          // Log error but don't crash - service should continue running
+          if (consecutiveErrors % 10 === 0) {
+            console.error(`❌ Background service error (count: ${consecutiveErrors}):`, getErrorMessage(e));
+          }
+          
+          // If too many consecutive errors, something is seriously wrong
+          // But don't crash - just log and continue
+          if (consecutiveErrors >= MAX_CONSECUTIVE_ERRORS) {
+            console.error(`❌ Background service has ${consecutiveErrors} consecutive errors - service may be unstable`);
+            consecutiveErrors = 0; // Reset to prevent log spam
+          }
+        }
+      } catch (e) {
+        // Catch any errors in the loop itself
+        console.error('❌ Critical error in background task loop:', getErrorMessage(e));
+        // Wait a bit longer before retrying to avoid tight error loops
+        await new Promise<void>(resolve => setTimeout(() => resolve(), 10000));
+      }
     }
+  } catch (e) {
+    // If the entire task fails, log and rethrow to let the service handle it
+    console.error('❌ Fatal error in background task:', getErrorMessage(e));
+    throw e;
   }
 }
 
@@ -509,7 +574,7 @@ const options = {
   linkingURI: 'connect://home',
   parameters: { taskName: 'ConnectBackground' },
   allowExecutionInForeground: false,
-  stopWithTerminate: true, // Stop service when app is terminated/closed
+  stopWithTerminate: false, // Continue running even when app is terminated/closed
   // Android specific
   foregroundService: true,
 };
@@ -534,12 +599,22 @@ class PushBackgroundService {
   }
   
   private setupAppStateListener(): void {
+    // CRITICAL FIX: Don't use AppState in background service
+    // AppState may not be available in background process and can cause crashes
+    // The background service should run independently of app state
+    // Remove AppState listener setup - it's not needed for background service
+    // The service runs independently and doesn't need to track app state
+    try {
+      // Only try to set up AppState listener if we're in the main process
+      // In background process, this will fail silently
+      const { AppState } = require('react-native');
+      if (AppState && typeof AppState.addEventListener === 'function') {
     // Remove existing listener if any
     if (this.appStateListener) {
       this.appStateListener.remove();
     }
     
-    // Listen for app state changes
+        // Listen for app state changes (only in main process)
     this.appStateListener = AppState.addEventListener('change', (nextAppState: string) => {
       if (nextAppState === 'inactive' || nextAppState === 'background') {
         // App is going to background - keep service running for notifications
@@ -549,6 +624,11 @@ class PushBackgroundService {
         console.log('📱 App is active');
       }
     });
+      }
+    } catch (e) {
+      // AppState not available in background process - this is expected and OK
+      // Don't log error to avoid noise in production logs
+    }
   }
 
   async stop(): Promise<void> {

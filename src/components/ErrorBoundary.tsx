@@ -26,10 +26,13 @@ class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    // Only log in development to reduce performance impact
-    if (__DEV__) {
-      console.error('ErrorBoundary caught an error:', error, errorInfo);
-    }
+    // Always log errors (even in production) to diagnose crashes
+    console.error('ErrorBoundary caught an error:', {
+      message: error?.message || String(error),
+      stack: error?.stack,
+      componentStack: errorInfo?.componentStack,
+      name: error?.name
+    });
     
     // Prevent state update if component is unmounting
     if (this._isMounted !== false) {

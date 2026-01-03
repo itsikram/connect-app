@@ -14,29 +14,48 @@ if (ErrorUtils && typeof ErrorUtils.getGlobalHandler === 'function') {
     originalErrorHandler = ErrorUtils.getGlobalHandler();
     ErrorUtils.setGlobalHandler((error, isFatal) => {
       try {
-        // Log error in development only to reduce performance impact
-        if (__DEV__) {
-          console.error('Global error handler:', error, isFatal);
-        }
+        // Always log errors (even in production) so we can diagnose crashes
+        console.error('Global error handler:', {
+          message: error?.message || String(error),
+          stack: error?.stack,
+          isFatal: isFatal,
+          name: error?.name
+        });
         
         // Prevent app crash by handling the error gracefully
         // The ErrorBoundary will catch React errors
+        // Don't call original handler - it will crash the app
+        // Instead, let React Native handle it gracefully or show error UI
+        
+        // Only in extreme cases where we absolutely must crash, call original handler
+        // But try to avoid this to prevent automatic crashes
         if (isFatal && originalErrorHandler) {
-          // Only call original handler for truly fatal errors
-          originalErrorHandler(error, isFatal);
+          // Check if this is a truly unrecoverable error
+          const errorMessage = error?.message || String(error) || '';
+          const isUnrecoverable = errorMessage.includes('OutOfMemory') || 
+                                  errorMessage.includes('Native module') ||
+                                  errorMessage.includes('JNI');
+          
+          if (isUnrecoverable) {
+            // Only crash for truly unrecoverable errors
+            if (__DEV__) {
+              console.error('Fatal unrecoverable error, calling original handler');
+            }
+            originalErrorHandler(error, isFatal);
+          } else {
+            // For other fatal errors, log but don't crash
+            console.error('Fatal error caught, preventing crash:', error);
+          }
         }
       } catch (e) {
-        // If error handler itself fails, use original
-        if (originalErrorHandler) {
-          originalErrorHandler(error, isFatal);
-        }
+        // If error handler itself fails, log but don't crash
+        console.error('Error in global error handler:', e);
+        // Don't call original handler here - it would cause a crash loop
       }
     });
   } catch (e) {
     // If setting error handler fails, continue anyway
-    if (__DEV__) {
-      console.warn('Failed to set global error handler:', e);
-    }
+    console.error('Failed to set global error handler:', e);
   }
 }
 
@@ -45,18 +64,22 @@ if (typeof global !== 'undefined' && !global.HermesInternal) {
   const originalUnhandledRejection = global.onunhandledrejection;
   global.onunhandledrejection = (event) => {
     try {
-      if (__DEV__) {
-        console.warn('Unhandled promise rejection:', event?.reason || event);
-      }
+      // Always log promise rejections to diagnose issues
+      const reason = event?.reason || event;
+      console.error('Unhandled promise rejection:', {
+        message: reason?.message || String(reason),
+        stack: reason?.stack,
+        error: reason
+      });
+      
       // Prevent default crash behavior
       if (event && typeof event.preventDefault === 'function') {
         event.preventDefault();
       }
     } catch (e) {
-      // Fallback to original handler if available
-      if (originalUnhandledRejection) {
-        originalUnhandledRejection(event);
-      }
+      // Log but don't crash if error handler fails
+      console.error('Error in unhandled rejection handler:', e);
+      // Don't call original handler - it might crash
     }
   };
 }
@@ -90,7 +113,7 @@ try {
 } catch (_) {}
 import App from './App';
 import { name as appName } from './app.json';
-import { getApp, initializeApp } from '@react-native-firebase/app';
+import { getApp, getApps, initializeApp } from '@react-native-firebase/app';
 import messaging from '@react-native-firebase/messaging';
 import notifee from '@notifee/react-native';
 import { displayIncomingCallNotification, configureNotificationsChannel } from './src/lib/push';
@@ -116,45 +139,42 @@ console.warn = (...args) => {
 // This helper function ensures Firebase is initialized before use
 async function ensureFirebaseInitialized() {
   try {
-    // Try to get the default app first (it may already be initialized)
-    getApp();
-    return true;
-  } catch (error) {
-    // Firebase should auto-initialize from google-services.json on Android
-    // If it's not initialized, wait a bit and retry (native code may still be loading)
-    if (__DEV__) {
-      console.warn('⚠️ Firebase app not initialized yet, waiting for native initialization...');
+    // Use getApps() to check if Firebase is initialized without throwing
+    const apps = getApps();
+    if (apps && apps.length > 0) {
+      return true;
     }
-    
-    // Wait for Firebase to be initialized by native code (max 3 seconds)
-    for (let i = 0; i < 6; i++) {
-      await new Promise(resolve => setTimeout(resolve, 500));
-      try {
-        getApp();
+  } catch (error) {
+    // If getApps() fails, Firebase is definitely not initialized
+  }
+  
+  // Firebase should auto-initialize from google-services.json on Android
+  // If it's not initialized, wait a bit and retry (native code may still be loading)
+  if (__DEV__) {
+    console.warn('⚠️ Firebase app not initialized yet, waiting for native initialization...');
+  }
+  
+  // Wait for Firebase to be initialized by native code (max 3 seconds)
+  for (let i = 0; i < 6; i++) {
+    await new Promise(resolve => setTimeout(resolve, 500));
+    try {
+      const apps = getApps();
+      if (apps && apps.length > 0) {
         if (__DEV__) {
           console.log('✅ Firebase app initialized after wait');
         }
         return true;
-      } catch (e) {
-        // Continue waiting
       }
-    }
-    
-    // If still not initialized, try to initialize explicitly
-    try {
-      // React Native Firebase should auto-initialize, but if it doesn't,
-      // we can't manually initialize without config, so just log the error
-      if (__DEV__) {
-        console.error('❌ Firebase app not initialized after waiting');
-      }
-      return false;
-    } catch (initError) {
-      if (__DEV__) {
-        console.error('❌ Failed to initialize Firebase:', initError);
-      }
-      return false;
+    } catch (e) {
+      // Continue waiting
     }
   }
+  
+  // If still not initialized, log error but don't throw
+  if (__DEV__) {
+    console.error('❌ Firebase app not initialized after waiting');
+  }
+  return false;
 }
 
 // Handle Notifee background events (e.g., action presses when app is killed)
@@ -204,12 +224,18 @@ const backgroundMessageHandler = async (remoteMessage) => {
     
     // Ensure Firebase is initialized - this is critical for production
     try {
-      getApp();
+      const apps = getApps();
+      if (!apps || apps.length === 0) {
+        // Firebase not initialized, but continue anyway
+        if (__DEV__) {
+          console.warn('⚠️ Firebase not initialized in background handler, continuing anyway');
+        }
+      }
     } catch (firebaseError) {
       // In production, we need to handle this gracefully
       // Try to continue anyway - Firebase might auto-initialize
       if (__DEV__) {
-        console.error('❌ Firebase not initialized in background handler:', firebaseError);
+        console.warn('⚠️ Firebase check failed in background handler, continuing anyway:', firebaseError);
       }
       // Don't return early - try to handle the message anyway
     }
@@ -379,34 +405,94 @@ async function handleFcmMessageDirectly(remoteMessage) {
 // This ensures FCM messages are received even when app is completely closed
 // CRITICAL: This MUST be called before AppRegistry.registerComponent
 // and MUST work in production builds (no __DEV__ checks that prevent execution)
-function setupBackgroundMessageHandler() {
+let setupBackgroundMessageHandlerRetryCount = 0;
+const MAX_SETUP_RETRIES = 5;
+async function setupBackgroundMessageHandler() {
+  // Ensure Firebase is initialized before trying to use messaging
+  const firebaseReady = await ensureFirebaseInitialized();
+  if (!firebaseReady) {
+    // If Firebase isn't ready, retry after a delay (with limit to prevent infinite loops)
+    if (setupBackgroundMessageHandlerRetryCount < MAX_SETUP_RETRIES) {
+      setupBackgroundMessageHandlerRetryCount++;
+      setTimeout(() => {
+        setupBackgroundMessageHandler().catch((e) => {
+          console.error('❌ Failed to setup FCM background handler after Firebase init retry:', e?.message || e);
+        });
+      }, 2000);
+    } else {
+      // Max retries reached - log error but don't crash
+      if (__DEV__) {
+        console.error('❌ Firebase not initialized after max retries, FCM background handler setup skipped');
+      }
+    }
+    return;
+  }
+  
+  // Reset retry count on success
+  setupBackgroundMessageHandlerRetryCount = 0;
+
   try {
-    const messagingInstance = messaging();
+    // Safely get messaging instance - it might fail if Firebase isn't ready
+    let messagingInstance;
+    try {
+      messagingInstance = messaging();
+    } catch (messagingError) {
+      // If messaging() fails, Firebase might not be ready yet
+      console.error('❌ Failed to get messaging instance:', messagingError?.message || messagingError);
+      // Retry after delay
+      if (setupBackgroundMessageHandlerRetryCount < MAX_SETUP_RETRIES) {
+        setupBackgroundMessageHandlerRetryCount++;
+        setTimeout(() => {
+          setupBackgroundMessageHandler().catch((e) => {
+            console.error('❌ Failed to setup FCM background handler after messaging retry:', e?.message || e);
+          });
+        }, 2000);
+      }
+      return;
+    }
     
     // setBackgroundMessageHandler must be called at the top level, before app registration
     // This handler runs in a headless JS context when app is killed
-    messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
-    
-    // Log in dev mode only, but always execute the setup
-    if (__DEV__) {
-      console.log('✅ FCM background message handler set (for killed app state)');
+    try {
+      messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
+      
+      // Log in dev mode only, but always execute the setup
+      if (__DEV__) {
+        console.log('✅ FCM background message handler set (for killed app state)');
+      }
+    } catch (handlerError) {
+      // If setBackgroundMessageHandler fails, log and retry
+      console.error('❌ Failed to set background message handler:', handlerError?.message || handlerError);
+      throw handlerError; // Re-throw to trigger retry logic below
     }
   } catch (error) {
-    // Always retry on error, even in production
+    // Always retry on error, even in production (but with limit)
     // Use setTimeout to avoid blocking, but ensure it executes
-    setTimeout(() => {
-      try {
-        const messagingInstance = messaging();
-        messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
-        if (__DEV__) {
-          console.log('✅ FCM background message handler set (retry)');
+    if (setupBackgroundMessageHandlerRetryCount < MAX_SETUP_RETRIES) {
+      setupBackgroundMessageHandlerRetryCount++;
+      setTimeout(async () => {
+        try {
+          // Ensure Firebase is ready before retry
+          await ensureFirebaseInitialized();
+          const messagingInstance = messaging();
+          messagingInstance.setBackgroundMessageHandler(backgroundMessageHandler);
+          // Reset retry count on success
+          setupBackgroundMessageHandlerRetryCount = 0;
+          if (__DEV__) {
+            console.log('✅ FCM background message handler set (retry)');
+          }
+        } catch (retryError) {
+          // In production, we still want to know if this fails
+          // Use console.error which we keep enabled
+          console.error('❌ Failed to set FCM background message handler after retry:', retryError?.message || retryError);
         }
-      } catch (retryError) {
-        // In production, we still want to know if this fails
-        // Use console.error which we keep enabled
-        console.error('❌ Failed to set FCM background message handler after retry:', retryError?.message || retryError);
+      }, 2000);
+    } else {
+      // Max retries reached
+      if (__DEV__) {
+        console.error('❌ Max retries reached for FCM background handler setup');
       }
-    }, 2000);
+    }
     
     // Log initial error
     if (__DEV__) {
@@ -420,7 +506,10 @@ function setupBackgroundMessageHandler() {
 
 // CRITICAL: Call the setup function at the top level, BEFORE AppRegistry
 // This ensures the handler is registered before the app component is registered
-setupBackgroundMessageHandler();
+// Fire and forget - don't block app registration if this fails
+setupBackgroundMessageHandler().catch((e) => {
+  console.error('❌ Failed to setup FCM background handler:', e?.message || e);
+});
 
 // Background notification handling:
 // 1. When app is killed: setBackgroundMessageHandler above processes FCM messages

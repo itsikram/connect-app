@@ -25,6 +25,7 @@ type Environment = 'development' | 'staging' | 'production';
 // For physical Android devices, change the Android URL below to your local network IP (e.g., 192.168.0.101)
 const getDevServerUrl = (): string => {
 
+  // return "http://192.168.0.100:4000";
   return "https://connect-server-y1ku.onrender.com";
 
   // return "http://192.168.0.100:4000";
@@ -36,7 +37,6 @@ const getDevServerUrl = (): string => {
   }
   // For iOS simulator and other platforms, use local network IP
   // Alternative: use production server for development
-  return "https://connect-server-y1ku.onrender.com";
 };
 
 const getDevMediapipeServerUrl = (): string => {
