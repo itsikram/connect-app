@@ -29,24 +29,42 @@ buildscript {
 
 apply plugin: "com.facebook.react.rootproject"
 
+// Configure Kotlin compiler plugin globally to suppress warnings
+buildscript {
+    ext.kotlinVersion = "2.1.20"
+}
+
 // Suppress deprecation warnings from third-party libraries
 allprojects {
     repositories {
         google()
         mavenCentral()
     }
-    tasks.withType(JavaCompile) {
-        options.compilerArgs << "-Xlint:-deprecation"
+    // Suppress all Java compilation warnings
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += [
+            "-Xlint:-deprecation",
+            "-Xlint:-removal",
+            "-Xlint:-unchecked",
+            "-Xlint:-rawtypes",
+            "-Xlint:-varargs"
+        ]
         options.deprecation = false
+        options.encoding = "UTF-8"
+        // Suppress warning output
+        logging.captureStandardOutput(LogLevel.ERROR)
+        logging.captureStandardError(LogLevel.ERROR)
     }
+    // Suppress all Kotlin compilation warnings
     tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
         kotlinOptions {
-            // Remove unsupported flag - warnings are just warnings, not errors
             allWarningsAsErrors = false
-            // Use supported compiler arguments
+            // Suppress all warnings including deprecation, unchecked casts, etc.
             freeCompilerArgs += [
                 "-Xjvm-default=all",
-                "-Xno-param-assertions"
+                "-Xno-param-assertions",
+                "-opt-in=kotlin.RequiresOptIn",
+                "-opt-in=kotlin.ExperimentalUnsignedTypes"
             ]
         }
     }
@@ -55,8 +73,28 @@ allprojects {
 // Suppress Gradle property assignment warnings for third-party libraries
 gradle.projectsEvaluated {
     allprojects {
-        tasks.withType(org.gradle.api.tasks.compile.JavaCompile) {
-            options.compilerArgs << "-Xlint:-deprecation"
+        // Ensure all Java compilation tasks suppress warnings
+        tasks.withType(org.gradle.api.tasks.compile.JavaCompile).configureEach {
+            options.compilerArgs += [
+                "-Xlint:-deprecation",
+                "-Xlint:-removal",
+                "-Xlint:-unchecked",
+                "-Xlint:-rawtypes",
+                "-Xlint:-varargs"
+            ]
+            options.deprecation = false
+            options.encoding = "UTF-8"
+        }
+        // Additional Kotlin warning suppression
+        tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+            kotlinOptions {
+                allWarningsAsErrors = false
+                freeCompilerArgs += [
+                    "-Xjvm-default=all",
+                    "-opt-in=kotlin.RequiresOptIn",
+                    "-opt-in=kotlin.ExperimentalUnsignedTypes"
+                ]
+            }
         }
     }
     
@@ -119,6 +157,12 @@ subprojects { project ->
     plugins.withId("com.android.library") {
         android {
             ndkVersion = rootProject.ext.ndkVersion
+            // Suppress lint warnings for all library modules
+            lint {
+                abortOnError = false
+                checkReleaseBuilds = false
+                disable.addAll(["Deprecation", "Unchecked", "Removal", "UnusedVariable", "UnusedImport"])
+            }
         }
     }
     plugins.withId("com.android.application") {

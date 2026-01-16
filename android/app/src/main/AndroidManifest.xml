@@ -118,6 +118,7 @@
         android:name="com.connect.app.BackgroundTtsService"
         android:exported="false"
         android:enabled="true"
+        android:stopWithTask="false"
         android:foregroundServiceType="mediaPlayback">
         <intent-filter>
           <action android:name="android.intent.action.MEDIA_BUTTON" />
@@ -128,6 +129,7 @@
       <service
         android:name="com.asterinet.react.bgactions.RNBackgroundActionsTask"
         android:exported="false"
+        android:enabled="true"
         android:stopWithTask="false"
         android:process=":bg"
         android:foregroundServiceType="dataSync|mediaPlayback|phoneCall" />

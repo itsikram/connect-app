@@ -81,6 +81,18 @@ android {
     compileSdk = rootProject.ext.compileSdkVersion
 
     namespace = "com.connect.app"
+    
+    // Suppress all warnings from dependencies
+    lint {
+        abortOnError = false
+        checkReleaseBuilds = false
+        disable.addAll(["Deprecation", "Unchecked", "Removal"])
+    }
+    
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
     defaultConfig {
         applicationId = "com.connect.app"
         minSdkVersion = rootProject.ext.minSdkVersion
@@ -142,7 +154,21 @@ android {
         kotlinOptions {
             jvmTarget = "17"
             allWarningsAsErrors = false
+            freeCompilerArgs += [
+                "-opt-in=kotlin.RequiresOptIn",
+                "-opt-in=kotlin.ExperimentalUnsignedTypes"
+            ]
         }
+    }
+    
+    // Configure Java compilation for app module
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs += [
+            "-Xlint:-deprecation",
+            "-Xlint:-removal",
+            "-Xlint:-unchecked"
+        ]
+        options.deprecation = false
     }
 }
 

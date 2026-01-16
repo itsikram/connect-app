@@ -53,6 +53,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const [showReplyBox, setShowReplyBox] = useState<boolean>(false);
   const [isPostingComment, setIsPostingComment] = useState<boolean>(false);
   const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
+  const [imageLoadError, setImageLoadError] = useState<boolean>(false);
 
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { colors: themeColors, isDarkMode } = useTheme();
@@ -89,9 +90,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const isValidImageUrl = (url?: string | string[]): boolean => {
     if (!url) return false;
     const imageUrl = typeof url === 'string' ? url : url[0];
-    if (!imageUrl || imageUrl.trim() === '') return false;
+    if (!imageUrl || imageUrl.trim() === '' || imageUrl === 'null' || imageUrl === 'undefined') return false;
     // Check if it's a valid URL format
-    return imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/');
+    const trimmedUrl = imageUrl.trim();
+    return trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || (trimmedUrl.startsWith('/') && trimmedUrl.length > 1);
   };
 
   const RemoteSvg = ({ uri, size = 28 }: { uri: string; size?: number }) => {
@@ -182,6 +184,11 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     }
     setPlacedReacts(storedReacts);
   }, [post.reacts, myProfileId]);
+
+  // Reset image load error when post changes
+  useEffect(() => {
+    setImageLoadError(false);
+  }, [post._id, post.photos]);
 
   // Like, Love, Haha, Sad, Remove React, Place React logic
   const removeReact = async () => {
@@ -587,20 +594,28 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       <View style={styles.body}>
         <Text style={[styles.caption, { color: textColor }]}>{post.caption || ''}</Text>
 
-        {isValidImageUrl(post.photos) && (
+        {isValidImageUrl(post.photos) && !imageLoadError && (
           <View style={styles.attachmentContainer}>
             {post.type === 'post' && (
               <Image
-                source={{ uri: typeof post.photos === 'string' ? post.photos : post.photos[0] }}
+                source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
                 style={styles.postImage}
-                onError={() => console.log('Failed to load post image')}
+                onError={() => {
+                  console.log('Failed to load post image');
+                  setImageLoadError(true);
+                }}
+                onLoadStart={() => setImageLoadError(false)}
               />
             )}
             {post.type === 'profilePic' && (
               <Image
-                source={{ uri: typeof post.photos === 'string' ? post.photos : post.photos[0] }}
+                source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
                 style={styles.postProfilePic}
-                onError={() => console.log('Failed to load profile picture')}
+                onError={() => {
+                  console.log('Failed to load profile picture');
+                  setImageLoadError(true);
+                }}
+                onLoadStart={() => setImageLoadError(false)}
               />
             )}
           </View>
@@ -707,7 +722,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                 onChangeText={setCommentText}
                 editable={!isPostingComment}
               />
-              <TouchableOpacity style={[styles.commentPostBtn, isPostingComment ? { opacity: 0.7 } : null]} onPress={handlePostComment} disabled={isPostingComment}>
+              <TouchableOpacity style={[styles.commentPostBtn, { backgroundColor: themeColors.primary, shadowColor: themeColors.primary }, isPostingComment ? { opacity: 0.7 } : null]} onPress={handlePostComment} disabled={isPostingComment}>
                 {isPostingComment ? (
                   <View style={styles.btnContentRow}>
                     <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
@@ -732,7 +747,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   <View key={c._id || Math.random()} style={styles.commentItem}>
                     <Image
                       source={{ uri: c.author?.profilePic || default_pp_src }}
-                      style={styles.commentProfilePic}
+                      style={[styles.commentProfilePic, { backgroundColor: inputBg, borderColor }]}
                       onError={() => console.log('Failed to load comment profile picture')}
                     />
                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}>
@@ -765,19 +780,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                             {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
                           </Text>
                         </View>
-                        <TouchableOpacity onPress={() => handleReplyPress(c)} style={styles.replyButton}>
-                          <Text style={styles.replyButtonText}>Reply</Text>
+                        <TouchableOpacity onPress={() => handleReplyPress(c)} style={[styles.replyButton, { backgroundColor: themeColors.primary + '1A', borderColor: themeColors.primary + '4D' }]}>
+                          <Text style={[styles.replyButtonText, { color: themeColors.primary }]}>Reply</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
 
                     {c.replies && c.replies.length > 0 && (
-                      <View style={styles.repliesContainer}>
+                      <View style={[styles.repliesContainer, { borderLeftColor: themeColors.primary + '33' }]}>
                         {c.replies.map((reply: any) => (
                           <View key={reply._id || Math.random()} style={styles.replyItem}>
                             <Image
                               source={{ uri: reply.author?.profilePic || default_pp_src }}
-                              style={styles.replyProfilePic}
+                              style={[styles.replyProfilePic, { backgroundColor: inputBg, borderColor }]}
                               onError={() => console.log('Failed to load reply profile picture')}
                             />
                             <View style={[styles.replyBody, { backgroundColor: inputBg, borderColor }]}>
@@ -811,25 +826,25 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             </View>
 
             {showReplyBox && replyingTo && (
-              <View style={styles.replyInputContainer}>
+              <View style={[styles.replyInputContainer, { backgroundColor: inputBg, borderTopColor: borderColor }]}>
                 <View style={styles.replyInputHeader}>
-                  <Text style={[styles.replyingToText, { color: subTextColor }]}>
+                  <Text style={[styles.replyingToText, { color: subTextColor, backgroundColor: themeColors.primary + '1A', borderColor: themeColors.primary + '33' }]}>
                     Replying to {replyingTo.author?.fullName || replyingTo.author?.firstName || 'Unknown'}
                   </Text>
-                  <TouchableOpacity onPress={cancelReply} style={styles.cancelReplyBtn}>
+                  <TouchableOpacity onPress={cancelReply} style={[styles.cancelReplyBtn, { backgroundColor: inputBg, borderColor }]}>
                     <Icon name="close" size={16} color={subTextColor} />
                   </TouchableOpacity>
                 </View>
                 <View style={styles.replyInputRow}>
                   <TextInput
-                    style={[styles.replyInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingReply ? { opacity: 0.6 } : null]}
+                    style={[styles.replyInput, { backgroundColor: cardBg, color: inputText, borderColor }, isPostingReply ? { opacity: 0.6 } : null]}
                     placeholder="Write a reply..."
                     placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
                     value={replyText}
                     onChangeText={setReplyText}
                     editable={!isPostingReply}
                   />
-                  <TouchableOpacity style={[styles.replyPostBtn, isPostingReply ? { opacity: 0.7 } : null]} onPress={handlePostReply} disabled={isPostingReply}>
+                  <TouchableOpacity style={[styles.replyPostBtn, { backgroundColor: themeColors.primary, shadowColor: themeColors.primary }, isPostingReply ? { opacity: 0.7 } : null]} onPress={handlePostReply} disabled={isPostingReply}>
                     {isPostingReply ? (
                       <View style={styles.btnContentRow}>
                         <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
@@ -1205,9 +1220,7 @@ const styles = StyleSheet.create({
     height: 36,
     borderRadius: 18,
     marginRight: 10,
-    backgroundColor: '#f0f0f0',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   commentBody: {
     flex: 1,
@@ -1225,18 +1238,15 @@ const styles = StyleSheet.create({
   commentAuthor: {
     fontWeight: '600',
     fontSize: 14,
-    color: '#2c3e50',
     marginBottom: 6,
   },
   commentText: {
     fontSize: 14,
-    color: '#34495e',
     lineHeight: 20,
     marginBottom: 8,
   },
   commentTime: {
     fontSize: 12,
-    color: '#95a5a6',
     fontWeight: '500',
   },
   noCommentsText: {
@@ -1371,15 +1381,12 @@ const styles = StyleSheet.create({
   replyButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
-    backgroundColor: 'rgba(41, 177, 169, 0.1)',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: 'rgba(41, 177, 169, 0.3)',
   },
   replyButtonText: {
     fontSize: 12,
     fontWeight: '600',
-    color: '#29b1a9',
   },
   repliesContainer: {
     marginLeft: 48,
@@ -1399,17 +1406,13 @@ const styles = StyleSheet.create({
     height: 28,
     borderRadius: 14,
     marginRight: 10,
-    backgroundColor: '#f0f0f0',
     borderWidth: 1,
-    borderColor: '#e0e0e0',
   },
   replyBody: {
     flex: 1,
-    backgroundColor: '#fafafa',
     borderRadius: 12,
     padding: 10,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1419,26 +1422,21 @@ const styles = StyleSheet.create({
   replyAuthor: {
     fontWeight: '600',
     fontSize: 13,
-    color: '#2c3e50',
     marginBottom: 4,
   },
   replyText: {
     fontSize: 13,
-    color: '#34495e',
     lineHeight: 18,
     marginBottom: 6,
   },
   replyTime: {
     fontSize: 11,
-    color: '#95a5a6',
     fontWeight: '500',
   },
   // Reply input styles
   replyInputContainer: {
     borderTopWidth: 1,
-    borderTopColor: '#e8e8e8',
     padding: 16,
-    backgroundColor: '#fafafa',
     marginTop: 8,
   },
   replyInputHeader: {
@@ -1451,20 +1449,15 @@ const styles = StyleSheet.create({
   replyingToText: {
     fontSize: 13,
     fontWeight: '500',
-    color: '#7f8c8d',
-    backgroundColor: 'rgba(41, 177, 169, 0.1)',
     paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(41, 177, 169, 0.2)',
   },
   cancelReplyBtn: {
     padding: 6,
-    backgroundColor: '#ecf0f1',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#d5dbdb',
   },
   replyInputRow: {
     flexDirection: 'row',
@@ -1473,13 +1466,11 @@ const styles = StyleSheet.create({
   },
   replyInput: {
     flex: 1,
-    backgroundColor: '#ffffff',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 14,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1487,11 +1478,9 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   replyPostBtn: {
-    backgroundColor: '#29b1a9',
     borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 20,
-    shadowColor: '#29b1a9',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,

@@ -34,7 +34,8 @@ public class BackgroundTtsService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "BackgroundTtsService started");
         
-        // Start as foreground service to prevent system from killing it
+        // Ensure notification is set up immediately (required for foreground service)
+        // Using higher priority notification for better persistence
         startForeground(NOTIFICATION_ID, createNotification());
         
         // Nudge Headless JS keep-alive to ensure background JS can spin up
@@ -43,7 +44,7 @@ public class BackgroundTtsService extends Service {
             startService(keepAlive);
         } catch (Exception ignored) {}
         
-        // Keep service running
+        // Return START_STICKY to restart service if killed by system
         return START_STICKY;
     }
 
@@ -56,24 +57,28 @@ public class BackgroundTtsService extends Service {
     public void onDestroy() {
         super.onDestroy();
         Log.d(TAG, "BackgroundTtsService destroyed");
+        // Do NOT restart from onDestroy - let START_STICKY handle it
+        // Restarting here can cause service loops and system will kill it
     }
 
     @Override
     public void onTaskRemoved(Intent rootIntent) {
+        super.onTaskRemoved(rootIntent);
         Log.d(TAG, "App task removed, restarting service");
         // Restart service when app is removed from recent apps
+        // Using START_STICKY + stopWithTask="false" + immediate restart
         Intent restartServiceIntent = new Intent(getApplicationContext(), BackgroundTtsService.class);
+        restartServiceIntent.setPackage(getPackageName());
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(restartServiceIntent);
+            getApplicationContext().startForegroundService(restartServiceIntent);
         } else {
-            startService(restartServiceIntent);
+            getApplicationContext().startService(restartServiceIntent);
         }
         // Also poke headless keep-alive
         try {
             Intent keepAlive = new Intent(getApplicationContext(), KeepAliveService.class);
             startService(keepAlive);
         } catch (Exception ignored) {}
-        super.onTaskRemoved(rootIntent);
     }
 
     private void createNotificationChannel() {
@@ -81,7 +86,7 @@ public class BackgroundTtsService extends Service {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID,
                 "Background TTS Service",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             );
             channel.setDescription("Keeps TTS functionality active in background");
             channel.setShowBadge(false);
@@ -109,7 +114,7 @@ public class BackgroundTtsService extends Service {
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build();
     }
