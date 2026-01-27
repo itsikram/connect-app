@@ -57,6 +57,7 @@
 -keep class com.connect.app.KeepAliveService { *; }
 -keep class com.connect.app.BackgroundTtsService { *; }
 -keep class com.connect.app.BootReceiver { *; }
+-keep class com.connect.app.AppRestartReceiver { *; }
 
 # Keep AsyncStorage for background service
 -keep class com.reactnativecommunity.asyncstorage.** { *; }

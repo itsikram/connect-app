@@ -108,6 +108,26 @@
         android:stopWithTask="false"
         android:process=":bg" />
 
+      <!-- FCM message service for production builds -->
+      <service
+        android:name="io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="com.google.firebase.MESSAGING_EVENT" />
+        </intent-filter>
+      </service>
+
+      <!-- FCM receiver for production builds -->
+      <receiver
+        android:name="io.invertase.firebase.messaging.ReactNativeFirebaseMessagingReceiver"
+        android:exported="true"
+        android:permission="com.google.android.c2dm.permission.SEND">
+        <intent-filter>
+          <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+          <category android:name="com.connect.app" />
+        </intent-filter>
+      </receiver>
+
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"
         android:exported="false"
@@ -134,7 +154,7 @@
         android:process=":bg"
         android:foregroundServiceType="dataSync|mediaPlayback|phoneCall" />
 
-      <!-- Boot receiver to restart background services -->
+      <!-- Boot receiver to restart background services after device reboot -->
       <receiver
         android:name="com.connect.app.BootReceiver"
         android:enabled="true"
@@ -143,6 +163,20 @@
           <action android:name="android.intent.action.BOOT_COMPLETED" />
           <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
           <action android:name="android.intent.action.PACKAGE_REPLACED" />
+          <data android:scheme="package" />
+        </intent-filter>
+      </receiver>
+
+      <!-- App restart receiver for various device events -->
+      <receiver
+        android:name="com.connect.app.AppRestartReceiver"
+        android:enabled="true"
+        android:exported="true">
+        <intent-filter android:priority="1000">
+          <action android:name="android.intent.action.PACKAGE_REPLACED" />
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+          <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+          <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
           <data android:scheme="package" />
         </intent-filter>
       </receiver>

@@ -39,7 +39,11 @@ public class BootReceiver extends BroadcastReceiver {
 
                 // Start Headless JS keep-alive service to relaunch JS background loop
                 Intent keepAliveIntent = new Intent(context, KeepAliveService.class);
-                context.startService(keepAliveIntent);
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    context.startForegroundService(keepAliveIntent);
+                } else {
+                    context.startService(keepAliveIntent);
+                }
                 Log.d(TAG, "KeepAliveService started after boot");
 
             } catch (Exception e) {
