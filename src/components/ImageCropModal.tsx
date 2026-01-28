@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import ImagePicker from 'react-native-image-crop-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface ImageCropModalProps {
@@ -21,48 +21,58 @@ const ImageCropModal: React.FC<ImageCropModalProps> = ({
 }) => {
   const { colors: themeColors } = useTheme();
 
-  const handleCameraPress = () => {
-    const cropAspectRatio = aspectRatio || (type === 'profile' ? [1, 1] : [16, 9]);
-    
-    ImagePicker.openCamera({
-      width: type === 'profile' ? 300 : 800,
-      height: type === 'profile' ? 300 : 450,
-      cropping: true,
-      cropperCircleOverlay: type === 'profile',
-      aspectRatio: cropAspectRatio,
-      compressImageQuality: 0.8,
-      includeBase64: false,
-    }).then(image => {
-      onImageSelected(image.path);
-      onClose();
-    }).catch(error => {
-      console.log('Camera error:', error);
-      if (error.code !== 'E_PICKER_CANCELLED') {
-        Alert.alert('Error', 'Failed to take photo');
+  const handleCameraPress = async () => {
+    try {
+      // Request camera permissions
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Camera permission is required to take photos');
+        return;
       }
-    });
+
+      // Launch camera
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: aspectRatio || (type === 'profile' ? [1, 1] : [16, 9]),
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        onImageSelected(result.assets[0].uri);
+        onClose();
+      }
+    } catch (error) {
+      console.log('Camera error:', error);
+      Alert.alert('Error', 'Failed to take photo');
+    }
   };
 
-  const handleGalleryPress = () => {
-    const cropAspectRatio = aspectRatio || (type === 'profile' ? [1, 1] : [16, 9]);
-    
-    ImagePicker.openPicker({
-      width: type === 'profile' ? 300 : 800,
-      height: type === 'profile' ? 300 : 450,
-      cropping: true,
-      cropperCircleOverlay: type === 'profile',
-      aspectRatio: cropAspectRatio,
-      compressImageQuality: 0.8,
-      includeBase64: false,
-    }).then(image => {
-      onImageSelected(image.path);
-      onClose();
-    }).catch(error => {
-      console.log('Gallery error:', error);
-      if (error.code !== 'E_PICKER_CANCELLED') {
-        Alert.alert('Error', 'Failed to select image');
+  const handleGalleryPress = async () => {
+    try {
+      // Request media library permissions
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Gallery permission is required to select photos');
+        return;
       }
-    });
+
+      // Launch image library
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: aspectRatio || (type === 'profile' ? [1, 1] : [16, 9]),
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets && result.assets[0]) {
+        onImageSelected(result.assets[0].uri);
+        onClose();
+      }
+    } catch (error) {
+      console.log('Gallery error:', error);
+      Alert.alert('Error', 'Failed to select image');
+    }
   };
 
   return (

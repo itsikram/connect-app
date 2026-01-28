@@ -26,9 +26,9 @@ type Environment = 'development' | 'staging' | 'production';
 const getDevServerUrl = (): string => {
 
   // return "http://192.168.0.100:4000";
-  return "https://connect-server-y1ku.onrender.com";
+  // return "https://connect-server-y1ku.onrender.com";
 
-  // return "http://192.168.0.100:4000";
+  return "http://192.168.0.110:4000";
 
   if (Platform.OS === 'android') {
     // For Android emulator: use 10.0.2.2 (maps to host machine's localhost)
@@ -60,7 +60,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
     API_BASE_URL: `${devServerUrl}/api/`,
     SOCKET_BASE_URL: devServerUrl,
-    API_TIMEOUT: 10000,
+    API_TIMEOUT: 15000,
     MEDIAPIPE_BASE_URL: devMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',

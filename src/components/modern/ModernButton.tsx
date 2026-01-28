@@ -9,7 +9,8 @@ import {
   View,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
-import LinearGradient from 'react-native-linear-gradient';
+// LinearGradient replaced with View for Expo compatibility
+// import LinearGradient from 'react-native-linear-gradient';
 
 interface ModernButtonProps {
   title: string;
@@ -188,28 +189,21 @@ const ModernButton: React.FC<ModernButtonProps> = ({
   };
 
   if (variant === 'primary' || variant === 'danger' || variant === 'modern') {
-    const gradientColors = variant === 'primary' 
-      ? [colors.primary, '#0099CC']
+    const backgroundColor = variant === 'primary' 
+      ? colors.primary
       : variant === 'danger'
-      ? [colors.status.error, '#CC0000']
-      : [colors.surface.elevated, colors.surface.secondary];
+      ? colors.status.error
+      : colors.surface.elevated;
       
     return (
-      <LinearGradient
-        colors={gradientColors}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[getButtonStyle(), style]}
+      <TouchableOpacity
+        onPress={onPress}
+        disabled={disabled || loading}
+        activeOpacity={0.8}
+        style={[getButtonStyle(), { backgroundColor }, style]}
       >
-        <TouchableOpacity
-          onPress={onPress}
-          disabled={disabled || loading}
-          activeOpacity={0.8}
-          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
-        >
-          {renderContent()}
-        </TouchableOpacity>
-      </LinearGradient>
+        {renderContent()}
+      </TouchableOpacity>
     );
   }
 

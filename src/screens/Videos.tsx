@@ -3,11 +3,11 @@ import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEve
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { Audio, Video as ExpoVideo, ResizeMode } from 'expo-av';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-// Use lazy require for react-native-video to avoid crash if the package/linking is missing
 import { useFocusEffect } from '@react-navigation/native';
 import UserPP from '../components/UserPP';
 
@@ -49,7 +49,7 @@ const isVideoPost = (post: Video) => {
 const VideoPlaceholder = ({ textColor }: { textColor: string }) => (
   <View style={{ height: SCREEN_HEIGHT, width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' }}>
     <Text style={{ color: textColor }}>Video will play here</Text>
-    <Text style={{ color: textColor, marginTop: 6, opacity: 0.7 }}>Install react-native-video to enable playback</Text>
+    <Text style={{ color: textColor, marginTop: 6, opacity: 0.7 }}>Loading video...</Text>
   </View>
 );
 
@@ -57,19 +57,6 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
   const { colors: themeColors } = useTheme();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const textColor = themeColors.text.primary;
-
-  // Lazy require to avoid hard dependency if package is missing
-  let VideoComp: any = null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    VideoComp = require('react-native-video').default;
-  } catch (_) {
-    VideoComp = null;
-  }
-
-  if (!VideoComp) {
-    return <VideoPlaceholder textColor={textColor} />;
-  }
 
   const sourceUri = post?.videoUrl || post.photos;
   const overlayTextColor = '#fff';
@@ -82,6 +69,7 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
   const commentsDisplay = typeof post?.commentsCount === 'number' ? post.commentsCount : undefined;
 
   const [isManuallyPaused, setIsManuallyPaused] = useState(false);
+  const [status, setStatus] = useState({});
 
   useEffect(() => {
     if (isActive) {
@@ -93,21 +81,15 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
     <View style={{ height: containerHeight, width: SCREEN_WIDTH, backgroundColor: isDarkMode ? '#000' : '#000', justifyContent: 'center', alignItems: 'center' }}>
       {sourceUri ? (
         <>
-          <VideoComp
+          <ExpoVideo
             source={{ uri: sourceUri }}
             style={{ height: 400, width: SCREEN_WIDTH }}
-            resizeMode="contain"
-            paused={!isActive || isManuallyPaused}
-            playInBackground
-            playWhenInactive
-            ignoreSilentSwitch="ignore"
-            repeat
-            muted={false}
-            useTextureView
-            onError={(err: any) => {
-              // eslint-disable-next-line no-console
-              console.log('Video error', err);
-            }}
+            resizeMode={ResizeMode.CONTAIN}
+            shouldPlay={isActive && !isManuallyPaused}
+            isLooping
+            isMuted={false}
+            useNativeControls={false}
+            onPlaybackStatusUpdate={status => setStatus(() => status)}
           />
           <Pressable onPress={() => setIsManuallyPaused(p => !p)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} />
           

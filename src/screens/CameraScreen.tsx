@@ -13,13 +13,7 @@ import {
   ActivityIndicator,
   Image,
 } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraDevices,
-  useCameraPermission,
-  useCodeScanner,
-} from 'react-native-vision-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
@@ -27,6 +21,8 @@ import { } from 'react-native-gesture-handler';
 // Face detection removed - @react-native-ml-kit/face-detection uninstalled
 // import { emotionEmojiMap } from '../lib/emotionDetection';
 import { savePhotoToMedia, saveVideoToMedia } from '../lib/mediaLibrary';
+import { EmotionDetectionState } from '../lib/emotionDetection';
+import { useTheme } from '../contexts/ThemeContext';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TOP_BUTTON_SPACING = 16;
@@ -39,8 +35,10 @@ type TimerOption = 0 | 3 | 10;
 
 const CameraScreen = () => {
   const navigation = useNavigation();
-  const camera = useRef<Camera>(null);
+  const camera = useRef<CameraView>(null);
   const isFocused = useIsFocused();
+  const [permission, requestPermission] = useCameraPermissions();
+  const { colors } = useTheme();
 
   // Hide header for this screen
   useLayoutEffect(() => {
@@ -48,7 +46,19 @@ const CameraScreen = () => {
   }, [navigation]);
 
   // Camera permissions
-  const { hasPermission, requestPermission } = useCameraPermission();
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+  // Request camera permission on mount
+  useEffect(() => {
+    (async () => {
+      if (!permission) {
+        const result = await requestPermission();
+        setHasPermission(result.granted);
+      } else {
+        setHasPermission(permission.granted);
+      }
+    })();
+  }, [permission, requestPermission]);
 
   // Camera states
   const [cameraPosition, setCameraPosition] = useState<'back' | 'front'>('front');
@@ -83,8 +93,8 @@ const CameraScreen = () => {
   const lastDetectionTimeRef = useRef<number>(0);
 
   // Get camera device
-  const device = useCameraDevice(cameraPosition);
-  const devices = useCameraDevices();
+  const devices: any[] = []; // Expo Camera handles device selection differently
+  const device = devices.find((d: any) => d.position === cameraPosition) || null;
 
   // Log all available cameras
   useEffect(() => {
@@ -146,7 +156,7 @@ const CameraScreen = () => {
 
   useEffect(() => {
     if (!hasPermission) {
-      requestPermission();
+      // Permission already requested in the initial useEffect
     }
   }, [hasPermission]);
 
@@ -241,14 +251,13 @@ const CameraScreen = () => {
 
       triggerFlashAnimation();
 
-      const photo = await camera.current.takePhoto({
-        flash: flash === 'off' ? 'off' : flash === 'on' ? 'on' : 'auto',
-        enableShutterSound: true,
+      const photo = await camera.current.takePictureAsync({
+        quality: 0.8,
       });
 
-      console.log('Photo captured:', photo.path);
+      console.log('Photo captured:', photo.uri);
 
-      const finalPath = photo.path;
+      const finalPath = photo.uri;
 
       // Save to app gallery
       const saved = await savePhotoToMedia(finalPath);
@@ -269,26 +278,14 @@ const CameraScreen = () => {
 
     try {
       setIsRecording(true);
-      camera.current.startRecording({
-        flash: flash === 'on' ? 'on' : 'off',
-        onRecordingFinished: async (video) => {
-          console.log('Video recorded:', video.path);
-          try {
-            const saved = await saveVideoToMedia(video.path);
-            setLastMediaPath(saved);
-            Alert.alert('Saved', 'Video saved to Gallery');
-          } catch (e) {
-            console.warn('Save video error', e);
-            Alert.alert('Success', `Video saved to: ${video.path}`);
-          }
-          setIsRecording(false);
-        },
-        onRecordingError: (error) => {
-          console.error('Recording error:', error);
-          Alert.alert('Error', 'Failed to record video');
-          setIsRecording(false);
-        },
-      });
+      const video = await camera.current.recordAsync({});
+      
+      console.log('Video recorded:', video.uri);
+      
+      const saved = await saveVideoToMedia(video.uri);
+      setLastMediaPath(saved);
+      
+      setIsRecording(false);
     } catch (error) {
       console.error('Failed to start recording:', error);
       setIsRecording(false);
@@ -303,6 +300,7 @@ const CameraScreen = () => {
       setIsRecording(false);
     } catch (error) {
       console.error('Failed to stop recording:', error);
+      setIsRecording(false);
     }
   }, [camera, isRecording]);
 
@@ -377,7 +375,12 @@ const CameraScreen = () => {
         <View style={styles.permissionContainer}>
           <IconIonic name="camera-outline" size={80} color="#999" />
           <Text style={styles.permissionText}>Camera permission required</Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+          <TouchableOpacity style={styles.permissionButton} onPress={() => {
+            (async () => {
+              const result = await requestPermission();
+              setHasPermission(result.granted);
+            })();
+          }}>
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>
@@ -399,16 +402,11 @@ const CameraScreen = () => {
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
       <View style={styles.cameraContainer}>
-          <Camera
+          <CameraView
             ref={camera}
             style={StyleSheet.absoluteFill}
-            device={device}
-            isActive={isFocused && !!device}
-            photo={cameraMode !== 'video'}
-            video={cameraMode === 'video'}
-            audio={cameraMode === 'video'}
-            zoom={currentZoom}
-            enableZoomGesture={false}
+            facing={cameraPosition}
+            mode={cameraMode === 'video' ? 'video' : 'picture'}
           />
 
           {/* Flash animation overlay */}

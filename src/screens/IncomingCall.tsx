@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
-import { View, Text, TouchableOpacity, Image, SafeAreaView, StatusBar, Animated, Dimensions, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Image, StatusBar, Animated, Dimensions, StyleSheet, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import Video from 'react-native-video';
+import { Audio } from 'expo-av';
 
 interface IncomingCallParams {
   callerId: string;
@@ -30,6 +31,7 @@ const IncomingCall: React.FC = () => {
   const [callAccepted, setCallAccepted] = useState(false);
   const lastCallEndTime = useRef<number>(0);
   const callEndDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
   const params = route.params as unknown as IncomingCallParams;
 
   const { callerId, callerName, callerProfilePic, channelName, isAudio, autoAccept, prevScreenId } = params || {} as IncomingCallParams;
@@ -161,6 +163,39 @@ const IncomingCall: React.FC = () => {
       });
     }
   }, [playRingtone, callerName, callerProfilePic, channelName, isAudio, callerId]);
+
+  useEffect(() => {
+    const loadAndPlaySound = async () => {
+      try {
+        if (playRingtone) {
+          if (!soundRef.current) {
+            const { sound } = await Audio.Sound.createAsync(
+              require('../assets/ringtones/my_awesome_ringtone.mp3'),
+              { shouldPlay: true, isLooping: true, volume: 1.0 }
+            );
+            soundRef.current = sound;
+          } else {
+            await soundRef.current.replayAsync();
+          }
+        } else {
+          if (soundRef.current) {
+            await soundRef.current.stopAsync();
+          }
+        }
+      } catch (error) {
+        console.log('Error loading ringtone:', error);
+      }
+    };
+
+    loadAndPlaySound();
+
+    return () => {
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+    };
+  }, [playRingtone]);
 
   useEffect(() => {
     if (!callerId || !channelName) {
@@ -434,19 +469,7 @@ const IncomingCall: React.FC = () => {
           styles.gradientOverlay2,
           { backgroundColor: isDarkMode ? 'rgba(45, 45, 45, 0.6)' : 'rgba(240, 147, 251, 0.6)' }
         ]} />
-        {/* Ringtone player */}
-        {playRingtone && (
-          <Video
-            source={require('../assets/ringtones/my_awesome_ringtone.mp3')}
-            paused={!playRingtone}
-            repeat
-            muted={false}
-            playInBackground
-            ignoreSilentSwitch="ignore"
-            volume={1.0}
-            style={{ width: 0, height: 0 }}
-          />
-        )}
+        {/* Ringtone is handled by Audio.Sound in useEffect */}
 
         <Animated.View
           style={[

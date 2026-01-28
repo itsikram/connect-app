@@ -1,14 +1,53 @@
-import { GoogleSignin, GoogleSigninButton, statusCodes } from '@react-native-google-signin/google-signin';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+
+// Check if we're in Expo Go or development build
+const isExpoGo = Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
+
+// Mock Google Sign-In for Expo Go
+const mockGoogleSignin = {
+  configure: () => {},
+  hasPlayServices: async () => false,
+  signIn: async () => {
+    throw new Error('Google Sign-In is not available in Expo Go. Please use a development build.');
+  },
+  signOut: async () => {},
+  signInSilently: async () => ({ data: null }),
+  revokeAccess: async () => {},
+  getCurrentUser: async () => null,
+};
+
+// Mock status codes
+const mockStatusCodes = {
+  SIGN_IN_CANCELLED: 'SIGN_IN_CANCELLED',
+  IN_PROGRESS: 'IN_PROGRESS',
+  PLAY_SERVICES_NOT_AVAILABLE: 'PLAY_SERVICES_NOT_AVAILABLE',
+};
+
+// Use real Google Sign-In or mock based on environment
+const GoogleSignin = isExpoGo ? mockGoogleSignin : require('@react-native-google-signin/google-signin').GoogleSignin;
+const statusCodes = isExpoGo ? mockStatusCodes : require('@react-native-google-signin/google-signin').statusCodes;
+
+// Mock GoogleSigninButton for Expo Go
+const GoogleSigninButton = isExpoGo ? 
+  () => null : 
+  require('@react-native-google-signin/google-signin').GoogleSigninButton;
+
 import { authAPI } from '../lib/api';
 
-// Configure Google Sign-In
-// IMPORTANT: Replace with your actual web client ID from Google Cloud Console
-GoogleSignin.configure({
-  webClientId: '560231541864-igg3lvikjeii27kd0qoj6drm7jgkh9u6.apps.googleusercontent.com', // Web client ID from Google Cloud Console
-  offlineAccess: true,
-  hostedDomain: '',
-  forceCodeForRefreshToken: true,
-});
+// Configure Google Sign-In only if not in Expo Go
+if (!isExpoGo) {
+  try {
+    GoogleSignin.configure({
+      webClientId: '560231541864-igg3lvikjeii27kd0qoj6drm7jgkh9u6.apps.googleusercontent.com', // Web client ID from Google Cloud Console
+      offlineAccess: true,
+      hostedDomain: '',
+      forceCodeForRefreshToken: true,
+    });
+  } catch (error) {
+    console.warn('Failed to configure Google Sign-In:', error);
+  }
+}
 
 export interface GoogleUser {
   id: string;

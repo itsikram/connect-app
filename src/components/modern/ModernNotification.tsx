@@ -10,7 +10,8 @@ import {
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import LinearGradient from 'react-native-linear-gradient';
+// LinearGradient replaced with View for Expo compatibility
+// import LinearGradient from 'react-native-linear-gradient';
 
 const { width: screenWidth } = Dimensions.get('window');
 
@@ -175,16 +176,11 @@ const ModernNotification: React.FC<ModernNotificationProps> = ({
           <NotificationContent />
         </Component>
       ) : (
-        <LinearGradient
-          colors={[typeStyles.gradientColors[0] + '20', typeStyles.gradientColors[1] + '10']}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={{ borderRadius: borderRadius.md }}
-        >
+        <View style={{ borderRadius: borderRadius.md, backgroundColor: typeStyles.gradientColors[0] + '20' }}>
           <Component onPress={onPress} activeOpacity={0.8}>
             <NotificationContent />
           </Component>
-        </LinearGradient>
+        </View>
       )}
     </Animated.View>
   );

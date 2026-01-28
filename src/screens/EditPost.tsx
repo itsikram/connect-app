@@ -18,7 +18,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';
-import { launchImageLibrary, Asset, ImageLibraryOptions } from 'react-native-image-picker';
+import * as ImagePicker from 'expo-image-picker';
 import api from '../lib/api';
 import { RootState } from '../store';
 
@@ -372,27 +372,25 @@ const EditPost = () => {
         }
     };
 
-    const pickNewImage = () => {
-        const options: ImageLibraryOptions = {
-            mediaType: 'photo',
-            quality: 0.7,
-            selectionLimit: 1,
-        };
-        
-        launchImageLibrary(options, (response) => {
-            if (response.didCancel) return;
-            if (response.errorCode) {
-                console.log('ImagePicker Error:', response.errorMessage);
-                Alert.alert('Error', 'Failed to pick image');
-                return;
-            }
+    const pickNewImage = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                quality: 0.7,
+                allowsEditing: true,
+            });
             
-            const asset: Asset | undefined = response.assets && response.assets[0];
-            if (asset && asset.uri) {
-                setNewImageUri(asset.uri);
-                setImageRemoved(false);
+            if (!result.canceled && result.assets && result.assets[0]) {
+                const asset = result.assets[0];
+                if (asset.uri) {
+                    setNewImageUri(asset.uri);
+                    setImageRemoved(false);
+                }
             }
-        });
+        } catch (error) {
+            console.log('ImagePicker Error:', error);
+            Alert.alert('Error', 'Failed to pick image');
+        }
     };
 
     const removeImage = () => {

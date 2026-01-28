@@ -1,14 +1,12 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
-import notifee, { EventType } from '@notifee/react-native';
-import messaging from '@react-native-firebase/messaging';
-import { 
-  initializeNotifications, 
-  listenForegroundMessages, 
-  listenNotificationEvents, 
-  listenTokenRefresh,
-  cancelIncomingCallNotifications 
-} from '../lib/push';
+import * as Notifications from 'expo-notifications';
+import {
+  initializeNotifications,
+  getNotificationToken,
+  saveNotificationToken,
+  configureNotificationsChannel,
+} from '../lib/pushExpo';
 
 interface UseNotificationsProps {
   navigate: (screen: string, params?: any) => void;
@@ -22,6 +20,15 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
   // Memoize the navigate function to prevent unnecessary re-renders
   const memoizedNavigate = useCallback(navigate, []);
 
+  // Cancel incoming call notifications
+  const cancelIncomingCallNotifications = useCallback(async () => {
+    try {
+      await Notifications.dismissAllNotificationsAsync();
+    } catch (error) {
+      console.error('Error canceling notifications:', error);
+    }
+  }, []);
+
   useEffect(() => {
     // Prevent multiple initializations
     if (isInitializedRef.current || initializationPromiseRef.current) {
@@ -33,65 +40,43 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       
       try {
         // Initialize notifications
-        const success = await initializeNotifications();
-        if (!success) {
-          console.warn('Failed to initialize notifications');
-          return;
+        await initializeNotifications();
+
+        // Configure notification channels
+        await configureNotificationsChannel();
+
+        // Get and save notification token
+        const token = await getNotificationToken();
+        if (token) {
+          await saveNotificationToken(token);
         }
 
-        // Set up listeners
-        const unsubscribeForeground = listenForegroundMessages();
-        const unsubscribeEvents = listenNotificationEvents(memoizedNavigate);
-        const unsubscribeTokenRefresh = listenTokenRefresh();
+        // Set up notification listeners
+        const unsubscribeForeground = Notifications.addNotificationResponseReceivedListener((response) => {
+          const data = response.notification.request.content.data;
+          if (data && (data as any).type === 'incoming_call') {
+            memoizedNavigate('Message', {
+              screen: 'IncomingCall',
+              params: {
+                callerId: (data as any).callerId,
+                callerName: (data as any).callerName,
+                callerProfilePic: (data as any).callerProfilePic,
+                channelName: (data as any).channelName,
+                isAudio: String((data as any).isAudio) === 'true',
+                autoAccept: response.actionIdentifier === 'accept_call',
+              },
+            });
+          }
+        });
 
         // Store unsubscribe functions
         unsubscribeRefs.current = [
-          unsubscribeForeground,
-          unsubscribeEvents,
-          unsubscribeTokenRefresh,
+          () => unsubscribeForeground.remove(),
         ];
 
         isInitializedRef.current = true;
-        console.log('Notification listeners set up successfully');
+        console.log('Expo notification listeners set up successfully');
 
-        // Handle cold start (app opened by tapping a call notification)
-        try {
-          // 1) Notifee initial notification (actions and presses)
-          const initial = await notifee.getInitialNotification();
-          if (initial?.notification?.data && (initial.notification.data as any).type === 'incoming_call') {
-            const data = initial.notification.data as any;
-            const actionId = initial.pressAction?.id;
-            memoizedNavigate('Message', {
-              screen: 'IncomingCall',
-              params: {
-                callerId: data.callerId,
-                callerName: data.callerName,
-                callerProfilePic: data.callerProfilePic,
-                channelName: data.channelName,
-                isAudio: String(data.isAudio) === 'true',
-                autoAccept: actionId === 'accept_call',
-              },
-            });
-          }
-
-          // 2) FCM initial notification (if app launched from system tray)
-          const initialMsg = await messaging().getInitialNotification();
-          const initialData = (initialMsg?.data || {}) as Record<string, string>;
-          if (initialData.type === 'incoming_call') {
-            memoizedNavigate('Message', {
-              screen: 'IncomingCall',
-              params: {
-                callerId: initialData.callerId || initialData.from || '',
-                callerName: initialData.callerName || 'Unknown',
-                callerProfilePic: initialData.callerProfilePic || '',
-                channelName: initialData.channelName || '',
-                isAudio: String(initialData.isAudio) === 'true',
-              },
-            });
-          }
-        } catch (e) {
-          console.error('Error handling initial notification:', e);
-        }
       } catch (error) {
         console.error('Error setting up notifications:', error);
       } finally {
@@ -131,7 +116,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       });
       unsubscribeRefs.current = [];
     };
-  }, []); // Remove navigate dependency to prevent infinite loop
+  }, [memoizedNavigate, cancelIncomingCallNotifications]);
 
   return {
     cancelIncomingCallNotifications,

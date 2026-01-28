@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, Acti
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { launchImageLibrary, Asset, ImageLibraryOptions } from 'react-native-image-picker';
+import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import api from '../lib/api';
 // Modern components
@@ -84,27 +84,29 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   };
 
   const pickMedia = async (mediaType: 'image' | 'video') => {
-    const options: ImageLibraryOptions = {
-      mediaType: mediaType === 'image' ? 'photo' : 'video',
-      quality: 0.7,
-      selectionLimit: 1,
-    };
-    launchImageLibrary(options, (response) => {
-      if (response.didCancel) return;
-      if (response.errorCode) {
-        console.log('ImagePicker Error: ', response.errorMessage);
-        showToast({
-          type: 'error',
-          title: 'Failed to Select Media',
-          message: response.errorMessage || 'Please try selecting a different file.',
-        });
-        return;
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: mediaType === 'image' 
+          ? ImagePicker.MediaTypeOptions.Images 
+          : ImagePicker.MediaTypeOptions.Videos,
+        quality: 0.7,
+        allowsEditing: true,
+      });
+      
+      if (!result.canceled && result.assets && result.assets[0]) {
+        const asset = result.assets[0];
+        if (asset.uri) {
+          setPostData((prev) => ({ ...prev, urls: asset.uri, type: mediaType }));
+        }
       }
-      const asset: Asset | undefined = response.assets && response.assets[0];
-      if (asset && asset.uri) {
-        setPostData((prev) => ({ ...prev, urls: asset.uri ?? null, type: mediaType }));
-      }
-    });
+    } catch (error) {
+      console.log('ImagePicker Error: ', error);
+      showToast({
+        type: 'error',
+        title: 'Failed to Select Media',
+        message: error.message || 'Please try selecting a different file.',
+      });
+    }
   };
 
   const handlePostSubmit = useCallback(async () => {
@@ -454,7 +456,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -473,7 +475,7 @@ const styles = StyleSheet.create({
     gap: 12,
     paddingTop: 12,
     borderTopWidth: 1,
-    borderTopColor: 'rgba(0,0,0,0.05)',
+    borderTopColor: '#F8F9FA',
   },
   button: {
     flexDirection: 'row',
@@ -516,7 +518,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#E9ECEF',
+    borderBottomColor: '#F1F3F4',
   },
   modalTitle: {
     fontSize: 20,
@@ -555,7 +557,7 @@ const styles = StyleSheet.create({
   },
   pickerWrapper: {
     borderWidth: 1,
-    borderColor: '#D1D1D6',
+    borderColor: '#E5E5EA',
     borderRadius: 8,
     backgroundColor: '#F2F2F2',
   },
@@ -564,13 +566,13 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     backgroundColor: '#F8F9FA',
     borderWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
     fontSize: 14,
   },
   captionInput: {
     minHeight: 80,
     borderWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
     borderRadius: 12,
     backgroundColor: '#F8F9FA',
     padding: 16,
@@ -601,7 +603,7 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
   },
   attachmentButtonText: {
     marginLeft: 8,
@@ -633,7 +635,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderTopWidth: 1,
     borderBottomWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
     gap: 8,
   },
   actionButton: {
@@ -646,7 +648,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#F8F9FA',
     borderWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
   },
   actionButtonText: {
     marginLeft: 8,
@@ -659,7 +661,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     backgroundColor: '#F8F9FA',
     borderWidth: 1,
-    borderColor: '#E9ECEF',
+    borderColor: '#F1F3F4',
   },
 });
 

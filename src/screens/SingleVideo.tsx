@@ -16,6 +16,7 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { Video as ExpoVideo, ResizeMode, Audio } from 'expo-av';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import api from '../lib/api';
@@ -80,34 +81,24 @@ const SingleVideo = () => {
     const { videoId } = route.params as { videoId: string };
     
     const { colors: themeColors, isDarkMode } = useTheme();
-    const { emit, on, off, isConnected } = useSocket();
     const myProfile = useSelector((state: RootState) => state.profile);
-    
+    const { isConnected, emit, on, off } = useSocket();
+
     const [video, setVideo] = useState<Video | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [isPlaying, setIsPlaying] = useState(true);
-    const [isManuallyPaused, setIsManuallyPaused] = useState(false);
-    const [showComments, setShowComments] = useState(false);
-    const [commentText, setCommentText] = useState('');
     const [comments, setComments] = useState<Comment[]>([]);
-    const [loadingComments, setLoadingComments] = useState(false);
-    const [isLiked, setIsLiked] = useState(false);
-    const [likesCount, setLikesCount] = useState(0);
     const [commentsCount, setCommentsCount] = useState(0);
     const [sharesCount, setSharesCount] = useState(0);
     const [showShareModal, setShowShareModal] = useState(false);
     const [isFollowing, setIsFollowing] = useState(false);
-
-    // Lazy require for react-native-video
-    let VideoComp: any = null;
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        VideoComp = require('react-native-video').default;
-    } catch (_) {
-        VideoComp = null;
-    }
+    const [isLiked, setIsLiked] = useState(false);
+    const [likesCount, setLikesCount] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [isManuallyPaused, setIsManuallyPaused] = useState(false);
+    const [showComments, setShowComments] = useState(false);
+    const [commentText, setCommentText] = useState('');
 
     const fetchVideo = useCallback(async () => {
         try {
@@ -271,25 +262,6 @@ const SingleVideo = () => {
     };
 
     const renderVideoPlayer = () => {
-        if (!VideoComp) {
-            return (
-                <View style={{
-                    height: SCREEN_HEIGHT,
-                    width: SCREEN_WIDTH,
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    backgroundColor: '#000',
-                }}>
-                    <Text style={{ color: '#fff', fontSize: 16, textAlign: 'center' }}>
-                        Video player not available
-                    </Text>
-                    <Text style={{ color: '#fff', fontSize: 12, textAlign: 'center', marginTop: 8, opacity: 0.7 }}>
-                        Install react-native-video to enable playback
-                    </Text>
-                </View>
-            );
-        }
-
         const sourceUri = video?.videoUrl || video?.photos;
         if (!sourceUri) {
             return (
@@ -309,19 +281,16 @@ const SingleVideo = () => {
 
         return (
             <View style={{ height: SCREEN_HEIGHT, width: SCREEN_WIDTH, backgroundColor: '#000' }}>
-                <VideoComp
+                <ExpoVideo
                     source={{ uri: sourceUri }}
                     style={{ height: SCREEN_HEIGHT, width: SCREEN_WIDTH }}
-                    resizeMode="contain"
-                    paused={!isPlaying || isManuallyPaused}
-                    playInBackground
-                    playWhenInactive
-                    ignoreSilentSwitch="ignore"
-                    repeat
-                    muted={false}
-                    useTextureView
-                    onError={(err: any) => {
-                        console.log('Video error', err);
+                    resizeMode={ResizeMode.CONTAIN}
+                    shouldPlay={isPlaying && !isManuallyPaused}
+                    isLooping
+                    isMuted={false}
+                    useNativeControls={false}
+                    onPlaybackStatusUpdate={status => {
+                        // Handle playback status if needed
                     }}
                 />
                 

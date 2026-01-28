@@ -10,7 +10,9 @@ import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRo
 import { navigationRef, markNavigationReady } from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform, Linking, PermissionsAndroid, AppState } from 'react-native';
+import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text } from 'react-native';
+import * as Location from 'expo-location';
+import * as MediaLibrary from 'expo-media-library';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
@@ -20,7 +22,7 @@ import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
 import LoginScreen from './src/screens/LoginScreen';
 import RegisterScreen from './src/screens/RegisterScreen';
 import { Provider as PaperProvider } from 'react-native-paper';
-import { getApp } from '@react-native-firebase/app';
+// Firebase removed for Expo compatibility
 import Home from './src/screens/Home';
 import Message from './src/screens/Message';
 import Menu from './src/screens/Menu';
@@ -38,11 +40,7 @@ import Videos from './src/screens/Videos';
 import SinglePost from './src/screens/SinglePost';
 import SingleVideo from './src/screens/SingleVideo';
 import EditPost from './src/screens/EditPost';
-import IncomingCall from './src/screens/IncomingCall';
-import OutgoingCall from './src/screens/OutgoingCall';
-import VideoCall from './src/components/VideoCall';
-import AudioCall from './src/components/AudioCall';
-import LiveVoice from './src/components/LiveVoice';
+// Video calling components removed for Expo compatibility
 import CameraScreen from './src/screens/CameraScreen';
 import GalleryScreen from './src/screens/GalleryScreen';
 import GalleryPreview from './src/screens/GalleryPreview';
@@ -64,18 +62,19 @@ import TopNavigationProgress, { TopNavigationProgressRef } from './src/component
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
+import ExpoGoFallback from './src/components/ExpoGoFallback';
 
-import Tts from 'react-native-tts';
+import * as Speech from 'expo-speech';
 import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
 import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/reducers/presenceReducer';
 import api, { userAPI } from './src/lib/api';
 import FloatingButton from './src/components/FloatingButton';
-import { backgroundTtsService } from './src/lib/backgroundTtsService';
-import { backgroundServiceManager } from './src/lib/backgroundServiceManager';
-import { pushBackgroundService } from './src/lib/pushBackgroundService';
+// Background services removed for Expo compatibility
 import UpdateModal from './src/components/UpdateModal';
-import RNFS from 'react-native-fs';
+// RNFS replaced with Expo FileSystem
+import * as FileSystem from 'expo-file-system';
+// Remote config removed for Expo compatibility
 import { getRemoteConfig, subscribeRemoteConfig } from './src/lib/remoteConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -90,8 +89,7 @@ function MessageStack() {
       <Stack.Screen name="MessageList" component={Message} />
       <Stack.Screen name="SingleMessage" component={SingleMessage} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
-      <Stack.Screen name="IncomingCall" component={IncomingCall} />
-      <Stack.Screen name="OutgoingCall" component={OutgoingCall} />
+      {/* Video calling screens removed for Expo compatibility */}
     </Stack.Navigator>
   );
 }
@@ -131,21 +129,109 @@ function FriendsStack() {
   );
 }
 
+// Safe dynamic import wrapper for screens that might fail to load
+const SafeScreen = React.memo(({ screenName, navigation }: { screenName: string; navigation: any }) => {
+  const [ScreenComponent, setScreenComponent] = React.useState<React.ComponentType<any> | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    const loadScreen = async () => {
+      try {
+        let component;
+        switch (screenName) {
+          case 'VideoLibrary':
+            component = await import('./src/screens/VideoLibraryScreen');
+            break;
+          case 'Downloads':
+            component = await import('./src/screens/DownloadsScreen');
+            break;
+          case 'MediaPlayer':
+            component = await import('./src/screens/MediaPlayer');
+            break;
+          case 'Facebook':
+            component = await import('./src/screens/FacebookScreen');
+            break;
+          case 'YouTube':
+            component = await import('./src/screens/YouTubeScreen');
+            break;
+          case 'VpnBrowser':
+            component = await import('./src/screens/VpnBrowserScreen');
+            break;
+          case 'Cricbuzz':
+            component = await import('./src/screens/CricbuzzScreen');
+            break;
+          case 'GoogleMaps':
+            component = await import('./src/screens/GoogleMapsScreen');
+            break;
+          case 'GoogleContacts':
+            component = await import('./src/screens/GoogleContactsScreen');
+            break;
+          default:
+            throw new Error(`Unknown screen: ${screenName}`);
+        }
+        setScreenComponent(() => component.default);
+      } catch (err) {
+        console.error(`Failed to load screen ${screenName}:`, err);
+        setError(screenName);
+      }
+    };
+
+    loadScreen();
+  }, [screenName]);
+
+  if (error) {
+    return (
+      <ExpoGoFallback 
+        featureName={error} 
+        onGoBack={() => navigation?.goBack()} 
+      />
+    );
+  }
+
+  if (!ScreenComponent) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text style={{ color: '#666' }}>Loading...</Text>
+      </View>
+    );
+  }
+
+  return <ScreenComponent />;
+});
+
 function MenuStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MenuHome" component={Menu} />
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="Settings" component={Settings} />
-      <Stack.Screen name="VideoLibrary" component={require('./src/screens/VideoLibraryScreen').default} />
-      <Stack.Screen name="Downloads" component={require('./src/screens/DownloadsScreen').default} />
-      <Stack.Screen name="MediaPlayer" component={require('./src/screens/MediaPlayer').default} />
-      <Stack.Screen name="Facebook" component={require('./src/screens/FacebookScreen').default} />
-      <Stack.Screen name="YouTube" component={require('./src/screens/YouTubeScreen').default} />
-        <Stack.Screen name="VpnBrowser" component={require('./src/screens/VpnBrowserScreen').default} />
-      <Stack.Screen name="Cricbuzz" component={require('./src/screens/CricbuzzScreen').default} />
-      <Stack.Screen name="GoogleMaps" component={require('./src/screens/GoogleMapsScreen').default} />
-      <Stack.Screen name="GoogleContacts" component={require('./src/screens/GoogleContactsScreen').default} />
+      <Stack.Screen name="VideoLibrary">
+        {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
+      </Stack.Screen>
+      <Stack.Screen name="Downloads">
+        {(props) => <SafeScreen {...props} screenName="Downloads" />}
+      </Stack.Screen>
+      <Stack.Screen name="MediaPlayer">
+        {(props) => <SafeScreen {...props} screenName="MediaPlayer" />}
+      </Stack.Screen>
+      <Stack.Screen name="Facebook">
+        {(props) => <SafeScreen {...props} screenName="Facebook" />}
+      </Stack.Screen>
+      <Stack.Screen name="YouTube">
+        {(props) => <SafeScreen {...props} screenName="YouTube" />}
+      </Stack.Screen>
+      <Stack.Screen name="VpnBrowser">
+        {(props) => <SafeScreen {...props} screenName="VpnBrowser" />}
+      </Stack.Screen>
+      <Stack.Screen name="Cricbuzz">
+        {(props) => <SafeScreen {...props} screenName="Cricbuzz" />}
+      </Stack.Screen>
+      <Stack.Screen name="GoogleMaps">
+        {(props) => <SafeScreen {...props} screenName="GoogleMaps" />}
+      </Stack.Screen>
+      <Stack.Screen name="GoogleContacts">
+        {(props) => <SafeScreen {...props} screenName="GoogleContacts" />}
+      </Stack.Screen>
     </Stack.Navigator>
   );
 }
@@ -292,22 +378,9 @@ function AppWithTopProgress() {
   );
 }
 async function requestLocationPermission() {
-  if (Platform.OS !== 'android') {
-    // iOS location permission should be handled separately if needed
-    return;
-  }
   try {
-    const granted = await PermissionsAndroid.request(
-      PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-      {
-        title: 'Location Permission',
-        message: 'This app needs access to your location to provide location-based features.',
-        buttonNeutral: 'Ask Me Later',
-        buttonNegative: 'Cancel',
-        buttonPositive: 'OK',
-      }
-    );
-    if (granted === PermissionsAndroid.RESULTS.GRANTED) {
+    const { status } = await Location.requestForegroundPermissionsAsync();
+    if (status === 'granted') {
       console.log('✅ Location permission granted');
     } else {
       console.log('❌ Location permission denied');
@@ -456,17 +529,9 @@ function AppContent() {
   }, [compareVersions, getCurrentAppVersion, checkAndIncrementUpdateModalCount]);
 
   const ensureStoragePermission = React.useCallback(async (): Promise<boolean> => {
-    if (Platform.OS !== 'android') return true;
     try {
-      const granted = await PermissionsAndroid.request(
-        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE,
-        {
-          title: 'Storage permission required',
-          message: 'Storage access is needed to download the update.',
-          buttonPositive: 'OK',
-        }
-      );
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
+      const { status } = await MediaLibrary.requestPermissionsAsync();
+      return status === 'granted';
     } catch (_) {
       return false;
     }
@@ -489,16 +554,19 @@ function AppContent() {
       setIsDownloadingUpdate(true);
       const safeVersion = (serverVersion || 'latest').replace(/[^0-9A-Za-z._-]/g, '');
       const fileName = `Connect-${safeVersion}-${Date.now()}.apk`;
-      const destPath = `${RNFS.DownloadDirectoryPath}/${fileName}`;
+      const destPath = `file:///tmp/Connect/${fileName}`;
 
-      const task = RNFS.downloadFile({
-        fromUrl: apkUrl,
-        toFile: destPath,
-        background: true,
-        discretionary: true,
-      });
-      const result = await task.promise;
-      if (result.statusCode === 200) {
+      const task = FileSystem.createDownloadResumable(
+        apkUrl,
+        destPath,
+        {},
+        (downloadProgressInfo) => {
+          const progress = downloadProgressInfo.totalBytesWritten / downloadProgressInfo.totalBytesExpectedToWrite;
+          console.log(`Download progress: ${Math.round(progress * 100)}%`);
+        }
+      );
+      const result = await task.downloadAsync();
+      if (result && result.status === 200) {
         try {
           await Linking.openURL(`file://${destPath}`);
         } catch (e) {
@@ -519,32 +587,21 @@ function AppContent() {
     // Stop any currently playing TTS immediately
     const stopTts = async () => {
       try {
-        await backgroundTtsService.stopSpeaking();
-        await Tts.stop();
+        await Speech.stop();
       } catch (e) {
         // Ignore errors
       }
     };
     stopTts();
 
-    // Initialize both TTS systems
+    // Initialize TTS system
     const initializeTts = async () => {
       try {
         // Initialize main TTS
-        Tts.setDefaultLanguage('en-US');
-        Tts.setDefaultRate(0.5); // speed: 0.1 - 1.0
-        Tts.voices().then(voices => console.log('Available TTS voices:', voices.length));
+        const voices = await Speech.getAvailableVoicesAsync();
+        console.log('Available TTS voices:', voices.length);
         
-        // Initialize background TTS service
-        await backgroundTtsService.initialize();
-        // Stop TTS after initialization to ensure it's not playing
-        await backgroundTtsService.stopSpeaking();
-        await Tts.stop();
-        
-        // Initialize background service manager
-        await backgroundServiceManager.initialize();
-        
-        console.log('✅ TTS systems and background services initialized successfully');
+        console.log('✅ TTS system initialized successfully');
       } catch (error) {
         console.error('❌ Error initializing TTS systems:', error);
       }
@@ -582,9 +639,7 @@ function AppContent() {
     return () => {
       subscription.remove();
       console.log('🛑 App closing, stopping background service...');
-      pushBackgroundService.stop().catch((e) => {
-        console.error('Error stopping background service on app close:', e);
-      });
+      // Background services removed for Expo compatibility
     };
   }, []);
 
@@ -645,58 +700,15 @@ function AppContent() {
 
     on('bumpUser', handleBumpUser)
 
-    // Navigate to IncomingCall screen on incoming video/audio call events
-    const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
-      // Global guards to prevent ghost/duplicate navigations
-      if (isCallEndingRef.current) {
-        console.log('🚫 Ignoring incoming video call - call ending in progress');
-        return;
-      }
-      if (Date.now() < ignoreIncomingCallsUntilRef.current) {
-        console.log('🚫 Ignoring incoming video call - within cooldown window');
-        return;
-      }
-      // If there's already an active incoming call, clear it first
-      if (activeIncomingCallRef.current) {
-        console.log('🔄 Clearing previous incoming call to show new video call:', activeIncomingCallRef.current);
-        // Clear the existing timeout
-        if (incomingCallTimeoutRef.current) {
-          clearTimeout(incomingCallTimeoutRef.current);
-          incomingCallTimeoutRef.current = null;
-        }
-        // Clear the active call state
-        setActiveIncomingCall(null);
-      }
-      
-      console.log('📞 New incoming video call from:', from);
-      setActiveIncomingCall({ callerId: from, channelName, isAudio: false });
-      
-      // Set a timeout to automatically clear the active call state after 30 seconds
-      if (incomingCallTimeoutRef.current) {
-        clearTimeout(incomingCallTimeoutRef.current);
-      }
-      incomingCallTimeoutRef.current = setTimeout(() => {
-        console.log('⏰ Incoming call timeout - clearing active call state');
-        setActiveIncomingCall(null);
-      }, 30000); // 30 seconds timeout
-
-      emit('update-call-status', { to: String(from), status: "Ringing..." });
-      (navigation as any).navigate('Message', {
-        screen: 'IncomingCall',
-        params: {
-        callerId: from,
-        callerName: callerName || 'Unknown',
-        callerProfilePic: callerProfilePic,
-        channelName,
-        isAudio: false,
-        prevScreenId: currentScreenRef.current,
-        }
-      });
-    };
+    // Video calling functionality removed for Expo compatibility
+    // const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
+    //   // Video call handling code removed
+    // };
+    
     const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
       // Global guards to prevent ghost/duplicate navigations
       if (isCallEndingRef.current) {
-        console.log('🚫 Ignoring incoming audio ca  ll - call ending in progress');
+        console.log('🚫 Ignoring incoming audio call - call ending in progress');
         return;
       }
       if (Date.now() < ignoreIncomingCallsUntilRef.current) {
@@ -741,63 +753,20 @@ function AppContent() {
       });
     };
 
-    // Handle call end events to clear active incoming call state
-    const handleCallEnd = () => {
-      // Prevent multiple calls to the same cleanup
-      if (isCallEndingRef.current) {
-        console.log('📞 Call end already in progress, ignoring duplicate event');
-        return;
-      }
-
-      // Clear any existing debounce timeout
-      if (callEndDebounceRef.current) {
-        clearTimeout(callEndDebounceRef.current);
-      }
-
-      // Debounce the call end handling
-      callEndDebounceRef.current = setTimeout(() => {
-        console.log('📞 Call ended, clearing active incoming call state');
-        isCallEndingRef.current = true;
-        setActiveIncomingCall(null);
-        
-        // Clear timeout if it exists
-        if (incomingCallTimeoutRef.current) {
-          clearTimeout(incomingCallTimeoutRef.current);
-          incomingCallTimeoutRef.current = null;
-        }
-
-        // Enforce non-translucent status bar after any call end to avoid overlay on header
-        try {
-          const bg = themeContext?.colors?.background?.primary || '#000000';
-          const isDark = themeContext?.isDarkMode;
-          if (Platform.OS === 'android') {
-            StatusBar.setTranslucent(false);
-            StatusBar.setBackgroundColor(bg);
-          }
-          StatusBar.setBarStyle(isDark ? 'light-content' : 'dark-content');
-        } catch (e) {}
-
-        // Start a short cooldown to ignore any late/duplicate incoming-call events
-        ignoreIncomingCallsUntilRef.current = Date.now() + 4000; // 4s cooldown
-
-        // Reset the flag after a longer delay to prevent rapid re-triggering
-        setTimeout(() => {
-          isCallEndingRef.current = false;
-        }, 3000); // 3 seconds delay
-      }, 500); // 500ms debounce - increased from 100ms
-    };
-
-    // Handle audio call end events
+    // Call handling functionality removed for Expo compatibility
+    // const handleCallEnd = () => {
+    //   // Call end handling code removed
+    // };
+    
     const handleAudioCallEnd = (friendId: string) => {
       console.log('📞 Audio call ended from friend:', friendId);
-      handleCallEnd();
+      // handleCallEnd();
     };
 
-    // Handle video call end events  
-    const handleVideoCallEnd = (friendId: string) => {
-      console.log('📞 Video call ended from friend:', friendId);
-      handleCallEnd();
-    };
+    // const handleVideoCallEnd = (friendId: string) => {
+    //   console.log('📞 Video call ended from friend:', friendId);
+    //   handleCallEnd();
+    // };
 
     const handleCallAccepted = () => {
       console.log('📞 Call accepted, clearing active incoming call state');
@@ -811,13 +780,13 @@ function AppContent() {
       ignoreIncomingCallsUntilRef.current = Date.now() + 2000; // 2s cooldown
     };
 
-    on('incoming-video-call', handleIncomingVideo);
+    // on('incoming-video-call', handleIncomingVideo);
     on('incoming-audio-call', handleIncomingAudio);
     on('call-accepted', handleCallAccepted);
     
     // Listen to call end events to clear active incoming call state
     on('audio-call-ended', handleAudioCallEnd);
-    on('video-call-ended', handleVideoCallEnd);
+    // on('video-call-ended', handleVideoCallEnd); // Removed for Expo compatibility
 
     // Global online/offline presence listeners
     const handleFriendOnline = (data: any) => {
@@ -954,11 +923,11 @@ function AppContent() {
       off('newNotification', handleNewNotification)
       // TTS disabled - no longer listening to 'speak_message' events
       // off('speak_message', handleSpeakMessage)
-      off('incoming-video-call', handleIncomingVideo)
+      // off('incoming-video-call', handleIncomingVideo) // Removed for Expo compatibility
       off('incoming-audio-call', handleIncomingAudio)
       off('call-accepted', handleCallAccepted)
       off('audio-call-ended', handleAudioCallEnd)
-      off('video-call-ended', handleVideoCallEnd)
+      // off('video-call-ended', handleVideoCallEnd) // Removed for Expo compatibility
       off('friend_online', handleFriendOnline)
       off('friend_offline', handleFriendOffline)
       off('is_active', handleIsActive)
@@ -996,14 +965,14 @@ function AppContent() {
             <NotificationSetup />
             {/* Request required permissions on app start */}
             <PermissionsInitializer user={user} />
-            {/* Global call components - rendered everywhere */}
-            {myProfile?._id && (
+            {/* Global call components - removed for Expo compatibility */}
+            {/* {myProfile?._id && (
               <>
                 <VideoCall myId={myProfile._id} />
                 <AudioCall myId={myProfile._id} />
                 <LiveVoice myId={myProfile._id} />
               </>
-            )}
+            )} */}
             {/* Global update modal */}
             <UpdateModal
               visible={updateModalVisible}
@@ -1142,9 +1111,8 @@ function App() {
   // Ensure Firebase is initialized when App component mounts
   React.useEffect(() => {
     try {
-      // Check if Firebase is initialized
-      getApp();
-      console.log('✅ Firebase app initialized in App component');
+      // Firebase removed for Expo compatibility
+      console.log('✅ Firebase disabled for Expo compatibility');
     } catch (error) {
       console.error('❌ Firebase not initialized in App component:', error);
       // Firebase should auto-initialize from google-services.json on Android

@@ -35,7 +35,7 @@ export const SkeletonBlock: React.FC<SkeletonBlockProps> = ({ width = '100%', he
     const overlayOpacity = pulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 0.6] });
 
     return (
-        <View style={[{ width, height, borderRadius, overflow: 'hidden', backgroundColor: baseColor }, style]}
+        <View style={[{ width: width as number, height, borderRadius, overflow: 'hidden', backgroundColor: baseColor }, style]}
         >
             <Animated.View
                 style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#ffffff', opacity: overlayOpacity }}

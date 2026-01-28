@@ -17,22 +17,23 @@ import {
   FlatList,
   ImageBackground,
 } from 'react-native';
-import Svg, {
-  Rect,
-  Circle,
-  Path,
-  G,
-  Defs,
-  LinearGradient,
-  Stop,
-  Text as SvgText,
+import { 
+  Svg, 
+  Rect, 
+  Circle, 
+  Path, 
+  G, 
+  Defs, 
+  LinearGradient, 
+  Stop, 
+  Text as SvgText 
 } from 'react-native-svg';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import { useSocket } from '../contexts/SocketContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Logo from '../components/Logo';
-import { Emitter } from 'react-native-particles';
+// react-native-particles removed for Expo compatibility
 import api, { friendAPI } from '../lib/api';
 import config from '../lib/config';
 import { useSelector } from 'react-redux';
@@ -2334,25 +2335,6 @@ const LudoGameSVG = () => {
   if (gameEnded) {
     return (
       <ImageBackground source={backgroundImageSource} style={styles.bg} resizeMode="cover">
-        <View style={StyleSheet.absoluteFillObject}>
-          <Emitter
-            numberOfParticles={40}
-            emissionRate={2}
-            interval={220}
-            particleLife={4500}
-            direction={-90}
-            spread={360}
-            speed={2}
-            gravity={0.12}
-            fromPosition={() => ({ x: Math.random() * width, y: height })}
-            infiniteLoop={true}
-            autoStart={true}
-            width={width}
-            height={height}
-          >
-            <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
-          </Emitter>
-        </View>
         <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.winnerContainer}>
@@ -2395,25 +2377,6 @@ const LudoGameSVG = () => {
   if (showPlayerSelection) {
     return (
       <ImageBackground source={backgroundImageSource} style={styles.bg} resizeMode="cover">
-        <View style={StyleSheet.absoluteFillObject}>
-          <Emitter
-            numberOfParticles={40}
-            emissionRate={2}
-            interval={220}
-            particleLife={4500}
-            direction={-90}
-            spread={360}
-            speed={2}
-            gravity={0.12}
-            fromPosition={() => ({ x: Math.random() * width, y: height })}
-            infiniteLoop={true}
-            autoStart={true}
-            width={width}
-            height={height}
-          >
-            <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
-          </Emitter>
-        </View>
         <SafeAreaView style={[styles.container, { backgroundColor: 'transparent' }]}>
         <StatusBar barStyle="light-content" backgroundColor="transparent" />
         <View style={styles.playerSelectionContainer}>
@@ -2550,25 +2513,6 @@ const LudoGameSVG = () => {
 
   return (
     <ImageBackground source={backgroundImageSource} style={styles.bg} resizeMode="cover">
-      <View style={StyleSheet.absoluteFillObject}>
-        <Emitter
-          numberOfParticles={40}
-          emissionRate={2}
-          interval={220}
-          particleLife={4500}
-          direction={-90}
-          spread={360}
-          speed={2}
-          gravity={0.12}
-          fromPosition={() => ({ x: Math.random() * width, y: height })}
-          infiniteLoop={true}
-          autoStart={true}
-          width={width}
-          height={height}
-        >
-          <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
-        </Emitter>
-      </View>
       <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" />
       <View style={styles.backgroundGradient} />

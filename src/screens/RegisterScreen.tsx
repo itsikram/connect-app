@@ -382,7 +382,7 @@ const RegisterScreen = () => {
               styles.datePickerButton, 
               { 
                 backgroundColor: bottomBarBg, 
-                borderColor: fieldErrors.DOB ? '#ff0000' : themeColors.primary,
+                borderColor: fieldErrors.DOB ? themeColors.status.error : themeColors.border.primary,
                 borderWidth: fieldErrors.DOB ? 2 : 1
               }
             ]}
@@ -677,7 +677,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   radioGroupError: {
-    borderColor: '#ff0000',
+    borderColor: '#FF3B30',
     borderWidth: 1,
     borderRadius: 4,
     padding: 8,
@@ -709,7 +709,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f9fa',
     borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#e9ecef',
+    borderColor: '#F1F3F4',
   },
   passwordStrengthTitle: {
     fontSize: 14,

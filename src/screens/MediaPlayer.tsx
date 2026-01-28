@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, StatusBar, Dimensions, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, StatusBar, Dimensions, Platform } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { Video as ExpoVideo, ResizeMode, Audio } from 'expo-av';
 import Slider from '@react-native-community/slider';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -34,15 +36,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
     () => (paramsSource ? paramsSource : null),
     [paramsSource],
   );
-
-  // Lazy require for react-native-video to avoid hard dependency issues
-  let VideoComp: any = null;
-  try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    VideoComp = require('react-native-video').default;
-  } catch (_) {
-    VideoComp = null;
-  }
 
   const playerRef = useRef<any>(null);
   const [paused, setPaused] = useState(false);
@@ -205,30 +198,41 @@ const MediaPlayer = ({ route, navigation }: any) => {
               <Icon name="video-library" size={24} color="#000" />
             </TouchableOpacity>
           </View>
-        ) : VideoComp ? (
-          <VideoComp
+        ) : (
+          <ExpoVideo
             ref={playerRef}
             source={{ uri: source.uri }}
-            paused={paused}
-            muted={muted}
-            repeat={loop}
-            rate={rate}
-            onLoad={onLoad}
-            onProgress={onProgress}
-            onBuffer={onBuffer}
-            onEnd={onEnd}
+            shouldPlay={!paused}
+            isMuted={muted}
+            isLooping={loop}
+            useNativeControls={false}
+            onPlaybackStatusUpdate={status => {
+              if (status.isLoaded) {
+                if (status.durationMillis) {
+                  onLoad({
+                    duration: status.durationMillis / 1000,
+                    naturalSize: { width: 0, height: 0, orientation: 'landscape' }
+                  });
+                }
+                if (status.positionMillis) {
+                  onProgress({
+                    currentTime: status.positionMillis / 1000,
+                    playableDuration: status.playableDurationMillis ? status.playableDurationMillis / 1000 : 0,
+                    seekableDuration: status.durationMillis ? status.durationMillis / 1000 : 0
+                  });
+                }
+                if (status.isBuffering) {
+                  onBuffer({ isBuffering: true });
+                } else {
+                  onBuffer({ isBuffering: false });
+                }
+                if (status.didJustFinish) {
+                  onEnd();
+                }
+              }
+            }}
             style={[playerStyle, rotated && styles.rotate90]}
-            poster={isVideo ? source.poster : undefined}
-            playInBackground
-            playWhenInactive
-            ignoreSilentSwitch="ignore"
-            useTextureView
           />
-        ) : (
-          <View style={[playerStyle, { justifyContent: 'center', alignItems: 'center' }]}>
-            <Icon name="movie" size={48} color="#fff" />
-            <Text style={{ color: '#fff', marginTop: 8, opacity: 0.8 }}>Install react-native-video to enable playback</Text>
-          </View>
         )}
 
         {buffering && (

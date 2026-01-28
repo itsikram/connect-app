@@ -1,8 +1,21 @@
-import BackgroundService from 'react-native-background-actions';
-import notifee, { AndroidImportance, AndroidVisibility } from '@notifee/react-native';
+// Background services removed for Expo compatibility
+// import BackgroundService from 'react-native-background-actions';
+// Notifee imports made optional for Expo Go compatibility
+let notifee: any = null;
+let AndroidImportance: any = null;
+let AndroidVisibility: any = null;
+
+try {
+  const notifeeModule = require('@notifee/react-native');
+  notifee = notifeeModule.default;
+  AndroidImportance = notifeeModule.AndroidImportance;
+  AndroidVisibility = notifeeModule.AndroidVisibility;
+} catch (error) {
+  console.log('Notifee not available in pushBackgroundService - using fallback');
+}
+// Firebase messaging removed for Expo compatibility
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import messaging from '@react-native-firebase/messaging';
 
 // Background socket state (module-scoped to persist during service lifetime)
 let backgroundSocket: any = null;
@@ -294,43 +307,25 @@ async function setupFcmMessageListener(): Promise<void> {
   
   try {
     // Ensure Firebase is initialized
-    const { getApp } = await import('@react-native-firebase/app');
+    // Firebase removed for Expo compatibility
     try {
-      getApp();
+      console.log('Firebase not available in FCM listener setup');
+      return;
     } catch (firebaseError) {
       console.error('❌ Firebase not initialized in FCM listener setup:', firebaseError);
       return;
     }
     
     // Check for initial notification (app opened from notification when killed)
-    try {
-      const initialNotification = await messaging().getInitialNotification();
-      if (initialNotification) {
-        console.log('📱 Processing initial FCM notification (app opened from killed state)');
-        await handleFcmMessage(initialNotification);
-      }
-    } catch (e) {
-      console.error('❌ Error checking initial FCM notification:', e);
-    }
+    // Firebase removed for Expo compatibility
     
     // Set up message listener for background/foreground messages
     // Note: This works when app is in background or foreground, but not when completely killed
     // When killed, messages are handled via getInitialNotification above or when service restarts
-    const unsubscribe = messaging().onMessage(async (remoteMessage) => {
-      try {
-        // CRITICAL FIX: Don't access AppState in background process - it may not be available
-        // In background service context, we should handle all messages
-        // The foreground handler in push.ts will handle foreground messages separately
-        // This listener is specifically for background context, so process all messages
-        await handleFcmMessage(remoteMessage);
-      } catch (e) {
-        console.error('❌ Error handling FCM message in background listener:', e);
-      }
-    });
-    
-    fcmMessageListener = unsubscribe;
-    isFcmListenerSetup = true;
-    console.log('✅ FCM message listener set up for background service');
+    // Firebase messaging removed for Expo compatibility
+    // The foreground handler in push.ts will handle foreground messages separately
+    // This listener is specifically for background context, so process all messages
+    // await handleFcmMessage(remoteMessage);
   } catch (e) {
     console.error('❌ Error setting up FCM message listener:', e);
     // Don't mark as set up if there was an error - allow retry
@@ -586,12 +581,14 @@ class PushBackgroundService {
   async start(): Promise<void> {
     if (this.isRunning) return;
     try {
-      await BackgroundService.start(backgroundTask as any, options as any);
-      this.isRunning = true;
-      console.log("background server running");
+      // Background services removed for Expo compatibility
+      console.log('Background server running');
       
-      // Set up AppState listener to stop service when app is closed
-      this.setupAppStateListener();
+      // Initialize socket connection
+      await this.initializeSocketConnection();
+      
+      // Start periodic status checks
+      this.startPeriodicStatusCheck();
     } catch (e) {
       // If already running or failed to start, ignore
       this.isRunning = true;
@@ -657,7 +654,7 @@ class PushBackgroundService {
         }
       }
       
-      await BackgroundService.stop();
+      // Background services removed for Expo compatibility
     } catch (e) {
       // ignore
     } finally {

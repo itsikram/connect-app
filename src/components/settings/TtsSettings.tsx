@@ -165,10 +165,10 @@ const TtsSettings = () => {
       marginLeft: 10,
     },
     resetButton: {
-      backgroundColor: '#FF5722',
+      backgroundColor: themeColors.status.error,
     },
     testButton: {
-      backgroundColor: '#4CAF50',
+      backgroundColor: themeColors.status.success,
     },
   });
 

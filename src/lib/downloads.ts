@@ -1,21 +1,16 @@
 import { Platform } from 'react-native';
-import RNFS from 'react-native-fs';
-import notifee, { AndroidImportance } from '@notifee/react-native';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as MediaLibrary from 'expo-media-library';
+import * as Notifications from 'expo-notifications';
 
-// Use public Downloads folder on Android, app documents on iOS
-export const DOWNLOADS_DIR = Platform.OS === 'android' 
-  ? RNFS.DownloadDirectoryPath 
-  : `${RNFS.DocumentDirectoryPath}/downloads`;
+// Use document directory for downloads on all platforms
+export const DOWNLOADS_DIR = `${(FileSystem as any).documentDirectory || ''}downloads/`;
 
 export async function ensureDownloadsDir(): Promise<string> {
   try {
-    // On Android, DownloadDirectoryPath already exists, no need to create
-    // On iOS, create the downloads subdirectory if it doesn't exist
-    if (Platform.OS === 'ios') {
-      const exists = await RNFS.exists(DOWNLOADS_DIR);
-      if (!exists) {
-        await RNFS.mkdir(DOWNLOADS_DIR);
-      }
+    const exists = await FileSystem.getInfoAsync(DOWNLOADS_DIR);
+    if (!exists.exists) {
+      await FileSystem.makeDirectoryAsync(DOWNLOADS_DIR, { intermediates: true });
     }
   } catch (_) {}
   return DOWNLOADS_DIR;
@@ -42,83 +37,121 @@ export async function downloadVideoAndSave(url: string, suggestedName?: string):
     candidate = `video-${Date.now()}.mp4`;
   }
   const baseName = sanitizeFileName(suggestedName || candidate);
-  const toFile = `${DOWNLOADS_DIR}/${baseName}`;
-  // Prepare notifications (Android/iOS 13+ may require permissions)
-  try { await notifee.requestPermission(); } catch (_) {}
-  let channelId = 'downloads';
-  try {
-    channelId = await notifee.createChannel({ id: 'downloads', name: 'Downloads', importance: AndroidImportance.LOW });
-  } catch (_) {}
-
+  const toFile = `${DOWNLOADS_DIR}${baseName}`;
+  
+  // Request permissions for notifications
+  await Notifications.requestPermissionsAsync();
+  
+  // Create download progress notification
   const notificationId = `dl-${Date.now()}`;
   try {
-    await notifee.displayNotification({
-      id: notificationId,
-      title: 'Downloading',
-      body: `${baseName} — preparing...`,
-      android: { channelId, onlyAlertOnce: true, ongoing: true, progress: { max: 100, current: 0, indeterminate: true } },
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: 'Downloading',
+        body: `${baseName} — preparing...`,
+      },
+      trigger: null,
+      identifier: notificationId,
     });
   } catch (_) {}
 
-  let lastPct = 0;
-  const toMB = (n: number) => (n / (1024 * 1024));
-  const result = await RNFS.downloadFile({
-    fromUrl: url,
-    toFile,
-    discretionary: true,
-    background: true,
-    progressDivider: 2,
-    progress: async (data) => {
-      const total = Number(data.contentLength || 0);
-      const written = Number(data.bytesWritten || 0);
-      const pct = total > 0 ? Math.max(0, Math.min(100, Math.round((written / total) * 100))) : 0;
-      if (pct !== lastPct) {
-        lastPct = pct;
-        try {
-          const writtenMb = toMB(written).toFixed(1);
-          const totalMb = total > 0 ? toMB(total).toFixed(1) : undefined;
-          const body = totalMb ? `${baseName} — ${pct}% (${writtenMb} / ${totalMb} MB)` : `${baseName} — ${writtenMb} MB`;
-          await notifee.displayNotification({
-            id: notificationId,
-            title: total > 0 ? `Downloading ${pct}%` : 'Downloading',
-            body,
-            android: { channelId, onlyAlertOnce: true, ongoing: true, progress: { max: 100, current: pct, indeterminate: total === 0 } },
-          });
-        } catch (_) {}
+  try {
+    // Download the file using Expo FileSystem
+    const downloadResumable = FileSystem.createDownloadResumable(
+      url,
+      toFile,
+      {},
+      (downloadProgressInfo) => {
+        const progress = downloadProgressInfo.totalBytesWritten / downloadProgressInfo.totalBytesExpectedToWrite;
+        const pct = Math.round(progress * 100);
+        
+        // Update notification with progress
+        Notifications.scheduleNotificationAsync({
+          content: {
+            title: `Downloading ${pct}%`,
+            body: `${baseName} — ${pct}% complete`,
+          },
+          trigger: null,
+          identifier: notificationId,
+        }).catch(() => {});
       }
-    },
-  }).promise;
-  if (result.statusCode && result.statusCode >= 200 && result.statusCode < 300) {
+    );
+
+    const result = await downloadResumable.downloadAsync();
+    
+    if (result && result.status === 200) {
+      // Save to media library on Android/iOS
+      if (Platform.OS !== 'web') {
+        try {
+          const asset = await MediaLibrary.createAssetAsync(result.uri);
+          await MediaLibrary.createAlbumAsync('Downloads', asset, false);
+        } catch (_) {
+          // If saving to media library fails, file is still saved to app directory
+        }
+      }
+      
+      // Show completion notification
+      try {
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: 'Download complete',
+            body: `${baseName} — saved`,
+          },
+          trigger: null,
+          identifier: notificationId,
+        });
+      } catch (_) {}
+      
+      return result.uri;
+    }
+    
+    throw new Error(`Download failed with status ${result?.status}`);
+  } catch (error) {
+    // Show error notification
     try {
-      await notifee.displayNotification({
-        id: notificationId,
-        title: 'Download complete',
-        body: `${baseName} — saved`,
-        android: { channelId, onlyAlertOnce: true, ongoing: false, progress: { max: 100, current: 100, indeterminate: false } },
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: 'Download failed',
+          body: baseName,
+        },
+        trigger: null,
+        identifier: notificationId,
       });
     } catch (_) {}
-    return toFile;
+    throw error;
   }
-  try {
-    await notifee.displayNotification({
-      id: notificationId,
-      title: 'Download failed',
-      body: baseName,
-      android: { channelId, onlyAlertOnce: true, ongoing: false },
-    });
-  } catch (_) {}
-  throw new Error(`Download failed with status ${result.statusCode}`);
 }
 
 export async function listDownloads(): Promise<Array<{ name: string; path: string; size: number; mtime?: Date }>> {
   await ensureDownloadsDir();
-  const entries = await RNFS.readDir(DOWNLOADS_DIR);
-  const files = entries.filter(e => e.isFile() && /\.mp4$/i.test(e.name));
-  return files.map(f => ({ name: f.name, path: f.path, size: f.size as any, mtime: f.mtime as any }));
+  try {
+    const files = await FileSystem.readDirectoryAsync(DOWNLOADS_DIR);
+    const mp4Files = files.filter(name => /\.mp4$/i.test(name));
+    
+    const fileInfos = await Promise.all(
+      mp4Files.map(async (name) => {
+        const path = `${DOWNLOADS_DIR}${name}`;
+        const info = await FileSystem.getInfoAsync(path);
+        return {
+          name,
+          path,
+          size: (info as any).size || 0,
+          mtime: (info as any).modificationTime ? new Date((info as any).modificationTime) : undefined,
+        };
+      })
+    );
+    
+    return fileInfos;
+  } catch (error) {
+    console.error('Error listing downloads:', error);
+    return [];
+  }
 }
 
 export async function deleteDownload(path: string): Promise<void> {
-  try { await RNFS.unlink(path); } catch (_) {}
+  try { 
+    await FileSystem.deleteAsync(path);
+  } catch (_) {}
 }
 
 

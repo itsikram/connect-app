@@ -1,39 +1,23 @@
-const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
+const { getDefaultConfig } = require('expo/metro-config');
 
 /**
- * Metro configuration
- * https://reactnative.dev/docs/metro
+ * Metro configuration for Expo
+ * https://docs.expo.dev/build-reference/metro/
  *
- * @type {import('@react-native/metro-config').MetroConfig}
+ * @type {import('expo/metro-config').MetroConfig}
  */
-const base = getDefaultConfig(__dirname);
+const config = getDefaultConfig(__dirname);
 
-const config = {
-  projectRoot: __dirname,
-  // Keep watch scope minimal to avoid slow/failed watch initialization on Windows
-  watchFolders: [],
-  transformer: {
-    ...base.transformer,
-    babelTransformerPath: require.resolve('react-native-svg-transformer'),
-    getTransformOptions: async () => ({
-      transform: {
-        experimentalImportSupport: false,
-        inlineRequires: true,
-      },
-    }),
-  },
-  resolver: {
-    ...base.resolver,
-    assetExts: base.resolver.assetExts.filter((ext) => ext !== 'svg'),
-    sourceExts: [...base.resolver.sourceExts, 'svg'],
-    extraNodeModules: {
-      'expo-asset': require('path').resolve(__dirname, 'shims/expo-asset'),
-    },
-  },
+// Add SVG transformer support
+config.transformer = {
+  ...config.transformer,
+  babelTransformerPath: require.resolve('react-native-svg-transformer'),
 };
 
-// Disable watch mode for release builds on Windows to avoid file watcher failures
-// Metro will automatically skip watch mode when CI is set
-// This helps prevent Windows file watcher issues during release builds
+config.resolver = {
+  ...config.resolver,
+  assetExts: config.resolver.assetExts.filter((ext) => ext !== 'svg'),
+  sourceExts: [...config.resolver.sourceExts, 'svg'],
+};
 
-module.exports = mergeConfig(base, config);
+module.exports = config;

@@ -7,7 +7,8 @@ import {
   TouchableOpacityProps,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
-import LinearGradient from 'react-native-linear-gradient';
+// LinearGradient replaced with View for Expo compatibility
+// import LinearGradient from 'react-native-linear-gradient';
 
 interface ModernCardProps extends TouchableOpacityProps {
   children: React.ReactNode;
@@ -33,7 +34,7 @@ const ModernCard: React.FC<ModernCardProps> = ({
   style,
   ...touchableProps
 }) => {
-  const { colors, borderRadius: themeBorderRadius, spacing, shadows } = useTheme();
+  const { colors, borderRadius: themeBorderRadius, spacing, shadows, isDarkMode } = useTheme();
 
   const getCardStyle = (): ViewStyle => {
     const baseStyle: ViewStyle = {
@@ -90,9 +91,9 @@ const ModernCard: React.FC<ModernCardProps> = ({
         borderWidth: 2,
       },
       glass: {
-        backgroundColor: 'rgba(255, 255, 255, 0.1)',
-        borderColor: 'rgba(255, 255, 255, 0.2)',
-        backdropFilter: 'blur(10px)',
+        backgroundColor: 'transparent',
+        borderColor: isDarkMode ? colors.border.muted : colors.border.subtle,
+        borderWidth: 1,
       },
     };
 
@@ -111,16 +112,11 @@ const ModernCard: React.FC<ModernCardProps> = ({
 
   if (gradient) {
     return (
-      <LinearGradient
-        colors={[colors.surface.primary, colors.surface.secondary]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 1 }}
-        style={[getCardStyle(), style]}
-      >
+      <View style={[getCardStyle(), { backgroundColor: colors.surface.primary }, style]}>
         <CardComponent {...cardProps}>
           {children}
         </CardComponent>
-      </LinearGradient>
+      </View>
     );
   }
 

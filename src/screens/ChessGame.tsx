@@ -4,7 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useChessGame } from '../contexts/ChessGameContext';
 import { Chess } from 'chess.js';
 import { unicodeForPiece } from '../lib/chessEngine';
-import { Emitter } from 'react-native-particles';
+// react-native-particles removed for Expo compatibility
 
 const BOARD_SIZE = 8;
 const FILES = ['a','b','c','d','e','f','g','h'];
@@ -204,23 +204,7 @@ const ChessGame: React.FC = () => {
   return (
     <View style={styles.bg} key={`fen-${fenVersion}`}>
       <View style={StyleSheet.absoluteFillObject}>
-        <Emitter
-          numberOfParticles={80}
-          emissionRate={3}
-          interval={150}
-          particleLife={5000}
-          direction={-90}
-          spread={360}
-          speed={3}
-          gravity={0.15}
-          fromPosition={() => ({ x: Math.random() * width, y: height })}
-          infiniteLoop={true}
-          autoStart={true}
-          width={width}
-          height={height}
-        >
-          <View style={{ width: 6, height: 6, backgroundColor: '#FFFFFF', borderRadius: 3, opacity: 0.9 }} />
-        </Emitter>
+
       </View>
       <View style={[styles.container]}> 
         <View style={styles.topBar}>

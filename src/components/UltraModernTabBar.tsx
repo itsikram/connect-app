@@ -206,7 +206,7 @@ const UltraModernTabBar: React.FC<UltraModernTabBarProps> = ({
                       },
                     ]}
                   >
-                    <Text style={[styles.badgeText, { color: themeColors.white }]}>
+                    <Text style={[styles.badgeText, { color: themeColors.text.primary }]}>
                       {tab.badge > 99 ? '99+' : tab.badge}
                     </Text>
                   </Animated.View>

@@ -1,5 +1,9 @@
 // Global helpers
-declare const globalThis: any;
+declare global {
+  var globalThis: any;
+}
+
+export {};
 
 declare module 'jpeg-js' {
   export interface DecodeOptions {

@@ -8,7 +8,8 @@ import {
   ViewStyle,
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
-import LinearGradient from 'react-native-linear-gradient';
+// LinearGradient replaced with View for Expo compatibility
+// import LinearGradient from 'react-native-linear-gradient';
 
 interface ModernLoadingProps {
   size?: 'small' | 'large';
@@ -82,18 +83,16 @@ const ModernLoading: React.FC<ModernLoadingProps> = ({
 
     return (
       <Animated.View style={{ transform: [{ rotate }] }}>
-        <LinearGradient
-          colors={[colors.primary, colors.primaryLight, colors.primary]}
+        <View
           style={[
             styles.gradientLoader,
             {
               width: size === 'large' ? 40 : 24,
               height: size === 'large' ? 40 : 24,
               borderRadius: size === 'large' ? 20 : 12,
+              backgroundColor: colors.primary,
             },
           ]}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
         />
       </Animated.View>
     );

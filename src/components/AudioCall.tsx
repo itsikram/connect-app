@@ -10,6 +10,7 @@ import {
   StatusBar,
   Image,
   Platform,
+  Linking,
 } from 'react-native';
 import RtcEngine, {
   ChannelProfile,
@@ -22,7 +23,7 @@ import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
-import { request, PERMISSIONS, RESULTS, check } from 'react-native-permissions';
+import * as expoAv from 'expo-av';
 
 // Cross-mount guards to prevent duplicate joins/subscriptions
 let joiningAudioChannel: string | null = null;
@@ -69,7 +70,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
   const [remoteUid, setRemoteUid] = useState<number | null>(null);
   const [errorShown, setErrorShown] = useState(false);
 
-  const engineRef = useRef<RtcEngine | null>(null);
+  const engineRef = useRef<any>(null);
   const isLeavingRef = useRef<boolean>(false);
   const callStartTime = useRef<number | null>(null);
   const minimizedDurationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -93,41 +94,25 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic })
     };
   }, []);
 
-  // Request microphone permission
+  // Request microphone permission using Expo
   const requestMicrophonePermission = async (): Promise<boolean> => {
     try {
       console.log('Requesting microphone permission...');
-
-      const microphonePermission = Platform.OS === 'ios'
-        ? PERMISSIONS.IOS.MICROPHONE
-        : PERMISSIONS.ANDROID.RECORD_AUDIO;
-
-      // Check current permission first
-      const microphoneStatus = await check(microphonePermission);
-      console.log('Current microphone permission:', microphoneStatus);
-
-      // Request permission if not already granted
-      const microphoneResult = microphoneStatus === RESULTS.GRANTED
-        ? microphoneStatus
-        : await request(microphonePermission);
-
-      console.log('Microphone permission result:', microphoneResult);
+      
+      // Use expo-av for audio permissions instead of react-native-permissions
+      const { status } = await expoAv.Audio.requestPermissionsAsync();
+      console.log('Current microphone permission:', status);
 
       // Check if permission is granted
-      const hasPermission = microphoneResult === RESULTS.GRANTED;
+      const hasPermission = status === 'granted';
 
       if (!hasPermission) {
         Alert.alert(
-          'Microphone Permission Required',
-          'This app needs microphone permission to make audio calls. Please enable it in Settings.',
+          'Permission Required',
+          'Microphone access is required for voice calls. Please enable it in your device settings.',
           [
             { text: 'Cancel', onPress: () => endCall() },
-            {
-              text: 'Settings', onPress: () => {
-                // You could add a function to open app settings here
-                endCall();
-              }
-            }
+            { text: 'Settings', onPress: () => Linking.openSettings() }
           ]
         );
         return false;

@@ -1,11 +1,26 @@
-import messaging from '@react-native-firebase/messaging';
-import { getApp } from '@react-native-firebase/app';
-import notifee, { AndroidImportance, AndroidVisibility, AndroidCategory, EventType } from '@notifee/react-native';
+// Firebase and Notifee removed for Expo compatibility
+import * as Notifications from 'expo-notifications';
 import { Platform, Linking, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
 import { callNotificationService } from './callNotificationService';
-import { backgroundTtsService } from './backgroundTtsService';
+// Background TTS service removed for Expo compatibility
+
+// Import Notifee types and functions - made optional for Expo Go compatibility
+let Notifee: any = null;
+let AndroidImportance: any = null;
+let AndroidVisibility: any = null;
+let EventType: any = null;
+
+try {
+  const notifeeModule = require('@notifee/react-native');
+  Notifee = notifeeModule.default;
+  AndroidImportance = notifeeModule.AndroidImportance;
+  AndroidVisibility = notifeeModule.AndroidVisibility;
+  EventType = notifeeModule.EventType;
+} catch (error) {
+  console.log('Notifee not available - using expo-notifications only');
+}
 
 // Suppress Firebase deprecation warnings
 const originalWarn = console.warn;
@@ -47,31 +62,14 @@ setInterval(() => {
 
 export async function requestPushPermission(): Promise<boolean> {
   try {
-    if (Platform.OS === 'android') {
-      // Android 13+ requires explicit user consent for notifications
-      const settings = await notifee.requestPermission({
-        alert: true,
-        announcement: false,
-        badge: true,
-        carPlay: false,
-        criticalAlert: false,
-        provisional: false,
-        sound: true,
-      });
-      
-      if (settings.authorizationStatus === 1) { // AUTHORIZED
-        return true;
-      }
-      
-      // Also request Firebase messaging permission
-      const authStatus = await messaging().requestPermission();
-      const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED || authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-      return enabled;
+    // Use expo-notifications for permission requests
+    const settings = await Notifications.requestPermissionsAsync();
+    
+    if (settings.status === 'granted') {
+      return true;
     }
     
-    const authStatus = await messaging().requestPermission();
-    const enabled = authStatus === messaging.AuthorizationStatus.AUTHORIZED || authStatus === messaging.AuthorizationStatus.PROVISIONAL;
-    return enabled;
+    return false;
   } catch (e) {
     console.error('Error requesting push permission:', e);
     return false;
@@ -83,63 +81,33 @@ export async function getOrCreateFcmToken(): Promise<string | null> {
     // Check if we have a cached token first
     const existing = await AsyncStorage.getItem(STORAGE_KEY);
     if (existing) {
-      console.log('✅ Using cached FCM token');
+      console.log('✅ Using cached push token');
       return existing;
     }
 
-    // Ensure Firebase is initialized before getting token
+    // Get expo push token with fallback
+    let token;
     try {
-      getApp();
-    } catch (firebaseError) {
-      console.error('❌ Firebase not initialized when getting FCM token:', firebaseError);
-      // Wait a bit and retry once
-      await new Promise<void>((resolve) => {
-        setTimeout(() => {
-          resolve();
-        }, 1000);
+      token = await Notifications.getExpoPushTokenAsync({
+        projectId: '76d83a3a-a10d-43fb-a110-e50066ce889f' // Replace with your actual Expo project ID
       });
+    } catch (projectError: any) {
+      // Fallback for when projectId is not configured
+      console.warn('⚠️ Project ID not configured, trying without projectId:', projectError?.message);
       try {
-        getApp();
-      } catch (retryError) {
-        console.error('❌ Firebase still not initialized after retry:', retryError);
+        token = await Notifications.getExpoPushTokenAsync();
+      } catch (fallbackError: any) {
+        console.error('❌ Failed to get Expo push token even with fallback:', fallbackError?.message);
         return null;
       }
     }
-
-    // Retry logic for getting token (in case Firebase messaging isn't ready)
-    let retries = 3;
-    let lastError: any = null;
-    
-    while (retries > 0) {
-      try {
-        const token = await messaging().getToken();
-        if (token) {
-          await AsyncStorage.setItem(STORAGE_KEY, token);
-          console.log('✅ FCM token retrieved successfully');
-          return token;
-        }
-        console.warn('⚠️ FCM token is empty');
-        return null;
-      } catch (e: any) {
-        lastError = e;
-        const errorMessage = e?.message || String(e || '');
-        console.warn(`⚠️ Failed to get FCM token (${retries} retries left):`, errorMessage);
-        
-        retries--;
-        if (retries > 0) {
-          // Wait before retrying (exponential backoff)
-          const delay = (4 - retries) * 500; // 500ms, 1000ms, 1500ms
-          await new Promise<void>((resolve) => {
-            setTimeout(() => {
-              resolve();
-            }, delay);
-          });
-        }
-      }
+    if (token.data) {
+      await AsyncStorage.setItem(STORAGE_KEY, token.data);
+      console.log('✅ Expo push token retrieved successfully');
+      return token.data;
     }
     
-    // All retries failed
-    console.error('❌ Failed to get FCM token after all retries:', lastError);
+    console.warn('⚠️ Expo push token is empty');
     return null;
   } catch (e: any) {
     console.error('❌ Unexpected error in getOrCreateFcmToken:', e?.message || String(e || ''));
@@ -192,15 +160,14 @@ export async function unregisterTokenWithServer(): Promise<void> {
 
 export async function configureNotificationsChannel() {
   try {
-    // Check if React Native is ready by verifying notifee module is available
-    // In background processes, React Native may not be fully initialized yet
-    if (!notifee || typeof notifee.createChannel !== 'function') {
+    // Check if Notifee module is available
+    if (!Notifee || typeof Notifee.createChannel !== 'function') {
       console.warn('⚠️ Notifee not ready, skipping channel configuration');
       return;
     }
 
     // Create default notification channel - SOUND DISABLED
-    await notifee.createChannel({
+    await Notifee.createChannel({
       id: 'default',
       name: 'Default Notifications',
       description: 'General app notifications',
@@ -212,7 +179,7 @@ export async function configureNotificationsChannel() {
     });
     
     // Create calls notification channel with maximum priority for incoming calls - SOUND DISABLED
-    await notifee.createChannel({
+    await Notifee.createChannel({
       id: 'calls',
       name: 'Incoming Calls',
       description: 'Incoming call notifications - full screen alerts',
@@ -227,7 +194,7 @@ export async function configureNotificationsChannel() {
     });
     
     // Also create 'incoming_calls' channel (used by some parts of the code)
-    await notifee.createChannel({
+    await Notifee.createChannel({
       id: 'incoming_calls',
       name: 'Incoming Calls',
       description: 'Incoming call notifications - full screen alerts',
@@ -255,40 +222,53 @@ export async function configureNotificationsChannel() {
 }
 
 export async function displayLocalNotification(title: string, body: string, data: Record<string, string> = {}) {
-  // Check if app is in foreground - if so, skip notification
-  const appState = AppState.currentState;
-  if (appState === 'active') {
-    console.log('📱 App is in foreground - skipping notification:', title);
-    return;
+  try {
+    // Check if app is in foreground - if so, skip notification
+    const appState = AppState.currentState;
+    if (appState === 'active') {
+      console.log('📱 App is in foreground - skipping notification:', title);
+      return;
+    }
+    
+    // Create a unique key for deduplication
+    const notificationKey = `local_${title}_${body}_${JSON.stringify(data)}`;
+    
+    // Check if this notification was recently shown
+    if (isNotificationRecentlyShown(notificationKey)) {
+      console.log('Skipping duplicate local notification:', title);
+      return;
+    }
+
+    await configureNotificationsChannel();
+    
+    // Use expo-notifications if Notifee is not available
+    if (!Notifee) {
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title,
+          body,
+          data: data || {},
+        },
+        trigger: null, // Show immediately
+      });
+      return;
+    }
+    
+    await Notifee.displayNotification({
+      title,
+      body,
+      android: {
+        channelId: 'default',
+        importance: AndroidImportance.HIGH,
+        pressAction: {
+          id: 'default',
+        },
+      },
+      data: data || {},
+    });
+  } catch (error) {
+    console.error('Error displaying notification:', error);
   }
-  
-  // Create a unique key for deduplication
-  const notificationKey = `local_${title}_${body}_${JSON.stringify(data)}`;
-  
-  // Check if this notification was recently shown
-  if (isNotificationRecentlyShown(notificationKey)) {
-    console.log('Skipping duplicate local notification:', title);
-    return;
-  }
-  
-  // TTS disabled - no longer speaking notifications
-  // try {
-  //   await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
-  // } catch (ttsError) {
-  //   console.error('❌ Error speaking notification:', ttsError);
-  // }
-  
-  await configureNotificationsChannel();
-  await notifee.displayNotification({
-    title,
-    body,
-    android: {
-      channelId: 'default',
-      smallIcon: 'ic_notification',
-      pressAction: { id: 'default' },
-    },
-    data,
-  });
 }
 
 // Show a full-screen incoming call notification that opens the IncomingCall screen
@@ -309,7 +289,47 @@ export async function displayIncomingCallNotification(payload: {
 
 // Handle notification events (foreground)
 export function listenNotificationEvents(navigate: (screen: string, params?: any) => void) {
-  return notifee.onForegroundEvent(async ({ type, detail }) => {
+  // Use expo-notifications if Notifee is not available
+  if (!Notifee) {
+    return Notifications.addNotificationResponseReceivedListener(async response => {
+      const data = response.notification.request.content.data || {} as any;
+      if (data.type === 'incoming_call') {
+        // Cancel the notification first
+        if (response.notification.request.identifier) {
+          try { 
+            await Notifications.dismissNotificationAsync(response.notification.request.identifier);
+          } catch (e) {
+            console.error('Error canceling notification:', e);
+          }
+        }
+        
+        // Navigate to IncomingCall screen with auto-accept flag
+        console.log('📞 Navigating to IncomingCall with auto-accept');
+        navigate('Message', {
+          screen: 'IncomingCall',
+          params: {
+            callerId: data.callerId,
+            callerName: data.callerName,
+            callerProfilePic: data.callerProfilePic,
+            channelName: data.channelName,
+            isAudio: data.isAudio === 'true',
+            autoAccept: true,
+          }
+        });
+      } else if (data.type === 'new_message') {
+        // Navigate to SingleMessage screen
+        navigate('Message', {
+          screen: 'SingleMessage',
+          params: {
+            friendId: data.friendId,
+            friendName: data.friendName,
+          }
+        });
+      }
+    });
+  }
+
+  return Notifee.onForegroundEvent(async ({ type, detail }) => {
     if (type === EventType.PRESS) {
       const data = detail.notification?.data || {} as any;
       if (data.type === 'incoming_call') {
@@ -322,7 +342,7 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           // Cancel the notification first
           if (notificationId) {
             try { 
-              await notifee.cancelNotification(notificationId); 
+              await Notifee.cancelNotification(notificationId); 
             } catch (e) {
               console.error('Error canceling notification:', e);
             }
@@ -345,7 +365,7 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           // Cancel the notification
           if (notificationId) {
             try { 
-              await notifee.cancelNotification(notificationId); 
+              await Notifee.cancelNotification(notificationId); 
             } catch (e) {
               console.error('Error canceling notification:', e);
             }
@@ -400,8 +420,8 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
 }
 
 export function listenForegroundMessages() {
-  return messaging().onMessage(async remoteMessage => {
-    const data = (remoteMessage.data || {}) as Record<string, string>;
+  return Notifications.addNotificationResponseReceivedListener(async response => {
+    const data = (response.notification.request.content.data || {}) as Record<string, string>;
     try {
       // Skip visual notifications when app is in foreground
       // But still handle TTS for important messages
@@ -419,30 +439,24 @@ export function listenForegroundMessages() {
       //     data.message || 'New message received'
       //   );
       // } else if (data.type === 'notification' || data.type === 'general') {
-      //   const title = remoteMessage.notification?.title || 'Notification';
-      //   const body = remoteMessage.notification?.body || 'You have a new notification';
+      //   const title = response.notification.request.content.title || 'Notification';
+      //   const body = response.notification.request.content.body || 'You have a new notification';
       //   await backgroundTtsService.speakNotification(title, body, { priority: 'normal' });
       // }
       
       return;
     } catch (e) {
-      console.error('Error processing FCM message:', e);
+      console.error('Error processing notification response:', e);
     }
   });
 }
 
 export function listenTokenRefresh() {
-  return messaging().onTokenRefresh(async newToken => {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEY, newToken);
-      const authToken = await AsyncStorage.getItem('authToken');
-      if (authToken) {
-        await pushAPI.registerToken(newToken, authToken);
-      }
-    } catch (e) {
-      console.error('Error refreshing token:', e);
-    }
-  });
+  // Expo doesn't have token refresh listeners in the same way as Firebase
+  // Return a no-op listener for compatibility
+  return {
+    remove: () => {}
+  };
 }
 
 // Global initialization guard
@@ -523,8 +537,14 @@ export async function requestBatteryOptimizationExemption(): Promise<boolean> {
     return true;
   }
 
+  // Skip if Notifee is not available (Expo Go)
+  if (!Notifee) {
+    console.log('Battery optimization exemption skipped - Notifee not available');
+    return true;
+  }
+
   try {
-    const powerManagerInfo = await notifee.getPowerManagerInfo();
+    const powerManagerInfo = await Notifee.getPowerManagerInfo();
     if (powerManagerInfo.activity) {
       // Device has a power manager that may affect notifications
       console.log('Power manager detected on device');
@@ -550,7 +570,7 @@ export async function requestBatteryOptimizationExemption(): Promise<boolean> {
             text: 'Enable',
             onPress: async () => {
               try {
-                await notifee.openBatteryOptimizationSettings();
+                await Notifee.openBatteryOptimizationSettings();
                 await AsyncStorage.setItem('batteryOptimizationAsked', 'true');
               } catch (e) {
                 console.error('Error opening battery optimization settings:', e);

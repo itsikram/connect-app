@@ -2,7 +2,7 @@ import { createNavigationContainerRef, StackActions, CommonActions } from '@reac
 
 export type RootNavigationParams = Record<string, object | undefined>;
 
-export const navigationRef = createNavigationContainerRef<any>();
+export const navigationRef = createNavigationContainerRef<RootNavigationParams>();
 
 let isReady = false;
 
@@ -16,12 +16,12 @@ export function isNavigationReady() {
 
 export function navigate(name: string, params?: object) {
   if (isNavigationReady()) {
-    navigationRef.navigate(name as never, params as never);
+    navigationRef.navigate(name as keyof RootNavigationParams, params as any);
   } else {
     // Queue a microtask to retry once ready to avoid losing navigation from early events
     queueMicrotask(() => {
       if (isNavigationReady()) {
-        navigationRef.navigate(name as never, params as never);
+        navigationRef.navigate(name as keyof RootNavigationParams, params as any);
       }
     });
   }
@@ -35,7 +35,7 @@ export function dispatch(action: ReturnType<typeof CommonActions.navigate | type
 
 export function reset(state: Parameters<typeof CommonActions.reset>[0]) {
   if (isNavigationReady()) {
-    navigationRef.reset(state);
+    navigationRef.reset(state as any);
   }
 }
 

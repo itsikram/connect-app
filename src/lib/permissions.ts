@@ -1,5 +1,5 @@
 import { Platform, Alert, Linking } from 'react-native';
-import { check, request, PERMISSIONS, RESULTS, Permission } from 'react-native-permissions';
+import * as Notifications from 'expo-notifications';
 import { requestPushPermission } from './push';
 
 export interface PermissionStatus {
@@ -9,81 +9,55 @@ export interface PermissionStatus {
 }
 
 /**
- * Check if a specific permission is granted
- */
-async function checkPermission(permission: Permission): Promise<boolean> {
-  try {
-    const result = await check(permission);
-    return result === RESULTS.GRANTED;
-  } catch (error) {
-    console.error('Error checking permission:', error);
-    return false;
-  }
-}
-
-/**
- * Request a specific permission
- */
-async function requestPermission(permission: Permission): Promise<boolean> {
-  try {
-    const result = await request(permission);
-    return result === RESULTS.GRANTED;
-  } catch (error) {
-    console.error('Error requesting permission:', error);
-    return false;
-  }
-}
-
-/**
- * Check camera permission status
+ * Check camera permission status using Expo
  */
 export async function checkCameraPermission(): Promise<boolean> {
-  const permission = Platform.OS === 'ios' 
-    ? PERMISSIONS.IOS.CAMERA 
-    : PERMISSIONS.ANDROID.CAMERA;
-  return checkPermission(permission);
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
+  } catch (error) {
+    console.error('Error checking camera permission:', error);
+    return false;
+  }
 }
 
 /**
- * Request camera permission
+ * Request camera permission using Expo
  */
 export async function requestCameraPermission(): Promise<boolean> {
-  const permission = Platform.OS === 'ios' 
-    ? PERMISSIONS.IOS.CAMERA 
-    : PERMISSIONS.ANDROID.CAMERA;
-  
-  const isGranted = await checkPermission(permission);
-  if (isGranted) {
-    return true;
+  try {
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  } catch (error) {
+    console.error('Error requesting camera permission:', error);
+    return false;
   }
-  
-  return requestPermission(permission);
 }
 
 /**
- * Check microphone permission status
+ * Check microphone permission status using Expo
  */
 export async function checkMicrophonePermission(): Promise<boolean> {
-  const permission = Platform.OS === 'ios' 
-    ? PERMISSIONS.IOS.MICROPHONE 
-    : PERMISSIONS.ANDROID.RECORD_AUDIO;
-  return checkPermission(permission);
+  try {
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
+  } catch (error) {
+    console.error('Error checking microphone permission:', error);
+    return false;
+  }
 }
 
 /**
- * Request microphone permission
+ * Request microphone permission using Expo
  */
 export async function requestMicrophonePermission(): Promise<boolean> {
-  const permission = Platform.OS === 'ios' 
-    ? PERMISSIONS.IOS.MICROPHONE 
-    : PERMISSIONS.ANDROID.RECORD_AUDIO;
-  
-  const isGranted = await checkPermission(permission);
-  if (isGranted) {
-    return true;
+  try {
+    const { status } = await Notifications.requestPermissionsAsync();
+    return status === 'granted';
+  } catch (error) {
+    console.error('Error requesting microphone permission:', error);
+    return false;
   }
-  
-  return requestPermission(permission);
 }
 
 /**
@@ -91,20 +65,8 @@ export async function requestMicrophonePermission(): Promise<boolean> {
  */
 export async function checkNotificationPermission(): Promise<boolean> {
   try {
-    if (Platform.OS === 'android') {
-      // For Android 13+, we need to check POST_NOTIFICATIONS permission
-      if (Platform.Version >= 33) {
-        const permission = 'android.permission.POST_NOTIFICATIONS' as Permission;
-        const result = await check(permission);
-        return result === RESULTS.GRANTED;
-      }
-      // For older Android versions, notifications are granted by default
-      return true;
-    } else {
-      // For iOS, check notification permission through Firebase messaging
-      // This is handled by the push.ts requestPushPermission function
-      return false; // Always request to check properly
-    }
+    const { status } = await Notifications.getPermissionsAsync();
+    return status === 'granted';
   } catch (error) {
     console.error('Error checking notification permission:', error);
     return false;
@@ -224,7 +186,7 @@ export async function requestAllPermissionsWithAlerts(): Promise<PermissionStatu
             if (deniedPermissions.length > 0) {
               Alert.alert(
                 'Permissions Needed',
-                `Some permissions were not granted: ${deniedPermissions.join(', ')}.\n\n` +
+                `Some permissions were not granted: ${deniedPermissions.join(', ')}\.\n\n` +
                 'You can enable them later in Settings to use all features.',
                 [
                   {

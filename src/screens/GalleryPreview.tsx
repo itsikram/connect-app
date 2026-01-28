@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Platform } from 'react-native';
-import Video from 'react-native-video';
+import { Video, ResizeMode } from 'expo-av';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { deleteMedia, MediaItem } from '../lib/mediaLibrary';
 
@@ -28,7 +28,12 @@ const GalleryPreview = ({ route, navigation }: any) => {
         {item.type === 'image' ? (
           <Image source={{ uri: `file://${item.path}` }} style={styles.media} resizeMode="contain" />
         ) : (
-          <Video source={{ uri: `file://${item.path}` }} style={styles.media} controls resizeMode="contain" />
+          <Video 
+            source={{ uri: `file://${item.path}` }} 
+            style={styles.media} 
+            useNativeControls={true}
+            resizeMode={ResizeMode.CONTAIN} 
+          />
         )}
       </View>
     </View>

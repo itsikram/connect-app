@@ -414,7 +414,7 @@ const styles = StyleSheet.create({
     height: 12,
     borderRadius: 6,
     borderWidth: 2,
-    borderColor: '#fff',
+    borderColor: '#F1F3F4',
   },
   authorName: {
     position: 'absolute',

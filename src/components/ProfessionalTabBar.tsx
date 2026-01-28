@@ -9,9 +9,16 @@ import {
   Platform,
   Vibration,
 } from 'react-native';
+import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import { useTheme } from '../contexts/ThemeContext';
+import AnimatedTabIcon from './AnimatedIcons/AnimatedTabIcon';
+import HomeIconComponent from './AnimatedIcons/HomeIconComponent';
+import FriendsIconComponent from './AnimatedIcons/FriendsIconComponent';
+import VideosIconComponent from './AnimatedIcons/VideosIconComponent';
+import MessageIconComponent from './AnimatedIcons/MessageIconComponent';
+import MenuIconComponent from './AnimatedIcons/MenuIconComponent';
 
 const { width } = Dimensions.get('window');
 
@@ -41,6 +48,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   tabs,
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
+  const insets = useSafeAreaInsets();
   const [isAnimating, setIsAnimating] = useState(false);
   const UNIFORM_TAB_SCALE = 1.25;
   const UNIFORM_TRANSLATE_Y = -10;
@@ -56,6 +64,24 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   const glowAnimations = useRef(
     tabs.map(() => new Animated.Value(0))
   ).current;
+
+  // Icon mapping for animated SVG icons
+  const getAnimatedIcon = (tabName: string) => {
+    switch (tabName) {
+      case 'Home':
+        return HomeIconComponent;
+      case 'Friends':
+        return FriendsIconComponent;
+      case 'Videos':
+        return VideosIconComponent;
+      case 'Message':
+        return MessageIconComponent;
+      case 'Menu':
+        return MenuIconComponent;
+      default:
+        return null;
+    }
+  };
 
   useEffect(() => {
     // Animate the active tab
@@ -105,7 +131,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
     
     // Haptic feedback
     if (tab.haptic !== false && Platform.OS === 'ios') {
-      Vibration.vibrate(15);
+      Vibration.vibrate(0.5);
     }
 
     // Ripple animation
@@ -213,7 +239,44 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
             },
           ]}
         >
-          {/* Glow effect for active tab */}
+          {/* Icon container - rendered above background effects */}
+          <View style={styles.iconContainer}>
+            {getAnimatedIcon(tab.name) ? (
+              <AnimatedTabIcon
+                iconSource={getAnimatedIcon(tab.name)}
+                size={24}
+                isActive={isActive}
+                animatedValue={animatedValues[index]}
+              />
+            ) : (
+              <Animated.View
+                style={[
+                  styles.iconWrapper,
+                  {
+                    backgroundColor: isActive ? themeColors.primary + '30' : 'transparent',
+                    transform: [{ scale: iconScale }],
+                  },
+                ]}
+              >
+                {tab.iconSet === 'fa5' ? (
+                  <FAIcon
+                    name={tab.icon}
+                    size={20}
+                    color={isActive ? themeColors.primary : themeColors.text.secondary}
+                    solid={tab.faStyle === 'solid'}
+                  />
+                ) : (
+                  <MaterialIcon
+                    name={tab.icon}
+                    size={24}
+                    color={isActive ? themeColors.primary : themeColors.text.secondary}
+                  />
+                )}
+              </Animated.View>
+            )}
+          </View>
+
+          {/* Glow effect for active tab - rendered behind icon */}
           {isActive && (
             <Animated.View
               style={[
@@ -227,7 +290,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
             />
           )}
 
-          {/* Ripple effect */}
+          {/* Ripple effect - rendered behind icon */}
           <Animated.View
             style={[
               styles.ripple,
@@ -238,54 +301,16 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
               },
             ]}
           />
-
-          {/* Icon container */}
-          <View style={styles.iconContainer}>
-            <Animated.View
-              style={[
-                styles.iconWrapper,
-                {
-                  backgroundColor: isActive ? themeColors.primary + '30' : 'transparent',
-                  borderWidth: isActive ? 1 : 0,
-                  borderColor: isActive ? themeColors.primary + '55' : 'transparent',
-                  transform: [{ scale: iconScale }],
-                },
-              ]}
-            >
-              <Animated.View
-                style={[
-                  styles.iconInner,
-                  {
-                    backgroundColor: isActive ? themeColors.primary + '20' : 'transparent',
-                  },
-                ]}
-              >
-                {tab.iconSet === 'fa5' ? (
-                  <FAIcon
-                    name={tab.icon as any}
-                    size={22}
-                    solid={tab.faStyle === 'solid' || isActive}
-                    color={isActive ? themeColors.primary : themeColors.gray[500]}
-                  />
-                ) : (
-                  <MaterialIcon
-                    name={tab.icon}
-                    size={24}
-                    color={isActive ? themeColors.primary : themeColors.gray[500]}
-                  />
-                )}
-              </Animated.View>
-            </Animated.View>
-          </View>
-
-          {/* Hide label to match web header icon-only UI */}
         </Animated.View>
       </TouchableOpacity>
     );
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.surface.header }]}>
+    <SafeAreaView 
+      style={[styles.container, { backgroundColor: themeColors.surface.header }]}
+      edges={[ 'left', 'right']}
+    >
       {/* Top gradient border - Removed for cleaner look */}
       {/* <View style={styles.topGradientContainer}>
         <View
@@ -319,26 +344,14 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
       <View style={styles.tabsContainer}>
         {tabs.map((tab, index) => renderTab(tab, index))}
       </View>
-
-      {/* Bottom safe area with gradient */}
-      <View style={styles.bottomContainer}>
-        <View
-          style={[
-            styles.bottomGradient,
-            {
-              backgroundColor: themeColors.surface.header,
-            },
-          ]}
-        />
-      </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: -20,
+    bottom: Platform.OS === 'ios' ? -30 : 30,
     left: 0,
     right: 0,
     borderTopLeftRadius: 0,
@@ -380,17 +393,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     paddingHorizontal: 16,
     paddingTop: 9,
-    paddingBottom: 4,
-    alignItems: 'center',
+    paddingBottom: 0,
     justifyContent: 'center',
+
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 10,
+    paddingBottom: 5,
     position: 'relative',
-    minHeight: 45,
+    minHeight: 55,
   },
   tabContent: {
     alignItems: 'center',
@@ -399,6 +413,7 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     paddingHorizontal: 10,
     paddingVertical: 7,
+    paddingBottom: 0,
     marginVertical: 6,
     position: 'relative',
     overflow: 'hidden',
@@ -428,7 +443,7 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     position: 'relative',
-    marginBottom: 2,
+    marginBottom: 0,
   },
   iconWrapper: {
     width: 30,
@@ -474,15 +489,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 2,
     letterSpacing: 0.3,
-  },
-  bottomContainer: {
-    height: Platform.OS === 'ios' ? 20 : 0,
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    overflow: 'hidden',
-  },
-  bottomGradient: {
-    flex: 1,
   },
 });
 

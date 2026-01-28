@@ -3,7 +3,7 @@ import { View, StyleSheet, StatusBar, Platform, BackHandler, TextInput, Text, To
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import FloatingBackButton from '../components/FloatingBackButton';
-import WebView from 'react-native-webview-proxy';
+import WebView from 'react-native-webview';
 
 const DEFAULT_URL = 'https://www.google.com';
 

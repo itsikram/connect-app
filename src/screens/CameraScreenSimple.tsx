@@ -12,11 +12,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import {
-  Camera,
-  useCameraDevice,
-  useCameraPermission,
-} from 'react-native-vision-camera';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
@@ -26,9 +22,22 @@ type FlashMode = 'off' | 'on' | 'auto';
 
 const CameraScreenSimple = () => {
   const navigation = useNavigation();
-  const camera = useRef<Camera>(null);
+  const camera = useRef<any>(null);
   const isFocused = useIsFocused();
-  const { hasPermission, requestPermission } = useCameraPermission();
+  const [permission, requestPermission] = useCameraPermissions();
+  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+
+  // Request camera permission on mount
+  useEffect(() => {
+    (async () => {
+      if (!permission) {
+        const result = await requestPermission();
+        setHasPermission(result.granted);
+      } else {
+        setHasPermission(permission.granted);
+      }
+    })();
+  }, [permission, requestPermission]);
 
   const [cameraPosition, setCameraPosition] = useState<'back' | 'front'>('back');
   const [flash, setFlash] = useState<FlashMode>('off');
@@ -37,13 +46,8 @@ const CameraScreenSimple = () => {
   const [isCapturing, setIsCapturing] = useState(false);
   const [zoom, setZoom] = useState(1);
 
-  const device = useCameraDevice(cameraPosition);
-
-  useEffect(() => {
-    if (!hasPermission) {
-      requestPermission();
-    }
-  }, [hasPermission]);
+  // Expo Camera handles device selection differently
+  const device = null;
 
   const flipCamera = useCallback(() => {
     setCameraPosition((prev) => (prev === 'back' ? 'front' : 'back'));
@@ -63,44 +67,33 @@ const CameraScreenSimple = () => {
 
     setIsCapturing(true);
     try {
-      const photo = await camera.current.takePhoto({
-        flash: flash === 'off' ? 'off' : flash === 'on' ? 'on' : 'auto',
-        enableShutterSound: true,
+      const photo = await camera.current.takePictureAsync({
+        quality: 0.8,
       });
-
-      console.log('Photo captured:', photo.path);
-      Alert.alert('Success', 'Photo captured!');
+      console.log('Photo captured:', photo.uri);
+      // Handle photo...
     } catch (error) {
       console.error('Failed to take photo:', error);
       Alert.alert('Error', 'Failed to capture photo');
     } finally {
       setIsCapturing(false);
     }
-  }, [camera, flash, isCapturing]);
+  }, [camera, isCapturing]);
 
   const startRecording = useCallback(async () => {
     if (!camera.current || isRecording) return;
 
     try {
       setIsRecording(true);
-      camera.current.startRecording({
-        flash: flash === 'on' ? 'on' : 'off',
-        onRecordingFinished: (video) => {
-          console.log('Video recorded:', video.path);
-          Alert.alert('Success', 'Video recorded!');
-          setIsRecording(false);
-        },
-        onRecordingError: (error) => {
-          console.error('Recording error:', error);
-          Alert.alert('Error', 'Failed to record video');
-          setIsRecording(false);
-        },
-      });
+      const video = await camera.current.recordAsync({});
+      console.log('Video recorded:', video.uri);
+      Alert.alert('Success', 'Video recorded!');
+      setIsRecording(false);
     } catch (error) {
       console.error('Failed to start recording:', error);
       setIsRecording(false);
     }
-  }, [camera, flash, isRecording]);
+  }, [camera, isRecording]);
 
   const stopRecording = useCallback(async () => {
     if (!camera.current || !isRecording) return;
@@ -129,7 +122,12 @@ const CameraScreenSimple = () => {
         <View style={styles.permissionContainer}>
           <IconIonic name="camera-outline" size={80} color="#999" />
           <Text style={styles.permissionText}>Camera permission required</Text>
-          <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+          <TouchableOpacity style={styles.permissionButton} onPress={() => {
+            (async () => {
+              const result = await requestPermission();
+              setHasPermission(result.granted);
+            })();
+          }}>
             <Text style={styles.permissionButtonText}>Grant Permission</Text>
           </TouchableOpacity>
         </View>
@@ -150,15 +148,11 @@ const CameraScreenSimple = () => {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#000" />
 
-      <Camera
+      <CameraView
         ref={camera}
         style={StyleSheet.absoluteFill}
-        device={device}
-        isActive={isFocused}
-        photo={true}
-        video={cameraMode === 'video'}
-        audio={cameraMode === 'video'}
-        zoom={zoom}
+        facing={cameraPosition}
+        mode={cameraMode === 'video' ? 'video' : 'picture'}
       />
 
       {/* Top controls */}

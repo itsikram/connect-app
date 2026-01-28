@@ -95,7 +95,11 @@ export const themes = {
     border: {
       primary: '#E8EAED',
       secondary: '#DADCE0',
+      tertiary: '#F1F3F4',
       focus: '#00D4FF',
+      subtle: 'rgba(0, 0, 0, 0.05)',
+      muted: 'rgba(0, 0, 0, 0.1)',
+      strong: 'rgba(0, 0, 0, 0.2)',
     },
     status: {
       success: '#00C851',
@@ -139,7 +143,11 @@ export const themes = {
     border: {
       primary: '#2F3031',
       secondary: '#3A3B3C',
+      tertiary: '#48484A',
       focus: '#00D4FF',
+      subtle: 'rgba(255, 255, 255, 0.05)',
+      muted: 'rgba(255, 255, 255, 0.1)',
+      strong: 'rgba(255, 255, 255, 0.2)',
     },
     status: {
       success: '#00C851',
@@ -183,7 +191,11 @@ export const themes = {
     border: {
       primary: '#BBDEFB',
       secondary: '#90CAF9',
+      tertiary: '#E3F2FD',
       focus: '#1976D2',
+      subtle: 'rgba(25, 118, 210, 0.05)',
+      muted: 'rgba(25, 118, 210, 0.1)',
+      strong: 'rgba(25, 118, 210, 0.2)',
     },
     status: {
       success: '#2E7D32',
@@ -227,7 +239,11 @@ export const themes = {
     border: {
       primary: '#C8E6C9',
       secondary: '#A5D6A7',
+      tertiary: '#E8F5E8',
       focus: '#2E7D32',
+      subtle: 'rgba(46, 125, 50, 0.05)',
+      muted: 'rgba(46, 125, 50, 0.1)',
+      strong: 'rgba(46, 125, 50, 0.2)',
     },
     status: {
       success: '#2E7D32',
@@ -271,7 +287,11 @@ export const themes = {
     border: {
       primary: '#CE93D8',
       secondary: '#BA68C8',
+      tertiary: '#E1BEE7',
       focus: '#7B1FA2',
+      subtle: 'rgba(123, 31, 162, 0.05)',
+      muted: 'rgba(123, 31, 162, 0.1)',
+      strong: 'rgba(123, 31, 162, 0.2)',
     },
     status: {
       success: '#2E7D32',

@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, PermissionsAndroid, Platform, SafeAreaView, StatusBar, RefreshControl, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, PermissionsAndroid, Platform, StatusBar, RefreshControl, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { listDownloads } from '../lib/downloads';
@@ -10,13 +11,15 @@ let createThumbnail: any = null;
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   CameraRoll = require('@react-native-camera-roll/camera-roll').CameraRoll;
-} catch (_) {
+} catch (error) {
+  console.log('CameraRoll not available:', error.message);
   CameraRoll = null;
 }
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   createThumbnail = require('react-native-create-thumbnail').createThumbnail;
-} catch (_) {
+} catch (error) {
+  console.log('createThumbnail not available:', error.message);
   createThumbnail = null;
 }
 

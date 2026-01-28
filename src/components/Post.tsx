@@ -892,7 +892,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
 const styles = StyleSheet.create({
   postContainer: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     margin: 10,
     borderRadius: 10,
     padding: 10,
@@ -951,7 +951,7 @@ const styles = StyleSheet.create({
     height: 250,
     borderRadius: 175,
     borderWidth: 2,
-    borderColor: '#eee',
+    borderColor: '#E5E5EA',
     marginVertical: 10,
   },
   footer: {
@@ -978,7 +978,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginTop: 6,
-    borderColor: '#eee',
+    borderColor: '#E5E5EA',
     borderRadius: 12,
     overflow: 'visible'
   },
@@ -996,7 +996,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   optionMenu: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingTop: 8,
@@ -1024,7 +1024,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 4,
     borderRadius: 2,
-    backgroundColor: '#E5E5E5',
+    borderColor: '#F1F3F4',
   },
   optionMenuItem: {
     flexDirection: 'row',
@@ -1032,7 +1032,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     paddingHorizontal: 20,
     borderBottomWidth: 1,
-    borderBottomColor: '#F0F0F0',
+    borderBottomColor: '#F1F3F4',
     backgroundColor: 'transparent',
   },
   optionMenuItemDanger: {
@@ -1063,28 +1063,28 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   shareModal: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     padding: 20,
     borderRadius: 10,
     width: '80%',
   },
   shareInput: {
     borderWidth: 1,
-    borderColor: '#ccc',
+    borderColor: '#E5E5EA',
     borderRadius: 8,
     marginVertical: 10,
     padding: 8,
   },
   reactionPopup: {
     flexDirection: 'row',
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 24,
     paddingHorizontal: 10,
     paddingVertical: 6,
     elevation: 8,
     zIndex: 20,
     borderWidth: 1,
-    borderColor: '#e6e6e6',
+    borderColor: '#F1F3F4',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.15,
@@ -1113,8 +1113,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     transform: [{ rotate: '45deg' }],
     marginTop: -8,
-    backgroundColor: '#fff',
-    borderColor: '#e6e6e6',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#F1F3F4',
   },
   reactionButton: {
     width: 44,
@@ -1160,9 +1160,9 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   commentBoxContainer: {
-    backgroundColor: '#f7f7f7',
+    backgroundColor: '#F8F9FA',
     borderTopWidth: 1,
-    borderTopColor: '#eee',
+    borderColor: '#FFFFFF',
     padding: 8,
   },
   commentInputRow: {
@@ -1172,13 +1172,13 @@ const styles = StyleSheet.create({
   },
   commentInput: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F8F9FA',
     borderRadius: 20,
     paddingHorizontal: 16,
     paddingVertical: 10,
     fontSize: 15,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: '#E5E5EA',
     marginRight: 8,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -1187,7 +1187,7 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   commentPostBtn: {
-    backgroundColor: '#29b1a9',
+    backgroundColor: '#007AFF',
     borderRadius: 20,
     paddingVertical: 10,
     paddingHorizontal: 20,
@@ -1224,11 +1224,11 @@ const styles = StyleSheet.create({
   },
   commentBody: {
     flex: 1,
-    backgroundColor: '#ffffff',
+    backgroundColor: '#F8F9FA',
     borderRadius: 12,
     padding: 12,
     borderWidth: 1,
-    borderColor: '#f0f0f0',
+    borderColor: '#F1F3F4',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.05,
@@ -1292,7 +1292,7 @@ const styles = StyleSheet.create({
   },
   // Delete confirmation modal styles
   deleteConfirmModal: {
-    backgroundColor: '#fff',
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     width: '85%',
     maxWidth: 380,
@@ -1350,10 +1350,10 @@ const styles = StyleSheet.create({
   cancelBtn: {
     backgroundColor: 'transparent',
     borderWidth: 1.5,
-    borderColor: '#E5E5E5',
+    borderColor: '#F1F3F4',
   },
   deleteBtn: {
-    backgroundColor: '#FF4444',
+    backgroundColor: '#FF3B30',
     shadowColor: '#FF4444',
     shadowOffset: {
       width: 0,

@@ -277,7 +277,7 @@ const NotificationSettings = () => {
           Manage notification devices registered to your account
         </Text>
         <TouchableOpacity 
-          style={[styles.dangerButton, { backgroundColor: themeColors.error || '#dc3545', opacity: isUnregistering ? 0.6 : 1 }]} 
+          style={[styles.dangerButton, { backgroundColor: themeColors.secondary || '#dc3545', opacity: isUnregistering ? 0.6 : 1 }]} 
           onPress={handleUnregisterAllOtherDevices}
           disabled={isUnregistering}
         >

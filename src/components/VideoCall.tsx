@@ -11,6 +11,7 @@ import {
   StatusBar,
   Image,
   Platform,
+  Linking,
 } from 'react-native';
 import RtcEngine, {
   RtcLocalView,
@@ -26,7 +27,8 @@ import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
-import { request, PERMISSIONS, RESULTS, check } from 'react-native-permissions';
+import * as expoAv from 'expo-av';
+import * as expoCamera from 'expo-camera';
 
 const { width, height } = Dimensions.get('window');
 
@@ -70,49 +72,35 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [remoteFilter, setRemoteFilter] = useState<string>(''); // Filter applied by remote user (affects how I see them)
   const [localRemoteFilter, setLocalRemoteFilter] = useState<string>(''); // Local filter I apply to view remote user (doesn't affect them)
 
-  const engineRef = useRef<RtcEngine | null>(null);
+  const engineRef = useRef<any>(null);
   const isInitializingRef = useRef<boolean>(false);
   const callAcceptedRef = useRef<boolean>(false);
   const lastCallAcceptedTime = useRef<number>(0);
   const localPreviewStarted = useRef<boolean>(false);
 
-  // Request camera and microphone permissions
+  // Request camera and microphone permissions using Expo
   const requestPermissions = async (): Promise<boolean> => {
     try {
       console.log('Requesting camera and microphone permissions...');
       
-      const cameraPermission = Platform.OS === 'ios' 
-        ? PERMISSIONS.IOS.CAMERA 
-        : PERMISSIONS.ANDROID.CAMERA;
-      
-      const microphonePermission = Platform.OS === 'ios' 
-        ? PERMISSIONS.IOS.MICROPHONE 
-        : PERMISSIONS.ANDROID.RECORD_AUDIO;
+      // Use expo-av for audio permissions and expo-camera for camera permissions
+      const [audioPermission, cameraPermission] = await Promise.all([
+        expoAv.Audio.requestPermissionsAsync(),
+        expoCamera.Camera.requestCameraPermissionsAsync()
+      ]);
 
-      // Check current permissions first
-      const cameraStatus = await check(cameraPermission);
-      const microphoneStatus = await check(microphonePermission);
-
-      console.log('Current permissions:', { cameraStatus, microphoneStatus });
-
-      // Request permissions if not already granted
-      const cameraResult = cameraStatus === RESULTS.GRANTED 
-        ? cameraStatus 
-        : await request(cameraPermission);
-      
-      const microphoneResult = microphoneStatus === RESULTS.GRANTED 
-        ? microphoneStatus 
-        : await request(microphonePermission);
-
-      console.log('Permission results:', { cameraResult, microphoneResult });
+      console.log('Permission results:', { 
+        audio: audioPermission.status, 
+        camera: cameraPermission.status 
+      });
 
       // Check if both permissions are granted
-      const hasPermissions = cameraResult === RESULTS.GRANTED && microphoneResult === RESULTS.GRANTED;
+      const hasPermissions = audioPermission.status === 'granted' && cameraPermission.status === 'granted';
 
       if (!hasPermissions) {
         const missingPermissions = [];
-        if (cameraResult !== RESULTS.GRANTED) missingPermissions.push('Camera');
-        if (microphoneResult !== RESULTS.GRANTED) missingPermissions.push('Microphone');
+        if (cameraPermission.status !== 'granted') missingPermissions.push('Camera');
+        if (audioPermission.status !== 'granted') missingPermissions.push('Microphone');
         
         Alert.alert(
           'Permissions Required',
@@ -120,8 +108,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           [
             { text: 'Cancel', onPress: () => endCall() },
             { text: 'Settings', onPress: () => {
-              // You could add a function to open app settings here
-              endCall();
+              Linking.openSettings();
             }}
           ]
         );
@@ -275,7 +262,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
 
       console.log('Creating Agora video engine with App ID:', appId);
-      const engine = await RtcEngine.create(appId);
+      const engine = await (RtcEngine as any).create(appId);
 
       // Enable video and audio (permissions already granted)
       console.log('Enabling video and audio...');
@@ -1310,28 +1297,28 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {callAccepted && (
             <>
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isMuted ? '#666666' : '#29B1A9' }]}
+                style={[styles.controlButton, { backgroundColor: isMuted ? themeColors.text.tertiary : themeColors.primary }]}
                 onPress={toggleMute}
               >
                 <Icon name={isMuted ? 'mic-off' : 'mic'} size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isCameraOn ? '#666666' : '#29B1A9' }]}
+                style={[styles.controlButton, { backgroundColor: isCameraOn ? themeColors.text.tertiary : themeColors.primary }]}
                 onPress={toggleCamera}
               >
                 <Icon name={isCameraOn ? 'videocam' : 'videocam-off'} size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: '#29B1A9' }]}
+                style={[styles.controlButton, { backgroundColor: themeColors.primary }]}
                 onPress={switchCamera}
               >
                 <Icon name="flip-camera-android" size={24} color="white" />
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isScreenSharing ? '#666666' : '#29B1A9' }]}
+                style={[styles.controlButton, { backgroundColor: isScreenSharing ? themeColors.text.tertiary : themeColors.primary }]}
                 onPress={toggleScreenShare}
               >
                 <Icon name={isScreenSharing ? "stop-screen-share" : "screen-share"} size={24} color="white" />
@@ -1402,7 +1389,7 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: '#FFD700',
+    backgroundColor: '#FF9500',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -1437,7 +1424,7 @@ const styles = StyleSheet.create({
   },
   remoteVideo: {
     flex: 1,
-    backgroundColor: '#000',
+    backgroundColor: '#000000',
     width: '100%',
     height: '100%',
   },
@@ -1450,9 +1437,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
     zIndex: 10,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: '#1C1C1E',
     borderWidth: 2,
-    borderColor: '#29B1A9',
+    borderColor: '#007AFF',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -1465,7 +1452,7 @@ const styles = StyleSheet.create({
   localVideo: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#333',
+    backgroundColor: '#1C1C1E',
   },
   meIndicator: {
     position: 'absolute',
@@ -1503,7 +1490,7 @@ const styles = StyleSheet.create({
     // contrast(1.25) saturate(1.35) brightness(1.08) hue-rotate(8deg) sepia(0.12)
     opacity: 1.0,
     borderWidth: 3,
-    borderColor: '#FF6B35', // Apple's vivid orange-red accent
+    borderColor: '#FF3B30',
     shadowColor: '#FF6B35',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.6,
@@ -1514,7 +1501,7 @@ const styles = StyleSheet.create({
     // Warm: contrast(1.15) saturate(1.3) brightness(1.05) hue-rotate(10deg) sepia(0.15)
     opacity: 1.0,
     borderWidth: 3,
-    borderColor: '#FF8C00', // Dark orange border for warm
+    borderColor: '#FF9500',
     shadowColor: '#FF8C00',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
@@ -1525,7 +1512,7 @@ const styles = StyleSheet.create({
     // Cool: contrast(1.1) saturate(1.2) brightness(1.1) hue-rotate(-5deg) sepia(0.05)
     opacity: 1.0,
     borderWidth: 3,
-    borderColor: '#00BFFF', // Deep sky blue border for cool
+    borderColor: '#007AFF',
     shadowColor: '#00BFFF',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,
@@ -1536,7 +1523,7 @@ const styles = StyleSheet.create({
     // Dramatic: contrast(1.3) saturate(1.5) brightness(1.05) hue-rotate(8deg) sepia(0.2)
     opacity: 1.0,
     borderWidth: 3,
-    borderColor: '#FF4500', // Orange red border for dramatic
+    borderColor: '#FF3B30',
     shadowColor: '#FF4500',
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.5,

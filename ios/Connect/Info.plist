@@ -82,6 +82,10 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>audio</string>
+		<string>background-fetch</string>
+		<string>background-processing</string>
+		<string>remote-notification</string>
+		<string>voip</string>
 	</array>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-8953965236531270~4949960103</string>

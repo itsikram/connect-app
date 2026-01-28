@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Dimensions, Alert, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import Video from 'react-native-video';
+import { Video, ResizeMode } from 'expo-av';
 import { deleteMedia, listMedia, MediaItem } from '../lib/mediaLibrary';
 
 const { width } = Dimensions.get('window');
@@ -47,7 +47,14 @@ const GalleryScreen = ({ navigation }: any) => {
         <Image source={{ uri: `file://${item.path}` }} style={styles.thumb} resizeMode="cover" />
       ) : (
         <View style={styles.thumb}>
-          <Video source={{ uri: `file://${item.path}` }} style={styles.thumb} muted resizeMode="cover" repeat />
+          <Video 
+            source={{ uri: `file://${item.path}` }} 
+            style={styles.thumb} 
+            resizeMode={ResizeMode.COVER} 
+            isLooping
+            shouldPlay={false}
+            isMuted={true}
+          />
           <View style={styles.playBadge}><Icon name="play-arrow" size={18} color="#fff" /></View>
         </View>
       )}
