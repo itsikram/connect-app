@@ -79,6 +79,7 @@ yarn-error.log
 dist/
 web-build/
 credentials.json
+service-account.json
 .env
 .env.*
 !.env.example
