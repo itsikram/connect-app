@@ -19,9 +19,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.connect.app",
       "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to save and play downloaded videos.",
+        "NSPhotoLibraryAddUsageDescription": "This app saves downloaded YouTube videos to your Photos library.",
         "NSCameraUsageDescription": "This app uses the camera to take photos and videos.",
         "NSMicrophoneUsageDescription": "This app uses the microphone to record audio.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to photo library to select images.",
         "UIBackgroundModes": [
           "audio",
           "background-fetch",
@@ -38,6 +39,10 @@
       },
       "package": "com.connect.app",
       "permissions": [
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "CAMERA",
         "RECORD_AUDIO",
         "READ_EXTERNAL_STORAGE",
@@ -62,6 +67,15 @@
       "expo-file-system",
       "expo-notifications",
       "expo-av",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Connect to access your photos and videos so downloaded files can be saved and played.",
+          "savePhotosPermission": "Allow Connect to save downloaded videos to Photos and Gallery.",
+          "isAccessMediaLocationEnabled": true,
+          "granularPermissions": ["video", "audio", "photo"]
+        }
+      ],
       [
         "expo-background-fetch",
         {

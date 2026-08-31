@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, PermissionsA
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
-import { listDownloads } from '../lib/downloads';
+import { listDownloads, toFileUri } from '../lib/downloads';
 
 // Use CameraRoll to fetch device videos
 let CameraRoll: any = null;
@@ -52,7 +52,7 @@ const VideoLibraryScreen = ({ navigation }: any) => {
   const [hasNextPage, setHasNextPage] = useState(true);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [downloads, setDownloads] = useState<Array<{ name: string; path: string }>>([]);
+  const [downloads, setDownloads] = useState<Array<{ name: string; path: string; uri: string }>>([]);
   const [downloadDurations, setDownloadDurations] = useState<Record<string, number>>({});
 
   const requestPermissions = useCallback(async () => {
@@ -112,7 +112,7 @@ const VideoLibraryScreen = ({ navigation }: any) => {
       }
       try {
         const files = await listDownloads();
-        setDownloads(files.map(f => ({ name: f.name, path: f.path })));
+        setDownloads(files.map(f => ({ name: f.name, path: f.path, uri: f.uri })));
       } catch (_) {}
     })();
   }, [requestPermissions, loadPage]);
@@ -124,7 +124,7 @@ const VideoLibraryScreen = ({ navigation }: any) => {
     await loadPage(true);
     try {
       const files = await listDownloads();
-      setDownloads(files.map(f => ({ name: f.name, path: f.path })));
+      setDownloads(files.map(f => ({ name: f.name, path: f.path, uri: f.uri })));
     } catch (_) {}
     setRefreshing(false);
   }, [loadPage]);
@@ -136,7 +136,7 @@ const VideoLibraryScreen = ({ navigation }: any) => {
       for (const d of downloads) {
         if (downloadDurations[d.path] != null) continue;
         try {
-          const res = await createThumbnail({ url: `file://${d.path}`, timeStamp: 0 });
+          const res = await createThumbnail({ url: toFileUri(d.path), timeStamp: 0 });
           const seconds = res?.duration ? Math.round(Number(res.duration) / 1000) : undefined;
           if (seconds && isFinite(seconds)) {
             setDownloadDurations(prev => ({ ...prev, [d.path]: seconds }));
@@ -149,7 +149,7 @@ const VideoLibraryScreen = ({ navigation }: any) => {
   const allItems: VideoAsset[] = React.useMemo(() => {
     const dlAsAssets: VideoAsset[] = downloads.map((d) => ({
       id: `dl:${d.path}`,
-      uri: `file://${d.path}`,
+      uri: toFileUri(d.uri || d.path),
       filename: d.name,
       isDownloaded: true,
       duration: downloadDurations[d.path],
@@ -160,7 +160,7 @@ const VideoLibraryScreen = ({ navigation }: any) => {
   const renderItem = ({ item }: { item: VideoAsset }) => (
     <TouchableOpacity
       style={{ width: THUMB, height: THUMB * 1.3, margin: GUTTER }}
-      onPress={() => navigation.navigate('Menu', { screen: 'MediaPlayer', params: { source: { type: 'video', uri: item.uri, title: item.filename } } })}
+      onPress={() => navigation.navigate('MediaPlayer', { source: { type: 'video', uri: toFileUri(item.uri), title: item.filename } })}
       activeOpacity={0.9}
     >
       <Image source={{ uri: item.uri }} style={{ width: '100%', height: '100%', borderRadius: 12, backgroundColor: '#111' }} resizeMode="cover" />

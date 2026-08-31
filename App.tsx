@@ -26,6 +26,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import Home from './src/screens/Home';
 import Message from './src/screens/Message';
 import Menu from './src/screens/Menu';
+import YouTubeScreen from './src/screens/YouTubeScreen';
 import Settings from './src/screens/Settings';
 import MyProfile from './src/screens/MyProfile';
 import Friends from './src/screens/Friends';
@@ -130,7 +131,7 @@ function FriendsStack() {
 }
 
 // Safe dynamic import wrapper for screens that might fail to load
-const SafeScreen = React.memo(({ screenName, navigation }: { screenName: string; navigation: any }) => {
+const SafeScreen = React.memo(({ screenName, navigation, route, ...rest }: { screenName: string; navigation: any; route?: any } & Record<string, any>) => {
   const [ScreenComponent, setScreenComponent] = React.useState<React.ComponentType<any> | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -196,7 +197,7 @@ const SafeScreen = React.memo(({ screenName, navigation }: { screenName: string;
     );
   }
 
-  return <ScreenComponent />;
+  return <ScreenComponent navigation={navigation} route={route} {...rest} />;
 });
 
 function MenuStack() {
@@ -217,9 +218,7 @@ function MenuStack() {
       <Stack.Screen name="Facebook">
         {(props) => <SafeScreen {...props} screenName="Facebook" />}
       </Stack.Screen>
-      <Stack.Screen name="YouTube">
-        {(props) => <SafeScreen {...props} screenName="YouTube" />}
-      </Stack.Screen>
+      <Stack.Screen name="YouTube" component={YouTubeScreen} />
       <Stack.Screen name="VpnBrowser">
         {(props) => <SafeScreen {...props} screenName="VpnBrowser" />}
       </Stack.Screen>

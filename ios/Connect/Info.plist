@@ -38,6 +38,10 @@
 	<string>This app needs access to camera to make video calls</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This app needs access to microphone to make voice and video calls</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your photo library to save and play downloaded videos.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app saves downloaded YouTube videos to your Photos library.</string>
 	<key>NSUserNotificationsUsageDescription</key>
 	<string>This app needs to send you notifications to alert you of new messages and calls</string>
 	<key>UILaunchStoryboardName</key>

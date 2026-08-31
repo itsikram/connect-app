@@ -69,10 +69,20 @@ const MediaPlayer = ({ route, navigation }: any) => {
     });
   };
 
+  useEffect(() => {
+    Audio.setAudioModeAsync({
+      playsInSilentModeIOS: true,
+      allowsRecordingIOS: false,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    }).catch(() => {});
+  }, []);
+
   const seekTo = (seconds: number) => {
     if (!playerRef.current) return;
     try {
-      playerRef.current.seek(seconds);
+      playerRef.current.setPositionAsync(Math.max(0, seconds) * 1000);
     } catch (_) {}
   };
 
@@ -205,6 +215,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
             shouldPlay={!paused}
             isMuted={muted}
             isLooping={loop}
+            resizeMode={ResizeMode.CONTAIN}
             useNativeControls={false}
             onPlaybackStatusUpdate={status => {
               if (status.isLoaded) {
