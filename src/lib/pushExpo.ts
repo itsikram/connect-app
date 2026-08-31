@@ -10,7 +10,13 @@ const STORAGE_KEY = 'fcmToken';
 // Initialize notifications
 export const initializeNotifications = async () => {
   try {
-    await Notifications.requestPermissionsAsync();
+    await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
     console.log('✅ Notifications initialized');
   } catch (error) {
     console.error('❌ Failed to initialize notifications:', error);
@@ -111,9 +117,26 @@ export const configureNotificationsChannel = async () => {
     
     await Notifications.setNotificationChannelAsync('calls', {
       name: 'Calls',
-      importance: Notifications.AndroidImportance.HIGH,
-      vibrationPattern: [0, 250, 250, 250],
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 400, 200, 400],
       sound: 'default',
+      bypassDnd: true,
+    });
+    await Notifications.setNotificationChannelAsync('incoming_calls', {
+      name: 'Incoming Calls',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 400, 200, 400],
+      sound: 'default',
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    });
+    await Notifications.setNotificationChannelAsync('incoming_calls_v3', {
+      name: 'Incoming Calls',
+      importance: Notifications.AndroidImportance.MAX,
+      vibrationPattern: [0, 400, 200, 400],
+      sound: 'default',
+      bypassDnd: true,
+      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
   } catch (error) {
     console.error('❌ Failed to configure notification channels:', error);

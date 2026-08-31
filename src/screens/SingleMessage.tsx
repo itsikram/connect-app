@@ -7,7 +7,6 @@ import {
     FlatList,
     KeyboardAvoidingView,
     Platform,
-    SafeAreaView,
     StatusBar,
     Alert,
     Modal,
@@ -30,11 +29,12 @@ import { Video, Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
 // Audio recording functionality moved to expo-av
 import { useTheme } from '../contexts/ThemeContext';
-import { ChatHeaderSkeleton, ChatBubblesSkeleton } from '../components/skeleton/ChatSkeleton';
+import { ChatBubblesSkeleton, ChatComposerSkeleton, ChatPageSkeleton } from '../components/skeleton/ChatSkeleton';
 import { SkeletonBlock } from '../components/skeleton/Skeleton';
 import UserPP from '../components/UserPP';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
+import { getProfileImageSource, googleImageWebProps } from '../lib/profileImage';
 import { markMessagesAsRead, addNewMessage, updateUnreadMessageCount } from '../reducers/chatReducer';
 import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
@@ -49,10 +49,11 @@ import config from '../lib/config';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 import LiveVoiceModal from '../components/LiveVoiceModal';
 import useFriendChatSettings from '../hooks/useFriendChatSettings';
-import { isRomanticMessage } from '../utils/chatThemes';
+import { isRomanticMessage, QUICK_REACTION_PRESETS } from '../utils/chatThemes';
 import ChatSettingsModal from '../components/ChatSettingsModal';
 import LoveEmojiRain from '../components/LoveEmojiRain';
 import { LinearGradient } from 'expo-linear-gradient';
+import { upsertConfirmedMessage } from '../utils/optimisticMessage';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 
@@ -71,7 +72,23 @@ interface Message {
     messageType?: 'text' | 'call' | 'audio';
     callType?: 'audio' | 'video';
     callEvent?: 'missed' | 'ended' | 'declined' | 'started';
+    isOptimistic?: boolean;
+    sendFailed?: boolean;
 }
+
+const COMPOSER_INSERT_EMOJIS = [
+    ...QUICK_REACTION_PRESETS,
+    '😊',
+    '😢',
+    '🙏',
+    '🎉',
+    '💯',
+    '🌹',
+    '🫶',
+    '😅',
+    '😎',
+    '🥺',
+];
 
 // Function to validate if a string is a valid image URL
 const isValidImageUrl = (url: string): boolean => {
@@ -83,6 +100,30 @@ const isValidImageUrl = (url: string): boolean => {
 const isAudioUrl = (url: string): boolean => {
     if (typeof url !== 'string') return false;
     return /^https?:\/\/.+\.(mp3|m4a|aac|ogg|oga|opus|wav|webm)$/i.test(url);
+};
+
+const getMessageTime = (timestamp: Date | string) => {
+    const inputDate = moment(timestamp);
+    return inputDate.isValid() ? inputDate.format('DD/MM/YY hh:mm A') : '';
+};
+
+const formatHeaderLastSeen = (lastSeenValue?: string | Date | null) => {
+    if (!lastSeenValue) return '';
+    const lastSeenTimeStamp = moment(lastSeenValue);
+    if (!lastSeenTimeStamp.isValid()) return '';
+    const diffDays = moment().diff(lastSeenTimeStamp, 'days');
+    if (diffDays === 0) return lastSeenTimeStamp.format('hh:mm A');
+    if (diffDays > 365) return lastSeenTimeStamp.format('MM/YY hh:mm A');
+    return lastSeenTimeStamp.format('DD/MM hh:mm A');
+};
+
+const getMessageSnippet = (msg: any) => {
+    const text = String(msg?.message || msg?.body || '').trim();
+    if (text) return text;
+    if (msg?.messageType === 'call') return msg?.message || 'Call';
+    if (msg?.messageType === 'audio' || isAudioUrl(msg?.attachment || '')) return 'Voice message';
+    if (typeof msg?.attachment === 'string' && isValidImageUrl(msg.attachment)) return 'Photo';
+    return 'Message';
 };
 
 
@@ -126,14 +167,14 @@ const SingleMessage = () => {
     useFocusEffect(
         React.useCallback(() => {
             try {
-                StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
+                StatusBar.setBarStyle('light-content');
                 if (Platform.OS === 'android') {
-                    StatusBar.setTranslucent(false);
-                    StatusBar.setBackgroundColor(themeColors.background.primary);
+                    StatusBar.setTranslucent(true);
+                    StatusBar.setBackgroundColor('transparent');
                 }
             } catch (e) {}
             return () => {};
-        }, [isDarkMode, themeColors.background.primary])
+        }, [chatTheme.colors.headerBg])
     );
 
     // Add state for context menu
@@ -528,11 +569,25 @@ const SingleMessage = () => {
     const [isTyping, setIsTyping] = useState(false);
     const [typingMessage, setTypingMessage] = useState('');
     const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
+    const [emojiPanelOpen, setEmojiPanelOpen] = useState(false);
+    const [showAttachTray, setShowAttachTray] = useState(false);
+    const [showMicMenu, setShowMicMenu] = useState(false);
+    const [micMenuView, setMicMenuView] = useState<'main' | 'transcribe'>('main');
+    const [editReactionOpen, setEditReactionOpen] = useState(false);
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
     const scrollOffsetRef = useRef<number>(0);
     const lastLoadTimestampRef = useRef<number>(0);
     const visibleMessageIdRef = useRef<string | null>(null);
+    const isSendingRef = useRef(false);
+    const isNearBottomRef = useRef(true);
+    const pendingScrollToBottomRef = useRef(true);
+    const [lockVisibleOnPrepend, setLockVisibleOnPrepend] = useState(false);
+    const [composerHeight, setComposerHeight] = useState(72);
+    const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const incomingTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const isTypingOutgoingRef = useRef(false);
+    const lastTypingEmitRef = useRef(0);
 
     // Pagination state for loading old messages
     const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
@@ -711,6 +766,9 @@ const SingleMessage = () => {
         setMessages([]);
         setCurrentPage(0);
         setIsInitialLoading(true);
+        pendingScrollToBottomRef.current = true;
+        isNearBottomRef.current = true;
+        setLockVisibleOnPrepend(false);
         
         console.log('Loading messages for friend:', friend._id);
         
@@ -853,24 +911,13 @@ const SingleMessage = () => {
                 reacts: newMessage.reacts || [],
                 isSeen: newMessage.isSeen,
                 timestamp: newMessage.timestamp.toISOString(),
-                __v: 0
+                __v: 0,
+                messageType: newMessage.messageType,
+                callType: newMessage.callType,
+                callEvent: newMessage.callEvent,
             };
 
-            setMessages(prev => {
-                const tempId = newMessage.tempId;
-                if (tempId) {
-                    const index = prev.findIndex(msg => msg.tempId && msg.tempId === tempId);
-                    if (index !== -1) {
-                        const updated = [...prev];
-                        updated[index] = newMessage;
-                        return updated;
-                    }
-                }
-                if (prev.some(msg => msg._id === newMessage._id)) {
-                    return prev;
-                }
-                return [...prev, newMessage];
-            });
+            setMessages(prev => upsertConfirmedMessage(prev, newMessage, newMessage.tempId));
 
             if (newMessage.tempId) {
                 setPendingMessages(prev => prev.filter(msg => msg.tempId !== newMessage.tempId));
@@ -895,27 +942,45 @@ const SingleMessage = () => {
         };
 
         const handleReceiveTyping = (typingData: any) => {
-            console.log('Typing:', typingData);
-            setIsTyping(typingData.isTyping);
-            setTypingMessage(typingData.type || '');
+            if (String(typingData?.receiverId) !== String(myProfile?._id)) return;
+            if (typingData?.senderId && String(typingData.senderId) !== String(friend?._id)) return;
 
-            setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
-
+            if (typingData?.isTyping) {
+                setIsTyping(true);
+                setTypingMessage(typeof typingData.type === 'string' ? typingData.type : '');
+                if (incomingTypingTimeoutRef.current) {
+                    clearTimeout(incomingTypingTimeoutRef.current);
+                }
+                incomingTypingTimeoutRef.current = setTimeout(() => {
+                    setIsTyping(false);
+                    setTypingMessage('');
+                    incomingTypingTimeoutRef.current = null;
+                }, 1800);
+            } else {
+                setIsTyping(false);
+                setTypingMessage('');
+                if (incomingTypingTimeoutRef.current) {
+                    clearTimeout(incomingTypingTimeoutRef.current);
+                    incomingTypingTimeoutRef.current = null;
+                }
+            }
         };
 
-        const handleSeenMessage = (message: any) => {
-            console.log('Seen message:', message, messages);
-
+        const handleSeenMessage = (data: any) => {
+            const seenId = data?.messageId || data?._id;
+            if (!seenId) return;
             setMessages((prevMessages) =>
-                prevMessages.map((msg) =>
-                    msg._id === message._id ? { ...msg, isSeen: true } : msg
-                )
+                prevMessages.map((msg) => {
+                    if (!msg) return msg;
+                    if (String(msg._id) === String(seenId)) {
+                        return { ...msg, isSeen: true };
+                    }
+                    if (String(msg.senderId) === String(myProfile?._id) && msg.isSeen !== true) {
+                        return { ...msg, isSeen: true };
+                    }
+                    return msg;
+                })
             );
-            setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-            }, 100);
         };
 
         const handleEmotionChange = (payload: any) => {
@@ -972,17 +1037,11 @@ const SingleMessage = () => {
         on('friend_location_update', handleFriendLocationUpdate);
 
         const handleMessageSeenRest = (data: any) => {
-            const messageId = data?.messageId || data?._id;
-            if (!messageId) return;
-            setMessages((prevMessages) =>
-                prevMessages.map((msg) =>
-                    String(msg._id) === String(messageId) ? { ...msg, isSeen: true } : msg
-                )
-            );
+            handleSeenMessage(data);
         };
 
         on('seenMessage', handleSeenMessage);
-        on('messageSeen', handleMessageSeenRest);
+        on('messageSeen', handleSeenMessage);
 
         on('newMessage', handleNewMessage);
         on('newMessageToUser', handleNewMessage);
@@ -1003,11 +1062,15 @@ const SingleMessage = () => {
             off('messageSent', handleNewMessage);
             off('typing', handleReceiveTyping);
             off('seenMessage', handleSeenMessage);
-            off('messageSeen', handleMessageSeenRest);
+            off('messageSeen', handleSeenMessage);
             off('previousMessages', handlePreviousMessages);
             off('emotion_change', handleEmotionChange);
             off('friend_location_update', handleFriendLocationUpdate);
             off('deleteMessage', handleDeleteMessage);
+            if (incomingTypingTimeoutRef.current) {
+                clearTimeout(incomingTypingTimeoutRef.current);
+                incomingTypingTimeoutRef.current = null;
+            }
         };
     }, [isConnected, myProfile?._id, friend?._id, on, off, isLiveVoiceActive]);
 
@@ -1965,30 +2028,53 @@ const SingleMessage = () => {
                 });
             }
             
-            return () => { isActive = false; };
-        }, [friend?._id, myProfile?._id, dispatch, settings.settings?.isShareEmotion])
+            pendingScrollToBottomRef.current = true;
+            isNearBottomRef.current = true;
+            const jumpToLatest = () => {
+                if (!isActive) return;
+                if (isInitialLoading) return;
+                flatListRef.current?.scrollToEnd({ animated: false });
+            };
+            const t1 = setTimeout(jumpToLatest, 50);
+            const t2 = setTimeout(jumpToLatest, 300);
+
+            return () => {
+                isActive = false;
+                clearTimeout(t1);
+                clearTimeout(t2);
+            };
+        }, [friend?._id, myProfile?._id, dispatch, settings.settings?.isShareEmotion, isInitialLoading])
     );
 
-    // Debug pagination state
-    useEffect(() => {
-        console.log('Pagination state changed:', { 
-            isLoadingOldMessages, 
-            hasMoreMessages, 
-            currentPage, 
-            messagesLength: messages.length 
-        });
-    }, [isLoadingOldMessages, hasMoreMessages, currentPage, messages.length]);
+    const scrollToBottom = React.useCallback((animated = false) => {
+        const list = flatListRef.current;
+        if (!list) return;
+        try {
+            list.scrollToEnd({ animated });
+        } catch (_) {}
+    }, []);
 
     useEffect(() => {
-        // Scroll to bottom when new messages arrive
-        if (messages.length > 0) {
-            // Use a shorter timeout for faster response
-            const timeoutId = setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-            }, 50);
+        if (isInitialLoading || messages.length === 0) return;
+
+        if (pendingScrollToBottomRef.current) {
+            const t1 = setTimeout(() => scrollToBottom(false), 16);
+            const t2 = setTimeout(() => {
+                scrollToBottom(false);
+                pendingScrollToBottomRef.current = false;
+                setLockVisibleOnPrepend(true);
+            }, 280);
+            return () => {
+                clearTimeout(t1);
+                clearTimeout(t2);
+            };
+        }
+
+        if (isNearBottomRef.current) {
+            const timeoutId = setTimeout(() => scrollToBottom(true), 50);
             return () => clearTimeout(timeoutId);
         }
-    }, [messages.length]);
+    }, [messages.length, isInitialLoading, friend?._id, scrollToBottom]);
 
     // Track which messages we've already emitted seen for (avoid duplicate emits)
     const seenEmittedRef = useRef<Set<string>>(new Set());
@@ -2067,107 +2153,149 @@ const SingleMessage = () => {
         setLoveRainBurst((n) => n + 1);
     };
 
-    const sendMessage = () => {
-        console.log('Sending message:', inputText.trim());
-        if ((inputText.trim() || pendingAttachment) && isConnected && !isUploading) {
-            const tempId = Date.now().toString();
-            const messageContent = inputText.trim();
-            
-            // Create the message object
-            const pendingMessage: Message = {
-                _id: tempId,
-                message: messageContent,
-                receiverId: friend?._id,
-                senderId: myProfile?._id,
-                room,
-                attachment: pendingAttachment || undefined,
-                timestamp: new Date(),
-                isSeen: false,
-                tempId,
-                parent: replyingTo || undefined,
-            };
-            
-            // Add message to messages immediately for instant UI update
-            setMessages(prev => [...prev, pendingMessage]);
-            
-            // Also add to pending messages for tracking (will be removed when server confirms)
-            setPendingMessages(prev => [...prev, pendingMessage]);
-            
-            // Clear input immediately
-            setInputText('');
-            
-            // Immediate scroll attempt (useEffect will also handle it as backup)
-            setTimeout(() => {
-                flatListRef.current?.scrollToEnd({ animated: true });
-            }, 50);
+    const sendMessage = (overrides?: { message?: string }) => {
+        const messageContent = (overrides?.message ?? inputText).trim();
+        if ((!messageContent && !pendingAttachment) || !isConnected || isUploading) return;
+        if (isSendingRef.current) return;
+        if (!friend?._id || !myProfile?._id) return;
 
-            // Send message through socket
-            emit('sendMessage', {
-                room,
-                senderId: myProfile?._id,
-                receiverId: friend?._id,
-                message: messageContent,
-                attachment: pendingAttachment || undefined,
-                parent: replyingTo?._id || false,
-                messageType: 'text',
-                tempId,
-                timestamp: new Date().toISOString()
-            });
-
-            console.log('Message sent:', messageContent);
-            triggerLoveRain(messageContent);
-            setPendingAttachment(null);
-            setPendingAttachmentLocal(null);
-            setUploadProgress(null);
-            setIsUploading(false);
-            setReplyingTo(null);
-            if (activeSwipeId) {
-                const ref = swipeableRefs.current.get(activeSwipeId);
-                try { ref?.close && ref.close(); } catch (e) { }
-                setActiveSwipeId(null);
-            }
-        }
-    };
-
-    const handleTyping = () => {
-        emit('typing', { room, isTyping: true, type: inputText.trim(), receiverId: friend?._id, senderId: myProfile?._id });
-
-        setTimeout(() => {
-
-            emit('typing', { room, isTyping: false, type: '', receiverId: friend?._id, senderId: myProfile?._id });
-        }, 5000);
-    };
-
-    const handleEmojiPress = () => {
-        const emoji = chatAppearance?.actionEmoji || '👍';
-        if (!isConnected || !friend?._id) return;
-        const tempId = Date.now().toString();
+        const roomId = room || [myProfile._id, friend._id].sort().join('_');
+        isSendingRef.current = true;
+        const tempId = `temp-${Date.now()}-${Math.random()}`;
         const pendingMessage: Message = {
             _id: tempId,
-            message: emoji,
-            receiverId: friend?._id,
-            senderId: myProfile?._id,
-            room,
+            message: messageContent,
+            receiverId: friend._id,
+            senderId: myProfile._id,
+            room: roomId,
+            attachment: pendingAttachment || undefined,
             timestamp: new Date(),
             isSeen: false,
             tempId,
+            parent: replyingTo || undefined,
+            isOptimistic: true,
+            sendFailed: false,
         };
+
         setMessages(prev => [...prev, pendingMessage]);
-        setPendingMessages(prev => [...prev, pendingMessage]);
-        emit('sendMessage', {
-            room,
-            senderId: myProfile?._id,
-            receiverId: friend?._id,
-            message: emoji,
-            messageType: 'text',
-            tempId,
-            timestamp: new Date().toISOString(),
-        });
-        triggerLoveRain(emoji);
+        setInputText('');
+        setEmojiPanelOpen(false);
+        setShowAttachTray(false);
+        setShowMicMenu(false);
+        stopTyping();
+        isNearBottomRef.current = true;
         setTimeout(() => {
             flatListRef.current?.scrollToEnd({ animated: true });
         }, 50);
+
+        const payload = {
+            room: roomId,
+            senderId: myProfile._id,
+            receiverId: friend._id,
+            message: messageContent,
+            attachment: pendingAttachment || false,
+            parent: replyingTo?._id || false,
+            messageType: 'text',
+            tempId,
+            timestamp: new Date().toISOString(),
+        };
+
+        const failTimer = setTimeout(() => {
+            setMessages(prev =>
+                prev.map((msg) =>
+                    (msg._id === tempId || msg.tempId === tempId) && msg.isOptimistic
+                        ? { ...msg, sendFailed: true }
+                        : msg,
+                ),
+            );
+        }, 10000);
+
+        emit('sendMessage', payload, (response: any) => {
+            clearTimeout(failTimer);
+            if (!response) return;
+            if (response.ok === false || response.blocked) {
+                setMessages(prev => prev.filter(msg => msg._id !== tempId && msg.tempId !== tempId));
+                Alert.alert('Message not sent', response.reason || response.error || 'This message could not be delivered.');
+                return;
+            }
+            if (response.updatedMessage) {
+                setMessages(prev => upsertConfirmedMessage(prev, {
+                    ...response.updatedMessage,
+                    timestamp: new Date(response.updatedMessage.timestamp || Date.now()),
+                    tempId,
+                }, tempId));
+            }
+        });
+
+        triggerLoveRain(messageContent);
+        setPendingAttachment(null);
+        setPendingAttachmentLocal(null);
+        setUploadProgress(null);
+        setIsUploading(false);
+        setReplyingTo(null);
+        if (activeSwipeId) {
+            const ref = swipeableRefs.current.get(activeSwipeId);
+            try { ref?.close && ref.close(); } catch (e) { }
+            setActiveSwipeId(null);
+        }
+
+        setTimeout(() => {
+            isSendingRef.current = false;
+        }, 400);
     };
+
+    const stopTyping = () => {
+        if (typingTimeoutRef.current) {
+            clearTimeout(typingTimeoutRef.current);
+            typingTimeoutRef.current = null;
+        }
+        if (isTypingOutgoingRef.current) {
+            const roomId = room || [myProfile?._id, friend?._id].filter(Boolean).sort().join('_');
+            emit('typing', { room: roomId, isTyping: false, type: '', receiverId: friend?._id, senderId: myProfile?._id });
+            isTypingOutgoingRef.current = false;
+        }
+    };
+
+    const handleInputChange = (value: string) => {
+        setInputText(value);
+        const showTyping = settings.settings?.showTyping !== false;
+        if (!showTyping) return;
+
+        if (value.trim().length > 0) {
+            const now = Date.now();
+            const shouldEmit = !isTypingOutgoingRef.current || now - lastTypingEmitRef.current > 400;
+            if (shouldEmit) {
+                const roomId = room || [myProfile?._id, friend?._id].filter(Boolean).sort().join('_');
+                emit('typing', { room: roomId, isTyping: true, type: value.trim(), receiverId: friend?._id, senderId: myProfile?._id });
+                lastTypingEmitRef.current = now;
+                isTypingOutgoingRef.current = true;
+            }
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+            typingTimeoutRef.current = setTimeout(() => {
+                stopTyping();
+            }, 1200);
+        } else {
+            stopTyping();
+        }
+    };
+
+    const handleEmojiPress = () => {
+        sendMessage({ message: chatAppearance?.actionEmoji || '👍' });
+    };
+
+    const insertComposerEmoji = (emoji: string) => {
+        handleInputChange(`${inputText}${emoji}`);
+    };
+
+    useEffect(() => {
+        return () => {
+            if (typingTimeoutRef.current) {
+                clearTimeout(typingTimeoutRef.current);
+            }
+        };
+    }, []);
 
     const formatTime = (date: Date) => {
         return moment(date).fromNow();
@@ -2267,11 +2395,30 @@ const SingleMessage = () => {
     const likeOrUnlikeMessage = () => {
         if (!selectedMessage) return;
         const messageId = selectedMessage._id;
+        const myId = myProfile?._id;
+        if (!messageId || !myId) return;
+
         if (isReactedByMe) {
-            emit('removeReactMessage', { messageId, profileId: myProfile?._id });
+            emit('removeReactMessage', { messageId, profileId: myId });
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m._id === messageId
+                        ? { ...m, reacts: (m.reacts || []).filter((id) => String(id) !== String(myId)) }
+                        : m,
+                ),
+            );
+            api.post('/message/removeReact', { messageId, myId }).catch(() => {});
             setIsReactedByMe(false);
         } else {
-            emit('reactMessage', { messageId, profileId: myProfile?._id });
+            emit('reactMessage', { messageId, profileId: myId });
+            setMessages((prev) =>
+                prev.map((m) =>
+                    m._id === messageId
+                        ? { ...m, reacts: [...(m.reacts || []), myId] }
+                        : m,
+                ),
+            );
+            api.post('/message/addReact', { messageId, myId }).catch(() => {});
             setIsReactedByMe(true);
         }
         setContextMenuVisible(false);
@@ -2339,12 +2486,12 @@ const SingleMessage = () => {
 
         const channelName = `${myProfile._id}-${friend._id}`;
         emitStartVideoCall({
-            to: friend._id,
+            to: String(friend._id),
             channelName,
             callerName: friend.fullName,
             callerProfilePic: friend.profilePic,
         });
-        startVideoCall(friend._id, channelName);
+        startVideoCall(String(friend._id), channelName);
     };
 
     const handleAudioCall = () => {
@@ -2355,12 +2502,12 @@ const SingleMessage = () => {
 
         const channelName = `${myProfile._id}-${friend._id}`;
         emitStartAudioCall({
-            to: friend._id,
+            to: String(friend._id),
             channelName,
             callerName: friend.fullName,
             callerProfilePic: friend.profilePic,
         });
-        startAudioCall(friend._id, channelName);
+        startAudioCall(String(friend._id), channelName);
     };
 
     // Handle live voice transfer
@@ -2541,16 +2688,20 @@ const SingleMessage = () => {
         }
     };
 
-    const handleAttachmentPress = async () => {
+    const pickAndUploadImage = async (fromCamera: boolean) => {
         try {
-            if (!isConnected) {
-                return Alert.alert('Not connected', 'Please wait for connection.');
+            if (fromCamera) {
+                const permission = await ImagePicker.requestCameraPermissionsAsync();
+                if (!permission.granted) {
+                    return Alert.alert('Camera permission', 'Please allow camera access to take a photo.');
+                }
             }
-
-            const result: any = await ImagePicker.launchImageLibraryAsync({ 
-                mediaTypes: ImagePicker.MediaTypeOptions.Images, 
-                selectionLimit: 1 
-            });
+            const result: any = fromCamera
+                ? await ImagePicker.launchCameraAsync({ quality: 0.85 })
+                : await ImagePicker.launchImageLibraryAsync({
+                    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                    selectionLimit: 1,
+                });
 
             if (result.canceled) return;
             const asset = result.assets && result.assets[0];
@@ -2564,7 +2715,7 @@ const SingleMessage = () => {
             formData.append('image', {
                 uri: asset.uri,
                 name: asset.fileName || 'photo.jpg',
-                type: asset.type || 'image/jpeg',
+                type: asset.mimeType || asset.type || 'image/jpeg',
             } as any);
 
             const uploadRes = await api.post('/upload', formData, {
@@ -2594,11 +2745,95 @@ const SingleMessage = () => {
         } catch (err: any) {
             console.error('Attachment upload error:', err?.message || err);
             Alert.alert('Upload failed', 'Could not upload the image.');
+            setPendingAttachment(null);
+            setPendingAttachmentLocal(null);
         } finally {
             setIsUploading(false);
             setUploadProgress(null);
         }
     };
+
+    const pickAndUploadFile = async () => {
+        try {
+            const result: any = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ImagePicker.MediaTypeOptions.All,
+                selectionLimit: 1,
+            });
+            if (result.canceled) return;
+            const asset = result.assets && result.assets[0];
+            if (!asset?.uri) return;
+
+            setIsUploading(true);
+            setUploadProgress(0);
+            setPendingAttachmentLocal(asset.uri);
+
+            const formData: any = new FormData();
+            formData.append('file', {
+                uri: asset.uri,
+                name: asset.fileName || 'attachment',
+                type: asset.mimeType || asset.type || 'application/octet-stream',
+            } as any);
+
+            const uploadRes = await api.post('/upload/file', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (progressEvent: any) => {
+                    try {
+                        const total = progressEvent.total;
+                        const loaded = progressEvent.loaded || 0;
+                        if (total) {
+                            setUploadProgress(Math.floor((loaded / total) * 100));
+                        }
+                    } catch (e) { }
+                },
+            } as any);
+
+            const secureUrl = uploadRes?.data?.secure_url || uploadRes?.data?.url;
+            if (!secureUrl) throw new Error('Upload failed');
+            setUploadProgress(100);
+            setPendingAttachment(secureUrl);
+            setPendingAttachmentLocal(asset.uri);
+            setShowAttachTray(false);
+        } catch (err: any) {
+            console.error('File upload error:', err?.message || err);
+            Alert.alert('Upload failed', 'Could not upload the file.');
+            setPendingAttachment(null);
+            setPendingAttachmentLocal(null);
+        } finally {
+            setIsUploading(false);
+            setUploadProgress(null);
+        }
+    };
+
+    const toggleAttachTray = () => {
+        if (isUploading || !isConnected) return;
+        setShowMicMenu(false);
+        setEmojiPanelOpen(false);
+        setEditReactionOpen(false);
+        setShowAttachTray((prev) => !prev);
+    };
+
+    const handleMicButtonClick = () => {
+        if (isUploadingAudio) return;
+        if (isRecording) {
+            stopRecording(true);
+            return;
+        }
+        setShowAttachTray(false);
+        setEmojiPanelOpen(false);
+        setMicMenuView('main');
+        setShowMicMenu((prev) => !prev);
+    };
+
+    const composerIconBtn = (active?: boolean) => ({
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        backgroundColor: active ? `${chatTheme.colors.accent}33` : chatTheme.colors.recvBg,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
+        borderWidth: 1,
+        borderColor: active ? chatTheme.colors.accent : chatTheme.colors.recvBorder,
+    });
 
     const startReply = (message: Message) => {
         setSelectedMessage(message);
@@ -2737,21 +2972,11 @@ const SingleMessage = () => {
 
     const handleScroll = (event: any) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-        const isNearTop = contentOffset.y <= 100; // Within 100px of top
-        
-        // Store current scroll offset
+        const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
+        isNearBottomRef.current = distanceFromBottom < 140;
         scrollOffsetRef.current = contentOffset.y;
-        
-        console.log('Scroll event:', { 
-            contentOffsetY: contentOffset.y, 
-            isNearTop, 
-            hasMoreMessages, 
-            isLoadingOldMessages,
-            messagesLength: messages.length
-        });
-        
-        if (isNearTop && hasMoreMessages && !isLoadingOldMessages && messages.length > 0) {
-            console.log('Triggering loadOldMessages from scroll');
+
+        if (contentOffset.y <= 100 && hasMoreMessages && !isLoadingOldMessages && messages.length > 0) {
             loadOldMessages();
         }
     };
@@ -2846,13 +3071,12 @@ const SingleMessage = () => {
             >
                 <Pressable onLongPress={(event) => handleMessageLongPress(item, event)} delayLongPress={250}>
                     <View style={{
-                        marginBottom: 8,
-                        marginHorizontal: 16,
+                        marginBottom: Array.isArray(item.reacts) && item.reacts.length > 0 ? 16 : 8,
+                        marginHorizontal: 12,
                         flexDirection: 'row',
                         alignItems: 'flex-end',
                         justifyContent: isMyMessage ? 'flex-end' : 'flex-start',
                     }}>
-                        {/* Profile picture for incoming messages */}
                         {!isMyMessage && (
                             <View style={{ marginRight: 8, marginBottom: 2 }}>
                                 <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={36} />
@@ -2860,38 +3084,9 @@ const SingleMessage = () => {
                         )}
                         
                         <View style={{ 
-                            flex: 1, 
-                            maxWidth: isMyMessage ? '75%' : '78%',
+                            maxWidth: '78%',
                             alignItems: isMyMessage ? 'flex-end' : 'flex-start',
                         }}>
-                            {/* Reply preview for incoming messages */}
-                            {item.parent && !isMyMessage && (
-                                <TouchableOpacity 
-                                    onPress={() => item.parent?._id && scrollToMessage(item.parent._id)} 
-                                    activeOpacity={0.7}
-                                    style={{
-                                        marginBottom: 4,
-                                        padding: 8,
-                                        borderLeftWidth: 3,
-                                        borderLeftColor: themeColors.primary,
-                                        backgroundColor: isDarkMode ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.05)',
-                                        borderRadius: 8,
-                                        maxWidth: '90%',
-                                    }}
-                                >
-                                    <Text style={{
-                                        color: themeColors.text.primary,
-                                        opacity: 0.85,
-                                        fontSize: 13,
-                                        fontStyle: 'italic',
-                                        fontWeight: '500',
-                                    }}>
-                                        {item.parent.message || 'Message'}
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
-                            
-                            {/* Message bubble with minimal styling */}
                             <View style={{
                                 backgroundColor: item.messageType === 'call'
                                     ? (item.callEvent === 'missed' ? (isDarkMode ? '#3a0d12' : '#fee2e2') : (isDarkMode ? '#0f172a' : '#e2e8f0'))
@@ -2905,33 +3100,48 @@ const SingleMessage = () => {
                                 borderColor: highlightedMessageId === item._id
                                     ? chatTheme.colors.accent
                                     : (isMyMessage ? chatTheme.colors.sentBorder : chatTheme.colors.recvBorder),
+                                position: 'relative',
                             }}>
-                                {/* Reply preview for sent messages */}
-                                {item.parent && isMyMessage && (
-                                    <TouchableOpacity 
+                                {item.parent ? (
+                                    <TouchableOpacity
                                         onPress={() => item.parent?._id && scrollToMessage(item.parent._id)}
                                         activeOpacity={0.7}
                                         style={{
                                             marginBottom: 8,
-                                            padding: 10,
+                                            paddingVertical: 8,
+                                            paddingHorizontal: 10,
                                             borderLeftWidth: 3,
-                                            borderLeftColor: themeColors.text.inverse,
-                                            backgroundColor: 'rgba(255,255,255,0.12)',
+                                            borderLeftColor: chatTheme.colors.accent,
+                                            backgroundColor: 'rgba(0,0,0,0.18)',
                                             borderRadius: 8,
-                                            maxWidth: '90%',
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
                                         }}
                                     >
-                                        <Text style={{
-                                            color: themeColors.text.inverse,
-                                            opacity: 0.9,
-                                            fontSize: 13,
-                                            fontStyle: 'italic',
-                                            fontWeight: '500',
-                                        }}>
-                                            {item.parent.message || 'Message'}
-                                        </Text>
+                                        {typeof item.parent.attachment === 'string' && isValidImageUrl(item.parent.attachment) ? (
+                                            <Image
+                                                source={{ uri: item.parent.attachment }}
+                                                style={{ width: 36, height: 36, borderRadius: 6, marginRight: 8 }}
+                                            />
+                                        ) : null}
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{
+                                                color: '#FFFFFF',
+                                                fontSize: 11,
+                                                fontWeight: '700',
+                                                marginBottom: 2,
+                                            }}>
+                                                {String(item.parent.senderId) === String(myProfile?._id) ? 'You' : (friend?.fullName || 'Reply')}
+                                            </Text>
+                                            <Text numberOfLines={1} style={{
+                                                color: 'rgba(255,255,255,0.82)',
+                                                fontSize: 12,
+                                            }}>
+                                                {getMessageSnippet(item.parent)}
+                                            </Text>
+                                        </View>
                                     </TouchableOpacity>
-                                )}
+                                ) : null}
                                 
                                 {/* Call messages */}
                                 {item.messageType === 'call' ? (
@@ -3019,43 +3229,60 @@ const SingleMessage = () => {
                                     />
                                 )}
 
-                                {/* Timestamp and seen status */}
                                 <View style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     justifyContent: 'flex-end',
                                     marginTop: 4,
+                                    gap: 6,
                                 }}>
-                                    {isMyMessage && (
+                                    <Text style={{
+                                        color: isMyMessage ? 'rgba(255,255,255,0.78)' : chatTheme.colors.meta,
+                                        fontSize: 10,
+                                    }}>
+                                        {getMessageTime(item.timestamp)}
+                                    </Text>
+                                    {isMyMessage && item.sendFailed ? (
+                                        <TouchableOpacity
+                                            onPress={() => {
+                                                setMessages(prev => prev.filter(m => m._id !== item._id && m.tempId !== item.tempId));
+                                                sendMessage({ message: item.message });
+                                            }}
+                                        >
+                                            <Icon name="error-outline" size={14} color="#fecaca" />
+                                        </TouchableOpacity>
+                                    ) : isMyMessage ? (
                                         <Icon
                                             name={item.isSeen ? 'done-all' : 'done'}
                                             size={14}
-                                            color="#FFFFFF"
+                                            color={item.isSeen ? chatTheme.colors.accent : 'rgba(255,255,255,0.75)'}
                                         />
-                                    )}
-                                    <Text style={{
-                                        color: isMyMessage ? '#FFFFFF' : (isDarkMode ? '#FFFFFF' : '#666666'),
-                                        fontSize: 11,
-                                        marginLeft: 4,
-                                    }}>
-                                        {moment(item.timestamp).format('hh:mm A')}
-                                    </Text>
+                                    ) : null}
                                 </View>
+                                {(Array.isArray(item.reacts) && item.reacts.some((id) => String(id) === String(myProfile?._id) || String(id) === String(friend?._id))) ? (
+                                    <View style={{
+                                        position: 'absolute',
+                                        top: -12,
+                                        right: isMyMessage ? undefined : -10,
+                                        left: isMyMessage ? -10 : undefined,
+                                        backgroundColor: '#6b7280',
+                                        borderRadius: 15,
+                                        width: 30,
+                                        height: 30,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                    }}>
+                                        <Text style={{ fontSize: 14 }}>👍</Text>
+                                    </View>
+                                ) : null}
                             </View>
                         </View>
                         
-                        {/* Profile picture for outgoing messages */}
-                        {isMyMessage && item?.isSeen ? (
+                        {isMyMessage && (
                             <View style={{ marginLeft: 8, marginBottom: 2 }}>
-                                <UserPP image={myProfile?.profilePic} isActive={false} size={15} />
+                                <UserPP image={myProfile?.profilePic} isActive={false} size={36} />
                             </View>
-                        ) : 
-                        (
-                            <View style={{ marginLeft: 8, marginBottom: 2, opacity: 0 }}>
-                                <UserPP image={myProfile?.profilePic} isActive={false} size={15} />
-                            </View>
-                        )
-                        }
+                        )}
                     </View>
                 </Pressable>
             </Swipeable>
@@ -3076,12 +3303,14 @@ const SingleMessage = () => {
 
                 <View style={{
                     marginLeft: 8,
-                    backgroundColor: isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.9)',
+                    backgroundColor: chatTheme.colors.recvBg,
                     paddingHorizontal: 14,
                     paddingVertical: 10,
                     borderRadius: 18,
                     borderBottomLeftRadius: 4,
                     maxWidth: '78%',
+                    borderWidth: 1,
+                    borderColor: chatTheme.colors.recvBorder,
                 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         <View style={{
@@ -3093,26 +3322,26 @@ const SingleMessage = () => {
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: isDarkMode ? '#FFFFFF' : '#000000',
+                                backgroundColor: chatTheme.colors.accent,
                                 opacity: 0.4,
                             }} />
                             <View style={{
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: isDarkMode ? '#FFFFFF' : '#000000',
+                                backgroundColor: chatTheme.colors.accent,
                                 opacity: 0.6,
                             }} />
                             <View style={{
                                 width: 8,
                                 height: 8,
                                 borderRadius: 4,
-                                backgroundColor: isDarkMode ? '#FFFFFF' : '#000000',
+                                backgroundColor: chatTheme.colors.accent,
                                 opacity: 0.8,
                             }} />
                         </View>
                         <Text style={{
-                            color: isDarkMode ? '#FFFFFF' : '#000000',
+                            color: '#FFFFFF',
                             fontSize: 14,
                             marginLeft: 8,
                             fontStyle: 'italic',
@@ -3125,39 +3354,35 @@ const SingleMessage = () => {
         );
     };
 
+    const renderEmptyConversation = () => (
+        <View style={{ alignItems: 'center', paddingTop: 72, paddingHorizontal: 28 }}>
+            <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={88} />
+            <Text style={{
+                color: '#FFFFFF',
+                fontSize: 20,
+                fontWeight: '700',
+                marginTop: 16,
+                textAlign: 'center',
+            }}>
+                {friend?.fullName || 'This user'}
+            </Text>
+            <Text style={{
+                color: chatTheme.colors.meta,
+                fontSize: 14,
+                marginTop: 6,
+                textAlign: 'center',
+            }}>
+                No messages yet. Say hello to start the conversation!
+            </Text>
+        </View>
+    );
+
     const renderLoadingOldMessages = () => {
         if (!isLoadingOldMessages) return null;
 
         return (
-            <View style={{
-                paddingVertical: 16,
-                alignItems: 'center',
-                justifyContent: 'center',
-            }}>
-                <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    backgroundColor: themeColors.gray[200],
-                    paddingHorizontal: 16,
-                    paddingVertical: 8,
-                    borderRadius: 20,
-                }}>
-                    <View style={{
-                        width: 16,
-                        height: 16,
-                        borderRadius: 8,
-                        borderWidth: 2,
-                        borderColor: themeColors.gray[500],
-                        borderTopColor: themeColors.primary,
-                        marginRight: 8,
-                    }} />
-                    <Text style={{
-                        color: themeColors.text.secondary,
-                        fontSize: 14,
-                    }}>
-                        Loading older messages...
-                    </Text>
-                </View>
+            <View style={{ paddingTop: 4, paddingBottom: 8 }}>
+                <ChatBubblesSkeleton count={3} theme={chatTheme.colors} scrollable={false} />
             </View>
         );
     };
@@ -3259,15 +3484,14 @@ const SingleMessage = () => {
     // Show full skeletons if no friend or profile data
     if (!friend?._id || !myProfile?._id) {
         return (
-            <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
-                <ChatHeaderSkeleton />
-                <ChatBubblesSkeleton count={22} />
-            </SafeAreaView>
+            <View style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
+                <ChatPageSkeleton count={14} />
+            </View>
         );
     }
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: chatTheme.colors.headerBg }}>
+        <View style={{ flex: 1, backgroundColor: chatTheme.colors.headerBg, overflow: 'visible' }}>
 
             <View style={{
                 flexDirection: 'row',
@@ -3293,7 +3517,13 @@ const SingleMessage = () => {
 
                     <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
 
-                        <UserPP image={friend?.profilePic} isActive={false} size={35} />
+                        {typeof friendEmotion === 'string' && friendEmotion.length > 0 ? (
+                            <Text style={{ fontSize: 22, marginRight: 2 }}>
+                                {friendEmotion.split(' ')[0]}
+                            </Text>
+                        ) : null}
+
+                        <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={35} />
 
 
                         <View style={{ flex: 1 }}>
@@ -3301,64 +3531,37 @@ const SingleMessage = () => {
                                 style={{
                                     fontSize: 16,
                                     fontWeight: '600',
-                                    color: themeColors.text.primary,
+                                    color: '#FFFFFF',
                                 }}
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
                             >
-                                {friend?.fullName || <Text>Friend</Text>}
+                                {friend?.fullName || 'Friend'}
                             </Text>
-                            <Text style={{
-                                fontSize: 14,
-                                color: themeColors.text.secondary,
-                                marginTop: -3,
-                            }}>
+                            <View style={{ marginTop: 1 }}>
                                 {isTyping ? (
-                                    typingMessage && typingMessage.length > 0 ? (
-                                        <Text>{typingMessage}</Text>
-                                    ) : (
-                                        <Text>typing...</Text>
-                                    )
+                                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }} numberOfLines={1}>
+                                        {typingMessage && typingMessage.length > 0 ? typingMessage : 'typing...'}
+                                    </Text>
+                                ) : friendEmotion ? (
+                                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }} numberOfLines={1}>
+                                        {friendEmotion.split(' ').slice(1).join(' ')}
+                                        {friendExpression && friendExpression !== 'none' ? ` • ${friendExpression}` : ''}
+                                        {formatHeaderLastSeen(friendLastSeenIso) ? `  |  Last Seen: ${formatHeaderLastSeen(friendLastSeenIso)}` : ''}
+                                    </Text>
+                                ) : formatHeaderLastSeen(friendLastSeenIso) ? (
+                                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }} numberOfLines={1}>
+                                        Last Seen: {formatHeaderLastSeen(friendLastSeenIso)}
+                                    </Text>
                                 ) : isFriendOnline ? (
-                                    <View style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                        <View style={{ height: 10, width: 10, borderRadius: 5, backgroundColor: 'green' }}></View>
-                                        <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Online</Text>
-                                        {typeof friendEmotion === 'string' && friendEmotion.length > 0 && (
-                                            <>
-                                                <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>|</Text>
-                                                <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>
-                                                    {friendEmotion}
-                                                    {friendExpression && friendExpression !== 'none' && ` • ${friendExpression}`}
-                                                </Text>
-                                            </>
-                                        )}
-                                    </View>
-                                ) : (
-                                    <Text>Away</Text>
-                                )}
-
-                                {/* <Text style={{ fontSize: 12, color: themeColors.text.secondary }}>Last seen {moment(friend?.lastSeen).fromNow()}</Text> */}
-
-                            </Text>
+                                    <Text style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}>Online</Text>
+                                ) : null}
+                            </View>
                         </View>
                     </View>
 
                 </View>
 
-                <TouchableOpacity
-                    onPress={() => emit('bump', { friendProfile: friend?._id, myProfile: myProfile?._id })}
-                    style={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: 20,
-                        backgroundColor: themeColors.primary,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginLeft: 5,
-                    }}
-                >
-                    <Icon name="notifications" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
-                </TouchableOpacity>
                 <View style={{ position: 'relative', marginLeft: 5 }}>
                     <TouchableOpacity
                         onPress={() => setCallMenuVisible(!callMenuVisible)}
@@ -3366,13 +3569,13 @@ const SingleMessage = () => {
                             width: 35,
                             height: 35,
                             borderRadius: 20,
-                            backgroundColor: themeColors.primary,
+                            backgroundColor: chatTheme.colors.accent,
                             alignItems: 'center',
                             justifyContent: 'center',
                             zIndex: 1001,
                         }}
                     >
-                        <Icon name="phone" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
+                        <Icon name="phone" size={20} color="#041018" />
                     </TouchableOpacity>
 
                     {callMenuVisible && (
@@ -3450,7 +3653,7 @@ const SingleMessage = () => {
                                             fontWeight: '600',
                                             color: themeColors.text.primary,
                                         }}>
-                                            Voice Call
+                                            Audio Call
                                         </Text>
                                         <Text style={{
                                             fontSize: 12,
@@ -3514,13 +3717,31 @@ const SingleMessage = () => {
                         width: 35,
                         height: 35,
                         borderRadius: 20,
-                        backgroundColor: themeColors.secondary,
+                        backgroundColor: `${chatTheme.colors.accent}22`,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginLeft: 5,
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.sentBorder,
                     }}
                 >
-                    <Icon name="more-vert" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
+                    <Icon name="more-vert" size={20} color="#FFFFFF" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                    onPress={() => setIsChatSettingsOpen(true)}
+                    style={{
+                        width: 35,
+                        height: 35,
+                        borderRadius: 20,
+                        backgroundColor: `${chatTheme.colors.accent}22`,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginLeft: 5,
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.sentBorder,
+                    }}
+                >
+                    <Icon name="palette" size={18} color={chatTheme.colors.accent} />
                 </TouchableOpacity>
                 <TouchableOpacity
                     onPress={async () => {
@@ -3564,105 +3785,130 @@ const SingleMessage = () => {
                         width: 35,
                         height: 35,
                         borderRadius: 20,
-                        backgroundColor: themeColors.secondary,
+                        backgroundColor: `${chatTheme.colors.accent}22`,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginLeft: 5,
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.sentBorder,
                     }}
                 >
-                    <Icon name="info" size={20} color={isDarkMode ? '#FFFFFF' : '#000000'} />
+                    <Icon name="info" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
             </View>
 
+            <KeyboardAvoidingView
+                style={{ flex: 1, overflow: 'visible' }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={0}
+            >
+
 
             {isInitialLoading ? (
-                <ChatBubblesSkeleton count={22} />
-            ) : (
-                <>
-                    {chatBackground ? (
+                <View style={{ flex: 1, overflow: 'hidden', paddingBottom: composerHeight }}>
+                    {wallpaper.type === 'image' ? (
                         <ImageBackground
-                            source={{ uri: chatBackground }}
-                            style={{ flex: 1 }}
-                            imageStyle={{ opacity: isDarkMode ? 0.2 : 0.35 }}
-                        >
-                            <FlatList
-                                ref={flatListRef}
-                                data={messages}
-                                renderItem={renderMessage}
-                                keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
-                                extraData={messages}
-                                style={{ flex: 1 }}
-                                contentContainerStyle={{ paddingVertical: 8 }}
-                                showsVerticalScrollIndicator={false}
-                                ListHeaderComponent={renderLoadingOldMessages}
-                                ListFooterComponent={
-                                    <>
-                                        {pendingMessages
-                                            .filter(msg => !messages.some(m => m.tempId === msg.tempId || m._id === msg._id))
-                                            .map((msg, idx) => (
-                                                <View key={msg.tempId || `pending-${idx}`}>
-                                                    {renderPendingMessage({ item: msg })}
-                                                </View>
-                                            ))}
-                                        {renderTypingIndicator()}
-                                    </>
-                                }
-                                onScroll={handleScroll}
-                                scrollEventThrottle={16}
-                                onViewableItemsChanged={onViewableItemsChanged}
-                                viewabilityConfig={viewabilityConfigRef.current as any}
-                                onScrollToIndexFailed={(info) => {
-                                    const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
-                                    wait.then(() => {
-                                        flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-                                    });
-                                }}
-                                inverted={false}
-                                removeClippedSubviews={false}
-                            />
-                        </ImageBackground>
+                            source={{ uri: wallpaper.value }}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                            resizeMode="cover"
+                        />
                     ) : (
-                        <FlatList
-                            ref={flatListRef}
-                            data={messages}
-                            renderItem={renderMessage}
-                            keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
-                            extraData={messages}
-                            style={{ flex: 1 }}
-                            contentContainerStyle={{ paddingVertical: 8 }}
-                            showsVerticalScrollIndicator={false}
-                            ListHeaderComponent={renderLoadingOldMessages}
-                            ListFooterComponent={
-                                <>
-                                    {pendingMessages
-                                        .filter(msg => !messages.some(m => m.tempId === msg.tempId || m._id === msg._id))
-                                        .map((msg, idx) => (
-                                            <View key={msg.tempId || `pending-${idx}`}>
-                                                {renderPendingMessage({ item: msg })}
-                                            </View>
-                                        ))}
-                                    {renderTypingIndicator()}
-                                </>
-                            }
-                            onScroll={handleScroll}
-                            scrollEventThrottle={16}
-                            onViewableItemsChanged={onViewableItemsChanged}
-                            viewabilityConfig={viewabilityConfigRef.current as any}
-                            onScrollToIndexFailed={(info) => {
-                                const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
-                                wait.then(() => {
-                                    flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
-                                });
-                            }}
-                            inverted={false}
-                            removeClippedSubviews={false}
-                            maintainVisibleContentPosition={{
-                                minIndexForVisible: 0,
-                                autoscrollToTopThreshold: 10
-                            }}
+                        <LinearGradient
+                            colors={wallpaper.value as [string, string, ...string[]]}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
                         />
                     )}
-                </>
+                    {chatAppearance.showBackgroundOverlay !== false ? (
+                        <View
+                            pointerEvents="none"
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: chatTheme.colors.overlay,
+                                zIndex: 0,
+                            }}
+                        />
+                    ) : null}
+                    <ChatBubblesSkeleton count={14} theme={chatTheme.colors} />
+                </View>
+            ) : (
+                <View style={{ flex: 1, overflow: 'hidden' }}>
+                    {wallpaper.type === 'image' ? (
+                        <ImageBackground
+                            source={{ uri: wallpaper.value }}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                            resizeMode="cover"
+                        />
+                    ) : (
+                        <LinearGradient
+                            colors={wallpaper.value as [string, string, ...string[]]}
+                            style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
+                        />
+                    )}
+                    {chatAppearance.showBackgroundOverlay !== false ? (
+                        <View
+                            pointerEvents="none"
+                            style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                backgroundColor: chatTheme.colors.overlay,
+                                zIndex: 0,
+                            }}
+                        />
+                    ) : null}
+                    {chatTheme.loveRain ? <LoveEmojiRain burstId={loveRainBurst} /> : null}
+                    <FlatList
+                        ref={flatListRef}
+                        data={messages}
+                        renderItem={renderMessage}
+                        keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
+                        extraData={messages}
+                        style={{ flex: 1, zIndex: 2 }}
+                        contentContainerStyle={{ paddingVertical: 8, paddingBottom: composerHeight + 8 }}
+                        showsVerticalScrollIndicator={false}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="interactive"
+                        ListHeaderComponent={renderLoadingOldMessages}
+                        ListEmptyComponent={renderEmptyConversation}
+                        ListFooterComponent={renderTypingIndicator}
+                        onScroll={handleScroll}
+                        scrollEventThrottle={16}
+                        onViewableItemsChanged={onViewableItemsChanged}
+                        viewabilityConfig={viewabilityConfigRef.current as any}
+                        onContentSizeChange={() => {
+                            if (pendingScrollToBottomRef.current) {
+                                scrollToBottom(false);
+                                return;
+                            }
+                            if (isNearBottomRef.current && !isLoadingOldMessages) {
+                                scrollToBottom(true);
+                            }
+                        }}
+                        onLayout={() => {
+                            if (pendingScrollToBottomRef.current && messages.length > 0) {
+                                scrollToBottom(false);
+                            }
+                        }}
+                        onScrollToIndexFailed={(info) => {
+                            const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
+                            wait.then(() => {
+                                flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
+                            });
+                        }}
+                        inverted={false}
+                        removeClippedSubviews={false}
+                        maintainVisibleContentPosition={lockVisibleOnPrepend ? {
+                            minIndexForVisible: 0,
+                            autoscrollToTopThreshold: 10
+                        } : undefined}
+                    />
+                </View>
             )}
 
 
@@ -4047,6 +4293,92 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="chat-appearance"
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setOptionMenuVisible(false);
+                                    setIsChatSettingsOpen(true);
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: chatTheme.colors.accent + '25',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
+                                }}>
+                                    <Icon name="palette" size={20} color={chatTheme.colors.accent} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        Chat appearance
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        Themes, wallpaper, overlay, and quick emoji
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                key="bump"
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={() => {
+                                    setOptionMenuVisible(false);
+                                    emit('bump', { friendProfile: friend?._id, myProfile: myProfile?._id });
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.primary + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
+                                }}>
+                                    <Icon name="notifications" size={20} color={themeColors.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        Bump
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        Nudge {friend?.fullName?.split(' ')[0] || 'them'}
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
                                 key="search-conversation"
                                 style={{
                                     flexDirection: 'row',
@@ -4377,7 +4709,8 @@ const SingleMessage = () => {
                                     }}>
                                         <View style={{ position: 'relative', marginBottom: 15 }}>
                                             <Image
-                                                source={{ uri: userInfoData?.profilePic || friend?.profilePic || '' }}
+                                                source={getProfileImageSource(userInfoData?.profilePic || friend?.profilePic || '', 200) || { uri: userInfoData?.profilePic || friend?.profilePic || '' }}
+                                                {...googleImageWebProps}
                                                 style={{
                                                     width: 100,
                                                     height: 100,
@@ -4787,230 +5120,415 @@ const SingleMessage = () => {
                 </Pressable>
             </Modal>
 
+            <View
+                style={{
+                    position: 'absolute',
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    zIndex: 60,
+                }}
+                onLayout={(e) => {
+                    const next = e.nativeEvent.layout.height;
+                    if (next > 0 && Math.abs(next - composerHeight) > 1) {
+                        setComposerHeight(next);
+                    }
+                }}
+            >
             {isBlockedByFriend ? (
                 <>{renderBlockedMessage()}</>
             ) : isBlocked ? (
                 <>{renderSelfBlockedMessage()}</>
+            ) : isInitialLoading ? (
+                <ChatComposerSkeleton theme={chatTheme.colors} />
             ) : (
-                <KeyboardAvoidingView
-                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                <View
                     style={{
-                        backgroundColor: themeColors.surface.header,
+                        backgroundColor: chatTheme.colors.footerBg,
                         borderTopWidth: 1,
-                        borderTopColor: themeColors.border.primary,
-                        paddingHorizontal: 16,
-                        paddingVertical: 14
+                        borderTopColor: chatTheme.colors.sentBorder,
+                        paddingHorizontal: 12,
+                        paddingTop: 8,
+                        paddingBottom: 8,
                     }}
                 >
-                {replyingTo && (
+                {replyingTo ? (
                     <View style={{
                         marginBottom: 8,
-                        backgroundColor: themeColors.gray[100],
+                        backgroundColor: chatTheme.colors.recvBg,
                         borderRadius: 12,
                         padding: 10,
                         flexDirection: 'row',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.recvBorder,
                     }}>
+                        <Icon name="reply" size={16} color={chatTheme.colors.accent} style={{ marginRight: 8 }} />
                         <View style={{ flex: 1 }}>
-                            <Text style={{ color: themeColors.text.secondary, fontSize: 12 }}>Replying to</Text>
+                            <Text style={{ color: chatTheme.colors.meta, fontSize: 11 }}>
+                                Replying to {String(replyingTo.senderId) === String(myProfile?._id) ? 'yourself' : (friend?.fullName || 'them')}
+                            </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
                                 {typeof replyingTo.attachment === 'string' && isValidImageUrl(replyingTo.attachment) && (
                                     <Image source={{ uri: replyingTo.attachment as string }} style={{ width: 28, height: 28, borderRadius: 4, marginRight: 8 }} />
                                 )}
-                                <Text numberOfLines={1} style={{ color: themeColors.text.primary }}>
-                                    {replyingTo.message || 'Message'}
+                                <Text numberOfLines={1} style={{ color: '#FFFFFF', fontSize: 13 }}>
+                                    {getMessageSnippet(replyingTo)}
                                 </Text>
                             </View>
                         </View>
                         <TouchableOpacity onPress={() => setReplyingTo(null)} style={{ marginLeft: 8 }}>
-                            <Icon name="close" size={18} color={themeColors.text.secondary} />
+                            <Icon name="close" size={18} color={chatTheme.colors.meta} />
                         </TouchableOpacity>
                     </View>
-                )}
-                {(isUploading || pendingAttachmentLocal || pendingAttachment) && (
+                ) : null}
+                {(isUploading || pendingAttachmentLocal || pendingAttachment) ? (
                     <View style={{
                         marginBottom: 8,
-                        marginHorizontal: 0,
-                        backgroundColor: themeColors.gray[100],
+                        backgroundColor: chatTheme.colors.recvBg,
                         borderRadius: 12,
                         padding: 8,
                         flexDirection: 'row',
-                        alignItems: 'center'
+                        alignItems: 'center',
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.recvBorder,
                     }}>
-                        {(pendingAttachmentLocal || pendingAttachment) && (
+                        {(pendingAttachmentLocal || pendingAttachment) ? (
                             <Image
                                 source={{ uri: pendingAttachmentLocal || pendingAttachment || '' }}
                                 style={{ width: 48, height: 48, borderRadius: 8, marginRight: 8 }}
                             />
-                        )}
+                        ) : null}
                         <View style={{ flex: 1 }}>
-                            {isUploading && (
-                                <View style={{ height: 6, backgroundColor: themeColors.gray[300], borderRadius: 3, overflow: 'hidden' }}>
-                                    <View style={{ width: `${uploadProgress || 0}%`, height: 6, backgroundColor: themeColors.primary }} />
+                            {isUploading ? (
+                                <View style={{ height: 6, backgroundColor: chatTheme.colors.recvBorder, borderRadius: 3, overflow: 'hidden' }}>
+                                    <View style={{ width: `${uploadProgress || 0}%`, height: 6, backgroundColor: chatTheme.colors.accent }} />
                                 </View>
+                            ) : (
+                                <Text style={{ color: '#FFFFFF', fontSize: 13, fontWeight: '600' }}>Photo attached</Text>
                             )}
-                            {!isUploading && pendingAttachment && (
-                                <Text style={{ color: themeColors.text.secondary, fontSize: 12 }}>Attachment ready</Text>
-                            )}
+                            <Text style={{ color: chatTheme.colors.meta, fontSize: 11, marginTop: 2 }}>
+                                {isUploading ? 'Almost ready…' : 'Will send with your message'}
+                            </Text>
                         </View>
-                        <TouchableOpacity onPress={removePendingAttachment} style={{ marginLeft: 8 }}>
-                            <Icon name="close" size={18} color={themeColors.text.secondary} />
+                        {!isUploading ? (
+                            <TouchableOpacity onPress={removePendingAttachment} style={{ marginLeft: 8 }}>
+                                <Icon name="close" size={18} color={chatTheme.colors.meta} />
+                            </TouchableOpacity>
+                        ) : null}
+                    </View>
+                ) : null}
+                {isRecording ? (
+                    <View style={{
+                        marginBottom: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: chatTheme.colors.recvBg,
+                        borderRadius: 14,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.recvBorder,
+                    }}>
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', marginRight: 8 }} />
+                        <Text style={{ color: '#FFFFFF', fontWeight: '600', marginRight: 12 }}>Recording</Text>
+                        <Text style={{ color: chatTheme.colors.meta, marginRight: 'auto' }}>{recordTime}</Text>
+                        <TouchableOpacity onPress={() => stopRecording(true)} style={{ marginRight: 12 }}>
+                            <Icon name="send" size={20} color={chatTheme.colors.accent} />
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={cancelRecording}>
+                            <Icon name="delete" size={20} color={themeColors.status.error} />
                         </TouchableOpacity>
                     </View>
-                )}
-                <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                }}>
-                    <TouchableOpacity
-                        onPress={handleAttachmentPress}
-                        style={{
-                            width: 35,
-                            height: 35,
-                            borderRadius: 20,
-                            backgroundColor: themeColors.gray[100],
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 8,
-                        }}
+                ) : null}
+                {emojiPanelOpen ? (
+                    <ScrollView
+                        horizontal
+                        keyboardShouldPersistTaps="handled"
+                        showsHorizontalScrollIndicator={false}
+                        style={{ marginBottom: 10 }}
+                        contentContainerStyle={{ alignItems: 'center', paddingRight: 8 }}
                     >
-                        <Icon name="add" size={24} color={themeColors.text.secondary} />
-                    </TouchableOpacity>
-
-                    {/* Inline voice message button (replaces floating mic) */}
+                        {COMPOSER_INSERT_EMOJIS.map((emoji) => (
+                            <TouchableOpacity
+                                key={emoji}
+                                onPress={() => insertComposerEmoji(emoji)}
+                                style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 12,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 6,
+                                    backgroundColor: chatTheme.colors.recvBg,
+                                }}
+                            >
+                                <Text style={{ fontSize: 22 }}>{emoji}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                ) : null}
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity
-                        onPress={() => (isRecording ? stopRecording(true) : startRecording())}
-                        accessibilityLabel={isRecording ? 'Stop and send voice message' : 'Record voice message'}
-                        style={{
-                            width: 35,
-                            height: 35,
-                            borderRadius: 20,
-                            backgroundColor: isRecording ? themeColors.status.error : themeColors.gray[100],
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 8,
-                        }}
-                        disabled={isUploadingAudio}
+                        onPress={toggleAttachTray}
+                        disabled={isUploading}
+                        style={[composerIconBtn(showAttachTray), { marginRight: 8 }]}
                     >
-                        {isUploadingAudio ? (
-                            <ActivityIndicator color={themeColors.text.secondary} />
-                        ) : (
-                            <Icon name={isRecording ? 'stop' : 'mic'} size={20} color={isRecording ? themeColors.text.inverse : themeColors.text.secondary} />
-                        )}
-                    </TouchableOpacity>
-
-                    {/* Live voice transfer button */}
-                    <TouchableOpacity
-                        onPress={handleLiveVoiceButtonClick}
-                        accessibilityLabel={isLiveVoiceConnecting ? 'Connecting live voice' : (isLiveVoiceActive ? 'Stop live voice' : 'Start live voice transfer')}
-                        style={{
-                            width: 35,
-                            height: 35,
-                            borderRadius: 20,
-                            backgroundColor: isLiveVoiceActive ? themeColors.status.error : themeColors.gray[100],
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 8,
-                            opacity: (isLiveVoiceConnecting || isRecording || isUploadingAudio) ? 0.6 : 1,
-                        }}
-                        disabled={isLiveVoiceConnecting || isRecording || isUploadingAudio}
-                    >
-                        {isLiveVoiceConnecting ? (
-                            <ActivityIndicator color={themeColors.text.secondary} />
-                        ) : (
-                            <Icon 
-                                name={isLiveVoiceActive ? 'phone-disabled' : 'phone'} 
-                                size={20} 
-                                color={isLiveVoiceActive ? themeColors.text.inverse : themeColors.text.secondary} 
-                            />
-                        )}
+                        <Icon name={showAttachTray ? 'close' : 'add'} size={22} color={chatTheme.colors.meta} />
                     </TouchableOpacity>
 
                     <View style={{
                         flex: 1,
                         flexDirection: 'row',
                         alignItems: 'center',
-                        backgroundColor: themeColors.gray[100],
+                        backgroundColor: chatTheme.colors.recvBg,
                         borderRadius: 20,
-                        paddingHorizontal: 12,
-                        paddingVertical: 0,
+                        paddingHorizontal: 10,
                         marginRight: 8,
+                        borderWidth: 1,
+                        borderColor: emojiPanelOpen ? chatTheme.colors.accent : chatTheme.colors.recvBorder,
                     }}>
                         <TextInput
                             ref={inputRef}
                             value={inputText}
-                            onChangeText={setInputText}
-                            onSubmitEditing={sendMessage}
-                            onKeyPress={handleTyping}
-                            placeholder="Type a message..."
-                            placeholderTextColor={themeColors.text.secondary}
+                            onChangeText={handleInputChange}
+                            onSubmitEditing={() => sendMessage()}
+                            onFocus={() => {
+                                setShowAttachTray(false);
+                                setShowMicMenu(false);
+                            }}
+                            onBlur={stopTyping}
+                            placeholder="Message"
+                            placeholderTextColor={chatTheme.colors.meta}
                             underlineColorAndroid="transparent"
                             style={{
                                 flex: 1,
                                 fontSize: 16,
-                                color: themeColors.text.primary,
+                                color: '#FFFFFF',
                                 maxHeight: 80,
-                                height: 40,
-                                paddingVertical: 3,
+                                minHeight: 40,
+                                paddingVertical: 8,
                             }}
                             multiline
+                            blurOnSubmit={false}
+                            editable={!isRecording && !isUploadingAudio}
                             textAlignVertical="center"
                         />
+                        <TouchableOpacity
+                            onPress={() => {
+                                setShowAttachTray(false);
+                                setShowMicMenu(false);
+                                setEmojiPanelOpen((open) => !open);
+                            }}
+                            accessibilityLabel="Emoji"
+                            style={{ paddingLeft: 4, paddingVertical: 6 }}
+                        >
+                            <Icon
+                                name={emojiPanelOpen ? 'keyboard' : 'emoji-emotions'}
+                                size={22}
+                                color={emojiPanelOpen ? chatTheme.colors.accent : chatTheme.colors.meta}
+                            />
+                        </TouchableOpacity>
                     </View>
 
-                    <TouchableOpacity
-                        onPress={sendMessage}
-                        disabled={(!inputText.trim() && !pendingAttachment) || isUploading}
-                        style={{
-                            width: 35,
-                            height: 35,
-                            borderRadius: 20,
-                            backgroundColor: (inputText.trim() || pendingAttachment) && !isUploading ? themeColors.primary : themeColors.gray[300],
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                        }}
-                    >
-                        {
-                            (inputText.length === 0 && !pendingAttachment) ? (
-                                <View style={{ width: 35, height: 35, borderRadius: 20, backgroundColor: themeColors.gray[300], alignItems: 'center', justifyContent: 'center' }}>
-                                    <TouchableOpacity onPress={handleEmojiPress}>
-                                        <Text style={{ fontSize: 16, color: themeColors.text.secondary }}>👍</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            ) : (
-                                <Icon
-                                    name="send"
-                                    style={{ marginRight: -2 }}
-                                    size={20}
-                                    color={(inputText.trim() || pendingAttachment) && !isUploading ? themeColors.text.inverse : themeColors.text.secondary}
-                                />
-                            )
-                        }
-                    </TouchableOpacity>
+                    {(inputText.trim() || pendingAttachment) ? (
+                        <TouchableOpacity
+                            onPress={() => sendMessage()}
+                            disabled={isUploading}
+                            style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 19,
+                                backgroundColor: isUploading ? chatTheme.colors.recvBg : chatTheme.colors.accent,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                            }}
+                        >
+                            <Icon name="send" style={{ marginRight: -2 }} size={18} color={isUploading ? chatTheme.colors.meta : '#041018'} />
+                        </TouchableOpacity>
+                    ) : (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <View>
+                                <TouchableOpacity
+                                    onPress={handleMicButtonClick}
+                                    disabled={isUploadingAudio}
+                                    style={composerIconBtn(isRecording || showMicMenu)}
+                                >
+                                    {isUploadingAudio ? (
+                                        <ActivityIndicator color={chatTheme.colors.meta} />
+                                    ) : (
+                                        <Icon name={isRecording ? 'stop' : 'mic'} size={20} color={isRecording ? '#ef4444' : chatTheme.colors.meta} />
+                                    )}
+                                </TouchableOpacity>
+                                {showMicMenu ? (
+                                    <View style={{
+                                        position: 'absolute',
+                                        bottom: 46,
+                                        right: -8,
+                                        width: 240,
+                                        backgroundColor: '#1c1d1f',
+                                        borderRadius: 14,
+                                        borderWidth: 1,
+                                        borderColor: 'rgba(255,255,255,0.12)',
+                                        paddingVertical: 6,
+                                        zIndex: 20,
+                                        elevation: 12,
+                                    }}>
+                                        {micMenuView === 'transcribe' ? (
+                                            <>
+                                                <TouchableOpacity
+                                                    onPress={() => setMicMenuView('main')}
+                                                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12 }}
+                                                >
+                                                    <Icon name="chevron-left" size={18} color="#fff" />
+                                                    <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>Live transcribe</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        setShowMicMenu(false);
+                                                        Alert.alert('Live transcribe', 'Speech-to-text is available in the web app.');
+                                                    }}
+                                                    style={{ padding: 12 }}
+                                                >
+                                                    <Text style={{ color: '#fff', fontWeight: '600' }}>Bangla</Text>
+                                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Recognize speech in Bangla</Text>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        setShowMicMenu(false);
+                                                        Alert.alert('Live transcribe', 'Speech-to-text is available in the web app.');
+                                                    }}
+                                                    style={{ padding: 12 }}
+                                                >
+                                                    <Text style={{ color: '#fff', fontWeight: '600' }}>English</Text>
+                                                    <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Recognize speech in English</Text>
+                                                </TouchableOpacity>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <TouchableOpacity
+                                                    onPress={() => setMicMenuView('transcribe')}
+                                                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12 }}
+                                                >
+                                                    <Icon name="closed-caption" size={20} color={chatTheme.colors.accent} />
+                                                    <View style={{ marginLeft: 10, flex: 1 }}>
+                                                        <Text style={{ color: '#fff', fontWeight: '600' }}>Live transcribe</Text>
+                                                        <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Bangla or English speech to text</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                                <TouchableOpacity
+                                                    onPress={() => {
+                                                        setShowMicMenu(false);
+                                                        startRecording();
+                                                    }}
+                                                    style={{ flexDirection: 'row', alignItems: 'center', padding: 12 }}
+                                                >
+                                                    <Icon name="mic" size={20} color={chatTheme.colors.accent} />
+                                                    <View style={{ marginLeft: 10, flex: 1 }}>
+                                                        <Text style={{ color: '#fff', fontWeight: '600' }}>Voice message</Text>
+                                                        <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Record audio and send it</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            </>
+                                        )}
+                                    </View>
+                                ) : null}
+                            </View>
+                            <TouchableOpacity
+                                onPress={handleEmojiPress}
+                                disabled={!isConnected}
+                                accessibilityLabel="Send reaction"
+                                style={[composerIconBtn(), { marginLeft: 8 }]}
+                            >
+                                <Text style={{ fontSize: 18 }}>{chatAppearance.actionEmoji || '👍'}</Text>
+                            </TouchableOpacity>
+                        </View>
+                    )}
                 </View>
-                </KeyboardAvoidingView>
+                {showAttachTray ? (
+                    <View style={{ marginTop: 12 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                            {[
+                                { key: 'photo', label: 'Photo', icon: 'image', onPress: () => pickAndUploadImage(false) },
+                                { key: 'file', label: 'File', icon: 'attach-file', onPress: pickAndUploadFile },
+                                { key: 'live', label: isLiveVoiceActive ? 'Stop' : 'Live', icon: isLiveVoiceActive ? 'phone-disabled' : 'headset', onPress: () => { setShowAttachTray(false); handleLiveVoiceButtonClick(); } },
+                                { key: 'react', label: 'React', icon: null, onPress: () => { setShowAttachTray(false); handleEmojiPress(); } },
+                                { key: 'edit', label: 'Edit', icon: 'edit', onPress: () => setEditReactionOpen((v) => !v) },
+                            ].map((item) => (
+                                <TouchableOpacity
+                                    key={item.key}
+                                    onPress={item.onPress}
+                                    style={{ alignItems: 'center', width: '18%' }}
+                                >
+                                    <View style={{
+                                        width: 48,
+                                        height: 48,
+                                        borderRadius: 16,
+                                        backgroundColor: chatTheme.colors.recvBg,
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        marginBottom: 6,
+                                        borderWidth: 1,
+                                        borderColor: chatTheme.colors.recvBorder,
+                                    }}>
+                                        {item.key === 'react' ? (
+                                            <Text style={{ fontSize: 22 }}>{chatAppearance.actionEmoji || '👍'}</Text>
+                                        ) : (
+                                            <Icon name={item.icon as string} size={22} color={chatTheme.colors.meta} />
+                                        )}
+                                    </View>
+                                    <Text style={{ color: chatTheme.colors.meta, fontSize: 11 }}>{item.label}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+                        {editReactionOpen ? (
+                            <ScrollView
+                                horizontal
+                                keyboardShouldPersistTaps="handled"
+                                style={{ marginTop: 10 }}
+                                showsHorizontalScrollIndicator={false}
+                            >
+                                {QUICK_REACTION_PRESETS.map((emoji) => (
+                                    <TouchableOpacity
+                                        key={emoji}
+                                        onPress={() => {
+                                            void updateChatAppearance({ actionEmoji: emoji });
+                                            setEditReactionOpen(false);
+                                        }}
+                                        style={{
+                                            width: 40,
+                                            height: 40,
+                                            borderRadius: 12,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            marginRight: 6,
+                                            backgroundColor: chatAppearance.actionEmoji === emoji ? `${chatTheme.colors.accent}33` : chatTheme.colors.recvBg,
+                                            borderWidth: 1,
+                                            borderColor: chatAppearance.actionEmoji === emoji ? chatTheme.colors.accent : chatTheme.colors.recvBorder,
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 20 }}>{emoji}</Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </ScrollView>
+                        ) : null}
+                    </View>
+                ) : null}
+                </View>
             )}
+            </View>
+            </KeyboardAvoidingView>
 
             {/* Video and Audio Call Components */}
             {/* VideoCall and AudioCall components now rendered globally in App.tsx */}
 
-            {/* Voice recorder controls */}
-            <View style={{ position: 'absolute', left: 16, right: 16, bottom: 90, display: isRecording ? 'flex' : 'none' }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: themeColors.surface.header, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: themeColors.border.primary }}>
-                    <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', marginRight: 8 }} />
-                    <Text style={{ color: themeColors.text.primary, fontWeight: '600', marginRight: 12 }}>Recording</Text>
-                    <Text style={{ color: themeColors.text.secondary, marginRight: 'auto' }}>{recordTime}</Text>
-                    <TouchableOpacity onPress={() => stopRecording(true)} style={{ marginRight: 12 }} accessibilityLabel="Stop and send voice message">
-                        <Icon name="send" size={20} color={themeColors.primary} />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={cancelRecording} accessibilityLabel="Cancel recording">
-                        <Icon name="delete" size={20} color={themeColors.status.error} />
-                    </TouchableOpacity>
-                </View>
-            </View>
+            <ChatSettingsModal
+                isOpen={isChatSettingsOpen}
+                onRequestClose={() => setIsChatSettingsOpen(false)}
+                friendId={friend?._id}
+                friendProfile={friend}
+            />
 
-            {/* Floating mic button removed in favor of inline button */}
-            
             {/* Live Voice Modal */}
             <LiveVoiceModal
                 isOpen={isLiveVoiceModalOpen}
@@ -5034,7 +5552,7 @@ const SingleMessage = () => {
                     />
                 </View>
             )}
-        </SafeAreaView>
+        </View>
     );
 };
 

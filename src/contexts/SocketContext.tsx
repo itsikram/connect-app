@@ -6,7 +6,7 @@ interface SocketContextType {
   isConnected: boolean;
   connect: (profileId: string) => Promise<void>;
   disconnect: () => void;
-  emit: (event: string, data: any) => void;
+  emit: (event: string, data: any, ack?: (...args: any[]) => void) => void;
   on: (event: string, callback: (...args: any[]) => void) => void;
   off: (event: string, callback?: (...args: any[]) => void) => void;
   joinChat: (user1: string, user2: string) => void;
@@ -82,8 +82,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     setIsConnected(false);
   }, []);
 
-  const emit = useCallback((event: string, data: any) => {
-    socketService.emit(event, data);
+  const emit = useCallback((event: string, data: any, ack?: (...args: any[]) => void) => {
+    socketService.emit(event, data, ack);
   }, []);
 
   const on = useCallback((event: string, callback: (...args: any[]) => void) => {

@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, FlatList, ScrollView, TextInput, TouchableOpacity, RefreshControl } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSelector, useDispatch } from 'react-redux';
 import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
@@ -12,7 +13,7 @@ import { fetchChatList, updateUnreadMessageCount } from '../reducers/chatReducer
 import moment from 'moment';
 import ListItemSkeleton from '../components/skeleton/ListItemSkeleton';
 import { ChatHeaderSkeleton } from '../components/skeleton/ChatSkeleton';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getChatTheme } from '../utils/chatThemes';
 
 
 
@@ -29,6 +30,26 @@ const formatTime = (date: Date) => {
     return date.toLocaleDateString();
   }
 };
+
+function getLastMessagePreview(lastMessage: any): string {
+  if (
+    !lastMessage ||
+    (!lastMessage.message && !lastMessage.attachment && !lastMessage.messageType)
+  ) {
+    return 'No messages yet';
+  }
+  if (lastMessage.messageType === 'call') {
+    const isVideo = lastMessage.callType === 'video';
+    const isMissed = lastMessage.callEvent === 'missed';
+    if (isMissed) return isVideo ? 'Missed video call' : 'Missed audio call';
+    return lastMessage.message || (isVideo ? 'Video call' : 'Audio call');
+  }
+  if (lastMessage.messageType === 'audio') {
+    return 'Voice message';
+  }
+  const messageText = lastMessage?.message || lastMessage?.text || lastMessage?.content || '';
+  return messageText.length > 0 ? messageText : 'No message content';
+}
 
 // AsyncStorage utility functions for chat list
 const CHAT_LIST_STORAGE_KEY = 'chat_list';
@@ -82,6 +103,7 @@ export { clearChatListFromStorage };
 const Message = React.memo(() => {
   const dispatch = useDispatch<AppDispatch>();
   const { colors: themeColors } = useTheme();
+  const listTheme = getChatTheme('classic');
   // Use proper typing for Redux state
   const profileData = useSelector((state: RootState) => state.profile);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -225,6 +247,7 @@ const Message = React.memo(() => {
 
   const renderMessageItem = useCallback(({ item, index }: { item: any, index: number }) => {
     const last = item?.messages?.[0];
+    const unread = last && last.senderId !== profileData?._id && !last.isSeen;
     return (
       <TouchableOpacity
         style={[
@@ -232,6 +255,9 @@ const Message = React.memo(() => {
           {
             borderBottomColor: themeColors.border.secondary,
             borderBottomWidth: index === ((sortedChatList.length || 0) - 1) ? 0 : 1,
+            backgroundColor: unread ? `${listTheme.colors.accent}14` : 'transparent',
+            borderLeftWidth: unread ? 3 : 0,
+            borderLeftColor: unread ? listTheme.colors.accent : 'transparent',
           }
         ]}
         onPress={() => {
@@ -240,15 +266,12 @@ const Message = React.memo(() => {
       >
         <UserPP image={item?.person?.profilePic} isActive={activeFriends.includes(item?.person?._id)} size={40} />
         <View style={styles.messageContent}>
-          <Text style={[styles.profileName, { color: themeColors.text.primary }]}>{item?.person?.fullName || 'User'}</Text>
+          <Text style={[styles.profileName, { color: unread ? listTheme.colors.accentStrong : themeColors.text.primary }]}>{item?.person?.fullName || 'User'}</Text>
           <View style={styles.lastMessageContainer}>
             {last ? (
               <>
                 <Text style={[styles.lastMessage, { color: themeColors.text.secondary }]} numberOfLines={1} ellipsizeMode="tail">
-                  {(() => {
-                    const messageText = last?.message || last?.text || last?.content || '';
-                    return messageText.length > 0 ? messageText : 'No message content';
-                  })()}
+                  {getLastMessagePreview(last)}
                 </Text>
                 <Text style={[styles.lastMessageTime, { color: themeColors.text.tertiary }]}>
                   <Text style={{ color: themeColors.text.tertiary }}> · </Text>
@@ -262,7 +285,7 @@ const Message = React.memo(() => {
         </View>
       </TouchableOpacity>
     );
-  }, [themeColors.border.secondary, themeColors.text.primary, themeColors.text.secondary, themeColors.text.tertiary, sortedChatList.length, activeFriends, navigation]);
+  }, [themeColors.border.secondary, themeColors.text.primary, themeColors.text.secondary, themeColors.text.tertiary, sortedChatList.length, activeFriends, navigation, profileData?._id, listTheme.colors.accent, listTheme.colors.accentStrong]);
 
   const keyExtractor = useCallback((item: any) =>
     (item?.person?._id && item?.person?._id.toString()) || String(item?.id || Math.random())
@@ -345,7 +368,7 @@ const Message = React.memo(() => {
             styles.searchInput,
             {
               backgroundColor: themeColors.surface.secondary,
-              borderColor: themeColors.border.primary,
+              borderColor: listTheme.colors.sentBorder,
               color: themeColors.text.primary,
             },
           ]}
@@ -383,6 +406,7 @@ const Message = React.memo(() => {
     navigation,
     activeFriends,
     profileData,
+    listTheme.colors.sentBorder,
   ]);
 
   const chatListEmptyComponent = useMemo(() => (
@@ -427,8 +451,8 @@ const Message = React.memo(() => {
         <RefreshControl
           refreshing={refreshing}
           onRefresh={onRefresh}
-          colors={[themeColors.primary]}
-          tintColor={themeColors.primary}
+          colors={[listTheme.colors.accent]}
+          tintColor={listTheme.colors.accent}
         />
       }
     />

@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
+import { TAB_BAR_BOTTOM_OFFSET } from './tabBarLayout';
 import { useTheme } from '../contexts/ThemeContext';
 import AnimatedTabIcon from './AnimatedIcons/AnimatedTabIcon';
 import HomeIconComponent from './AnimatedIcons/HomeIconComponent';
@@ -351,7 +352,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: Platform.OS === 'ios' ? -30 : 30,
+    bottom: TAB_BAR_BOTTOM_OFFSET,
     left: 0,
     right: 0,
     borderTopLeftRadius: 0,

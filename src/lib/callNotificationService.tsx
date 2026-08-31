@@ -125,6 +125,9 @@ export class CallNotificationService {
             isAudio: payload.isAudio,
           },
         });
+      } else {
+        const { presentIncomingCallNotification } = await import('./incomingCallAlerts');
+        await presentIncomingCallNotification(payload);
       }
       
       this.isServiceRunning = true;

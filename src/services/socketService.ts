@@ -3,14 +3,27 @@ import { initializeSocket, getSocket, disconnectSocket } from '../socket/socket'
 class SocketService {
   private socket: any = null;
   private isConnecting: boolean = false;
-  private pendingEmits: { event: string; data: any }[] = [];
-  private pendingListeners: { event: string; callback: (...args: any[]) => void }[] = [];
+  private pendingEmits: { event: string; data: any; ack?: (...args: any[]) => void }[] = [];
+  private registeredListeners: { event: string; callback: (...args: any[]) => void }[] = [];
+
+  private attachRegisteredListeners = (): void => {
+    if (!this.socket) return;
+    this.registeredListeners.forEach(({ event, callback }) => {
+      try {
+        this.socket.off(event, callback);
+        this.socket.on(event, callback);
+      } catch (e) {
+        console.warn('Failed to attach listener for event:', event, e);
+      }
+    });
+  };
 
     async connect(profileId: string): Promise<void> {
     if (this.socket && this.socket.connected) {
       if (__DEV__) {
         console.log('✅ Socket already connected');
       }
+      this.attachRegisteredListeners();
       return;
     }
 
@@ -31,23 +44,21 @@ class SocketService {
         console.log('✅ Socket connected successfully in socketService');
       }
 
-      // Flush any queued listeners first
-      if (this.pendingListeners.length > 0) {
-        this.pendingListeners.forEach(({ event, callback }) => {
-          try {
-            this.socket.on(event, callback);
-          } catch (e) {
-            console.warn('Failed to attach pending listener for event:', event, e);
-          }
-        });
-        this.pendingListeners = [];
+      this.attachRegisteredListeners();
+      if (this.socket) {
+        this.socket.off('connect', this.attachRegisteredListeners);
+        this.socket.on('connect', this.attachRegisteredListeners);
       }
 
       // Then flush any queued emits
       if (this.pendingEmits.length > 0) {
-        this.pendingEmits.forEach(({ event, data }) => {
+        this.pendingEmits.forEach(({ event, data, ack }) => {
           try {
-            this.socket.emit(event, data);
+            if (typeof ack === 'function') {
+              this.socket.emit(event, data, ack);
+            } else {
+              this.socket.emit(event, data);
+            }
           } catch (e) {
             console.warn('Failed to emit pending event:', event, e);
           }
@@ -69,26 +80,32 @@ class SocketService {
       this.socket = null;
       console.log('Socket disconnected');
     }
-    // Clear any queues on explicit disconnect
     this.pendingEmits = [];
-    this.pendingListeners = [];
   }
 
-  emit(event: string, data: any): void {
+  emit(event: string, data: any, ack?: (...args: any[]) => void): void {
     if (this.socket && this.socket.connected) {
-      this.socket.emit(event, data);
+      if (typeof ack === 'function') {
+        this.socket.emit(event, data, ack);
+      } else {
+        this.socket.emit(event, data);
+      }
       return;
     }
 
     // Queue the emit and attempt to flush on next connect
-    this.pendingEmits.push({ event, data });
+    this.pendingEmits.push({ event, data, ack });
     if (this.socket) {
       this.socket.once('connect', () => {
         const toFlush = [...this.pendingEmits];
         this.pendingEmits = [];
-        toFlush.forEach(({ event: ev, data: payload }) => {
+        toFlush.forEach(({ event: ev, data: payload, ack: cb }) => {
           try {
-            this.socket.emit(ev, payload);
+            if (typeof cb === 'function') {
+              this.socket.emit(ev, payload, cb);
+            } else {
+              this.socket.emit(ev, payload);
+            }
           } catch (e) {
             console.warn('Failed to emit queued event:', ev, e);
           }
@@ -98,22 +115,26 @@ class SocketService {
   }
 
   on(event: string, callback: (...args: any[]) => void): void {
+    const already = this.registeredListeners.some(
+      (l) => l.event === event && l.callback === callback,
+    );
+    if (!already) {
+      this.registeredListeners.push({ event, callback });
+    }
     if (this.socket) {
       this.socket.on(event, callback);
-      return;
     }
-
-    // Queue listener to attach when socket is available
-    this.pendingListeners.push({ event, callback });
   }
 
   off(event: string, callback?: (...args: any[]) => void): void {
-    if (this.socket) {
-      if (callback) {
-        this.socket.off(event, callback);
-      } else {
-        this.socket.off(event);
-      }
+    if (callback) {
+      this.registeredListeners = this.registeredListeners.filter(
+        (l) => !(l.event === event && l.callback === callback),
+      );
+      this.socket?.off(event, callback);
+    } else {
+      this.registeredListeners = this.registeredListeners.filter((l) => l.event !== event);
+      this.socket?.off(event);
     }
   }
 
@@ -160,7 +181,7 @@ class SocketService {
   }
 
   updateCallStatus(to: string, status: string): void {
-    this.emit('update-call-status', { to, status });
+    this.emit('update-call-status', { to: String(to), status });
   }
 
   updateLastLogin(userId: string): void {
@@ -173,11 +194,11 @@ class SocketService {
 
   // Video call methods
   startVideoCall(to: string, channelName: string): void {
-    this.emit('video-call', { to, channelName, isAudio: false });
+    this.emit('video-call', { to: String(to), channelName, isAudio: false });
   }
 
   answerVideoCall(to: string, channelName: string): void {
-    this.emit('answer-call', { to, channelName, isAudio: false });
+    this.emit('answer-call', { to: String(to), channelName, isAudio: false });
   }
 
 
@@ -203,11 +224,11 @@ class SocketService {
 
   // Audio call methods
   startAudioCall(to: string, channelName: string): void {
-    this.emit('audio-call', { to, channelName, isAudio: true });
+    this.emit('audio-call', { to: String(to), channelName, isAudio: true });
   }
 
   answerAudioCall(to: string, channelName: string): void {
-    this.emit('answer-call', { to, channelName, isAudio: true });
+    this.emit('answer-call', { to: String(to), channelName, isAudio: true });
   }
 
 

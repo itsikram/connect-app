@@ -86,14 +86,15 @@ setInterval(() => {
 
 export async function requestPushPermission(): Promise<boolean> {
   try {
-    // Use expo-notifications for permission requests
-    const settings = await Notifications.requestPermissionsAsync();
-    
-    if (settings.status === 'granted') {
-      return true;
-    }
-    
-    return false;
+    const settings = await Notifications.requestPermissionsAsync({
+      ios: {
+        allowAlert: true,
+        allowBadge: true,
+        allowSound: true,
+      },
+    });
+
+    return settings.status === 'granted' || settings.granted === true;
   } catch (e) {
     console.error('Error requesting push permission:', e);
     return false;
@@ -184,9 +185,20 @@ export async function unregisterTokenWithServer(): Promise<void> {
 
 export async function configureNotificationsChannel() {
   try {
-    // Check if Notifee module is available
+    const { configureIncomingCallChannels } = await import('./incomingCallAlerts');
+    await configureIncomingCallChannels();
+
+    if (Platform.OS === 'android') {
+      await Notifications.setNotificationChannelAsync('messages_high', {
+        name: 'Messages',
+        importance: Notifications.AndroidImportance.HIGH,
+        sound: 'default',
+        vibrationPattern: [0, 250, 250, 250],
+        enableVibrate: true,
+      });
+    }
+
     if (!Notifee || typeof Notifee.createChannel !== 'function') {
-      console.warn('⚠️ Notifee not ready, skipping channel configuration');
       return;
     }
 
@@ -197,8 +209,8 @@ export async function configureNotificationsChannel() {
       description: 'General app notifications',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-      sound: undefined, // No sound
-      vibration: false, // No vibration
+        sound: 'default',
+        vibration: true,
       vibrationPattern: undefined,
     });
     
@@ -209,8 +221,8 @@ export async function configureNotificationsChannel() {
       description: 'Incoming call notifications - full screen alerts',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-      sound: undefined, // No sound
-      vibration: false, // No vibration
+        sound: 'default',
+        vibration: true,
       vibrationPattern: undefined,
       lights: true,
       lightColor: '#FF0000',
@@ -224,8 +236,8 @@ export async function configureNotificationsChannel() {
       description: 'Incoming call notifications - full screen alerts',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-      sound: undefined, // No sound
-      vibration: false, // No vibration
+        sound: 'default',
+        vibration: true,
       vibrationPattern: undefined,
       lights: true,
       lightColor: '#FF0000',
@@ -304,7 +316,8 @@ export async function displayIncomingCallNotification(payload: {
   callerId: string;
 }) {
   try {
-    // Use the dedicated call notification service
+    const { startIncomingCallAlert } = await import('./incomingCallAlerts');
+    await startIncomingCallAlert(payload);
     await callNotificationService.displayIncomingCallNotification(payload);
   } catch (error) {
     console.error('❌ Error displaying incoming call notification:', error);

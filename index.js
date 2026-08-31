@@ -4,6 +4,24 @@
 
 import 'react-native-gesture-handler';
 import { AppRegistry, ErrorUtils } from 'react-native';
+import * as Notifications from 'expo-notifications';
+
+Notifications.setNotificationHandler({
+  handleNotification: async (notification) => {
+    const data = notification?.request?.content?.data || {};
+    const isCall = data?.type === 'incoming_call';
+    return {
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+      priority: isCall
+        ? Notifications.AndroidNotificationPriority.MAX
+        : Notifications.AndroidNotificationPriority.HIGH,
+    };
+  },
+});
 // react-native-reanimated removed for Expo compatibility
 
 // Global error handler for unhandled errors

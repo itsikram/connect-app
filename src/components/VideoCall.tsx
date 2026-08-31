@@ -20,7 +20,9 @@ import api from '../lib/api';
 import { hashProfileUid } from '../lib/agoraUid';
 import { CALL_EVENTS } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
-import { configureInCallAudio, playIncomingRingtone, stopIncomingRingtone } from '../lib/callRingtone';
+import { configureInCallAudio } from '../lib/callRingtone';
+import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
+import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
 import AgoraWebEngine, { AgoraWebEngineHandle } from './AgoraWebEngine';
 
 interface VideoCallProps {
@@ -29,7 +31,7 @@ interface VideoCallProps {
 
 const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const { on, off, emit } = useSocket();
-  const { minimizeCall, endMinimizedCall } = useCallMinimize();
+  const { minimizeCall, endMinimizedCall, updateMinimizedCall } = useCallMinimize();
 
   const [isVideoCall, setIsVideoCall] = useState(false);
   const [receivingCall, setReceivingCall] = useState(false);
@@ -78,7 +80,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   const cleanupVideoCall = useCallback(async () => {
     isTerminating.current = true;
-    await stopIncomingRingtone();
+    await stopIncomingCallAlert();
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
     pendingJoinRef.current = null;
@@ -144,7 +146,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const answerCall = useCallback(async () => {
     const incoming = incomingCallRef.current;
     if (!incoming) return;
-    await stopIncomingRingtone();
+    await stopIncomingCallAlert();
     emit('answer-call', {
       to: String(incoming.from),
       channelName: incoming.channelName,
@@ -156,7 +158,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   useEffect(() => { answerCallRef.current = answerCall; }, [answerCall]);
 
   const endCall = useCallback(async () => {
-    await stopIncomingRingtone();
+    await stopIncomingCallAlert();
     const incoming = incomingCallRef.current;
     let friendIdToNotify: string | undefined;
     if (incoming?.from && incoming.from !== myId) {
@@ -180,6 +182,35 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     await cleanupVideoCall();
   }, [cleanupVideoCall, emit, myId]);
 
+  const markCallSeenIfNeeded = useCallback(() => {
+    if (
+      callSeenStatusSentRef.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    ) {
+      return;
+    }
+    const to = callerRef.current;
+    if (!to) return;
+    callSeenStatusSentRef.current = true;
+    emit('update-call-status', { to: String(to), status: 'Call seen' });
+  }, [emit]);
+
+  const markCallIgnoredIfNeeded = useCallback(() => {
+    if (
+      callIgnoredStatusSentRef.current ||
+      !callSeenStatusSentRef.current ||
+      !receivingCallRef.current ||
+      callAcceptedRef.current
+    ) {
+      return;
+    }
+    const to = callerRef.current;
+    if (!to) return;
+    callIgnoredStatusSentRef.current = true;
+    emit('update-call-status', { to: String(to), status: 'Call ignored' });
+  }, [emit]);
+
   const applyIncomingVideoCall = useCallback(({ from, channelName, callerName: name, callerProfilePic: pic }: any) => {
     if (!from || !channelName) return;
     if (isTerminating.current) return;
@@ -188,7 +219,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       emit('video-call-reject', { to: String(from), channelName });
       return;
     }
-    emit('update-call-status', { to: String(from), status: 'Ringing...' });
+    const callerId = String(from);
+    emit('update-call-status', { to: callerId, status: 'Ringing...' });
+    if (!isAppFocused()) {
+      notifyCallerRinging(callerId);
+    }
     receivingCallRef.current = true;
     callAcceptedRef.current = false;
     currentChannelRef.current = channelName;
@@ -196,13 +231,22 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     callIgnoredStatusSentRef.current = false;
     setIsVideoCall(true);
     setReceivingCall(true);
-    setCaller(from);
-    setIncomingCall({ from, channelName, name: name || 'Unknown Caller', profilePic: pic });
+    setCaller(callerId);
+    setIncomingCall({ from: callerId, channelName, name: name || 'Unknown Caller', profilePic: pic });
     setCallerName(name || 'Unknown Caller');
     setCallerProfilePic(pic || '');
     setCurrentChannel(channelName);
-    playIncomingRingtone().catch(() => {});
-  }, [emit]);
+    startIncomingCallAlert({
+      callerId,
+      callerName: name,
+      callerProfilePic: pic,
+      channelName,
+      isAudio: false,
+    }).catch(() => {});
+    if (isAppFocused()) {
+      markCallSeenIfNeeded();
+    }
+  }, [emit, markCallSeenIfNeeded]);
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
@@ -212,27 +256,32 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const onCallAccepted = ({ channelName, isAudio }: any) => {
       if (isAudio) return;
       if (!receivingCallRef.current) {
-        stopIncomingRingtone();
+        stopIncomingCallAlert();
         setOutgoingCallStatus('');
         startCallRef.current(channelName);
       }
     };
-    const onEnded = () => { stopIncomingRingtone(); cleanupVideoCall(); };
-    const onCancelled = () => { stopIncomingRingtone(); cleanupVideoCall(); };
+    const onEnded = () => { stopIncomingCallAlert(); cleanupVideoCall(); };
+    const onCancelled = () => { stopIncomingCallAlert(); cleanupVideoCall(); };
     const onRejected = () => {
-      stopIncomingRingtone();
+      stopIncomingCallAlert();
       setOutgoingCallStatus('Call rejected');
       setTimeout(() => cleanupVideoCall(), 500);
     };
     const onNotAccepted = ({ isAudio, channelName }: any) => {
       if (isAudio) return;
       if (channelName && currentChannelRef.current && channelName !== currentChannelRef.current) return;
-      stopIncomingRingtone();
+      stopIncomingCallAlert();
       setOutgoingCallStatus('No answer');
       setTimeout(() => cleanupVideoCall(), 500);
     };
     const onStatus = ({ from, status }: any) => {
-      if (!receivingCallRef.current && !callAcceptedRef.current && callerRef.current && from === callerRef.current) {
+      if (
+        !receivingCallRef.current &&
+        !callAcceptedRef.current &&
+        callerRef.current &&
+        sameProfileId(from, callerRef.current)
+      ) {
         setOutgoingCallStatus(status || '');
       }
     };
@@ -240,9 +289,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) return;
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
+      const to = String(detail.to);
       setIsVideoCall(true);
       setReceivingCall(false);
-      setCaller(detail.to);
+      setCaller(to);
       setCallerName(detail.callerName || 'Friend');
       setCallerProfilePic(detail.callerProfilePic || '');
       setCurrentChannel(detail.channelName);
@@ -270,7 +320,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     };
     const onPushReject = (detail: any) => {
       if (detail?.isAudio) return;
-      stopIncomingRingtone();
+      stopIncomingCallAlert();
       if (detail.from && detail.channelName) {
         emit('video-call-reject', { to: String(detail.from), channelName: detail.channelName });
       }
@@ -284,6 +334,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     on('video-call-rejected', onRejected);
     on('call-not-accepted', onNotAccepted);
     on('updated-call-status', onStatus);
+    on('call-status-update', onStatus);
     const subStart = DeviceEventEmitter.addListener(CALL_EVENTS.START_VIDEO, onOutgoing);
     const subPush = DeviceEventEmitter.addListener(CALL_EVENTS.INCOMING_FROM_PUSH, onPushIncoming);
     const subReject = DeviceEventEmitter.addListener(CALL_EVENTS.REJECT_FROM_PUSH, onPushReject);
@@ -296,6 +347,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       off('video-call-rejected', onRejected);
       off('call-not-accepted', onNotAccepted);
       off('updated-call-status', onStatus);
+      off('call-status-update', onStatus);
       subStart.remove();
       subPush.remove();
       subReject.remove();
@@ -311,31 +363,40 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   }, [receivingCall, incomingCall, callAccepted]);
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval> | null = null;
-    if (callAccepted && !isMinimized) {
-      if (!callStartTime.current) callStartTime.current = Date.now();
-      interval = setInterval(() => {
-        setCallDuration(Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000));
-      }, 1000);
+    if (!callAccepted) return;
+    if (!callStartTime.current) callStartTime.current = Date.now();
+    const tick = () => {
+      const elapsed = Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000);
+      setCallDuration(elapsed);
+      if (isMinimized && currentChannelRef.current) {
+        updateMinimizedCall(`video-${currentChannelRef.current}`, {
+          duration: elapsed,
+          status: 'connected',
+        });
+      }
+    };
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [callAccepted, isMinimized, updateMinimizedCall]);
+
+  useEffect(() => {
+    if (receivingCall && !callAccepted && isAppFocused()) {
+      markCallSeenIfNeeded();
     }
-    return () => { if (interval) clearInterval(interval); };
-  }, [callAccepted, isMinimized]);
+  }, [receivingCall, callAccepted, markCallSeenIfNeeded]);
 
   useEffect(() => {
     const onAppState = (state: AppStateStatus) => {
-      if (state === 'active' && receivingCallRef.current && !callAcceptedRef.current && callerRef.current) {
-        if (!callSeenStatusSentRef.current) {
-          callSeenStatusSentRef.current = true;
-          emit('update-call-status', { to: String(callerRef.current), status: 'Call seen' });
-        }
-      } else if (state !== 'active' && receivingCallRef.current && !callAcceptedRef.current && callSeenStatusSentRef.current && !callIgnoredStatusSentRef.current) {
-        callIgnoredStatusSentRef.current = true;
-        emit('update-call-status', { to: String(callerRef.current), status: 'Call ignored' });
+      if (state === 'active') {
+        markCallSeenIfNeeded();
+      } else {
+        markCallIgnoredIfNeeded();
       }
     };
     const sub = AppState.addEventListener('change', onAppState);
     return () => sub.remove();
-  }, [emit]);
+  }, [markCallSeenIfNeeded, markCallIgnoredIfNeeded]);
 
   const toggleMute = useCallback(() => {
     const next = !isMuted;

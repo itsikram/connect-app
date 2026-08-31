@@ -89,7 +89,15 @@ function MessageStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MessageList" component={Message} />
-      <Stack.Screen name="SingleMessage" component={SingleMessage} />
+      <Stack.Screen
+        name="SingleMessage"
+        component={SingleMessage}
+        options={{
+          headerShown: false,
+          contentStyle: { flex: 1 },
+          safeAreaInsets: { top: 0, bottom: 0 },
+        }}
+      />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
       {/* Video calling screens removed for Expo compatibility */}
     </Stack.Navigator>
@@ -237,6 +245,16 @@ function MenuStack() {
 }
 
 // Tab bar component that checks for Ludo game state
+function getDeepestRouteName(state: any): string {
+  let current = state;
+  let name = '';
+  while (current?.routes && typeof current.index === 'number' && current.routes[current.index]) {
+    name = current.routes[current.index].name;
+    current = current.routes[current.index].state;
+  }
+  return name;
+}
+
 function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
   const { isChessGameActive } = useChessGame();
@@ -253,8 +271,7 @@ function TabBarWithLudoCheck(props: any) {
     return null;
   }
   
-  // Get the current route name to check if we're on screens that should hide tab bar
-  const routeName = getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ?? '';
+  const routeName = getDeepestRouteName(props.state) || getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) || '';
   
   // Hide tab bar for specific screens
   if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
@@ -744,38 +761,54 @@ function AppContent() {
     };
     on('friend_location_update', handleFriendLocationUpdate);
 
-    let handleNewMessage = (data: any) => {
-      let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
+    let handleNewMessage = (data: any, allowToast = false) => {
+      let {updatedMessage, senderName, senderPP, friendProfile} = data || {};
+      updatedMessage = updatedMessage || data;
+      if (!updatedMessage) return;
 
       try {
-        if (myProfile?._id && friendProfile?._id && updatedMessage) {
+        const myId = String(myProfile?._id || '');
+        const senderId = String(updatedMessage.senderId || friendProfile?._id || '');
+        const receiverId = String(updatedMessage.receiverId || '');
+        const chatId = senderId && senderId === myId ? receiverId : senderId;
+        if (myId && chatId) {
           dispatch(addNewMessage({
-            chatId: friendProfile._id,
+            chatId,
             message: {
               _id: updatedMessage._id || String(Date.now()),
-              room: updatedMessage.room || `${myProfile._id}_${friendProfile._id}`,
-              senderId: updatedMessage.senderId || friendProfile._id,
-              receiverId: updatedMessage.receiverId || myProfile._id,
+              room: updatedMessage.room || `${myId}_${chatId}`,
+              senderId: updatedMessage.senderId || senderId,
+              receiverId: updatedMessage.receiverId || receiverId || myId,
               message: updatedMessage.message || '',
               attachment: updatedMessage.attachment || false,
               reacts: updatedMessage.reacts || [],
               isSeen: Boolean(updatedMessage.isSeen),
               timestamp: updatedMessage.timestamp || new Date().toISOString(),
               __v: 0,
+              messageType: updatedMessage.messageType,
+              callType: updatedMessage.callType,
+              callEvent: updatedMessage.callEvent,
             },
-            currentUserId: myProfile._id,
+            currentUserId: myId,
           }));
         }
       } catch (_) { }
+
+      const isOwn = String(updatedMessage?.senderId) === String(myProfile?._id);
+      if (!allowToast || isOwn) return;
 
       if (currentScreenRef.current === 'MessageList' || currentScreenRef.current === 'SingleMessage') {
         return;
       }
 
+      const preview = updatedMessage?.messageType === 'call'
+        ? (updatedMessage.message || 'Call')
+        : `${(updatedMessage?.message || '').substring(0, 40)}${(updatedMessage?.message || '').length > 40 ? '...' : ''}`;
+
       showMessageToast({
         userProfilePic: senderPP,
-        fullName:  `${senderName} messaged you`,
-        message: `${(updatedMessage?.message || '').substring(0, 40)}...`,
+        fullName:  `${senderName || 'Someone'} messaged you`,
+        message: preview,
         onPress: () => {
           (navigation as any).navigate('Message', { 
             screen: 'SingleMessage',
@@ -785,7 +818,10 @@ function AppContent() {
       })
     }
 
-    on('newMessageToUser', handleNewMessage)
+    const handleRoomMessage = (data: any) => handleNewMessage(data, false);
+    const handleUserMessage = (data: any) => handleNewMessage(data, true);
+    on('newMessage', handleRoomMessage);
+    on('newMessageToUser', handleUserMessage);
 
     // Show toast on new notification
     let handleNewNotification = (notification: any) => {
@@ -833,7 +869,8 @@ function AppContent() {
 
     return () => {
       off('bumpUser',handleBumpUser)
-      off('newMessageToUser',handleNewMessage)
+      off('newMessage', handleRoomMessage)
+      off('newMessageToUser', handleUserMessage)
       off('newNotification', handleNewNotification)
       // TTS disabled - no longer listening to 'speak_message' events
       // off('speak_message', handleSpeakMessage)
@@ -842,7 +879,7 @@ function AppContent() {
       off('is_active', handleIsActive)
       off('friend_location_update', handleFriendLocationUpdate)
     }
-  }, [isConnected,on,off])
+  }, [isConnected, on, off, myProfile?._id])
 
   // Cleanup timeout on unmount
   React.useEffect(() => {
@@ -961,10 +998,18 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                     <Tab.Screen
                       name="Message"
                       component={MessageStack}
-                      options={({ route }) => ({
-                        tabBarLabel: 'Message',
-                        headerShown: false,
-                      })}
+                      options={({ route }) => {
+                        const nested = getFocusedRouteNameFromRoute(route) ?? 'MessageList';
+                        const hideTab = nested === 'SingleMessage';
+                        return {
+                          tabBarLabel: 'Message',
+                          headerShown: false,
+                          tabBarStyle: hideTab
+                            ? { display: 'none', height: 0, position: 'absolute' }
+                            : undefined,
+                          safeAreaInsets: hideTab ? { bottom: 0 } : undefined,
+                        };
+                      }}
                     />
 
                     <Tab.Screen

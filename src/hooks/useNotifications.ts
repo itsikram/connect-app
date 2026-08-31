@@ -7,9 +7,36 @@ import {
   saveNotificationToken,
   configureNotificationsChannel,
 } from '../lib/pushExpo';
+import { configureIncomingCallChannels, parseIncomingCallNotificationData } from '../lib/incomingCallAlerts';
+import { emitIncomingCallFromPush, emitRejectCallFromPush } from '../lib/callEvents';
+import { notifyCallerRinging } from '../lib/callStatus';
 
 interface UseNotificationsProps {
   navigate: (screen: string, params?: any) => void;
+}
+
+function handleIncomingCallResponse(data: any, actionId?: string) {
+  const parsed = parseIncomingCallNotificationData(data) || {
+    from: String(data?.callerId || ''),
+    channelName: String(data?.channelName || ''),
+    callerName: data?.callerName,
+    callerProfilePic: data?.callerProfilePic,
+    isAudio: data?.isAudio === true || data?.isAudio === 'true',
+    autoAccept: false,
+  };
+  if (!parsed.from || !parsed.channelName) return;
+
+  if (actionId === 'reject_call' || actionId === 'decline_call') {
+    emitRejectCallFromPush(parsed);
+    return;
+  }
+
+  notifyCallerRinging(parsed.from);
+
+  emitIncomingCallFromPush({
+    ...parsed,
+    autoAccept: actionId === 'accept_call',
+  });
 }
 
 export const useNotifications = ({ navigate }: UseNotificationsProps) => {
@@ -17,66 +44,74 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
   const isInitializedRef = useRef<boolean>(false);
   const initializationPromiseRef = useRef<Promise<void> | null>(null);
 
-  // Memoize the navigate function to prevent unnecessary re-renders
   const memoizedNavigate = useCallback(navigate, []);
 
-  // Cancel incoming call notifications
   const cancelIncomingCallNotifications = useCallback(async () => {
     try {
-      await Notifications.dismissAllNotificationsAsync();
+      const { cancelIncomingCallNotifications: cancel } = await import('../lib/incomingCallAlerts');
+      await cancel();
     } catch (error) {
       console.error('Error canceling notifications:', error);
     }
   }, []);
 
   useEffect(() => {
-    // Prevent multiple initializations
     if (isInitializedRef.current || initializationPromiseRef.current) {
       return;
     }
 
     const initialize = async () => {
       if (isInitializedRef.current) return;
-      
+
       try {
-        // Initialize notifications
         await initializeNotifications();
-
-        // Configure notification channels
         await configureNotificationsChannel();
+        await configureIncomingCallChannels();
 
-        // Get and save notification token
         const token = await getNotificationToken();
         if (token) {
           await saveNotificationToken(token);
         }
 
-        // Set up notification listeners
-        const unsubscribeForeground = Notifications.addNotificationResponseReceivedListener((response) => {
-          const data = response.notification.request.content.data;
-          if (data && (data as any).type === 'incoming_call') {
+        const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {
+          const data = response.notification.request.content.data || {};
+          if ((data as any).type === 'incoming_call') {
+            handleIncomingCallResponse(data, response.actionIdentifier);
+            return;
+          }
+          if ((data as any).type === 'new_message' || (data as any).type === 'chat') {
             memoizedNavigate('Message', {
-              screen: 'IncomingCall',
+              screen: 'SingleMessage',
               params: {
-                callerId: (data as any).callerId,
-                callerName: (data as any).callerName,
-                callerProfilePic: (data as any).callerProfilePic,
-                channelName: (data as any).channelName,
-                isAudio: String((data as any).isAudio) === 'true',
-                autoAccept: response.actionIdentifier === 'accept_call',
+                friendId: (data as any).friendId || (data as any).senderId,
+                friendName: (data as any).friendName || (data as any).senderName,
               },
             });
           }
         });
 
-        // Store unsubscribe functions
+        const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
+          const data = notification.request.content.data || {};
+          if ((data as any).type === 'incoming_call') {
+            handleIncomingCallResponse(data);
+          }
+        });
+
         unsubscribeRefs.current = [
-          () => unsubscribeForeground.remove(),
+          () => responseSub.remove(),
+          () => receivedSub.remove(),
         ];
+
+        const lastResponse = await Notifications.getLastNotificationResponseAsync();
+        if (lastResponse?.notification?.request?.content?.data) {
+          const lastData = lastResponse.notification.request.content.data;
+          if ((lastData as any).type === 'incoming_call') {
+            handleIncomingCallResponse(lastData, lastResponse.actionIdentifier);
+          }
+        }
 
         isInitializedRef.current = true;
         console.log('Expo notification listeners set up successfully');
-
       } catch (error) {
         console.error('Error setting up notifications:', error);
       } finally {
@@ -84,30 +119,23 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       }
     };
 
-    // Initialize when app becomes active
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       if (nextAppState === 'active' && !isInitializedRef.current) {
         if (!initializationPromiseRef.current) {
           initializationPromiseRef.current = initialize();
         }
-      } else if (nextAppState === 'background') {
-        // Cancel any ongoing call notifications when app goes to background
-        cancelIncomingCallNotifications();
       }
     };
 
-    // Set up app state listener
     const subscription = AppState.addEventListener('change', handleAppStateChange);
 
-    // Initialize immediately if not already initialized
     if (!initializationPromiseRef.current) {
       initializationPromiseRef.current = initialize();
     }
 
-    // Cleanup function
     return () => {
       subscription?.remove();
-      unsubscribeRefs.current.forEach(unsubscribe => {
+      unsubscribeRefs.current.forEach((unsubscribe) => {
         try {
           unsubscribe();
         } catch (error) {
@@ -116,10 +144,9 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       });
       unsubscribeRefs.current = [];
     };
-  }, [memoizedNavigate, cancelIncomingCallNotifications]);
+  }, [memoizedNavigate]);
 
   return {
     cancelIncomingCallNotifications,
   };
 };
-

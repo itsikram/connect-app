@@ -7,6 +7,7 @@ import { useTheme } from '../contexts/ThemeContext'
 import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
+import { getProfileImageSource, googleImageWebProps } from '../lib/profileImage'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -505,7 +506,7 @@ const FriendProfile = () => {
                             friendData?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
                             {friendData?.profilePic ? (
-                                <Image source={{ uri: friendData.profilePic }} style={styles.avatar} />
+                                <Image source={getProfileImageSource(friendData.profilePic, 400) || { uri: friendData.profilePic }} {...googleImageWebProps} style={styles.avatar} />
                             ) : (
                                 <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
                             )}

@@ -37,6 +37,9 @@ interface ChatMessage {
   isSeen: boolean;
   timestamp: string;
   __v: number;
+  messageType?: 'text' | 'call' | 'audio';
+  callType?: 'audio' | 'video';
+  callEvent?: 'missed' | 'ended' | 'declined' | 'started';
 }
 
 interface Chat {
@@ -111,13 +114,19 @@ const chatSlice = createSlice({
     },
     addNewMessage: (state, action: PayloadAction<{chatId: string, message: ChatMessage, currentUserId: string}>) => {
       const { chatId, message, currentUserId } = action.payload;
-      const chat = state.chats.find(c => c.person._id === chatId);
-      if (chat) {
-        chat.messages.unshift(message);
-        // Increment unread count if message is not seen and is for current user
-        if (!message.isSeen && message.receiverId === currentUserId) {
-          state.unreadMessageCount += 1;
-        }
+      const chatIndex = state.chats.findIndex(c => String(c.person._id) === String(chatId));
+      if (chatIndex === -1) return;
+      const chat = state.chats[chatIndex];
+      if (chat.messages.some(m => String(m._id) === String(message._id))) {
+        return;
+      }
+      chat.messages.unshift(message);
+      if (chatIndex > 0) {
+        state.chats.splice(chatIndex, 1);
+        state.chats.unshift(chat);
+      }
+      if (!message.isSeen && String(message.receiverId) === String(currentUserId)) {
+        state.unreadMessageCount += 1;
       }
     },
   },

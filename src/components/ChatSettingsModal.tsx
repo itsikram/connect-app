@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  ImageBackground,
   Modal,
   Pressable,
   ScrollView,
@@ -185,14 +186,18 @@ const ChatSettingsModal = ({
             <Text style={styles.sectionLabel}>WALLPAPER</Text>
             <View style={styles.wallpaperPreview}>
               {wallpaper.type === 'image' ? (
-                <LinearGradient colors={['#0a0a0b', '#0a0a0b']} style={StyleSheet.absoluteFill} />
+                <ImageBackground
+                  source={{ uri: wallpaper.value }}
+                  style={StyleSheet.absoluteFill}
+                  resizeMode="cover"
+                />
               ) : (
                 <LinearGradient
                   colors={wallpaper.value as [string, string, ...string[]]}
                   style={StyleSheet.absoluteFill}
                 />
               )}
-              {settings.showBackgroundOverlay ? (
+              {settings.showBackgroundOverlay !== false ? (
                 <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.colors.overlay }]} />
               ) : null}
               <View style={styles.previewBubbles}>
@@ -258,9 +263,9 @@ const ChatSettingsModal = ({
               </View>
               <Switch
                 value={settings.showBackgroundOverlay !== false}
-                onValueChange={(value) =>
-                  updateSettings({ showBackgroundOverlay: value })
-                }
+                onValueChange={(value) => {
+                  void updateSettings({ showBackgroundOverlay: value });
+                }}
                 trackColor={{ false: '#3a3b3c', true: theme.colors.accent }}
                 thumbColor="#fff"
               />
