@@ -1,11 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  Pressable,
-  StyleSheet,
-  Animated,
-} from 'react-native';
+import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
@@ -85,11 +79,15 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
       options?.tabBarLabel !== undefined
         ? options.tabBarLabel
         : options?.title !== undefined
-          ? options.title
-          : tab.label;
+        ? options.title
+        : tab.label;
 
-    const iconColor = isActive ? themeColors.primary : themeColors.text.tertiary;
-    const useSolid = isActive || tab.faStyle === 'solid';
+    const iconColor = isActive
+      ? themeColors.primary
+      : themeColors.text.tertiary;
+    const iconSet = tab.iconSet ?? 'fa5';
+    const faStyle = tab.faStyle ?? 'regular';
+    const useSolid = isActive || faStyle === 'solid';
     const badgeCount = Number(tab.badge) || 0;
 
     const pillOpacity = activeAnims[index];
@@ -99,7 +97,11 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
         key={tab.name}
         style={styles.tabItem}
         onPress={() => handleTabPress(tab, index)}
-        android_ripple={{ color: themeColors.primary + '22', borderless: true, radius: 36 }}
+        android_ripple={{
+          color: themeColors.primary + '22',
+          borderless: true,
+          radius: 36,
+        }}
         accessibilityRole="tab"
         accessibilityState={{ selected: isActive }}
         accessibilityLabel={String(label)}
@@ -116,7 +118,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
                 },
               ]}
             />
-            {tab.iconSet === 'fa5' ? (
+            {iconSet === 'fa5' ? (
               <FAIcon
                 name={tab.icon}
                 size={ICON_SIZE}
@@ -131,7 +133,12 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
               />
             )}
             {badgeCount > 0 && (
-              <View style={[styles.badge, { backgroundColor: themeColors.status.error }]}>
+              <View
+                style={[
+                  styles.badge,
+                  { backgroundColor: themeColors.status.error },
+                ]}
+              >
                 <Text style={styles.badgeText}>
                   {badgeCount > 99 ? '99+' : badgeCount}
                 </Text>
@@ -162,7 +169,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
         {
           backgroundColor: themeColors.surface.header,
           borderTopColor: themeColors.border.primary,
-          paddingBottom: Math.max(insets.bottom, 8),
+          paddingBottom: Math.max(insets.bottom, 8) + 20,
         },
       ]}
     >

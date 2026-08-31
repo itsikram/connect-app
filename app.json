@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Connect",
-    "slug": "connect-app",
+    "slug": "lorem",
     "version": "2.1.6",
     "scheme": "connect",
     "orientation": "portrait",
@@ -12,7 +12,10 @@
       "resizeMode": "contain",
       "backgroundColor": "#29B1A9"
     },
-    "assetBundlePatterns": ["assets/**", "src/assets/**"],
+    "assetBundlePatterns": [
+      "assets/**",
+      "src/assets/**"
+    ],
     "ios": {
       "icon": "./assets/icon.png",
       "supportsTablet": true,
@@ -124,7 +127,11 @@
           "photosPermission": "Allow Connect to access your photos and videos so downloaded files can be saved and played.",
           "savePhotosPermission": "Allow Connect to save downloaded videos to Photos and Gallery.",
           "isAccessMediaLocationEnabled": true,
-          "granularPermissions": ["video", "audio", "photo"]
+          "granularPermissions": [
+            "video",
+            "audio",
+            "photo"
+          ]
         }
       ],
       "expo-task-manager",
@@ -137,6 +144,10 @@
       "@react-native-google-signin/google-signin"
     ],
     "sdkVersion": "54.0.0",
-    "extra": {}
+    "extra": {
+      "eas": {
+        "projectId": "2705eb94-d61a-4af6-af53-02399dce8b6f"
+      }
+    }
   }
 }

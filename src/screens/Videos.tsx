@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -31,7 +37,10 @@ import { fitWatchContainSize, useWatchTokens } from '../theme/watchTokens';
 import { useToast } from '../contexts/ToastContext';
 import WatchSkeleton from '../components/skeleton/WatchSkeleton';
 import { saveWatchVideoFromUrl } from '../lib/saveWatchVideo';
-import { subscribeWatchDownloads, WatchDownloadJob } from '../utils/watchDownloadProgress';
+import {
+  subscribeWatchDownloads,
+  WatchDownloadJob,
+} from '../utils/watchDownloadProgress';
 import { RootState } from '../store';
 import { addPost } from '../reducers/postsReducer';
 import { updateProfileField } from '../reducers/profileReducer';
@@ -63,7 +72,8 @@ type Video = {
   shares?: any[];
 };
 
-const sameId = (a: any, b: any) => String(a?._id || a || '') === String(b?._id || b || '');
+const sameId = (a: any, b: any) =>
+  String(a?._id || a || '') === String(b?._id || b || '');
 
 type RootStackParamList = {
   SingleVideo: { videoId: string };
@@ -90,7 +100,8 @@ const VideoItem = ({
   containerHeight: number;
 }) => {
   const t = useWatchTokens();
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const dispatch = useDispatch();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { showInfo, showSuccess, showError } = useToast();
@@ -112,14 +123,22 @@ const VideoItem = ({
   const authorIsActive = post?.author?.isActive || false;
   const myId = myProfile?._id;
   const initialReacts = Array.isArray(post?.reacts) ? post.reacts : [];
-  const [liked, setLiked] = useState(() => initialReacts.some((react) => sameId(react?.profile, myId)));
+  const [liked, setLiked] = useState(() =>
+    initialReacts.some(react => sameId(react?.profile, myId)),
+  );
   const [reactsCount, setReactsCount] = useState(
-    typeof post?.likesCount === 'number' ? post.likesCount : initialReacts.length,
+    typeof post?.likesCount === 'number'
+      ? post.likesCount
+      : initialReacts.length,
   );
   const [commentsCount, setCommentsCount] = useState(
-    typeof post?.commentsCount === 'number' ? post.commentsCount : (post?.comments?.length || 0),
+    typeof post?.commentsCount === 'number'
+      ? post.commentsCount
+      : post?.comments?.length || 0,
   );
-  const [sharesCount, setSharesCount] = useState(Array.isArray(post?.shares) ? post.shares.length : 0);
+  const [sharesCount, setSharesCount] = useState(
+    Array.isArray(post?.shares) ? post.shares.length : 0,
+  );
   const [commentOpen, setCommentOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [postingComment, setPostingComment] = useState(false);
@@ -127,22 +146,33 @@ const VideoItem = ({
   const [shareCap, setShareCap] = useState('');
   const [sharing, setSharing] = useState(false);
   const [following, setFollowing] = useState(() =>
-    (myProfile?.following || []).some((id: any) => sameId(id, post?.author?._id)),
+    (myProfile?.following || []).some((id: any) =>
+      sameId(id, post?.author?._id),
+    ),
   );
   const [followBusy, setFollowBusy] = useState(false);
   const isOwnWatch = sameId(post?.author?._id, myId);
 
   const [isManuallyPaused, setIsManuallyPaused] = useState(false);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
-  const videoBox = fitWatchContainSize(naturalSize.width, naturalSize.height, SCREEN_WIDTH, containerHeight);
+  const videoBox = fitWatchContainSize(
+    naturalSize.width,
+    naturalSize.height,
+    SCREEN_WIDTH,
+    containerHeight,
+  );
 
   useEffect(() => {
-    setFollowing((myProfile?.following || []).some((id: any) => sameId(id, post?.author?._id)));
+    setFollowing(
+      (myProfile?.following || []).some((id: any) =>
+        sameId(id, post?.author?._id),
+      ),
+    );
   }, [myProfile?.following, post?.author?._id]);
 
   useEffect(() => {
-    return subscribeWatchDownloads((list) => {
-      setDownloadJob(list.find((job) => job.id === post._id) || null);
+    return subscribeWatchDownloads(list => {
+      setDownloadJob(list.find(job => job.id === post._id) || null);
     });
   }, [post._id]);
 
@@ -167,7 +197,7 @@ const VideoItem = ({
     if (!post?._id || !myId) return;
     const next = !liked;
     setLiked(next);
-    setReactsCount((n) => Math.max(0, n + (next ? 1 : -1)));
+    setReactsCount(n => Math.max(0, n + (next ? 1 : -1)));
     try {
       if (next) {
         const res = await api.post('/react/addReact', {
@@ -190,7 +220,7 @@ const VideoItem = ({
       }
     } catch (err) {
       setLiked(!next);
-      setReactsCount((n) => Math.max(0, n + (next ? -1 : 1)));
+      setReactsCount(n => Math.max(0, n + (next ? -1 : 1)));
       Alert.alert('Error', 'Failed to update reaction');
     }
   }, [liked, myId, post._id]);
@@ -204,7 +234,7 @@ const VideoItem = ({
         watch: post._id,
       });
       if (res.status === 200) {
-        setCommentsCount((n) => n + 1);
+        setCommentsCount(n => n + 1);
         setCommentText('');
         setCommentOpen(false);
         showSuccess('Comment posted');
@@ -220,9 +250,12 @@ const VideoItem = ({
     if (!post?._id || sharing) return;
     setSharing(true);
     try {
-      const res = await api.post('/watch/share', { watchId: post._id, caption: shareCap });
+      const res = await api.post('/watch/share', {
+        watchId: post._id,
+        caption: shareCap,
+      });
       if (res.status === 200) {
-        setSharesCount((n) => n + 1);
+        setSharesCount(n => n + 1);
         if (res.data?.post) dispatch(addPost(res.data.post));
         setShareOpen(false);
         setShareCap('');
@@ -248,7 +281,12 @@ const VideoItem = ({
       if (res.status === 200) {
         setFollowing(!!res.data?.following);
         if (Array.isArray(res.data?.followingIds)) {
-          dispatch(updateProfileField({ field: 'following', value: res.data.followingIds }));
+          dispatch(
+            updateProfileField({
+              field: 'following',
+              value: res.data.followingIds,
+            }),
+          );
         }
         showSuccess(next ? 'Following' : 'Unfollowed');
       }
@@ -258,7 +296,15 @@ const VideoItem = ({
     } finally {
       setFollowBusy(false);
     }
-  }, [dispatch, followBusy, following, isOwnWatch, myId, post?.author?._id, showSuccess]);
+  }, [
+    dispatch,
+    followBusy,
+    following,
+    isOwnWatch,
+    myId,
+    post?.author?._id,
+    showSuccess,
+  ]);
 
   useEffect(() => {
     if (isActive) {
@@ -267,7 +313,12 @@ const VideoItem = ({
   }, [isActive]);
 
   return (
-    <View style={[styles.item, { height: containerHeight, backgroundColor: t.pageBg }]}>
+    <View
+      style={[
+        styles.item,
+        { height: containerHeight, backgroundColor: t.pageBg },
+      ]}
+    >
       {sourceUri ? (
         <>
           <View
@@ -278,13 +329,17 @@ const VideoItem = ({
           >
             <ExpoVideo
               source={{ uri: sourceUri }}
-              style={[styles.video, videoBox, { backgroundColor: t.pageBg }]}
+              style={[
+                styles.video,
+                videoBox,
+                { backgroundColor: t.pageBg, marginBottom: 120 },
+              ]}
               resizeMode={ResizeMode.CONTAIN}
               shouldPlay={isActive && !isManuallyPaused}
               isLooping
               isMuted={false}
               useNativeControls={false}
-              onReadyForDisplay={(event) => {
+              onReadyForDisplay={event => {
                 const size = event?.naturalSize;
                 if (size?.width && size?.height) {
                   setNaturalSize({ width: size.width, height: size.height });
@@ -292,12 +347,20 @@ const VideoItem = ({
               }}
             />
             <Pressable
-              onPress={() => setIsManuallyPaused((p) => !p)}
+              onPress={() => setIsManuallyPaused(p => !p)}
               style={styles.videoHit}
             />
             {isManuallyPaused && (
               <View pointerEvents="none" style={styles.playOverlay}>
-                <View style={[styles.playBadge, { backgroundColor: t.playBadgeBg, borderColor: t.chipBorder }]}>
+                <View
+                  style={[
+                    styles.playBadge,
+                    {
+                      backgroundColor: t.playBadgeBg,
+                      borderColor: t.chipBorder,
+                    },
+                  ]}
+                >
                   <Icon name="play" size={36} color={t.mediaIcon} />
                 </View>
               </View>
@@ -305,7 +368,9 @@ const VideoItem = ({
           </View>
 
           <TouchableOpacity
-            onPress={() => navigation.navigate('SingleWatch', { watchId: post._id })}
+            onPress={() =>
+              navigation.navigate('SingleWatch', { watchId: post._id })
+            }
             style={[
               styles.detailsChip,
               {
@@ -315,7 +380,11 @@ const VideoItem = ({
             ]}
           >
             <Icon name="open-outline" size={16} color={t.primary} />
-            <Text style={{ color: t.chromeText, fontSize: 12, fontWeight: '600' }}>View Details</Text>
+            <Text
+              style={{ color: t.chromeText, fontSize: 12, fontWeight: '600' }}
+            >
+              View Details
+            </Text>
           </TouchableOpacity>
         </>
       ) : (
@@ -323,66 +392,138 @@ const VideoItem = ({
       )}
 
       <View style={styles.sideActions}>
-        <TouchableOpacity onPress={handleReact} activeOpacity={0.8} style={styles.sideAction}>
-          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
-            <Icon name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? t.error : t.chromeText} />
+        <TouchableOpacity
+          onPress={handleReact}
+          activeOpacity={0.8}
+          style={styles.sideAction}
+        >
+          <View
+            style={[
+              styles.sideBtn,
+              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+            ]}
+          >
+            <Icon
+              name={liked ? 'heart' : 'heart-outline'}
+              size={22}
+              color={liked ? t.error : t.chromeText}
+            />
           </View>
           {reactsCount > 0 ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{reactsCount}</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              {reactsCount}
+            </Text>
           ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Like</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              Like
+            </Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setCommentOpen(true)} activeOpacity={0.8} style={styles.sideAction}>
-          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+        <TouchableOpacity
+          onPress={() => setCommentOpen(true)}
+          activeOpacity={0.8}
+          style={styles.sideAction}
+        >
+          <View
+            style={[
+              styles.sideBtn,
+              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+            ]}
+          >
             <Icon name="chatbubble-ellipses" size={20} color={t.chromeText} />
           </View>
           {commentsCount > 0 ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{commentsCount}</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              {commentsCount}
+            </Text>
           ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Comment</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              Comment
+            </Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => setShareOpen(true)} activeOpacity={0.8} style={styles.sideAction}>
-          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+        <TouchableOpacity
+          onPress={() => setShareOpen(true)}
+          activeOpacity={0.8}
+          style={styles.sideAction}
+        >
+          <View
+            style={[
+              styles.sideBtn,
+              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+            ]}
+          >
             <Icon name="share-social" size={20} color={t.chromeText} />
           </View>
           {sharesCount > 0 ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{sharesCount}</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              {sharesCount}
+            </Text>
           ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Share</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              Share
+            </Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleDownload} activeOpacity={0.8} style={styles.sideAction}>
-          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+        <TouchableOpacity
+          onPress={handleDownload}
+          activeOpacity={0.8}
+          style={styles.sideAction}
+        >
+          <View
+            style={[
+              styles.sideBtn,
+              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+            ]}
+          >
             {downloadJob?.status === 'downloading' ? (
               <ActivityIndicator size="small" color={t.primary} />
             ) : (
               <Icon
-                name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                name={
+                  downloadJob?.status === 'completed'
+                    ? 'checkmark'
+                    : 'download-outline'
+                }
                 size={20}
-                color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+                color={
+                  downloadJob?.status === 'completed' ? t.success : t.chromeText
+                }
               />
             )}
           </View>
           {downloadJob?.status === 'downloading' ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{Math.round(downloadJob.percent)}%</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              {Math.round(downloadJob.percent)}%
+            </Text>
           ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Save</Text>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+              Save
+            </Text>
           )}
         </TouchableOpacity>
       </View>
 
-      <View style={[styles.meta, { backgroundColor: t.metaBg, borderColor: t.chipBorder }]}>
+      <View
+        style={[
+          styles.meta,
+          { backgroundColor: t.metaBg, borderColor: t.chipBorder },
+        ]}
+      >
         <View style={styles.authorRow}>
           {authorAvatar ? (
             <UserPP size={40} image={authorAvatar} isActive={authorIsActive} />
           ) : (
-            <View style={[styles.avatarFallback, { backgroundColor: t.chipBg }]}>
+            <View
+              style={[styles.avatarFallback, { backgroundColor: t.chipBg }]}
+            >
               <Icon name="person" size={22} color={t.chromeMuted} />
             </View>
           )}
-          <Text style={[styles.authorName, { color: t.chromeText }]} numberOfLines={1}>
+          <Text
+            style={[styles.authorName, { color: t.chromeText }]}
+            numberOfLines={1}
+          >
             {authorName}
           </Text>
           {isOwnWatch ? null : (
@@ -400,24 +541,48 @@ const VideoItem = ({
                 },
               ]}
             >
-              <Text style={{ color: following ? t.chromeText : t.ctaText, fontSize: 12, fontWeight: '700' }}>
+              <Text
+                style={{
+                  color: following ? t.chromeText : t.ctaText,
+                  fontSize: 12,
+                  fontWeight: '700',
+                }}
+              >
                 {following ? 'Following' : 'Follow'}
               </Text>
             </TouchableOpacity>
           )}
         </View>
         {!!post?.caption && (
-          <Text style={{ color: t.chromeMuted, fontSize: 14 }} numberOfLines={2}>
+          <Text
+            style={{ color: t.chromeMuted, fontSize: 14 }}
+            numberOfLines={2}
+          >
             {post.caption}
           </Text>
         )}
       </View>
 
-      <Modal visible={commentOpen} transparent animationType="fade" onRequestClose={() => setCommentOpen(false)}>
+      <Modal
+        visible={commentOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setCommentOpen(false)}
+      >
         <KeyboardSafeView force style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setCommentOpen(false)} />
-          <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.chipBorder }]}>
-            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>Comment</Text>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setCommentOpen(false)}
+          />
+          <View
+            style={[
+              styles.sheet,
+              { backgroundColor: t.surface, borderColor: t.chipBorder },
+            ]}
+          >
+            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>
+              Comment
+            </Text>
             <TextInput
               value={commentText}
               onChangeText={setCommentText}
@@ -425,21 +590,43 @@ const VideoItem = ({
               placeholderTextColor={t.placeholder}
               autoFocus
               multiline
-              style={[styles.sheetInput, { backgroundColor: t.inputBg, color: t.chromeText, borderColor: t.chipBorder }]}
+              style={[
+                styles.sheetInput,
+                {
+                  backgroundColor: t.inputBg,
+                  color: t.chromeText,
+                  borderColor: t.chipBorder,
+                },
+              ]}
             />
             <View style={styles.sheetRow}>
-              <TouchableOpacity onPress={() => { setCommentOpen(false); navigation.navigate('SingleWatch', { watchId: post._id }); }}>
-                <Text style={{ color: t.primary, fontWeight: '700' }}>View all comments</Text>
+              <TouchableOpacity
+                onPress={() => {
+                  setCommentOpen(false);
+                  navigation.navigate('SingleWatch', { watchId: post._id });
+                }}
+              >
+                <Text style={{ color: t.primary, fontWeight: '700' }}>
+                  View all comments
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleComment}
                 disabled={!commentText.trim() || postingComment}
-                style={[styles.sheetCta, { backgroundColor: t.primary, opacity: commentText.trim() && !postingComment ? 1 : 0.5 }]}
+                style={[
+                  styles.sheetCta,
+                  {
+                    backgroundColor: t.primary,
+                    opacity: commentText.trim() && !postingComment ? 1 : 0.5,
+                  },
+                ]}
               >
                 {postingComment ? (
                   <ActivityIndicator color={t.ctaText} />
                 ) : (
-                  <Text style={{ color: t.ctaText, fontWeight: '700' }}>Post</Text>
+                  <Text style={{ color: t.ctaText, fontWeight: '700' }}>
+                    Post
+                  </Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -447,28 +634,55 @@ const VideoItem = ({
         </KeyboardSafeView>
       </Modal>
 
-      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+      <Modal
+        visible={shareOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShareOpen(false)}
+      >
         <KeyboardSafeView force style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShareOpen(false)} />
-          <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.chipBorder }]}>
-            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>Share video</Text>
+          <Pressable
+            style={StyleSheet.absoluteFill}
+            onPress={() => setShareOpen(false)}
+          />
+          <View
+            style={[
+              styles.sheet,
+              { backgroundColor: t.surface, borderColor: t.chipBorder },
+            ]}
+          >
+            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>
+              Share video
+            </Text>
             <TextInput
               value={shareCap}
               onChangeText={setShareCap}
               placeholder="Say something about this video"
               placeholderTextColor={t.placeholder}
               multiline
-              style={[styles.sheetInput, { backgroundColor: t.inputBg, color: t.chromeText, borderColor: t.chipBorder }]}
+              style={[
+                styles.sheetInput,
+                {
+                  backgroundColor: t.inputBg,
+                  color: t.chromeText,
+                  borderColor: t.chipBorder,
+                },
+              ]}
             />
             <TouchableOpacity
               onPress={handleShareNow}
               disabled={sharing}
-              style={[styles.sheetCta, { backgroundColor: t.primary, alignSelf: 'stretch' }]}
+              style={[
+                styles.sheetCta,
+                { backgroundColor: t.primary, alignSelf: 'stretch' },
+              ]}
             >
               {sharing ? (
                 <ActivityIndicator color={t.ctaText} />
               ) : (
-                <Text style={{ color: t.ctaText, fontWeight: '700' }}>Share Now</Text>
+                <Text style={{ color: t.ctaText, fontWeight: '700' }}>
+                  Share Now
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -501,11 +715,12 @@ const Videos = () => {
         const items: Video[] = Array.isArray(data.watchs)
           ? data.watchs
           : Array.isArray(data)
-            ? data
-            : [];
-        const more = typeof data.hasNewWatch === 'boolean' ? data.hasNewWatch : false;
+          ? data
+          : [];
+        const more =
+          typeof data.hasNewWatch === 'boolean' ? data.hasNewWatch : false;
         setHasMore(more);
-        setVideos((prev) => (append ? [...prev, ...items] : items));
+        setVideos(prev => (append ? [...prev, ...items] : items));
       }
     } catch (e) {
       console.log('Failed to load videos', e);
@@ -539,7 +754,10 @@ const Videos = () => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       setIsAppBackgrounded(nextAppState !== 'active');
     };
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    const subscription = AppState.addEventListener(
+      'change',
+      handleAppStateChange,
+    );
     handleAppStateChange(AppState.currentState);
     return () => {
       subscription.remove();
@@ -554,7 +772,10 @@ const Videos = () => {
     }
   };
 
-  const viewabilityConfig = useMemo(() => ({ viewAreaCoveragePercentThreshold: 80 }), []);
+  const viewabilityConfig = useMemo(
+    () => ({ viewAreaCoveragePercentThreshold: 80 }),
+    [],
+  );
   const onViewableItemsChanged = useRef(({ viewableItems }: any) => {
     if (viewableItems && viewableItems.length > 0) {
       const first = viewableItems[0];
@@ -580,7 +801,7 @@ const Videos = () => {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.pageBg }}>
+    <View style={{ flex: 1, backgroundColor: t.pageBg, paddingBottom: 30 }}>
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
       <FlatList
         data={videos}
@@ -588,12 +809,14 @@ const Videos = () => {
         renderItem={({ item, index }) => (
           <VideoItem
             post={item}
-            isActive={index === activeIndex && (isScreenFocused || isAppBackgrounded)}
+            isActive={
+              index === activeIndex && (isScreenFocused || isAppBackgrounded)
+            }
             containerHeight={listHeight}
           />
         )}
         pagingEnabled
-        onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}
+        onLayout={e => setListHeight(e.nativeEvent.layout.height)}
         onMomentumScrollEnd={onMomentumScrollEnd}
         showsVerticalScrollIndicator={false}
         onEndReached={onEndReached}
@@ -616,10 +839,19 @@ const Videos = () => {
           />
         }
         ListEmptyComponent={
-          <View style={[styles.centered, { height: SCREEN_HEIGHT, backgroundColor: t.pageBg }]}>
+          <View
+            style={[
+              styles.centered,
+              { height: SCREEN_HEIGHT, backgroundColor: t.pageBg },
+            ]}
+          >
             <Icon name="videocam-outline" size={48} color={t.tertiary} />
-            <Text style={{ color: t.text, marginTop: 12, fontWeight: '600' }}>No videos found.</Text>
-            <Text style={{ color: t.muted, marginTop: 4 }}>Pull down to refresh</Text>
+            <Text style={{ color: t.text, marginTop: 12, fontWeight: '600' }}>
+              No videos found.
+            </Text>
+            <Text style={{ color: t.muted, marginTop: 4 }}>
+              Pull down to refresh
+            </Text>
           </View>
         }
       />
@@ -689,9 +921,9 @@ const styles = StyleSheet.create({
   },
   sideActions: {
     position: 'absolute',
-    right: 12,
+    right: 5,
     top: 0,
-    bottom: 0,
+    bottom: 100,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,

@@ -1,5 +1,15 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, Pressable, StyleSheet, FlatList, Animated, Dimensions, Platform } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Pressable,
+  StyleSheet,
+  FlatList,
+  Animated,
+  Dimensions,
+  Platform,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -19,12 +29,16 @@ interface FacebookHeaderProps {
 
 const { width: screenWidth } = Dimensions.get('window');
 
-const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) => {
+const FacebookHeader: React.FC<FacebookHeaderProps> = ({
+  title = 'Connect',
+}) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const navigation = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
   const myProfile = useSelector((state: RootState) => state.profile);
-  const unreadMessageCount = useSelector((state: RootState) => state.chat.unreadMessageCount);
+  const unreadMessageCount = useSelector(
+    (state: RootState) => state.chat.unreadMessageCount,
+  );
   const { isConnected, emit, on, off } = useSocket();
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [notifOpen, setNotifOpen] = React.useState(false);
@@ -49,7 +63,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
   const handleNotificationsPress = () => {
     const newState = !notifOpen;
     setNotifOpen(newState);
-    
+
     if (newState) {
       // Animate dropdown in
       Animated.spring(dropdownAnimation, {
@@ -111,10 +125,10 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
   };
 
   const markNotificationAsRead = (notificationId: string) => {
-    setNotifications(prev => 
-      prev.map(notif => 
-        notif._id === notificationId ? { ...notif, isSeen: true } : notif
-      )
+    setNotifications(prev =>
+      prev.map(notif =>
+        notif._id === notificationId ? { ...notif, isSeen: true } : notif,
+      ),
     );
   };
 
@@ -146,7 +160,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
     const handleNew = (data: any) => {
       setNotifications(prev => [data, ...prev]);
       setUnreadCount(prev => prev + 1);
-      
+
       // Animate badge when new notification arrives
       Animated.sequence([
         Animated.timing(badgeAnimation, {
@@ -199,10 +213,36 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
   const topInset = Platform.OS === 'ios' ? 0 : insets.top;
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor, borderBottomColor: themeColors.border.primary, paddingTop: topInset, height: 56 + topInset, transform: [{ translateY }] }]}> 
-      <TouchableOpacity style={styles.leftSection} onPress={handleLogoPress} accessibilityRole="button" accessibilityLabel="Go to Home">
+    <Animated.View
+      style={[
+        styles.container,
+        {
+          backgroundColor,
+          borderBottomColor: themeColors.border.primary,
+          paddingTop: topInset,
+          height: 56 + topInset,
+          transform: [{ translateY }],
+        },
+      ]}
+    >
+      <TouchableOpacity
+        style={styles.leftSection}
+        onPress={handleLogoPress}
+        accessibilityRole="button"
+        accessibilityLabel="Go to Home"
+      >
         <Logo size="small" />
-        <Text style={{ color: themeColors.primary, fontWeight: '700', fontSize: 28, marginLeft: 3, marginTop: 0 }}>Connect</Text>
+        <Text
+          style={{
+            color: themeColors.primary,
+            fontWeight: '700',
+            fontSize: 28,
+            marginLeft: 3,
+            marginTop: 0,
+          }}
+        >
+          Connect
+        </Text>
       </TouchableOpacity>
 
       <View style={styles.rightSection}>
@@ -212,8 +252,14 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
             styles.actionButton,
             styles.searchButton,
             {
-              backgroundColor: isDarkMode ? 'rgba(36, 37, 38, 0.55)' : 'rgba(248, 249, 250, 0.9)',
-              borderColor: pressed ? themeColors.primary + '66' : isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+              backgroundColor: isDarkMode
+                ? 'rgba(36, 37, 38, 0.55)'
+                : 'rgba(248, 249, 250, 0.9)',
+              borderColor: pressed
+                ? themeColors.primary + '66'
+                : isDarkMode
+                ? 'rgba(255, 255, 255, 0.08)'
+                : 'rgba(0, 0, 0, 0.06)',
             },
           ]}
           accessibilityRole="button"
@@ -225,22 +271,30 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
               <Icon
                 name="search"
                 size={20}
-                color={pressed ? themeColors.primary : themeColors.text.secondary}
+                color={
+                  pressed ? themeColors.primary : themeColors.text.secondary
+                }
               />
             </>
           )}
         </Pressable>
-        <TouchableOpacity onPress={handleMessagePress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
+        <TouchableOpacity
+          onPress={handleMessagePress}
+          style={[
+            styles.actionButton,
+            { backgroundColor: themeColors.surface.secondary },
+          ]}
+        >
           <View style={styles.messageButtonContainer}>
             <Icon name="chat" size={20} color={iconColor} />
             {unreadMessageCount > 0 && (
-              <Animated.View 
+              <Animated.View
                 style={[
-                  styles.messageBadge, 
-                  { 
+                  styles.messageBadge,
+                  {
                     backgroundColor: themeColors.status.error,
-                    transform: [{ scale: messageBadgeAnimation }]
-                  }
+                    transform: [{ scale: messageBadgeAnimation }],
+                  },
                 ]}
               >
                 <Text style={styles.badgeText}>
@@ -250,17 +304,23 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
             )}
           </View>
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleNotificationsPress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
+        <TouchableOpacity
+          onPress={handleNotificationsPress}
+          style={[
+            styles.actionButton,
+            { backgroundColor: themeColors.surface.secondary },
+          ]}
+        >
           <View style={styles.notificationButtonContainer}>
             <Icon name="notifications" size={20} color={iconColor} />
             {unreadCount > 0 && (
-              <Animated.View 
+              <Animated.View
                 style={[
-                  styles.notificationBadge, 
-                  { 
+                  styles.notificationBadge,
+                  {
                     backgroundColor: themeColors.status.error,
-                    transform: [{ scale: badgeAnimation }]
-                  }
+                    transform: [{ scale: badgeAnimation }],
+                  },
                 ]}
               >
                 <Text style={styles.badgeText}>
@@ -275,11 +335,11 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
         </TouchableOpacity> */}
       </View>
       {notifOpen && (
-        <Animated.View 
+        <Animated.View
           style={[
-            styles.notificationsMenu, 
-            { 
-              backgroundColor: themeColors.surface.elevated, 
+            styles.notificationsMenu,
+            {
+              backgroundColor: themeColors.surface.elevated,
               borderColor: themeColors.border.primary,
               top: 60 + topInset,
               transform: [
@@ -297,29 +357,55 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
                 },
               ],
               opacity: dropdownAnimation,
-            }
+            },
           ]}
-        > 
-          <View style={[styles.notificationHeader, { borderBottomColor: themeColors.border.primary }]}>
-            <Text style={[styles.notificationHeaderTitle, { color: textColor }]}>
+        >
+          <View
+            style={[
+              styles.notificationHeader,
+              { borderBottomColor: themeColors.border.primary },
+            ]}
+          >
+            <Text
+              style={[styles.notificationHeaderTitle, { color: textColor }]}
+            >
               Notifications
             </Text>
             {notifications.length > 0 && (
-              <TouchableOpacity onPress={clearAllNotifications} style={styles.clearAllButton}>
-                <Text style={[styles.clearAllText, { color: themeColors.primary }]}>
+              <TouchableOpacity
+                onPress={clearAllNotifications}
+                style={styles.clearAllButton}
+              >
+                <Text
+                  style={[styles.clearAllText, { color: themeColors.primary }]}
+                >
                   Clear All
                 </Text>
               </TouchableOpacity>
             )}
           </View>
-          
+
           {notifications.length === 0 ? (
             <View style={styles.emptyState}>
-              <Icon name="notifications-none" size={48} color={themeColors.gray[400]} />
-              <Text style={[styles.emptyStateText, { color: themeColors.text.secondary }]}>
+              <Icon
+                name="notifications-none"
+                size={48}
+                color={themeColors.gray[400]}
+              />
+              <Text
+                style={[
+                  styles.emptyStateText,
+                  { color: themeColors.text.secondary },
+                ]}
+              >
                 No notifications yet
               </Text>
-              <Text style={[styles.emptyStateSubtext, { color: themeColors.text.tertiary }]}>
+              <Text
+                style={[
+                  styles.emptyStateSubtext,
+                  { color: themeColors.text.tertiary },
+                ]}
+              >
                 We'll notify you when something new happens
               </Text>
             </View>
@@ -328,46 +414,69 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
               data={notifications}
               keyExtractor={(item: any, idx) => item._id || String(idx)}
               renderItem={({ item }) => (
-                <TouchableOpacity 
+                <TouchableOpacity
                   style={[
-                    styles.notificationRow, 
-                    { 
-                      backgroundColor: !item.isSeen ? themeColors.primary + '08' : 'transparent',
-                      borderLeftColor: !item.isSeen ? getNotificationColor(item.type || 'default') : 'transparent'
-                    }
+                    styles.notificationRow,
+                    {
+                      backgroundColor: !item.isSeen
+                        ? themeColors.primary + '08'
+                        : 'transparent',
+                      borderLeftColor: !item.isSeen
+                        ? getNotificationColor(item.type || 'default')
+                        : 'transparent',
+                    },
                   ]}
                   onPress={() => markNotificationAsRead(item._id)}
                   activeOpacity={0.7}
                 >
-                  <View style={[
-                    styles.notificationIconContainer,
-                    { backgroundColor: getNotificationColor(item.type || 'default') + '15' }
-                  ]}>
-                    <Icon 
-                      name={getNotificationIcon(item.type || 'default')} 
-                      size={20} 
-                      color={getNotificationColor(item.type || 'default')} 
+                  <View
+                    style={[
+                      styles.notificationIconContainer,
+                      {
+                        backgroundColor:
+                          getNotificationColor(item.type || 'default') + '15',
+                      },
+                    ]}
+                  >
+                    <Icon
+                      name={getNotificationIcon(item.type || 'default')}
+                      size={20}
+                      color={getNotificationColor(item.type || 'default')}
                     />
                   </View>
                   <View style={styles.notificationContent}>
-                    <Text 
-                      numberOfLines={2} 
+                    <Text
+                      numberOfLines={2}
                       style={[
-                        styles.notificationText, 
-                        { 
+                        styles.notificationText,
+                        {
                           color: textColor,
-                          fontWeight: !item.isSeen ? '600' : '400'
-                        }
+                          fontWeight: !item.isSeen ? '600' : '400',
+                        },
                       ]}
                     >
                       {item.text}
                     </Text>
-                    <Text style={[styles.notificationTime, { color: themeColors.text.tertiary }]}>
+                    <Text
+                      style={[
+                        styles.notificationTime,
+                        { color: themeColors.text.tertiary },
+                      ]}
+                    >
                       {moment(item.timestamp || item.createdAt).fromNow()}
                     </Text>
                   </View>
                   {!item.isSeen && (
-                    <View style={[styles.unreadDot, { backgroundColor: getNotificationColor(item.type || 'default') }]} />
+                    <View
+                      style={[
+                        styles.unreadDot,
+                        {
+                          backgroundColor: getNotificationColor(
+                            item.type || 'default',
+                          ),
+                        },
+                      ]}
+                    />
                   )}
                 </TouchableOpacity>
               )}
@@ -408,8 +517,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   actionButton: {
-    width: 36,
-    height: 36,
+    width: 40,
+    height: 40,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
@@ -579,5 +688,3 @@ const styles = StyleSheet.create({
 });
 
 export default FacebookHeader;
-
-
