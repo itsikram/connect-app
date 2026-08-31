@@ -12,9 +12,12 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
     html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #0b0f17; overflow: hidden; }
     #remote { position: absolute; inset: 0; background: #0b0f17; }
     #local {
-      position: absolute; width: 28%; height: 22%; bottom: 16px; right: 12px;
+      position: absolute; width: 28%; height: 22%; min-width: 96px; min-height: 128px;
+      max-width: 148px; max-height: 198px; bottom: 110px; right: 12px; left: auto; top: auto;
       border-radius: 12px; overflow: hidden; z-index: 2; background: #111;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4); border: 1.5px solid rgba(255,255,255,0.28);
+      touch-action: none; user-select: none; -webkit-user-select: none;
+      will-change: transform; cursor: grab;
     }
     #local.hidden, #remote.audio-only { display: none; }
     video { object-fit: cover; width: 100%; height: 100%; }
@@ -292,6 +295,107 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       window.addEventListener('message', onNativeMessage);
       document.addEventListener('message', onNativeMessage);
 
+      function enableLocalPreviewDrag() {
+        var el = document.getElementById('local');
+        if (!el || el.getAttribute('data-drag-ready')) return;
+        el.setAttribute('data-drag-ready', '1');
+
+        var dragging = false;
+        var pointerId = null;
+        var startX = 0;
+        var startY = 0;
+        var originLeft = 0;
+        var originTop = 0;
+        var pad = 10;
+        var bottomReserve = 108;
+        var raf = 0;
+        var nextLeft = 0;
+        var nextTop = 0;
+
+        function clamp(left, top) {
+          var w = el.offsetWidth;
+          var h = el.offsetHeight;
+          var vw = window.innerWidth || document.documentElement.clientWidth;
+          var vh = window.innerHeight || document.documentElement.clientHeight;
+          var maxL = Math.max(pad, vw - w - pad);
+          var maxT = Math.max(pad, vh - h - bottomReserve);
+          return {
+            left: Math.min(maxL, Math.max(pad, left)),
+            top: Math.min(maxT, Math.max(pad, top)),
+          };
+        }
+
+        function commit(left, top) {
+          el.style.left = left + 'px';
+          el.style.top = top + 'px';
+          el.style.right = 'auto';
+          el.style.bottom = 'auto';
+          el.style.transform = 'translate3d(0,0,0)';
+        }
+
+        function tick() {
+          raf = 0;
+          if (!dragging) return;
+          el.style.transform = 'translate3d(' + nextLeft + 'px,' + nextTop + 'px,0)';
+        }
+
+        function onDown(e) {
+          if (el.classList.contains('hidden')) return;
+          var t = e.touches ? e.touches[0] : e;
+          if (!t) return;
+          dragging = true;
+          pointerId = e.pointerId;
+          startX = t.clientX;
+          startY = t.clientY;
+          var rect = el.getBoundingClientRect();
+          originLeft = rect.left;
+          originTop = rect.top;
+          nextLeft = 0;
+          nextTop = 0;
+          el.style.transition = 'none';
+          el.style.cursor = 'grabbing';
+          try { el.setPointerCapture && e.pointerId != null && el.setPointerCapture(e.pointerId); } catch (err) {}
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+        }
+
+        function onMove(e) {
+          if (!dragging) return;
+          if (e.pointerId != null && pointerId != null && e.pointerId !== pointerId) return;
+          var t = e.touches ? e.touches[0] : e;
+          if (!t) return;
+          var pos = clamp(originLeft + (t.clientX - startX), originTop + (t.clientY - startY));
+          nextLeft = pos.left - originLeft;
+          nextTop = pos.top - originTop;
+          if (!raf) raf = requestAnimationFrame(tick);
+          if (e.cancelable) e.preventDefault();
+        }
+
+        function onUp(e) {
+          if (!dragging) return;
+          if (e && e.pointerId != null && pointerId != null && e.pointerId !== pointerId) return;
+          dragging = false;
+          pointerId = null;
+          if (raf) {
+            cancelAnimationFrame(raf);
+            raf = 0;
+          }
+          var pos = clamp(originLeft + nextLeft, originTop + nextTop);
+          el.style.cursor = 'grab';
+          el.style.transition = 'left 160ms cubic-bezier(0.22, 1, 0.36, 1), top 160ms cubic-bezier(0.22, 1, 0.36, 1)';
+          commit(pos.left, pos.top);
+        }
+
+        el.addEventListener('pointerdown', onDown, { passive: false });
+        window.addEventListener('pointermove', onMove, { passive: false });
+        window.addEventListener('pointerup', onUp);
+        window.addEventListener('pointercancel', onUp);
+        el.addEventListener('touchstart', onDown, { passive: false });
+        window.addEventListener('touchmove', onMove, { passive: false });
+        window.addEventListener('touchend', onUp);
+        window.addEventListener('touchcancel', onUp);
+      }
+
       function waitForSdk() {
         if (window.AgoraRTC) {
           try { AgoraRTC.setLogLevel(4); } catch (e) {}
@@ -301,6 +405,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
               bindClientEvents(client);
             } catch (e) {}
           }
+          enableLocalPreviewDrag();
           post({ type: 'ready' });
           return;
         }

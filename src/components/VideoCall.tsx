@@ -511,7 +511,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     <>
       <View
         style={[showUi ? styles.engineFill : styles.hiddenEngine, { zIndex: showUi ? 9998 : 0 }]}
-        pointerEvents="none"
+        pointerEvents={showUi ? 'auto' : 'none'}
       >
         <AgoraWebEngine
           ref={engineRef}
@@ -521,10 +521,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         />
       </View>
       {showUi ? (
-        <View style={styles.overlay}>
+        <View style={styles.overlay} pointerEvents="box-none">
           <StatusBar barStyle="light-content" />
           {showRemotePlaceholder && (
-            <View style={styles.placeholder} pointerEvents="none">
+            <View style={styles.placeholder} pointerEvents="auto">
               {callerProfilePic ? (
                 <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
               ) : (

@@ -111,6 +111,9 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
         domStorageEnabled
         cacheEnabled
         cacheMode="LOAD_DEFAULT"
+        scrollEnabled={false}
+        bounces={false}
+        overScrollMode="never"
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         mediaCapturePermissionGrantType="grant"
