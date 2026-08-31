@@ -6,7 +6,7 @@ import Constants from 'expo-constants';
 export const PUSH_TOKEN_STORAGE_KEY = 'fcmToken';
 
 const EXPO_PROJECT_ID =
-  Constants.expoConfig?.extra?.eas?.projectId || '76d83a3a-a10d-43fb-a110-e50066ce889f';
+  Constants.expoConfig?.extra?.eas?.projectId || '2705eb94-d61a-4af6-af53-02399dce8b6f';
 
 export function isExpoPushToken(token: string | null | undefined): boolean {
   const value = String(token || '');

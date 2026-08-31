@@ -6,8 +6,6 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.media.AudioAttributes
-import android.net.Uri
 import android.os.Build
 import androidx.core.app.NotificationCompat
 
@@ -76,7 +74,9 @@ object IncomingCallNotifier {
   }
 
   private fun ensureChannel(context: Context, ringtoneId: String): String {
-    val channelId = "${CHANNEL_PREFIX}${ringtoneId}_v6"
+    // The foreground service owns ringtone playback. Keep the channel silent
+    // so Android does not play the same ringtone a second time.
+    val channelId = "${CHANNEL_PREFIX}${ringtoneId}_v7"
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
       if (manager.getNotificationChannel(channelId) == null) {
@@ -90,15 +90,7 @@ object IncomingCallNotifier {
           lockscreenVisibility = Notification.VISIBILITY_PUBLIC
           enableVibration(true)
           vibrationPattern = longArrayOf(0, 400, 200, 400, 200, 400)
-          val resId = context.resources.getIdentifier("ringtone_$ringtoneId", "raw", context.packageName)
-          if (resId != 0) {
-            val soundUri = Uri.parse("android.resource://${context.packageName}/$resId")
-            val attrs = AudioAttributes.Builder()
-              .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-              .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-              .build()
-            setSound(soundUri, attrs)
-          }
+          setSound(null, null)
         }
         manager.createNotificationChannel(channel)
       }

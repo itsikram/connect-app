@@ -193,12 +193,17 @@ export async function configureNotificationsChannel() {
     await configureIncomingCallChannels();
 
     if (Platform.OS === 'android') {
-      await Notifications.setNotificationChannelAsync('messages_high', {
+      const messageChannel = {
         name: 'Messages',
         importance: Notifications.AndroidImportance.HIGH,
-        sound: 'default',
+        sound: 'default' as const,
         vibrationPattern: [0, 250, 250, 250],
         enableVibrate: true,
+      };
+      await Notifications.setNotificationChannelAsync('messages_high', messageChannel);
+      await Notifications.setNotificationChannelAsync('messages_chat_peek_v3', {
+        ...messageChannel,
+        name: 'Chat messages',
       });
     }
 
@@ -579,6 +584,5 @@ export async function requestIncomingCallPermissions(): Promise<boolean> {
     return false;
   }
 }
-
 
 

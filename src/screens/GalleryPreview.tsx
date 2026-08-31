@@ -26,10 +26,10 @@ const GalleryPreview = ({ route, navigation }: any) => {
 
       <View style={styles.viewer}>
         {item.type === 'image' ? (
-          <Image source={{ uri: `file://${item.path}` }} style={styles.media} resizeMode="contain" />
+           <Image source={{ uri: item.path }} style={styles.media} resizeMode="contain" />
         ) : (
           <Video 
-            source={{ uri: `file://${item.path}` }} 
+             source={{ uri: item.path }} 
             style={styles.media} 
             useNativeControls={true}
             resizeMode={ResizeMode.CONTAIN} 

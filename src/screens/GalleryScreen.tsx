@@ -44,11 +44,11 @@ const GalleryScreen = ({ navigation }: any) => {
   const renderItem = ({ item }: { item: MediaItem }) => (
     <TouchableOpacity style={styles.item} onPress={() => openItem(item)}>
       {item.type === 'image' ? (
-        <Image source={{ uri: `file://${item.path}` }} style={styles.thumb} resizeMode="cover" />
+        <Image source={{ uri: item.path }} style={styles.thumb} resizeMode="cover" />
       ) : (
         <View style={styles.thumb}>
           <Video 
-            source={{ uri: `file://${item.path}` }} 
+            source={{ uri: item.path }} 
             style={styles.thumb} 
             resizeMode={ResizeMode.COVER} 
             isLooping

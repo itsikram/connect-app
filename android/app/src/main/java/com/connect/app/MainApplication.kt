@@ -1,9 +1,12 @@
 package com.connect.app
 
 import android.app.Application
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.res.Configuration
 import android.os.Process
 import android.util.Log
+import android.os.Build
 import com.connect.app.CallNotificationPackage
 import com.connect.app.overlay.FloatingOverlayPackage
 import com.facebook.react.PackageList
@@ -95,6 +98,16 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      val manager = getSystemService(NotificationManager::class.java)
+      manager.createNotificationChannel(
+        NotificationChannel(
+          "messages_chat_peek_v3",
+          "Chat messages",
+          NotificationManager.IMPORTANCE_HIGH
+        )
+      )
+    }
 
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())

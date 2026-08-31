@@ -1,3 +1,4 @@
 <resources>
+    <string name="default_notification_channel_id">messages_chat_peek_v3</string>
     <string name="app_name">Connect</string>
 </resources>

@@ -209,7 +209,6 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
       
       try {
         const { startIncomingCallAlert } = await import('./incomingCallAlerts');
-        const { callNotificationService } = await import('./callNotificationService');
         const callPayload = {
           callerName: data.callerName || 'Unknown Caller',
           callerProfilePic: data.callerProfilePic || '',
@@ -219,7 +218,6 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
           ringtoneId: data.ringtoneId,
         };
         await startIncomingCallAlert(callPayload);
-        await callNotificationService.displayIncomingCallNotification(callPayload);
         console.log('✅ Incoming call notification displayed from FCM');
       } catch (error) {
         console.error('❌ Error displaying incoming call notification from FCM:', error);
@@ -392,13 +390,11 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
       const handleIncoming = async (payload: any) => {
         try {
           const { startIncomingCallAlert } = await import('./incomingCallAlerts');
-          const { callNotificationService } = await import('./callNotificationService');
           const normalized = normalizeIncomingCallPayload(payload);
           if (!normalized.channelName || !normalized.callerId) {
             return;
           }
           await startIncomingCallAlert(normalized);
-          await callNotificationService.displayIncomingCallNotification(normalized);
         } catch (e) {
           // Fallback: minimal notifee notification if service import fails
           try {

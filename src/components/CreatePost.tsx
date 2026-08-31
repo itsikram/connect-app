@@ -73,6 +73,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     setModalVisible(true);
   };
   const closeModal = () => {
+    if (isUploading) return;
     setModalVisible(false);
     setPostData({ caption: '', urls: null, type: null, location: '', feelings: '', audience: 3 });
   };
@@ -384,16 +385,32 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 <Image source={{ uri: postData.urls }} style={styles.attachmentPreview} />
               )}
               {postData.urls && postData.type === 'video' && (
-                uploadProgress !== null && isUploading ? (
-                  <View style={{ marginVertical: 8 }}>
-                    <View style={{ height: 8, backgroundColor: themeColors.gray?.[300] || '#eee', borderRadius: 6, overflow: 'hidden' }}>
-                      <View style={{ width: `${Math.round((uploadProgress || 0) * 100)}%`, height: '100%', backgroundColor: themeColors.primary }} />
-                    </View>
-                    <Text style={{ color: themeColors.primary, marginTop: 6 }}>{Math.round((uploadProgress || 0) * 100)}% uploading</Text>
-                  </View>
-                ) : (
-                  <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
-                )
+                <View style={{ marginVertical: 8 }}>
+                  {isUploading ? (
+                    <>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                        <ActivityIndicator size="small" color={themeColors.primary} />
+                        <Text style={{ color: themeColors.primary, marginLeft: 8, fontWeight: '600' }}>
+                          {uploadProgress === null ? 'Uploading video...' : 'Uploading video'}
+                        </Text>
+                      </View>
+                      <View style={{ height: 8, backgroundColor: themeColors.gray?.[300] || '#eee', borderRadius: 6, overflow: 'hidden' }}>
+                        <View
+                          style={{
+                            width: `${Math.min(100, Math.max(0, Math.round((uploadProgress || 0) * 100)))}%`,
+                            height: '100%',
+                            backgroundColor: themeColors.primary,
+                          }}
+                        />
+                      </View>
+                      <Text style={{ color: themeColors.primary, marginTop: 6 }}>
+                        {uploadProgress === null ? 'Preparing upload...' : `${Math.round(uploadProgress * 100)}% uploaded`}
+                      </Text>
+                    </>
+                  ) : (
+                    <Text style={{ color: themeColors.primary }}>Video selected</Text>
+                  )}
+                </View>
               )}
               <View style={styles.attachmentRow}>
                 <ModernButton
@@ -475,7 +492,11 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         onRequestClose={closeAudiencePicker}
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeAudiencePicker}>
-          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
+          <View
+            style={[styles.modalContent, { backgroundColor: modalBg }]}
+            onStartShouldSetResponder={() => true}
+            onTouchEnd={(event) => event.stopPropagation()}
+          >
             <Text style={[styles.modalTitle, { color: textColor }]}>Select Audience</Text>
             <FlatList
               data={audienceOptions}
@@ -483,7 +504,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
               renderItem={({ item }) => (
                 <TouchableOpacity
                   onPress={() => selectAudience(item.value)}
-                  style={{ paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
+                  style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center' }}
+                  activeOpacity={0.7}
                 >
                   <Icon name={item.icon} size={20} color={themeColors.primary} style={{ marginRight: 12 }} />
                   <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>

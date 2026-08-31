@@ -54,6 +54,10 @@
 -dontwarn com.asterinet.react.bgactions.**
 
 # Keep background service classes
+-keep class com.connect.app.ConnectFirebaseMessagingService { *; }
+-keep class com.connect.app.IncomingCallNotifier { *; }
+-keep class com.connect.app.IncomingCallRingService { *; }
+-keep class com.connect.app.IncomingCallStore { *; }
 -keep class com.connect.app.KeepAliveService { *; }
 -keep class com.connect.app.BackgroundTtsService { *; }
 -keep class com.connect.app.BootReceiver { *; }
