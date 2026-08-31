@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Image,
   TextInput,
   ScrollView,
   ActivityIndicator,
@@ -15,6 +14,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
 import type { FriendUser, Player } from './types';
+import ProfileImage from '../../components/ProfileImage';
 
 interface PlayerEditorModalProps {
   show: boolean;
@@ -100,7 +100,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
             <View style={styles.previewRow}>
               <View style={[styles.avatarWrap, { borderColor: accent }]}>
                 {editAvatarUrl ? (
-                  <Image source={{ uri: editAvatarUrl }} style={styles.avatar} />
+                  <ProfileImage uri={editAvatarUrl} pixelSize={160} style={styles.avatar} />
                 ) : (
                   <Text style={styles.avatarLetter}>{seatLetter}</Text>
                 )}
@@ -165,7 +165,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
                     <View key={f._id} style={styles.friend}>
                       <View style={styles.friendLeft}>
                         {f.profilePic ? (
-                          <Image source={{ uri: f.profilePic }} style={styles.friendAvatar} />
+                          <ProfileImage uri={f.profilePic} pixelSize={80} style={styles.friendAvatar} />
                         ) : (
                           <View style={styles.friendAvatarFallback}>
                             <Text style={styles.avatarLetter}>{initial}</Text>

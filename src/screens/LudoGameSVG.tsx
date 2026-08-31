@@ -27,6 +27,7 @@ import { useSocket } from '../contexts/SocketContext';
 import api, { friendAPI } from '../lib/api';
 import config from '../lib/config';
 import { RootState } from '../store';
+import ProfileImage from '../components/ProfileImage';
 import {
   AUTO_MOVE_DELAY_MS,
   BOARD_CELLS,
@@ -1447,8 +1448,9 @@ const LudoGameSVG = () => {
         >
           <View style={styles.tokenInner} />
           {avatar ? (
-            <Image
-              source={{ uri: avatar }}
+            <ProfileImage
+              uri={avatar}
+              pixelSize={Math.round(tokenSize * 2)}
               style={{
                 width: tokenSize * 0.68,
                 height: tokenSize * 0.68,
@@ -1683,8 +1685,9 @@ const LudoGameSVG = () => {
                         />
                       </View>
                     ) : (
-                      <Image
-                        source={{ uri: currentAvatar }}
+                      <ProfileImage
+                        uri={currentAvatar}
+                        pixelSize={Math.round(avatarSize * 2)}
                         style={{
                           width: avatarSize,
                           height: avatarSize,

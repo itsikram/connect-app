@@ -1,40 +1,79 @@
-import { View, StyleSheet, Image } from 'react-native';
-import config from '../lib/config';
-import { getProfileImageSource, googleImageWebProps } from '../lib/profileImage';
-const UserPP = ({ image, isActive, size }: { image: string, isActive: boolean, size?: number }) => {
-  const source = getProfileImageSource(image, size ? Math.round(size * 2) : 96)
-    || { uri: config?.DEFAULT_PROFILE_URL };
+import { View, StyleSheet } from 'react-native';
+import ProfileImage from './ProfileImage';
+
+interface UserPPProps {
+  image?: string;
+  isActive?: boolean;
+  size?: number;
+  hasStory?: boolean;
+}
+
+const UserPP = ({ image, isActive = false, size = 40, hasStory = false }: UserPPProps) => {
+  const avatarSize = size;
+  const ringWidth = hasStory ? 3.5 : 0;
+  const outerSize = avatarSize + ringWidth * 2;
+
   return (
-    <View>
-      <Image
-        source={source}
-        {...googleImageWebProps}
-        style={[styles.image, { width: size || 40, height: size || 40, borderRadius: (size || 40) / 2 }]}
-      />
-      {isActive && <View style={styles.activeDotContainer} />}
+    <View style={{ width: outerSize, height: outerSize }}>
+      <View
+        style={[
+          styles.ring,
+          {
+            width: outerSize,
+            height: outerSize,
+            borderRadius: outerSize / 2,
+            borderWidth: ringWidth,
+            borderColor: hasStory ? '#5D93EB' : 'transparent',
+          },
+        ]}
+      >
+        <ProfileImage
+          uri={image}
+          pixelSize={Math.round(avatarSize * 2)}
+          style={[
+            styles.image,
+            {
+              width: avatarSize,
+              height: avatarSize,
+              borderRadius: avatarSize / 2,
+            },
+          ]}
+        />
+      </View>
+      {isActive && (
+        <View
+          style={[
+            styles.activeDotContainer,
+            {
+              width: Math.max(10, avatarSize * 0.22),
+              height: Math.max(10, avatarSize * 0.22),
+              borderRadius: Math.max(5, avatarSize * 0.11),
+            },
+          ]}
+        />
+      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
+  ring: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
   image: {
-    width:  40,
+    width: 40,
     height: 40,
     borderRadius: 20,
   },
-  activeDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: 'green',
-  },
   activeDotContainer: {
     position: 'absolute',
-    bottom: 1.5,
-    right: 1.5,
-    backgroundColor: 'green',
-    borderRadius: 5,
-    padding: 4,
+    bottom: 1,
+    right: 1,
+    backgroundColor: '#00C851',
+    borderWidth: 1.5,
+    borderColor: '#1E1F20',
   },
 });
 

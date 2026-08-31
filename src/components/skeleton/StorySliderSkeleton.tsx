@@ -7,100 +7,66 @@ interface StorySliderSkeletonProps {
   count?: number;
 }
 
-const StorySliderSkeleton: React.FC<StorySliderSkeletonProps> = ({ count = 5 }) => {
+const STORY_WIDTH = 150;
+const STORY_HEIGHT = 230;
+
+const StorySliderSkeleton: React.FC<StorySliderSkeletonProps> = ({ count = 7 }) => {
   const { colors: themeColors } = useTheme();
 
   return (
     <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-      <View style={styles.storyContainer}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.scrollContent}
-          style={styles.scrollView}
-        >
-          {Array.from({ length: count }).map((_, index) => (
-            <View key={index} style={styles.storyItem}>
-              {/* Story image skeleton */}
-              <View style={styles.storyImageContainer}>
-                <SkeletonBlock 
-                  width="100%" 
-                  height={120} 
-                  borderRadius={12}
-                />
-                
-                {/* Profile picture skeleton */}
-                <View style={styles.profilePicContainer}>
-                  <SkeletonBlock 
-                    width={36} 
-                    height={36} 
-                    borderRadius={18}
-                  />
-                </View>
-                
-                {/* Author name skeleton */}
-                <View style={styles.authorNameContainer}>
-                  <SkeletonBlock 
-                    width={60} 
-                    height={10} 
-                    borderRadius={5}
-                  />
-                </View>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
+      >
+        {Array.from({ length: count }).map((_, index) => (
+          <View key={index} style={styles.storyItem}>
+            <View style={[styles.storyCard, { backgroundColor: themeColors.surface.secondary }]}>
+              <View style={styles.profilePicContainer}>
+                <SkeletonBlock width={40} height={40} borderRadius={20} />
+              </View>
+              <View style={styles.imageArea}>
+                <SkeletonBlock width={'90%'} height={150} borderRadius={8} />
               </View>
             </View>
-          ))}
-        </ScrollView>
-      </View>
+          </View>
+        ))}
+      </ScrollView>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 12,
-    paddingHorizontal: 4,
-  },
-  storyContainer: {
-    position: 'relative',
-    height: 160,
-  },
-  scrollView: {
-    height: 160,
+    marginTop: 4,
+    marginBottom: 10,
+    minHeight: STORY_HEIGHT,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 10,
   },
   storyItem: {
-    width: 100,
-    height: 140,
-    marginRight: 16,
-    position: 'relative',
+    width: STORY_WIDTH,
+    height: STORY_HEIGHT,
+    marginRight: 10,
   },
-  storyImageContainer: {
-    width: 100,
-    height: 140,
-    borderRadius: 16,
+  storyCard: {
+    width: STORY_WIDTH,
+    height: STORY_HEIGHT,
+    borderRadius: 10,
     overflow: 'hidden',
-    position: 'relative',
   },
   profilePicContainer: {
     position: 'absolute',
     top: 10,
     left: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 3,
-    overflow: 'hidden',
-    borderColor: 'transparent', // Will be overridden by skeleton
+    zIndex: 2,
   },
-  authorNameContainer: {
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    right: 8,
+  imageArea: {
+    flex: 1,
     alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

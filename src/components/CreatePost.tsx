@@ -9,6 +9,7 @@ import api from '../lib/api';
 // Modern components
 import { ModernCard, ModernButton, ModernInput } from './modern';
 import { useModernToast } from '../contexts/ModernToastContext';
+import ProfileImage from './ProfileImage';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -215,7 +216,11 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
     <ModernCard variant="elevated" padding="medium" margin="small">
       <View style={styles.topRow}>
         <View style={styles.profilePicWrapper}>
-          <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/images/logo.png')} style={styles.profilePic} />
+          {user?.profile?.profilePic ? (
+            <ProfileImage uri={user.profile.profilePic} pixelSize={80} style={styles.profilePic} />
+          ) : (
+            <Image source={require('../assets/images/logo.png')} style={styles.profilePic} />
+          )}
         </View>
         <TouchableOpacity 
           style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: borderColor }]} 
@@ -266,7 +271,11 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             </View>
             <View style={styles.modalBody}>
               <View style={styles.cpmHeader}>
-                <Image source={user?.profile?.profilePic ? { uri: user.profile.profilePic } : require('../assets/images/logo.png')} style={styles.profilePic} />
+                {user?.profile?.profilePic ? (
+                  <ProfileImage uri={user.profile.profilePic} pixelSize={80} style={styles.profilePic} />
+                ) : (
+                  <Image source={require('../assets/images/logo.png')} style={styles.profilePic} />
+                )}
                 <Text style={[styles.profileName, { color: textColor }]}>{profileName}</Text>
               </View>
               <View style={styles.feelingsLocationRow}>

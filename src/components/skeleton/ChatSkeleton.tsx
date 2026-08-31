@@ -181,7 +181,7 @@ export const ChatComposerSkeleton: React.FC<{ theme?: SkeletonColors }> = ({ the
                 borderTopColor: colors.sentBorder || 'rgba(255,255,255,0.08)',
                 paddingHorizontal: 12,
                 paddingTop: 8,
-                paddingBottom: 8,
+                paddingBottom: 30,
             }}
         >
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>

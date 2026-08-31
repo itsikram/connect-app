@@ -11,44 +11,50 @@ const PostSkeleton: React.FC<PostSkeletonProps> = ({ count = 3 }) => {
     const { colors: themeColors } = useTheme();
 
     return (
-        <View style={{ paddingHorizontal: 12, paddingTop: 8 }}>
+        <View>
             {Array.from({ length: count }).map((_, idx) => (
-                <View key={idx} style={{ backgroundColor: themeColors.surface.primary, borderRadius: 12, padding: 12, marginBottom: 12, borderWidth: 1, borderColor: themeColors.border.primary }}
+                <View
+                    key={idx}
+                    style={{
+                        backgroundColor: themeColors.surface.primary,
+                        borderRadius: 12,
+                        marginHorizontal: 10,
+                        marginBottom: 10,
+                        borderWidth: 1,
+                        borderColor: themeColors.border.primary,
+                        overflow: 'hidden',
+                    }}
                 >
-                    <SkeletonRow>
-                        <SkeletonBlock width={44} height={44} borderRadius={22} />
-                        <SkeletonColumn style={{ flex: 1 }}>
-                            <SkeletonBlock width={'60%'} height={14} />
-                            <SkeletonBlock width={'40%'} height={12} />
-                        </SkeletonColumn>
-                        <SkeletonBlock width={90} height={24} borderRadius={6} />
-                    </SkeletonRow>
+                    <View style={{ paddingHorizontal: 14, paddingTop: 12, paddingBottom: 8 }}>
+                        <SkeletonRow>
+                            <SkeletonBlock width={42} height={42} borderRadius={21} />
+                            <SkeletonColumn style={{ flex: 1, marginLeft: 10 }}>
+                                <SkeletonBlock width={'55%'} height={14} />
+                                <SkeletonBlock width={'30%'} height={10} />
+                            </SkeletonColumn>
+                            <SkeletonBlock width={34} height={34} borderRadius={17} />
+                            <SkeletonBlock width={34} height={34} borderRadius={17} />
+                        </SkeletonRow>
+                    </View>
 
-                    {/* Additional content skeleton lines */}
-                    <SkeletonColumn style={{ marginTop: 8 }}>
-                        <SkeletonBlock width={'85%'} height={12} />
+                    <SkeletonColumn style={{ paddingHorizontal: 14, marginBottom: 12 }}>
+                        <SkeletonBlock width={'92%'} height={12} />
                         <SkeletonBlock width={'70%'} height={12} />
-                        <SkeletonBlock width={'60%'} height={12} />
                     </SkeletonColumn>
 
-                    <SkeletonColumn style={{ marginTop: 12 }}>
-                        <SkeletonBlock width={'100%'} height={250} borderRadius={10} />
-                    </SkeletonColumn>
+                    <SkeletonBlock width={'100%'} height={idx % 2 === 0 ? 280 : 200} borderRadius={0} />
 
-                    <SkeletonRow style={{ marginTop: 12 }}>
-                        <SkeletonBlock width={'20%'} height={14} />
-                        <SkeletonBlock width={'18%'} height={14} />
-                        <SkeletonBlock width={'16%'} height={14} />
-                    </SkeletonRow>
-
-
-
-                    {/* Action buttons skeleton */}
-                    <SkeletonRow style={{ marginTop: 12, justifyContent: 'space-between' }}>
-                        <SkeletonBlock width={60} height={16} />
-                        <SkeletonBlock width={60} height={16} />
-                        <SkeletonBlock width={60} height={16} />
-                    </SkeletonRow>
+                    <View style={{ paddingHorizontal: 14, paddingVertical: 12 }}>
+                        <SkeletonRow style={{ justifyContent: 'space-between', marginBottom: 12 }}>
+                            <SkeletonBlock width={'40%'} height={12} />
+                            <SkeletonBlock width={'28%'} height={12} />
+                        </SkeletonRow>
+                        <SkeletonRow style={{ justifyContent: 'space-between' }}>
+                            <SkeletonBlock width={'28%'} height={18} />
+                            <SkeletonBlock width={'28%'} height={18} />
+                            <SkeletonBlock width={'28%'} height={18} />
+                        </SkeletonRow>
+                    </View>
                 </View>
             ))}
         </View>
@@ -56,5 +62,3 @@ const PostSkeleton: React.FC<PostSkeletonProps> = ({ count = 3 }) => {
 };
 
 export default PostSkeleton;
-
-

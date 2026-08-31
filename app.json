@@ -23,6 +23,20 @@
         "NSPhotoLibraryAddUsageDescription": "This app saves downloaded YouTube videos to your Photos library.",
         "NSCameraUsageDescription": "This app uses the camera to take photos and videos.",
         "NSMicrophoneUsageDescription": "This app uses the microphone to record audio.",
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": true,
+          "NSExceptionDomains": {
+            "googleusercontent.com": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionRequiresForwardSecrecy": false
+            },
+            "ggpht.com": {
+              "NSIncludesSubdomains": true,
+              "NSExceptionRequiresForwardSecrecy": false
+            }
+          }
+        },
         "UIBackgroundModes": [
           "audio",
           "background-fetch",

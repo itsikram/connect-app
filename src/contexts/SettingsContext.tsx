@@ -19,6 +19,7 @@ interface SettingsData {
   
   // Message Settings
   showTyping?: boolean;
+  showIsTyping?: boolean;
   isShareEmotion?: boolean;
   isShareLocation?: boolean;
   readReceipts?: boolean;

@@ -11,7 +11,7 @@ import { useDispatch } from 'react-redux'
 import { setProfile, updateProfilePic, updateCoverPic } from '../reducers/profileReducer'
 import { useNavigation } from '@react-navigation/native'
 import ImageCropModal from '../components/ImageCropModal'
-import { getProfileImageSource, googleImageWebProps } from '../lib/profileImage'
+import ProfileImage from '../components/ProfileImage'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -338,7 +338,7 @@ const MyProfile = () => {
                                     >
                                         <View style={[styles.friendAvatarWrap, { backgroundColor: themeColors.surface.secondary }]}>
                                             {pp ? (
-                                                <Image source={{ uri: pp }} style={styles.friendAvatar} />
+                                                <ProfileImage uri={pp} pixelSize={120} style={styles.friendAvatar} />
                                             ) : (
                                                 <View style={[styles.friendAvatar, { backgroundColor: themeColors.gray[400] }]} />
                                             )}
@@ -478,7 +478,7 @@ const MyProfile = () => {
                             myProfile?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
                             {myProfile?.profilePic ? (
-                                <Image source={getProfileImageSource(myProfile.profilePic, 400) || { uri: myProfile.profilePic }} {...googleImageWebProps} style={styles.avatar} />
+                                <ProfileImage uri={myProfile.profilePic} pixelSize={400} style={styles.avatar} />
                             ) : (
                                 <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
                             )}

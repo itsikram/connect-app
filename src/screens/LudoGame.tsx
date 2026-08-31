@@ -38,6 +38,7 @@ import api, { friendAPI } from '../lib/api';
 import config from '../lib/config';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
+import ProfileImage from '../components/ProfileImage';
 
 const { width, height } = Dimensions.get('window');
 const BOARD_SIZE = Math.min(width * 0.85, height * 0.6);
@@ -1935,8 +1936,8 @@ const LudoGameSVG = () => {
                         <View style={{ position: 'absolute', left: tokenSize*0.14, top: tokenSize*0.12, width: tokenSize*0.55, height: tokenSize*0.55, borderRadius: (tokenSize*0.55)/2, backgroundColor: '#ffffff', opacity: 0.15 }} />
                       {players[playerIndex]?.avatar ? (
                         <>
-                          <Image
-                            source={{ uri: players[playerIndex].avatar as string }}
+                          <ProfileImage
+                            uri={players[playerIndex].avatar as string}
                             style={{
                               width: tokenSize * 0.8,
                               height: tokenSize * 0.8,
@@ -2030,8 +2031,8 @@ const LudoGameSVG = () => {
                         <View style={{ position: 'absolute', left: tokenSize*0.14, top: tokenSize*0.12, width: tokenSize*0.55, height: tokenSize*0.55, borderRadius: (tokenSize*0.55)/2, backgroundColor: '#ffffff', opacity: 0.15 }} />
                         {players[playerIndex]?.avatar ? (
                           <>
-                            <Image
-                              source={{ uri: players[playerIndex].avatar as string }}
+                            <ProfileImage
+                              uri={players[playerIndex].avatar as string}
                               style={{
                                 width: tokenSize * 0.8,
                                 height: tokenSize * 0.8,
@@ -2085,8 +2086,8 @@ const LudoGameSVG = () => {
                     >
                       {players[playerIndex]?.avatar ? (
                         <>
-                          <Image
-                            source={{ uri: players[playerIndex].avatar as string }}
+                          <ProfileImage
+                            uri={players[playerIndex].avatar as string}
                             style={{
                               width: tokenSize * 0.8,
                               height: tokenSize * 0.8,
@@ -2463,7 +2464,7 @@ const LudoGameSVG = () => {
                           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
                             <View style={{ width: 28, height: 28, borderRadius: 14, overflow: 'hidden', backgroundColor: '#333' }}>
                               {f?.profilePic ? (
-                                <Image source={{ uri: f.profilePic }} style={{ width: 28, height: 28 }} />
+                                <ProfileImage uri={f.profilePic} pixelSize={56} style={{ width: 28, height: 28 }} />
                               ) : null}
                             </View>
                             <Text style={{ color: 'white', fontSize: 14 }}>{f?.fullName || 'Unknown'}</Text>
@@ -2582,7 +2583,7 @@ const LudoGameSVG = () => {
                     <View style={{ width: 108, height: 108, alignItems: 'center', justifyContent: 'center' }}>
                       {(!diceRolling && canRollDice && diceValue === 0) ? (
                         players[currentPlayer]?.avatar ? (
-                          <Image source={{ uri: players[currentPlayer].avatar as string }} style={{ width: 80, height: 80, borderRadius: 40, resizeMode: 'cover', backgroundColor: 'transparent', borderWidth: 3, borderColor: players[currentPlayer]?.color || '#FFD700' }} />
+                          <ProfileImage uri={players[currentPlayer].avatar as string} pixelSize={160} style={{ width: 80, height: 80, borderRadius: 40, resizeMode: 'cover', backgroundColor: 'transparent', borderWidth: 3, borderColor: players[currentPlayer]?.color || '#FFD700' }} />
                         ) : (
                           <Icon name="casino" size={80} color={players[currentPlayer]?.color || '#FFD700'} />
                         )

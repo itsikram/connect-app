@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import ProfileImage from './ProfileImage';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 
@@ -126,8 +127,9 @@ const StoryModal: React.FC<StoryModalProps> = ({
           <View style={styles.headerRow}>
             {/* Story author info */}
             <View style={styles.authorContainer}>
-              <Image
-                source={{ uri: story.author.profilePic }}
+              <ProfileImage
+                uri={story.author.profilePic}
+                pixelSize={80}
                 style={styles.authorPic}
                 resizeMode="cover"
               />

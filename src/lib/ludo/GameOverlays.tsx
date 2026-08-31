@@ -1,7 +1,8 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal, Image } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
 import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
 import type { LudoInvite, Player } from './types';
+import ProfileImage from '../../components/ProfileImage';
 
 interface WinnerModalProps {
   winner: Player | null;
@@ -85,7 +86,7 @@ export const IncomingInviteModal: React.FC<IncomingInviteModalProps> = ({
         <View style={[styles.card, { maxWidth: 400 }]}>
           <View style={styles.inviteHead}>
             {inviteRequest.avatar ? (
-              <Image source={{ uri: inviteRequest.avatar }} style={styles.inviteAvatar} />
+              <ProfileImage uri={inviteRequest.avatar} pixelSize={96} style={styles.inviteAvatar} />
             ) : (
               <View style={styles.inviteAvatarFallback}>
                 <Text style={styles.btnDark}>L</Text>
@@ -140,7 +141,7 @@ export const PlayerDock: React.FC<PlayerDockProps> = ({
     <Text style={styles.dockLabel}>Current Turn</Text>
     <View style={[styles.turn, { backgroundColor: currentPlayer?.color || THEME.accent }]}>
       {currentPlayer?.avatar ? (
-        <Image source={{ uri: currentPlayer.avatar }} style={styles.turnAvatar} />
+        <ProfileImage uri={currentPlayer.avatar} pixelSize={80} style={styles.turnAvatar} />
       ) : (
         <View style={[styles.turnAvatar, { backgroundColor: 'rgba(255,255,255,0.85)' }]} />
       )}
@@ -166,7 +167,7 @@ export const PlayerDock: React.FC<PlayerDockProps> = ({
             accessibilityLabel={`Edit ${p.name || 'player'}`}
           >
             {p.avatar ? (
-              <Image source={{ uri: p.avatar }} style={styles.chipImg} />
+              <ProfileImage uri={p.avatar} pixelSize={64} style={styles.chipImg} />
             ) : (
               <Text style={styles.chipLetter}>{PLAYER_LETTERS[idx] || 'P'}</Text>
             )}

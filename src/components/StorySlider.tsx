@@ -1,23 +1,27 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import {
   View,
-  Text,
   ScrollView,
   TouchableOpacity,
   Image,
   StyleSheet,
-  Dimensions,
-  Alert,
-  Animated,
   Platform,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';
 import { storyAPI } from '../lib/api';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StoryModal from './StoryModal';
 import StorySliderSkeleton from './skeleton/StorySliderSkeleton';
+import UserPP from './UserPP';
+import CacheManager from '../utils/cacheManager';
+import { RootState } from '../store';
 
-const { width: screenWidth } = Dimensions.get('window');
+const STORY_WIDTH = 150;
+const STORY_HEIGHT = 230;
+const STORY_GAP = 10;
+const SCROLL_STEP = STORY_WIDTH + STORY_GAP;
 
 interface Story {
   _id: string;
@@ -31,91 +35,82 @@ interface Story {
       surname: string;
     };
     fullName: string;
+    isActive?: boolean;
   };
   createdAt: string;
 }
 
 interface StorySliderProps {
   onStoryPress?: (story: Story) => void;
+  refreshKey?: number;
 }
 
-const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
+const parseStoryGradient = (bg?: string) => {
+  const fallback = ['#242526', '#1a1c1e'];
+  if (!bg) return fallback;
+  const matches = bg.match(/rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}/g);
+  if (matches && matches.length >= 2) return matches.slice(0, 2);
+  if (matches && matches.length === 1) return [matches[0], matches[0]];
+  return fallback;
+};
+
+const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 }) => {
+  const myProfile = useSelector((state: RootState) => state.profile);
+  const profileId = (myProfile as any)?._id || 'guest';
   const [stories, setStories] = useState<Story[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const [selectedStoryIndex, setSelectedStoryIndex] = useState<number>(-1);
   const [showStoryModal, setShowStoryModal] = useState(false);
   const [scrollPosition, setScrollPosition] = useState(0);
-  const [canScrollLeft, setCanScrollLeft] = useState(false);
-  const [canScrollRight, setCanScrollRight] = useState(false);
+  const [contentWidth, setContentWidth] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
   const { colors: themeColors } = useTheme();
   const scrollViewRef = useRef<ScrollView>(null);
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.95)).current;
 
-  const getAuthorName = (story: Story) => {
-    if (!story?.author) return 'Unknown User';
-    
-    // Try fullName first
-    if (story.author.fullName) {
-      return story.author.fullName;
-    }
-    
-    // Try to construct from user data
-    if (story.author.user) {
-      const firstName = story.author.user.firstName || '';
-      const surname = story.author.user.surname || '';
-      const fullName = `${firstName} ${surname}`.trim();
-      if (fullName) return fullName;
-    }
-    
-    return 'Unknown User';
-  };
-
-  const fetchStories = async () => {
+  const fetchStories = useCallback(async () => {
     try {
-      setLoading(true);
-      setError(null);
       const response = await storyAPI.getAllStories();
-      
       if (response.status === 200) {
-        setStories(response.data || []);
-        // Animate in the stories
-        Animated.parallel([
-          Animated.timing(fadeAnim, {
-            toValue: 1,
-            duration: 500,
-            useNativeDriver: true,
-          }),
-          Animated.spring(scaleAnim, {
-            toValue: 1,
-            tension: 100,
-            friction: 8,
-            useNativeDriver: true,
-          }),
-        ]).start();
+        const nextStories = Array.isArray(response.data) ? response.data : [];
+        setStories(nextStories);
+        CacheManager.setCachedStories(profileId, nextStories);
       }
-    } catch (err: any) {
+    } catch (err) {
       console.error('Error fetching stories:', err);
-      const errorMessage = err?.response?.data?.message || 'Failed to load stories';
-      setError(errorMessage);
     } finally {
       setLoading(false);
     }
-  };
+  }, [profileId]);
 
   useEffect(() => {
-    fetchStories();
-  }, []);
+    let cancelled = false;
+
+    const hydrate = async () => {
+      const cached = await CacheManager.getCachedStories(profileId);
+      if (!cancelled && cached && cached.length > 0) {
+        setStories(cached);
+        setLoading(false);
+      }
+    };
+
+    hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [profileId]);
+
+  useEffect(() => {
+    const timer = setTimeout(fetchStories, 250);
+    return () => clearTimeout(timer);
+  }, [fetchStories, refreshKey]);
 
   const handleStoryPress = (story: Story, index: number) => {
     if (onStoryPress) {
       onStoryPress(story);
-    } else {
-      // Default behavior - open story modal
-      setSelectedStoryIndex(index);
-      setShowStoryModal(true);
+      return;
     }
+    setSelectedStoryIndex(index);
+    setShowStoryModal(true);
   };
 
   const handleNextStory = () => {
@@ -139,58 +134,29 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
   };
 
   const scrollLeft = () => {
-    const newPosition = Math.max(0, scrollPosition - 200);
-    scrollViewRef.current?.scrollTo({ x: newPosition, animated: true });
+    const next = Math.max(0, scrollPosition - SCROLL_STEP * 2);
+    scrollViewRef.current?.scrollTo({ x: next, animated: true });
   };
 
   const scrollRight = () => {
-    const newPosition = scrollPosition + 200;
-    scrollViewRef.current?.scrollTo({ x: newPosition, animated: true });
+    const maxOffset = Math.max(0, contentWidth - viewportWidth);
+    const next = Math.min(maxOffset, scrollPosition + SCROLL_STEP * 2);
+    scrollViewRef.current?.scrollTo({ x: next, animated: true });
   };
 
-  const handleScroll = (event: any) => {
-    const currentPosition = event.nativeEvent.contentOffset.x;
-    setScrollPosition(currentPosition);
-    setCanScrollLeft(currentPosition > 0);
-    setCanScrollRight(currentPosition < event.nativeEvent.contentSize.width - event.nativeEvent.layoutMeasurement.width);
-  };
+  const canScrollLeft = scrollPosition > 4;
+  const canScrollRight = contentWidth > viewportWidth && scrollPosition < contentWidth - viewportWidth - 4;
 
-  if (loading) {
-    return <StorySliderSkeleton count={5} />;
+  if (loading && stories.length === 0) {
+    return <StorySliderSkeleton count={7} />;
   }
 
-  if (error) {
-    return (
-      <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-        <View style={styles.errorContainer}>
-          <Text style={[styles.errorText, { color: themeColors.status.error }]}>
-            {error}
-          </Text>
-          <TouchableOpacity onPress={fetchStories} style={styles.retryButton}>
-            <Text style={[styles.retryText, { color: themeColors.primary }]}>
-              Retry
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
-  if (stories.length === 0) {
-    return null; // Don't show anything if no stories
+  if (!loading && stories.length === 0) {
+    return null;
   }
 
   return (
-    <Animated.View 
-      style={[
-        styles.container, 
-        { 
-          backgroundColor: themeColors.background.primary,
-          opacity: fadeAnim,
-          transform: [{ scale: scaleAnim }]
-        }
-      ]}
-    >
+    <View style={styles.container}>
       <View style={styles.storyContainer}>
         <ScrollView
           ref={scrollViewRef}
@@ -198,96 +164,70 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.scrollContent}
           style={styles.scrollView}
-          onScroll={handleScroll}
+          onScroll={(event) => setScrollPosition(event.nativeEvent.contentOffset.x)}
+          onContentSizeChange={(width) => setContentWidth(width)}
+          onLayout={(event) => setViewportWidth(event.nativeEvent.layout.width)}
           scrollEventThrottle={16}
         >
-          {stories.map((story, index) => (
-            <TouchableOpacity
-              key={story._id}
-              style={styles.storyItem}
-              onPress={() => handleStoryPress(story, index)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.storyImageContainer, { shadowColor: '#000' }]}>
-                <Image
-                  source={{ uri: story.image }}
-                  style={styles.storyImage}
-                  resizeMode="cover"
-                />
-                <View style={styles.gradient} />
-                
-                {/* Story ring indicator */}
-                <View style={[styles.storyRing, { borderColor: themeColors.primary }]} />
-              </View>
-              
-              <View style={[styles.profilePicContainer, { borderColor: themeColors.primary }]}>
-                <Image
-                  source={{ uri: story.author.profilePic }}
-                  style={styles.profilePic}
-                  resizeMode="cover"
-                />
-                {/* Online indicator */}
-                <View style={[styles.onlineIndicator, { backgroundColor: themeColors.status.success }]} />
-              </View>
-              
-              <Text 
-                style={[styles.authorName, { color: themeColors.text.inverse }]}
-                numberOfLines={1}
+          {stories.map((story, index) => {
+            const gradientColors = parseStoryGradient(story.bgColor);
+            return (
+              <TouchableOpacity
+                key={story._id || `story-${index}`}
+                style={styles.storyItem}
+                onPress={() => handleStoryPress(story, index)}
+                activeOpacity={0.85}
               >
-                {getAuthorName(story)}
-              </Text>
-            </TouchableOpacity>
-          ))}
+                <LinearGradient
+                  colors={gradientColors as [string, string, ...string[]]}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.storyCard}
+                >
+                  <View style={styles.profilePicContainer}>
+                    <UserPP
+                      image={story.author?.profilePic}
+                      isActive={!!story.author?.isActive}
+                      size={40}
+                      hasStory
+                    />
+                  </View>
+                  <View style={styles.storyImageContainer}>
+                    {!!story.image && (
+                      <Image
+                        source={{ uri: story.image }}
+                        style={styles.storyImage}
+                        resizeMode="contain"
+                      />
+                    )}
+                  </View>
+                </LinearGradient>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
-        {/* Enhanced Navigation arrows */}
-        {stories.length > 3 && (
-          <>
-            {canScrollLeft && (
-              <Animated.View style={styles.arrowContainer}>
-                <TouchableOpacity
-                  style={[styles.arrowLeft, { backgroundColor: themeColors.surface.primary }]}
-                  onPress={scrollLeft}
-                  activeOpacity={0.8}
-                >
-                  <Icon name="chevron-left" size={20} color={themeColors.text.primary} />
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-            
-            {canScrollRight && (
-              <Animated.View style={styles.arrowContainer}>
-                <TouchableOpacity
-                  style={[styles.arrowRight, { backgroundColor: themeColors.surface.primary }]}
-                  onPress={scrollRight}
-                  activeOpacity={0.8}
-                >
-                  <Icon name="chevron-right" size={20} color={themeColors.text.primary} />
-                </TouchableOpacity>
-              </Animated.View>
-            )}
-          </>
+        {canScrollLeft && (
+          <TouchableOpacity
+            style={[styles.arrow, styles.arrowLeft, { backgroundColor: themeColors.surface.secondary }]}
+            onPress={scrollLeft}
+            activeOpacity={0.8}
+          >
+            <Icon name="chevron-left" size={30} color={themeColors.text.primary} />
+          </TouchableOpacity>
         )}
 
-        {/* Progress indicator */}
-        {stories.length > 1 && (
-          <View style={styles.progressContainer}>
-            {stories.map((_, index) => (
-              <View
-                key={index}
-                style={[
-                  styles.progressDot,
-                  {
-                    backgroundColor: index === Math.floor(scrollPosition / 107) ? themeColors.primary : themeColors.border.primary,
-                  }
-                ]}
-              />
-            ))}
-          </View>
+        {canScrollRight && (
+          <TouchableOpacity
+            style={[styles.arrow, styles.arrowRight, { backgroundColor: themeColors.surface.secondary }]}
+            onPress={scrollRight}
+            activeOpacity={0.8}
+          >
+            <Icon name="chevron-right" size={30} color={themeColors.text.primary} />
+          </TouchableOpacity>
         )}
       </View>
 
-      {/* Story Modal */}
       <StoryModal
         visible={showStoryModal}
         story={selectedStoryIndex >= 0 ? stories[selectedStoryIndex] : null}
@@ -297,99 +237,74 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress }) => {
         hasNext={selectedStoryIndex < stories.length - 1}
         hasPrevious={selectedStoryIndex > 0}
       />
-    </Animated.View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    marginVertical: 12,
-    paddingHorizontal: 4,
+    marginTop: 4,
+    marginBottom: 10,
   },
   storyContainer: {
     position: 'relative',
-    height: 160,
+    minHeight: STORY_HEIGHT,
   },
   scrollView: {
-    height: 160,
+    minHeight: STORY_HEIGHT,
   },
   scrollContent: {
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-  },
-  errorContainer: {
-    alignItems: 'center',
-    paddingVertical: 20,
-  },
-  errorText: {
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  retryButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-  },
-  retryText: {
-    fontSize: 14,
-    fontWeight: '600',
+    paddingHorizontal: 10,
+    paddingVertical: 0,
   },
   storyItem: {
-    width: 100,
-    height: 140,
-    marginRight: 16,
-    position: 'relative',
+    width: STORY_WIDTH,
+    height: STORY_HEIGHT,
+    marginRight: STORY_GAP,
   },
-  storyImageContainer: {
-    width: 100,
-    height: 140,
-    borderRadius: 16,
+  storyCard: {
+    width: STORY_WIDTH,
+    height: STORY_HEIGHT,
+    borderRadius: 10,
     overflow: 'hidden',
-    position: 'relative',
+    backgroundColor: '#242526',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.15,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.18,
+        shadowRadius: 6,
       },
       android: {
-        elevation: 6,
+        elevation: 3,
       },
     }),
   },
+  storyImageContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+  },
   storyImage: {
-    width: '100%',
+    width: '95%',
     height: '100%',
-  },
-  gradient: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    height: '30%',
-    backgroundColor: 'rgba(0,0,0,0.4)',
-  },
-  storyRing: {
-    position: 'absolute',
-    top: -2,
-    left: -2,
-    right: -2,
-    bottom: -2,
-    borderRadius: 18,
-    borderWidth: 2,
-    backgroundColor: 'transparent',
   },
   profilePicContainer: {
     position: 'absolute',
     top: 10,
     left: 10,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 3,
-    overflow: 'hidden',
+    zIndex: 2,
+  },
+  arrow: {
+    position: 'absolute',
+    top: '40%',
+    marginTop: -25,
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -398,93 +313,15 @@ const styles = StyleSheet.create({
         shadowRadius: 4,
       },
       android: {
-        elevation: 4,
+        elevation: 6,
       },
     }),
-  },
-  profilePic: {
-    width: '100%',
-    height: '100%',
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    bottom: 2,
-    right: 2,
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    borderWidth: 2,
-    borderColor: '#F1F3F4',
-  },
-  authorName: {
-    position: 'absolute',
-    bottom: 8,
-    left: 8,
-    right: 8,
-    fontSize: 11,
-    fontWeight: '700',
-    textAlign: 'center',
-    textShadowColor: 'rgba(0,0,0,0.8)',
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
-    letterSpacing: 0.3,
-  },
-  arrowContainer: {
-    position: 'absolute',
-    top: '50%',
-    marginTop: -20,
   },
   arrowLeft: {
-    left: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
+    left: 10,
   },
   arrowRight: {
-    right: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 8,
-      },
-    }),
-  },
-  progressContainer: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
-    paddingHorizontal: 16,
-  },
-  progressDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    marginHorizontal: 3,
-    opacity: 0.6,
+    right: 10,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, memo } from 'react';
 import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import Svg, { Circle as SvgCircle, Path as SvgPath, SvgXml } from 'react-native-svg';
 import { useSelector } from 'react-redux';
@@ -10,6 +10,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
+import ProfileImage from './ProfileImage';
 import config from '../lib/config';
 // Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
@@ -66,11 +67,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const inputBg = themeColors.surface.secondary;
   const inputText = themeColors.text.primary;
 
+  const isAuth = post.author?._id === myProfileId;
+  const postType = post.type || type || 'post';
+
   const reactionEmojiMap: Record<string, string> = {
     like: '👍',
     love: '❤️',
     haha: '😂',
+    wow: '😮',
     sad: '😢',
+    angry: '😡',
   };
 
   // Use vector icons for consistent alignment across footer buttons
@@ -297,6 +303,20 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     setShowDeleteConfirmation(true);
   };
 
+  const handleHidePost = () => {
+    if (isAuth) {
+      showDeleteConfirm();
+      return;
+    }
+    if (onPostDeleted) {
+      onPostDeleted(post._id);
+    }
+  };
+
+  const openSinglePost = () => {
+    navigation.navigate('SinglePost', { postId: post._id });
+  };
+
   // Handle comment button tap
   const handleCommentPress = () => {
     setShowCommentBox((prev) => !prev);
@@ -404,41 +424,67 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   return (
     <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => {
-          if (post.author?._id && post.author._id !== myProfileId) {
-            (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
-          }
-        }}>
-          <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={40} />
-        </TouchableOpacity>
-        <View style={styles.headerInfo}>
-          <TouchableOpacity onPress={() => {
-            if (post.author?._id && post.author._id !== myProfileId) {
-              (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
-            }
-          }}>
-            <Text style={[styles.authorName, { color: textColor }]}>
-              {post.author?.fullName || 'Unknown User'}
-              {post.feelings ? (
-                <Text style={[styles.metaInline, { color: subTextColor }]}> is feeling {post.feelings}</Text>
+        {postType === 'profilePic' && (
+          <View style={styles.reasonRow}>
+            <View style={[styles.reasonBadge, { backgroundColor: themeColors.primary + '24' }]}>
+              <Icon name="photo-camera" size={12} color={themeColors.primary} />
+              <Text style={[styles.reasonBadgeText, { color: textColor }]}>Updated profile picture</Text>
+            </View>
+          </View>
+        )}
+        <View style={styles.authorInfo}>
+          <TouchableOpacity
+            onPress={() => {
+              if (post.author?._id && post.author._id !== myProfileId) {
+                (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
+              }
+            }}
+          >
+            <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={42} />
+          </TouchableOpacity>
+          <View style={styles.headerInfo}>
+            <TouchableOpacity
+              onPress={() => {
+                if (post.author?._id && post.author._id !== myProfileId) {
+                  (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
+                }
+              }}
+              style={styles.authorNameRow}
+            >
+              <Text style={[styles.authorName, { color: textColor }]} numberOfLines={2}>
+                {post.author?.fullName || 'Unknown User'}
+              </Text>
+              {post.author?.isOfficial ? (
+                <View style={styles.officialBadge}>
+                  <Icon name="check" size={9} color="#7ce7ff" />
+                </View>
               ) : null}
-              {post.location ? (
-                <Text style={[styles.metaInline, { color: subTextColor }]}>
-                  {post.feelings ? ' · ' : ' '}
-                  at {post.location}
+              {post.feelings ? (
+                <Text style={[styles.feelingsLabel, { color: subTextColor }]}>
+                  {' '}is feeling <Text style={[styles.feelingsValue, { color: textColor }]}>{post.feelings}</Text>
                 </Text>
               ) : null}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={postHeaderClick} style={styles.timeContainer}>
-            <Text style={[styles.time, { color: subTextColor }]}>
-              {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
-            </Text>
-          </TouchableOpacity>
+              {post.location ? (
+                <Text style={[styles.feelingsLabel, { color: subTextColor }]}>
+                  {' '}at <Text style={[styles.feelingsValue, { color: textColor }]}>{post.location}</Text>
+                </Text>
+              ) : null}
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openSinglePost} style={styles.timeContainer}>
+              <Text style={[styles.time, { color: subTextColor }]}>
+                {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity onPress={postOptionClick} style={styles.headerIconBtn} hitSlop={8}>
+              <Icon name="more-horiz" size={22} color={subTextColor} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleHidePost} style={styles.headerIconBtn} hitSlop={8}>
+              <Icon name="close" size={20} color={subTextColor} />
+            </TouchableOpacity>
+          </View>
         </View>
-        <TouchableOpacity onPress={postOptionClick}>
-          <Icon name="more-vert" size={24} color={subTextColor} />
-        </TouchableOpacity>
         <Modal visible={isPostOption} transparent animationType="slide">
           <TouchableOpacity
             style={styles.modalOverlay}
@@ -592,96 +638,86 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         </Modal>
       </View>
       <View style={styles.body}>
-        <Text style={[styles.caption, { color: textColor }]}>{post.caption || ''}</Text>
+        {post.caption ? (
+          <TouchableOpacity onPress={openSinglePost} activeOpacity={0.85}>
+            <Text style={[styles.caption, { color: textColor }]}>{post.caption}</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {isValidImageUrl(post.photos) && !imageLoadError && (
-          <View style={styles.attachmentContainer}>
-            {post.type === 'post' && (
-              <Image
-                source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
-                style={styles.postImage}
-                onError={() => {
-                  console.log('Failed to load post image');
-                  setImageLoadError(true);
-                }}
-                onLoadStart={() => setImageLoadError(false)}
-              />
-            )}
-            {post.type === 'profilePic' && (
-              <Image
-                source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
-                style={styles.postProfilePic}
-                onError={() => {
-                  console.log('Failed to load profile picture');
-                  setImageLoadError(true);
-                }}
-                onLoadStart={() => setImageLoadError(false)}
-              />
-            )}
-          </View>
+          <TouchableOpacity
+            onPress={openSinglePost}
+            activeOpacity={0.92}
+            style={[
+              styles.attachmentContainer,
+              postType === 'profilePic' && styles.attachmentProfilePic,
+            ]}
+          >
+            <Image
+              source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
+              style={postType === 'profilePic' ? styles.postProfilePic : styles.postImage}
+              onError={() => {
+                setImageLoadError(true);
+              }}
+              onLoadStart={() => setImageLoadError(false)}
+            />
+          </TouchableOpacity>
         )}
-
       </View>
-      {/* Navigation to SinglePost */}
-      <TouchableOpacity
-        onPress={() => navigation.navigate('SinglePost', { postId: post._id })}
-        style={[styles.viewPostButton, { backgroundColor: themeColors.primary + '15', borderColor: themeColors.primary }]}
-      >
-        <Icon name="open-in-new" size={16} color={themeColors.primary} />
-        <Text style={[styles.viewPostButtonText, { color: themeColors.primary }]}>
-          View Full Post
-        </Text>
-      </TouchableOpacity>
       <View style={styles.footer}>
-        <View style={[styles.countsRow, { borderTopColor: borderColor }]}>
-          <View style={styles.reactsCountLeft}>
+        <View style={[styles.countsRow, { borderBottomColor: borderColor }]}>
+          <TouchableOpacity style={styles.reactsCountLeft} onPress={openSinglePost} activeOpacity={0.7}>
             <View style={styles.reactionIconsStack}>
               {placedReacts.slice(0, 3).map((t, idx) => (
-                <Text key={`${t}-${idx}`} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -6 } : null]}>
+                <Text key={`${t}-${idx}`} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -4 } : null]}>
                   {reactionEmojiMap[t] || '👍'}
                 </Text>
               ))}
             </View>
-            <Text style={[styles.countText, { color: subTextColor }]}>{totalReacts} Reacts</Text>
-          </View>
+            <Text style={[styles.countText, { color: subTextColor }]}>
+              {totalReacts > 0
+                ? `${totalReacts} ${totalReacts > 1 ? 'Reacts' : 'React'}`
+                : 'Be the first to react'}
+            </Text>
+          </TouchableOpacity>
           <View style={styles.countsRight}>
-            <View style={styles.countItem}>
-              <Icon name="chat-bubble-outline" size={16} color={subTextColor} />
-              <Text style={[styles.countText, { color: subTextColor }]}>{totalComments}</Text>
-            </View>
-            <View style={styles.countItem}>
-              <Icon name="share" size={16} color={subTextColor} />
-              <Text style={[styles.countText, { color: subTextColor }]}>{totalShares}</Text>
-            </View>
+            <TouchableOpacity style={styles.countItem} onPress={openSinglePost} activeOpacity={0.7}>
+              <Icon name="chat-bubble-outline" size={15} color={subTextColor} />
+              <Text style={[styles.countText, { color: subTextColor }]}>{totalComments || 0}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.countItem} onPress={openSinglePost} activeOpacity={0.7}>
+              <Icon name="share" size={15} color={subTextColor} />
+              <Text style={[styles.countText, { color: subTextColor }]}>{totalShares || 0}</Text>
+            </TouchableOpacity>
           </View>
         </View>
-        <View style={[styles.actionBar, { backgroundColor: themeColors.surface.secondary, borderColor }]}>
+        <View style={[styles.actionBar, { borderBottomColor: borderColor }]}>
           <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
             <TouchableOpacity
               onPress={handleLikePress}
               onLongPress={handleLikeLongPress}
-              delayLongPress={200}
-              style={[styles.actionButton, styles.actionBarItem, isReacted ? { backgroundColor: themeColors.primary + '15' } : null]}
+              delayLongPress={450}
+              style={[styles.actionButton, styles.actionBarItem]}
             >
               {reactType ? (
                 <>
                   <Icon
                     name={(reactionIconMap[reactType] && reactionIconMap[reactType].name) || 'thumb-up'}
-                    size={20}
+                    size={18}
                     color={(reactionIconMap[reactType] && reactionIconMap[reactType].color) || themeColors.primary}
                   />
                   <Text style={[styles.actionLabel, { color: themeColors.primary }]}>{capitalize(reactType)}</Text>
                 </>
               ) : (
                 <>
-                  <Icon name="thumb-up-off-alt" size={20} color={subTextColor} />
-                  <Text style={[styles.actionLabel, { color: textColor }]}>Like</Text>
+                  <Icon name="thumb-up-off-alt" size={18} color={subTextColor} />
+                  <Text style={[styles.actionLabel, { color: subTextColor }]}>Like</Text>
                 </>
               )}
             </TouchableOpacity>
             {showReactions && (
               <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
-                <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}> 
+                <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}>
                   <TouchableOpacity onPress={() => handleSelectReaction('like')} style={styles.reactionButton} activeOpacity={0.7}>
                     <LikeColorIcon size={28} />
                   </TouchableOpacity>
@@ -691,45 +727,44 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   <TouchableOpacity onPress={() => handleSelectReaction('haha')} style={styles.reactionButton} activeOpacity={0.7}>
                     <HahaColorIcon size={28} />
                   </TouchableOpacity>
-                  {/* <TouchableOpacity onPress={() => handleSelectReaction('sad')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <Image source={{ uri: config?.REACT_SAD_URL }} style={styles.reactionIcon} />
-                  </TouchableOpacity> */}
                 </View>
                 <View style={[styles.reactionCaret, { backgroundColor: cardBg, borderColor }]} />
               </View>
             )}
           </View>
-          <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem] }>
-            <Icon name="comment" size={20} color={subTextColor} />
-            <Text style={[styles.actionLabel, { color: textColor }]}>Comment</Text>
+          <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem]}>
+            <Icon name="chat-bubble-outline" size={18} color={subTextColor} />
+            <Text style={[styles.actionLabel, { color: subTextColor }]}>Comment</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
-            <Icon name="share" size={20} color={subTextColor} />
-            <Text style={[styles.actionLabel, { color: textColor }]}>Share</Text>
+            <Icon name="share" size={18} color={subTextColor} />
+            <Text style={[styles.actionLabel, { color: subTextColor }]}>Share</Text>
           </TouchableOpacity>
         </View>
         {showCommentBox && (
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={[styles.commentBoxContainer, { backgroundColor: cardBg, borderTopColor: borderColor }]}
+            style={[styles.commentBoxContainer, { borderTopColor: borderColor }]}
           >
             <View style={styles.commentInputRow}>
+              <UserPP image={myProfile?.profilePic || default_pp_src} isActive={false} size={34} />
               <TextInput
                 style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingComment ? { opacity: 0.6 } : null]}
                 placeholder="Write a comment..."
-                placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
+                placeholderTextColor={subTextColor}
                 value={commentText}
                 onChangeText={setCommentText}
                 editable={!isPostingComment}
               />
-              <TouchableOpacity style={[styles.commentPostBtn, { backgroundColor: themeColors.primary, shadowColor: themeColors.primary }, isPostingComment ? { opacity: 0.7 } : null]} onPress={handlePostComment} disabled={isPostingComment}>
+              <TouchableOpacity
+                style={[styles.commentPostBtn, { backgroundColor: themeColors.primary }, isPostingComment ? { opacity: 0.7 } : null]}
+                onPress={handlePostComment}
+                disabled={isPostingComment}
+              >
                 {isPostingComment ? (
-                  <View style={styles.btnContentRow}>
-                    <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-                    <Text style={styles.commentPostBtnText}>Posting</Text>
-                  </View>
+                  <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.commentPostBtnText}>Post</Text>
+                  <Icon name="send" size={16} color="#fff" />
                 )}
               </TouchableOpacity>
             </View>
@@ -745,10 +780,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               ) : (
                 comments.map((c) => (
                   <View key={c._id || Math.random()} style={styles.commentItem}>
-                    <Image
-                      source={{ uri: c.author?.profilePic || default_pp_src }}
+                    <ProfileImage
+                      uri={c.author?.profilePic}
+                      pixelSize={72}
                       style={[styles.commentProfilePic, { backgroundColor: inputBg, borderColor }]}
-                      onError={() => console.log('Failed to load comment profile picture')}
                     />
                     <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}>
                       <Text style={[styles.commentAuthor, { color: textColor }]}>
@@ -790,10 +825,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                       <View style={[styles.repliesContainer, { borderLeftColor: themeColors.primary + '33' }]}>
                         {c.replies.map((reply: any) => (
                           <View key={reply._id || Math.random()} style={styles.replyItem}>
-                            <Image
-                              source={{ uri: reply.author?.profilePic || default_pp_src }}
+                            <ProfileImage
+                              uri={reply.author?.profilePic}
+                              pixelSize={56}
                               style={[styles.replyProfilePic, { backgroundColor: inputBg, borderColor }]}
-                              onError={() => console.log('Failed to load reply profile picture')}
                             />
                             <View style={[styles.replyBody, { backgroundColor: inputBg, borderColor }]}>
                               <Text style={[styles.replyAuthor, { color: textColor }]}>
@@ -892,28 +927,85 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
 const styles = StyleSheet.create({
   postContainer: {
-    backgroundColor: '#FFFFFF',
-    margin: 10,
-    borderRadius: 10,
-    padding: 10,
-    elevation: 2,
+    backgroundColor: 'rgba(22, 24, 28, 0.96)',
+    marginHorizontal: 10,
+    marginBottom: 10,
+    borderRadius: 12,
+    padding: 0,
+    borderWidth: 1,
+    overflow: 'visible',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    elevation: 4,
   },
   header: {
+    paddingTop: 12,
+    paddingHorizontal: 14,
+    paddingBottom: 8,
+  },
+  reasonRow: {
+    marginBottom: 10,
+    paddingBottom: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(255,255,255,0.07)',
+  },
+  reasonBadge: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  reasonBadgeText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  authorInfo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
   },
   profilePic: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
     marginRight: 10,
   },
   headerInfo: {
     flex: 1,
     marginLeft: 10,
+    minWidth: 0,
+  },
+  authorNameRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
   },
   authorName: {
-    fontWeight: 'bold',
+    fontWeight: '600',
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  officialBadge: {
+    marginLeft: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: 'rgba(0, 212, 255, 0.16)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  feelingsLabel: {
+    fontSize: 13,
+    fontWeight: '400',
+  },
+  feelingsValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   metaInline: {
     fontWeight: '400',
@@ -925,37 +1017,58 @@ const styles = StyleSheet.create({
   timeContainer: {
     marginTop: 2,
   },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 4,
+  },
+  headerIconBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   body: {
-    marginTop: 10,
+    paddingTop: 0,
   },
   caption: {
-    marginBottom: 10,
+    paddingHorizontal: 14,
+    paddingTop: 2,
+    paddingBottom: 12,
+    fontSize: 15.5,
+    lineHeight: 22,
   },
   attachmentContainer: {
-    marginTop: 10,
-    display: 'flex',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.2)',
+    width: '100%',
+  },
+  attachmentProfilePic: {
+    backgroundColor: 'transparent',
     alignItems: 'center',
-    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 14,
   },
   postImage: {
     width: '100%',
-    aspectRatio: 1,
-    borderRadius: 10,
-    backgroundColor: '#eee',
-    resizeMode: 'contain',
-    alignSelf: 'center',
+    maxHeight: 520,
+    minHeight: 220,
+    height: 360,
+    backgroundColor: '#111',
+    resizeMode: 'cover',
   },
   postProfilePic: {
-    width: 250,
-    height: 250,
-    borderRadius: 175,
+    width: 280,
+    height: 280,
+    maxWidth: '100%',
+    borderRadius: 140,
     borderWidth: 2,
-    borderColor: '#E5E5EA',
-    marginVertical: 10,
+    borderColor: 'rgba(255,255,255,0.1)',
+    marginVertical: 4,
   },
   footer: {
-    marginTop: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 12,
   },
 
   reactText: {
@@ -977,17 +1090,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginTop: 6,
-    borderColor: '#E5E5EA',
-    borderRadius: 12,
-    overflow: 'visible'
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    overflow: 'visible',
   },
   actionBarItem: {
     flex: 1,
     justifyContent: 'center',
-    paddingVertical: 5,
-    marginVertical: 6,
-    paddingHorizontal: 18,
+    paddingVertical: 9,
+    paddingHorizontal: 8,
+    borderRadius: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -1128,14 +1240,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderTopWidth: 1,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    minHeight: 40,
   },
   countsRight: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: 14,
   },
   countItem: {
     flexDirection: 'row',
@@ -1145,12 +1257,13 @@ const styles = StyleSheet.create({
   reactsCountLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 8,
+    flex: 1,
+    minWidth: 0,
   },
   countText: {
-    marginHorizontal: 6,
-    color: '#555',
     fontSize: 13,
+    fontWeight: '500',
   },
   reactionIconsStack: {
     flexDirection: 'row',
@@ -1160,42 +1273,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   commentBoxContainer: {
-    backgroundColor: '#F8F9FA',
-    borderTopWidth: 1,
-    borderColor: '#FFFFFF',
-    padding: 8,
+    paddingTop: 10,
   },
   commentInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    gap: 10,
   },
   commentInput: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    minHeight: 40,
+    fontSize: 14.5,
     borderWidth: 1,
-    borderColor: '#E5E5EA',
-    marginRight: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
   },
   commentPostBtn: {
-    backgroundColor: '#007AFF',
-    borderRadius: 20,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    shadowColor: '#29b1a9',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   commentPostBtnText: {
     color: '#fff',
@@ -1256,9 +1355,8 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   actionLabel: {
-    fontSize: 15,
-    color: '#333',
-    fontWeight: '500',
+    fontSize: 14,
+    fontWeight: '600',
     marginLeft: 6,
   },
   actionEmoji: {
@@ -1268,9 +1366,10 @@ const styles = StyleSheet.create({
   actionButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
     paddingHorizontal: 8,
     paddingVertical: 4,
-    borderRadius: 8,
+    borderRadius: 10,
     minHeight: 36,
   },
   reactionIcon: {
@@ -1517,4 +1616,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Post;
+export default memo(Post);

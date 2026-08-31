@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { View, Text, StyleSheet, Button, TouchableOpacity, Image, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Button, TouchableOpacity, ScrollView } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
@@ -9,6 +9,7 @@ import { RootState } from '../store';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import AppGrid from '../components/AppGrid';
+import ProfileImage from '../components/ProfileImage';
 // DeviceAppsGrid and MixedAppsGrid removed - react-native-installed-apps uninstalled
 import { sampleApps, AppItem } from '../data/appData';
 import LudoGame from './LudoGame';
@@ -137,7 +138,7 @@ const Menu = () => {
             <TouchableOpacity style={[styles.item, { backgroundColor: themeColors.surface.primary }]} onPress={goToProfile}>
               <View style={styles.itemLeft}>
                 {myProfile?.profilePic ? (
-                  <Image source={{ uri: myProfile.profilePic }} style={styles.avatar} />
+                  <ProfileImage uri={myProfile.profilePic} pixelSize={96} style={styles.avatar} />
                 ) : (
                   <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.surface.secondary }]}>
                     <Icon name="person" size={24} color={themeColors.text.secondary} />

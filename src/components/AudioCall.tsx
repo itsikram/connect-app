@@ -8,7 +8,6 @@ import {
   StyleSheet,
   SafeAreaView,
   StatusBar,
-  Image,
   AppState,
   AppStateStatus,
   DeviceEventEmitter,
@@ -20,6 +19,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import { hashProfileUid } from '../lib/agoraUid';
+import ProfileImage from './ProfileImage';
 import { CALL_EVENTS } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
 import { configureInCallAudio } from '../lib/callRingtone';
@@ -463,7 +463,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
           <View style={styles.center}>
             {callerProfilePic ? (
-              <Image source={{ uri: callerProfilePic }} style={styles.avatar} />
+              <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
             ) : (
               <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: themeColors.gray?.[700] || '#333' }]}>
                 <Icon name="person" size={80} color="#fff" />

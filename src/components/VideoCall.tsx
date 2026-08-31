@@ -6,7 +6,6 @@ import {
   Alert,
   StyleSheet,
   StatusBar,
-  Image,
   AppState,
   AppStateStatus,
   DeviceEventEmitter,
@@ -18,6 +17,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
 import { hashProfileUid } from '../lib/agoraUid';
+import ProfileImage from './ProfileImage';
 import { CALL_EVENTS } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
 import { configureInCallAudio } from '../lib/callRingtone';
@@ -475,7 +475,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {showRemotePlaceholder && (
             <View style={styles.placeholder} pointerEvents="none">
               {callerProfilePic ? (
-                <Image source={{ uri: callerProfilePic }} style={styles.avatar} />
+                <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
               ) : (
                 <View style={[styles.avatar, styles.avatarPlaceholder]}>
                   <Icon name="person" size={80} color="#fff" />

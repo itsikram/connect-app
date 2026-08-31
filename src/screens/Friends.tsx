@@ -1,11 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { friendAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
 import FriendCardSkeleton from '../components/skeleton/FriendCardSkeleton';
+import ProfileImage from '../components/ProfileImage';
 
 
 const Friends = () => {
@@ -134,7 +135,7 @@ const Friends = () => {
           {!loading && friendRequests.length > 0 && friendRequests.map((friend: any) => (
             <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
-                <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
+                <ProfileImage uri={friend.profilePic} pixelSize={200} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
                 <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
@@ -167,7 +168,7 @@ const Friends = () => {
           {!loading && friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
             <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
               <View style={styles.profilePictureWrapper}>
-                <Image source={{ uri: friend.profilePic }} style={styles.profilePicture} />
+                <ProfileImage uri={friend.profilePic} pixelSize={200} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
                 <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>

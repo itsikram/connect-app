@@ -46,3 +46,49 @@ export function upsertConfirmedMessage<T extends {
 
   return [...withoutDupes, { ...confirmed, isOptimistic: false }];
 }
+
+export function isConversationMessage(msg: any, userId: any, friendId: any): boolean {
+  if (!msg) return false;
+  const sender = idOf(msg.senderId);
+  const receiver = idOf(msg.receiverId);
+  const friend = idOf(friendId);
+  const me = idOf(userId);
+  if (!friend) return false;
+  return (
+    sender === friend ||
+    receiver === friend ||
+    (sender === me && receiver === friend) ||
+    (sender === friend && receiver === me)
+  );
+}
+
+export function mergeHistoryWithLive<T extends {
+  _id?: any;
+  tempId?: string;
+  senderId?: any;
+  message?: string;
+  timestamp?: Date | string;
+  isOptimistic?: boolean;
+}>(history: T[], live: T[]): T[] {
+  const hist = Array.isArray(history) ? history.filter(Boolean) : [];
+  const liveList = Array.isArray(live) ? live.filter(Boolean) : [];
+  const histIds = new Set(hist.map((m) => idOf(m._id)).filter(Boolean));
+
+  const extras = liveList.filter((msg) => {
+    if (msg.isOptimistic) {
+      const alreadyInHistory = hist.some(
+        (h) =>
+          idOf(h.senderId) === idOf(msg.senderId) &&
+          h.message === msg.message &&
+          Math.abs(
+            new Date(h.timestamp as any).getTime() - new Date(msg.timestamp as any).getTime(),
+          ) < 15000,
+      );
+      return !alreadyInHistory;
+    }
+    const id = idOf(msg._id);
+    return Boolean(id && !histIds.has(id));
+  });
+
+  return [...hist, ...extras];
+}

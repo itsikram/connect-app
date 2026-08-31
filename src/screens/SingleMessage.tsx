@@ -1,11 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
     TextInput,
     TouchableOpacity,
     FlatList,
-    KeyboardAvoidingView,
     Platform,
     StatusBar,
     Alert,
@@ -18,10 +17,15 @@ import {
     ActivityIndicator,
     Linking,
     AppState,
+    Keyboard,
+    Animated,
+    Easing,
+    type KeyboardEvent,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useRoute, useNavigation, useFocusEffect, useIsFocused } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 // react-native-permissions replaced with expo-permissions for Expo compatibility
@@ -34,8 +38,9 @@ import { SkeletonBlock } from '../components/skeleton/Skeleton';
 import UserPP from '../components/UserPP';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
-import { getProfileImageSource, googleImageWebProps } from '../lib/profileImage';
+import ProfileImage from '../components/ProfileImage';
 import { markMessagesAsRead, addNewMessage, updateUnreadMessageCount } from '../reducers/chatReducer';
+import { updateProfileField } from '../reducers/profileReducer';
 import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
 import * as ImagePicker from 'expo-image-picker';
@@ -53,7 +58,7 @@ import { isRomanticMessage, QUICK_REACTION_PRESETS } from '../utils/chatThemes';
 import ChatSettingsModal from '../components/ChatSettingsModal';
 import LoveEmojiRain from '../components/LoveEmojiRain';
 import { LinearGradient } from 'expo-linear-gradient';
-import { upsertConfirmedMessage } from '../utils/optimisticMessage';
+import { upsertConfirmedMessage, mergeHistoryWithLive, isConversationMessage } from '../utils/optimisticMessage';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 
@@ -75,6 +80,10 @@ interface Message {
     isOptimistic?: boolean;
     sendFailed?: boolean;
 }
+
+const MESSAGES_PER_PAGE = 20;
+const NEAR_BOTTOM_PX = 100;
+const LOAD_OLDER_SCROLL_PERCENT = 30;
 
 const COMPOSER_INSERT_EMOJIS = [
     ...QUICK_REACTION_PRESETS,
@@ -124,6 +133,76 @@ const getMessageSnippet = (msg: any) => {
     if (msg?.messageType === 'audio' || isAudioUrl(msg?.attachment || '')) return 'Voice message';
     if (typeof msg?.attachment === 'string' && isValidImageUrl(msg.attachment)) return 'Photo';
     return 'Message';
+};
+
+const normalizeChatMessage = (msg: any): Message => {
+    if (!msg) return msg;
+    return {
+        ...msg,
+        _id: String(msg._id || msg.tempId || ''),
+        timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
+        isSeen: Boolean(msg.isSeen),
+        isOptimistic: Boolean(msg.isOptimistic),
+        sendFailed: Boolean(msg.sendFailed),
+    };
+};
+
+const toTimestampIso = (value: Date | string | undefined | null) => {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString();
+};
+
+const TypingDots = ({ color }: { color: string }) => {
+    const dots = useRef([0, 1, 2].map(() => new Animated.Value(0.35))).current;
+
+    useEffect(() => {
+        const loops = dots.map((dot, index) =>
+            Animated.loop(
+                Animated.sequence([
+                    Animated.delay(index * 160),
+                    Animated.timing(dot, {
+                        toValue: 1,
+                        duration: 280,
+                        easing: Easing.inOut(Easing.ease),
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(dot, {
+                        toValue: 0.35,
+                        duration: 280,
+                        easing: Easing.inOut(Easing.ease),
+                        useNativeDriver: true,
+                    }),
+                ]),
+            ),
+        );
+        loops.forEach((loop) => loop.start());
+        return () => loops.forEach((loop) => loop.stop());
+    }, [dots]);
+
+    return (
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            {dots.map((dot, index) => (
+                <Animated.View
+                    key={index}
+                    style={{
+                        width: 8,
+                        height: 8,
+                        borderRadius: 4,
+                        marginRight: index === 2 ? 0 : 4,
+                        backgroundColor: color,
+                        opacity: dot,
+                    }}
+                />
+            ))}
+        </View>
+    );
+};
+
+const listHasId = (list: any, id: any) => {
+    if (!id || !Array.isArray(list)) return false;
+    const target = String(id?._id || id);
+    return list.some((item) => String(item?._id || item) === target);
 };
 
 
@@ -528,7 +607,9 @@ const SingleMessage = () => {
     const [friendEmotion, setFriendEmotion] = useState<string | null>("");
     const [friendExpression, setFriendExpression] = useState<string | null>(null); // Store friend's expression
     const [myEmotion, setMyEmotion] = useState<string | null>(null);
-    const [isBlocked, setIsBlocked] = useState<boolean>(false);
+    const [isBlocked, setIsBlocked] = useState<boolean>(() =>
+        listHasId(myProfile?.blockedUsers, friend?._id)
+    );
     
     // Emotion detection state
     const emotionServerSocketRef = React.useRef<Socket | null>(null);
@@ -561,6 +642,11 @@ const SingleMessage = () => {
     };
     const [isBlocking, setIsBlocking] = useState<boolean>(false);
     const [isBlockedByFriend, setIsBlockedByFriend] = useState<boolean>(false);
+    const profileRef = useRef(myProfile);
+
+    useEffect(() => {
+        profileRef.current = myProfile;
+    }, [myProfile]);
     const [isInitialLoading, setIsInitialLoading] = useState<boolean>(true);
     
     // Message-related state - MUST be before early returns to follow React hooks rules
@@ -577,13 +663,25 @@ const SingleMessage = () => {
     const flatListRef = useRef<FlatList>(null);
     const inputRef = useRef<TextInput>(null);
     const scrollOffsetRef = useRef<number>(0);
-    const lastLoadTimestampRef = useRef<number>(0);
+    const contentSizeRef = useRef<number>(0);
+    const viewportHeightRef = useRef<number>(0);
     const visibleMessageIdRef = useRef<string | null>(null);
     const isSendingRef = useRef(false);
     const isNearBottomRef = useRef(true);
-    const pendingScrollToBottomRef = useRef(true);
+    const pendingFollowLatestRef = useRef(false);
+    const pendingScrollRestoreRef = useRef<{ prevHeight: number; prevTop: number } | null>(null);
+    const hasInitialScrolledRef = useRef(false);
+    const hasLoadedFreshMessagesRef = useRef(false);
+    const isInitialLoadingRef = useRef(true);
+    const loadingOlderRef = useRef(false);
+    const skipNextEndReachedRef = useRef(true);
+    const hasMoreMessagesRef = useRef(true);
+    const messagesRef = useRef<Message[]>([]);
     const [lockVisibleOnPrepend, setLockVisibleOnPrepend] = useState(false);
     const [composerHeight, setComposerHeight] = useState(72);
+    const [keyboardHeight, setKeyboardHeight] = useState(0);
+    const insets = useSafeAreaInsets();
+    const composerBottomOffset = Platform.OS === 'ios' ? keyboardHeight : 0;
     const typingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const incomingTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isTypingOutgoingRef = useRef(false);
@@ -592,8 +690,6 @@ const SingleMessage = () => {
     // Pagination state for loading old messages
     const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
-    const [currentPage, setCurrentPage] = useState(0);
-    const messagesPerPage = 20;
 
     // Helper function to save messages to AsyncStorage
     const saveMessagesToStorage = async (friendId: string, messagesToSave: Message[]) => {
@@ -601,10 +697,13 @@ const SingleMessage = () => {
             if (!friendId || !messagesToSave || messagesToSave.length === 0) return;
             
             // Serialize messages - convert Date objects to ISO strings
-            const serializedMessages = messagesToSave.map(msg => ({
-                ...msg,
-                timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
-            }));
+            const serializedMessages = messagesToSave
+                .filter((msg) => msg && msg._id && !msg.isOptimistic)
+                .map(msg => ({
+                    ...msg,
+                    timestamp: msg.timestamp instanceof Date ? msg.timestamp.toISOString() : msg.timestamp,
+                }));
+            if (serializedMessages.length === 0) return;
             
             const storageKey = getMessagesStorageKey(friendId);
             await AsyncStorage.setItem(storageKey, JSON.stringify(serializedMessages));
@@ -709,151 +808,233 @@ const SingleMessage = () => {
             return () => {
                 off('roomJoined', handleRoomJoined);
                 off('connect', rejoinRoom);
+                emit('leaveRoom', newRoom);
             };
         }
     }, [friend?._id, myProfile?._id, isConnected, emit, on, off, checkUserActive]);
 
-    // Check if user is blocked when component loads
-    useEffect(() => {
-        const checkBlockStatus = async () => {
-            if (!friend?._id || !myProfile?._id) return;
-
-            try {
-                // Check if the friend is in the blocked users list
-                const response = await api.get(`/profile?profileId=${myProfile._id}`);
-                if (response.status === 200 && response.data?.blockedUsers) {
-                    const isUserBlocked = response.data.blockedUsers.includes(friend._id);
-                    setIsBlocked(isUserBlocked);
-                }
-            } catch (error) {
-                console.error('Error checking block status:', error);
+    const patchMyBlockedUsers = useCallback(
+        (shouldBlock: boolean, id?: string) => {
+            if (!id) return;
+            const currentProfile = profileRef.current || {};
+            const current = Array.isArray(currentProfile.blockedUsers)
+                ? currentProfile.blockedUsers
+                : [];
+            const alreadyBlocked = listHasId(current, id);
+            const isCurrentFriend = String(id) === String(friend?._id);
+            if (shouldBlock === alreadyBlocked) {
+                if (isCurrentFriend) setIsBlocked(shouldBlock);
+                return;
             }
-        };
+            const next = shouldBlock
+                ? [...current, id]
+                : current.filter((item: any) => String(item) !== String(id));
+            if (isCurrentFriend) setIsBlocked(shouldBlock);
+            dispatch(updateProfileField({ field: 'blockedUsers', value: next }));
+        },
+        [dispatch, friend?._id],
+    );
 
-        checkBlockStatus();
-    }, [friend?._id, myProfile?._id]);
-
-    // Check if current user is blocked by friend
     useEffect(() => {
-        const checkIfBlockedByFriend = async () => {
-            if (!friend?._id || !myProfile?._id) return;
-
-            try {
-                // Check if current user is in the friend's blocked users list
-                const response = await api.get(`/profile?profileId=${friend._id}`);
-                if (response.status === 200 && response.data?.blockedUsers) {
-                    const isBlockedByFriend = response.data.blockedUsers.includes(myProfile._id);
-                    setIsBlockedByFriend(isBlockedByFriend);
-                }
-            } catch (error) {
-                console.error('Error checking if blocked by friend:', error);
-            }
-        };
-
-        checkIfBlockedByFriend();
-    }, [friend?._id, myProfile?._id]);
-
-    // Fetch initial messages - load from storage first, then fetch from server
-    useEffect(() => {
-        console.log('Initial messages fetch effect triggered:', { friendId: friend?._id });
-        
         if (!friend?._id) {
-            console.log('Initial fetch blocked - no friendId');
+            setIsBlocked(false);
             return;
         }
-        
-        // Reset when friend changes
-        setMessages([]);
-        setCurrentPage(0);
-        setIsInitialLoading(true);
-        pendingScrollToBottomRef.current = true;
-        isNearBottomRef.current = true;
-        setLockVisibleOnPrepend(false);
-        
-        console.log('Loading messages for friend:', friend._id);
-        
-        const loadAndFetchMessages = async () => {
-            try {
-                // First, load messages from AsyncStorage
-                const storedMessages = await loadMessagesFromStorage(friend._id);
-                
-                if (storedMessages.length > 0) {
-                    console.log(`Loaded ${storedMessages.length} messages from storage, displaying them immediately`);
-                    setMessages(storedMessages);
-                    // Hide skeleton immediately if we have stored messages
-                    setIsInitialLoading(false);
-                } else {
-                    console.log('No stored messages found - will show skeleton until server fetch completes');
-                    // Keep skeleton visible if no stored messages
+        setIsBlocked(listHasId(myProfile?.blockedUsers, friend._id));
+    }, [friend?._id, myProfile?.blockedUsers]);
+
+    const refreshBlockStatus = useCallback(async (isStillActive: () => boolean = () => true) => {
+        if (!friend?._id || !myProfile?._id) return;
+
+        try {
+            const response = await friendAPI.getBlockStatus(friend._id);
+            if (!isStillActive()) return;
+            if (response.status === 200 && response.data) {
+                const iBlocked = Boolean(response.data.iBlocked);
+                const blockedMe = Boolean(response.data.blockedMe);
+                setIsBlocked(iBlocked);
+                setIsBlockedByFriend(blockedMe);
+                const currentBlocked = listHasId(profileRef.current?.blockedUsers, friend._id);
+                if (currentBlocked !== iBlocked) {
+                    patchMyBlockedUsers(iBlocked, friend._id);
                 }
-                
-                // Then fetch fresh messages from server
-                console.log('API call starting for getChatHistory');
+                return;
+            }
+        } catch (error) {
+            console.error('Error fetching block status:', error);
+        }
+
+        try {
+            const response = await api.get(`/profile?profileId=${myProfile._id}`);
+            if (!isStillActive()) return;
+            const blockedUsers = response.data?.blockedUsers;
+            if (response.status === 200 && Array.isArray(blockedUsers)) {
+                const isUserBlocked = listHasId(blockedUsers, friend._id);
+                const currentBlocked = listHasId(profileRef.current?.blockedUsers, friend._id);
+                setIsBlocked(isUserBlocked);
+                if (currentBlocked !== isUserBlocked) {
+                    patchMyBlockedUsers(isUserBlocked, friend._id);
+                }
+            }
+        } catch (error) {
+            console.error('Error checking block status:', error);
+        }
+
+        try {
+            const response = await api.get(`/profile?profileId=${friend._id}`);
+            if (!isStillActive()) return;
+            if (response.status === 200 && Array.isArray(response.data?.blockedUsers)) {
+                setIsBlockedByFriend(listHasId(response.data.blockedUsers, myProfile._id));
+            }
+        } catch (error) {
+            console.error('Error checking if blocked by friend:', error);
+        }
+    }, [friend?._id, myProfile?._id, patchMyBlockedUsers]);
+
+    const fetchChatHistory = useCallback(
+        async (profileId: string, friendIdArg: string, limit = MESSAGES_PER_PAGE) => {
+            try {
                 const response = await api.get('/message/getChatHistory', {
                     params: {
-                        friendId: friend?._id,
-                        limit: messagesPerPage
-                    }
+                        profileId,
+                        friendId: friendIdArg,
+                        limit,
+                    },
                 });
-                
-                console.log('API response received:', { status: response.status, dataLength: response.data?.messages?.length });
-                
-                const httpMessages = response.data?.messages || [];
-                const hasMore = response.data?.hasMore || false;
-                
-                console.log('Fetched initial messages from HTTP:', { 
-                    count: httpMessages.length, 
-                    hasMore 
+                const fetched = Array.isArray(response?.data?.messages)
+                    ? response.data.messages.map(normalizeChatMessage).filter((m: Message) => m && m._id)
+                    : [];
+                const hasMore =
+                    typeof response?.data?.hasMore === 'boolean'
+                        ? response.data.hasMore
+                        : fetched.length >= limit;
+                return { messages: fetched, hasMore };
+            } catch (error) {
+                console.error('Error fetching messages:', error);
+                return { messages: [] as Message[], hasMore: false };
+            }
+        },
+        [],
+    );
+
+    const fetchOldMessages = useCallback(
+        async (profileId: string, friendIdArg: string, beforeTimestamp: string, limit = MESSAGES_PER_PAGE) => {
+            if (!beforeTimestamp) {
+                return { messages: [] as Message[], hasMore: false };
+            }
+            try {
+                const response = await api.get('/message/getOldMessages', {
+                    params: {
+                        profileId,
+                        friendId: friendIdArg,
+                        beforeTimestamp,
+                        limit,
+                    },
                 });
-                
-                if (httpMessages.length > 0) {
-                    const validHttpMessages = httpMessages.filter((msg: any) => msg && msg._id);
-                    console.log('Setting messages with count:', validHttpMessages.length);
-                    
-                    // Merge with stored messages, avoiding duplicates
-                    setMessages(prev => {
-                        const existingIds = new Set(prev.map(m => m._id));
-                        const newMessages = validHttpMessages.filter((msg: any) => !existingIds.has(msg._id));
-                        const merged = [...prev, ...newMessages].sort((a, b) => {
-                            const timeA = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
-                            const timeB = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
-                            return timeA - timeB;
-                        });
-                        return merged;
+                const fetched = Array.isArray(response?.data?.messages)
+                    ? response.data.messages.map(normalizeChatMessage).filter((m: Message) => m && m._id)
+                    : [];
+                const hasMore =
+                    typeof response?.data?.hasMore === 'boolean'
+                        ? response.data.hasMore
+                        : fetched.length >= limit;
+                return { messages: fetched, hasMore };
+            } catch (error) {
+                console.error('Error fetching old messages:', error);
+                return { messages: [] as Message[], hasMore: false };
+            }
+        },
+        [],
+    );
+
+    useEffect(() => {
+        messagesRef.current = messages;
+    }, [messages]);
+
+    const listData = useMemo(
+        () => (Array.isArray(messages) ? messages.filter(Boolean).slice().reverse() : []),
+        [messages],
+    );
+
+    useEffect(() => {
+        hasMoreMessagesRef.current = hasMoreMessages;
+    }, [hasMoreMessages]);
+
+    useEffect(() => {
+        isInitialLoadingRef.current = isInitialLoading;
+    }, [isInitialLoading]);
+
+    // Load cached latest page immediately, then fetch the same window the web chat uses.
+    useEffect(() => {
+        if (!friend?._id || !myProfile?._id) return;
+
+        let cancelled = false;
+        setMessages([]);
+        setHasMoreMessages(true);
+        hasMoreMessagesRef.current = true;
+        setIsInitialLoading(true);
+        isInitialLoadingRef.current = true;
+        setIsLoadingOldMessages(false);
+        setLockVisibleOnPrepend(false);
+        hasLoadedFreshMessagesRef.current = false;
+        hasInitialScrolledRef.current = false;
+        pendingScrollRestoreRef.current = null;
+        pendingFollowLatestRef.current = false;
+        isNearBottomRef.current = true;
+        loadingOlderRef.current = false;
+        skipNextEndReachedRef.current = true;
+
+        const loadAndFetchMessages = async () => {
+            try {
+                const storedMessages = await loadMessagesFromStorage(friend._id);
+                if (cancelled) return;
+
+                if (storedMessages.length > 0) {
+                    const sortedStored = [...storedMessages].sort((a, b) => {
+                        const timeA = new Date(a.timestamp as any).getTime();
+                        const timeB = new Date(b.timestamp as any).getTime();
+                        return timeA - timeB;
                     });
-                    
-                    setHasMoreMessages(hasMore);
-                    console.log('Messages state updated successfully');
-                } else {
-                    console.log('No messages received from API');
-                    setHasMoreMessages(false);
+                    const latestPage = sortedStored.slice(-MESSAGES_PER_PAGE);
+                    setMessages(latestPage);
+                    setHasMoreMessages(sortedStored.length >= MESSAGES_PER_PAGE);
+                    setIsInitialLoading(false);
+                    isInitialLoadingRef.current = false;
                 }
+
+                const response = await fetchChatHistory(myProfile._id, friend._id, MESSAGES_PER_PAGE);
+                if (cancelled) return;
+
+                setMessages((prev) => mergeHistoryWithLive(response.messages, prev));
+                setHasMoreMessages(response.hasMore);
+                hasMoreMessagesRef.current = response.hasMore;
+                hasLoadedFreshMessagesRef.current = true;
             } catch (error: any) {
+                if (cancelled) return;
                 console.error('Error fetching initial messages from HTTP:', error);
-                console.error('Error details:', error?.response?.data || error?.message);
                 setHasMoreMessages(false);
+                hasLoadedFreshMessagesRef.current = true;
             } finally {
-                // Turn off initial loading skeleton once fetch completes
-                // Only if it wasn't already turned off by stored messages
-                setIsInitialLoading(false);
+                if (!cancelled) {
+                    setIsInitialLoading(false);
+                    isInitialLoadingRef.current = false;
+                }
             }
         };
-        
-        loadAndFetchMessages();
-    }, [friend?._id]);
 
-    // Save messages to AsyncStorage whenever they change
+        loadAndFetchMessages();
+        return () => {
+            cancelled = true;
+        };
+    }, [friend?._id, myProfile?._id, fetchChatHistory]);
+
+    // Persist conversation after the first fresh server load, matching web cache behavior.
     useEffect(() => {
-        if (!friend?._id || messages.length === 0) return;
-        
-        // Debounce the save operation to avoid too many writes
+        if (!hasLoadedFreshMessagesRef.current || !friend?._id || messages.length === 0) return;
         debouncedSaveMessages(friend._id, messages);
-        
-        // Cleanup timeout on unmount or when friend changes
         return () => {
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
-                // Save immediately on cleanup if there's pending data
                 saveMessagesToStorage(friend._id, messages);
             }
         };
@@ -877,11 +1058,10 @@ const SingleMessage = () => {
             console.log('New message received:', messageData);
             let updatedMessage = messageData?.updatedMessage || messageData;
             if (!updatedMessage) return;
+            if (!isConversationMessage(updatedMessage, myProfile?._id, friend?._id)) return;
 
-            const isForThisChat =
-                (String(updatedMessage.senderId) === String(friend?._id) && String(updatedMessage.receiverId) === String(myProfile?._id)) ||
-                (String(updatedMessage.senderId) === String(myProfile?._id) && String(updatedMessage.receiverId) === String(friend?._id));
-            if (!isForThisChat) return;
+            pendingFollowLatestRef.current = true;
+            isNearBottomRef.current = true;
 
             const newMessage: Message = {
                 _id: updatedMessage._id || Date.now().toString(),
@@ -1952,33 +2132,33 @@ const SingleMessage = () => {
 
     // Realtime block/unblock listeners and blocked message notice
     useEffect(() => {
-        if (!isConnected) return;
         if (!friend?._id || !myProfile?._id) return;
 
+        const myId = String(myProfile._id);
+        const friendId = String(friend._id);
+
         const handleUserBlocked = ({ by, target }: { by: string; target: string }) => {
-            // Emitted to blocker (me): if I blocked this friend
-            if (String(target) === String(friend._id)) {
-                setIsBlocked(true);
+            if (String(by) === myId && target) {
+                patchMyBlockedUsers(true, target);
             }
         };
         const handleBlockedByUser = ({ by, target }: { by: string; target: string }) => {
-            // Emitted to me when friend blocked me
-            if (String(by) === String(friend._id)) {
+            if (String(by) === friendId && String(target) === myId) {
                 setIsBlockedByFriend(true);
             }
         };
         const handleUserUnblocked = ({ by, target }: { by: string; target: string }) => {
-            if (String(target) === String(friend._id)) {
-                setIsBlocked(false);
+            if (String(by) === myId && target) {
+                patchMyBlockedUsers(false, target);
             }
         };
         const handleUnblockedByUser = ({ by, target }: { by: string; target: string }) => {
-            if (String(by) === String(friend._id)) {
+            if (String(by) === friendId && String(target) === myId) {
                 setIsBlockedByFriend(false);
             }
         };
         const handleMessageBlocked = ({ receiverId, reason }: { receiverId: string; reason: string }) => {
-            if (String(receiverId) === String(friend._id)) {
+            if (String(receiverId) === friendId) {
                 try { Alert.alert('Message not sent', reason || 'You cannot message this user.'); } catch (_) {}
             }
         };
@@ -1996,7 +2176,7 @@ const SingleMessage = () => {
             off('unblockedByUser', handleUnblockedByUser);
             off('message_blocked', handleMessageBlocked);
         };
-    }, [isConnected, friend?._id, myProfile?._id, on, off]);
+    }, [friend?._id, myProfile?._id, on, off, patchMyBlockedUsers]);
 
     // Tab bar hiding is now handled at the app level in App.tsx
 
@@ -2012,6 +2192,7 @@ const SingleMessage = () => {
                 }
             };
             loadBackground();
+            refreshBlockStatus(() => isActive);
             
             // Mark messages as read when screen is focused
             if (friend?._id && myProfile?._id) {
@@ -2028,12 +2209,14 @@ const SingleMessage = () => {
                 });
             }
             
-            pendingScrollToBottomRef.current = true;
+            pendingFollowLatestRef.current = true;
             isNearBottomRef.current = true;
             const jumpToLatest = () => {
                 if (!isActive) return;
                 if (isInitialLoading) return;
-                flatListRef.current?.scrollToEnd({ animated: false });
+                try {
+                    flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+                } catch (_) {}
             };
             const t1 = setTimeout(jumpToLatest, 50);
             const t2 = setTimeout(jumpToLatest, 300);
@@ -2043,38 +2226,85 @@ const SingleMessage = () => {
                 clearTimeout(t1);
                 clearTimeout(t2);
             };
-        }, [friend?._id, myProfile?._id, dispatch, settings.settings?.isShareEmotion, isInitialLoading])
+        }, [friend?._id, myProfile?._id, dispatch, settings.settings?.isShareEmotion, isInitialLoading, refreshBlockStatus])
     );
 
-    const scrollToBottom = React.useCallback((animated = false) => {
+    const scrollToBottom = useCallback((animated = false) => {
         const list = flatListRef.current;
         if (!list) return;
-        try {
-            list.scrollToEnd({ animated });
-        } catch (_) {}
+        const doScroll = () => {
+            try {
+                list.scrollToOffset({ offset: 0, animated });
+            } catch (_) {}
+        };
+        requestAnimationFrame(() => {
+            doScroll();
+            requestAnimationFrame(doScroll);
+        });
+    }, []);
+
+    const dismissKeyboard = useCallback(() => {
+        Keyboard.dismiss();
+        inputRef.current?.blur();
+        setEmojiPanelOpen(false);
+        setShowAttachTray(false);
+        setShowMicMenu(false);
     }, []);
 
     useEffect(() => {
-        if (isInitialLoading || messages.length === 0) return;
+        const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+        const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
 
-        if (pendingScrollToBottomRef.current) {
-            const t1 = setTimeout(() => scrollToBottom(false), 16);
-            const t2 = setTimeout(() => {
-                scrollToBottom(false);
-                pendingScrollToBottomRef.current = false;
-                setLockVisibleOnPrepend(true);
-            }, 280);
-            return () => {
-                clearTimeout(t1);
-                clearTimeout(t2);
-            };
-        }
+        const onShow = (event: KeyboardEvent) => {
+            const height = event.endCoordinates?.height ?? 0;
+            setKeyboardHeight(height);
+        };
+        const onHide = () => setKeyboardHeight(0);
 
-        if (isNearBottomRef.current) {
-            const timeoutId = setTimeout(() => scrollToBottom(true), 50);
-            return () => clearTimeout(timeoutId);
-        }
-    }, [messages.length, isInitialLoading, friend?._id, scrollToBottom]);
+        const showSub = Keyboard.addListener(showEvent, onShow);
+        const hideSub = Keyboard.addListener(hideEvent, onHide);
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (keyboardHeight <= 0) return;
+        if (!isNearBottomRef.current && !pendingFollowLatestRef.current) return;
+        const timeoutId = setTimeout(() => scrollToBottom(false), 40);
+        return () => clearTimeout(timeoutId);
+    }, [keyboardHeight, scrollToBottom]);
+
+    const markInitialScrolled = useCallback(() => {
+        if (hasInitialScrolledRef.current) return;
+        hasInitialScrolledRef.current = true;
+        isNearBottomRef.current = true;
+        setLockVisibleOnPrepend(true);
+    }, []);
+
+    // Inverted list already opens on the latest message; only unlock pagination after layout.
+    useEffect(() => {
+        if (hasInitialScrolledRef.current) return;
+        if (!friend?._id || messages.length === 0 || isInitialLoading) return;
+        scrollToBottom(false);
+        const t = setTimeout(() => markInitialScrolled(), 300);
+        return () => clearTimeout(t);
+    }, [friend?._id, messages.length, isInitialLoading, scrollToBottom, markInitialScrolled]);
+
+    // After a realtime / optimistic message is painted, jump to it.
+    useEffect(() => {
+        if (pendingScrollRestoreRef.current) return;
+        if (!pendingFollowLatestRef.current) return;
+        pendingFollowLatestRef.current = false;
+        scrollToBottom(true);
+    }, [messages, scrollToBottom]);
+
+    // Keep typing indicator visible while the other person is typing.
+    useEffect(() => {
+        if (!isTyping) return;
+        scrollToBottom(true);
+    }, [isTyping, typingMessage, scrollToBottom]);
 
     // Track which messages we've already emitted seen for (avoid duplicate emits)
     const seenEmittedRef = useRef<Set<string>>(new Set());
@@ -2184,9 +2414,8 @@ const SingleMessage = () => {
         setShowMicMenu(false);
         stopTyping();
         isNearBottomRef.current = true;
-        setTimeout(() => {
-            flatListRef.current?.scrollToEnd({ animated: true });
-        }, 50);
+        pendingFollowLatestRef.current = true;
+        scrollToBottom(true);
 
         const payload = {
             room: roomId,
@@ -2258,7 +2487,10 @@ const SingleMessage = () => {
 
     const handleInputChange = (value: string) => {
         setInputText(value);
-        const showTyping = settings.settings?.showTyping !== false;
+        const showTyping =
+            settings.settings?.showIsTyping !== false &&
+            settings.settings?.showTyping !== false &&
+            settings.settings?.typingIndicators !== false;
         if (!showTyping) return;
 
         if (value.trim().length > 0) {
@@ -2644,16 +2876,15 @@ const SingleMessage = () => {
     };
 
     // Block/Unblock functionality
-    const handleBlockUser = async () => {
+    const handleBlockUser = useCallback(async () => {
         if (!friend?._id || !myProfile?._id || isBlocking) return;
 
         try {
             setIsBlocking(true);
             const response = await friendAPI.blockUser(friend._id);
-            
+
             if (response.status === 200) {
-                setIsBlocked(true);
-                Alert.alert('Success', 'User has been blocked successfully');
+                patchMyBlockedUsers(true, friend._id);
                 setOptionMenuVisible(false);
             } else {
                 Alert.alert('Error', 'Failed to block user. Please try again.');
@@ -2664,18 +2895,17 @@ const SingleMessage = () => {
         } finally {
             setIsBlocking(false);
         }
-    };
+    }, [friend?._id, myProfile?._id, isBlocking, patchMyBlockedUsers]);
 
-    const handleUnblockUser = async () => {
+    const handleUnblockUser = useCallback(async () => {
         if (!friend?._id || !myProfile?._id || isBlocking) return;
 
         try {
             setIsBlocking(true);
             const response = await friendAPI.unblockUser(friend._id);
-            
+
             if (response.status === 200) {
-                setIsBlocked(false);
-                Alert.alert('Success', 'User has been unblocked successfully');
+                patchMyBlockedUsers(false, friend._id);
                 setOptionMenuVisible(false);
             } else {
                 Alert.alert('Error', 'Failed to unblock user. Please try again.');
@@ -2686,7 +2916,43 @@ const SingleMessage = () => {
         } finally {
             setIsBlocking(false);
         }
-    };
+    }, [friend?._id, myProfile?._id, isBlocking, patchMyBlockedUsers]);
+
+    const openUserInfo = useCallback(async () => {
+        if (!friend?._id) return;
+        setOptionMenuVisible(false);
+        setInfoMenuVisible(true);
+        setLoadingUserInfo(true);
+        try {
+            const res = await api.get(`/profile?profileId=${friend._id}`);
+            if (res.status === 200) {
+                setUserInfoData(res.data);
+                if (res.data?.lastLocation?.latitude && res.data?.lastLocation?.longitude) {
+                    setFriendLocation({
+                        latitude: res.data.lastLocation.latitude,
+                        longitude: res.data.lastLocation.longitude,
+                        timestamp: res.data.lastLocation.timestamp || Date.now(),
+                    });
+                } else {
+                    setFriendLocation(null);
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching user info:', error);
+            setUserInfoData(friend);
+            if (friend?.lastLocation?.latitude && friend?.lastLocation?.longitude) {
+                setFriendLocation({
+                    latitude: friend.lastLocation.latitude,
+                    longitude: friend.lastLocation.longitude,
+                    timestamp: friend.lastLocation.timestamp || Date.now(),
+                });
+            } else {
+                setFriendLocation(null);
+            }
+        } finally {
+            setLoadingUserInfo(false);
+        }
+    }, [friend]);
 
     const pickAndUploadImage = async (fromCamera: boolean) => {
         try {
@@ -2842,8 +3108,9 @@ const SingleMessage = () => {
     };
 
     const scrollToMessage = (messageId: string) => {
-        const index = messages.findIndex(m => m._id === messageId);
-        if (index !== -1) {
+        const chronologicalIndex = messages.findIndex(m => m._id === messageId);
+        if (chronologicalIndex !== -1) {
+            const index = messages.length - 1 - chronologicalIndex;
             setHighlightedMessageId(messageId);
             try {
                 flatListRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
@@ -2856,130 +3123,92 @@ const SingleMessage = () => {
         }
     };
 
-    const loadOldMessages = async () => {
-        const now = Date.now();
-        const timeSinceLastLoad = now - lastLoadTimestampRef.current;
-        
-        console.log('loadOldMessages called', { isLoadingOldMessages, hasMoreMessages, messagesLength: messages.length, timeSinceLastLoad });
-        
-        // Prevent duplicate/rapid loads (at least 500ms between loads)
-        if (timeSinceLastLoad < 500) {
-            console.log('Load blocked - too soon since last load');
-            return;
-        }
-        
-        if (isLoadingOldMessages || !hasMoreMessages || !room || !friend?._id) {
-            console.log('Load old messages blocked:', { isLoadingOldMessages, hasMoreMessages, room, friendId: friend?._id });
-            return;
-        }
+    const loadOldMessages = useCallback(async () => {
+        if (!friend?._id || !myProfile?._id) return;
+        if (!hasMoreMessagesRef.current) return;
+        if (!hasInitialScrolledRef.current) return;
+        if (loadingOlderRef.current || isInitialLoadingRef.current) return;
 
-        lastLoadTimestampRef.current = now;
+        const oldestMessage = messagesRef.current[0];
+        const beforeTimestamp = toTimestampIso(
+            oldestMessage?.timestamp || (oldestMessage as any)?.createdAt,
+        );
+        if (!beforeTimestamp) return;
+
+        loadingOlderRef.current = true;
         setIsLoadingOldMessages(true);
-        
-        const oldestMessage = messages[0];
-        const lastMessageTimestamp = oldestMessage 
-            ? (oldestMessage.timestamp instanceof Date ? oldestMessage.timestamp : new Date(oldestMessage.timestamp))
-            : new Date();
-        
-        console.log('Fetching old messages with HTTP:', {
-            friendId: friend?._id,
-            limit: messagesPerPage,
-            beforeTimestamp: lastMessageTimestamp.toISOString()
-        });
-        
+
         try {
-            // Use HTTP request instead of socket
-            const response = await api.get('/message/getOldMessages', {
-                params: {
-                    friendId: friend?._id,
-                    limit: messagesPerPage,
-                    beforeTimestamp: lastMessageTimestamp.toISOString()
-                }
-            });
-            
-            const oldMessages = response.data?.messages || [];
-            const hasMore = response.data?.hasMore || false;
-            
-            console.log('Received old messages from HTTP:', { 
-                count: oldMessages.length, 
-                hasMore,
-                responseData: response.data
-            });
-            
-            // Always set hasMoreMessages based on server response
-            setHasMoreMessages(hasMore);
-            
-            if (oldMessages.length > 0) {
-                setMessages(prev => {
-                    // Ensure each message has a unique ID and filter out any duplicates
-                    const existingIds = new Set(prev.map(msg => msg._id));
-                    const newMessages = oldMessages.filter((msg: any) => !existingIds.has(msg._id));
-                    
-                    console.log('Adding new old messages:', {
-                        oldMessagesCount: oldMessages.length,
-                        newMessagesCount: newMessages.length,
-                        previousMessagesCount: prev.length,
-                        existingIdsSize: existingIds.size
-                    });
-                    
-                    const updatedMessages = [...newMessages, ...prev];
-                    
-                    // Scroll to the message that was visible before loading
-                    setTimeout(() => {
-                        if (visibleMessageIdRef.current) {
-                            const index = updatedMessages.findIndex(m => m._id === visibleMessageIdRef.current);
-                            if (index !== -1) {
-                                flatListRef.current?.scrollToIndex({
-                                    index: index,
-                                    animated: false,
-                                    viewPosition: 0
-                                });
-                            }
-                        }
-                    }, 300);
-                    
-                    return updatedMessages;
-                });
-                setCurrentPage(prev => prev + 1);
-            } else {
-                // No more messages received
-                console.log('No old messages to add - hasMore is:', hasMore);
-                if (!hasMore) {
-                    console.log('Pagination complete - no more messages available');
-                }
-            }
-        } catch (error: any) {
-            console.error('Error fetching old messages:', error);
-            
-            // Check if it's a 4xx error (client error) vs 5xx (server error)
-            if (error?.response?.status >= 400 && error?.response?.status < 500) {
-                // Client error - likely no more messages or bad request
-                console.log('Client error - stopping pagination');
+            const response = await fetchOldMessages(
+                myProfile._id,
+                friend._id,
+                beforeTimestamp,
+                MESSAGES_PER_PAGE,
+            );
+            const older = response.messages || [];
+            if (older.length === 0) {
                 setHasMoreMessages(false);
-            } else if (error?.response?.status >= 500) {
-                // Server error - retry might help
-                console.log('Server error - will allow retry');
-                // Keep hasMoreMessages true to allow retry
-            } else {
-                // Network or unknown error
-                console.log('Network/unknown error - stopping pagination');
-                setHasMoreMessages(false);
+                hasMoreMessagesRef.current = false;
+                loadingOlderRef.current = false;
+                return;
             }
+
+            const existingIds = new Set(messagesRef.current.map((msg) => String(msg._id)));
+            const uniqueOlder = older.filter((msg) => !existingIds.has(String(msg._id)));
+            if (uniqueOlder.length === 0) {
+                setHasMoreMessages(response.hasMore);
+                hasMoreMessagesRef.current = response.hasMore;
+                loadingOlderRef.current = false;
+                return;
+            }
+
+            setMessages((prev) => [...uniqueOlder, ...prev]);
+            setHasMoreMessages(response.hasMore);
+            hasMoreMessagesRef.current = response.hasMore;
+        } catch (error) {
+            loadingOlderRef.current = false;
+            console.error('Error loading older messages:', error);
         } finally {
+            loadingOlderRef.current = false;
             setIsLoadingOldMessages(false);
         }
-    };
+    }, [friend?._id, myProfile?._id, fetchOldMessages]);
 
-    const handleScroll = (event: any) => {
+    const handleScroll = useCallback((event: any) => {
         const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
-        const distanceFromBottom = contentSize.height - contentOffset.y - layoutMeasurement.height;
-        isNearBottomRef.current = distanceFromBottom < 140;
+        const maxScroll = Math.max(0, contentSize.height - layoutMeasurement.height);
+        // Inverted list: offset 0 is the latest messages (visual bottom).
+        isNearBottomRef.current = contentOffset.y <= NEAR_BOTTOM_PX;
         scrollOffsetRef.current = contentOffset.y;
+        contentSizeRef.current = contentSize.height;
+        viewportHeightRef.current = layoutMeasurement.height;
 
-        if (contentOffset.y <= 100 && hasMoreMessages && !isLoadingOldMessages && messages.length > 0) {
+        if (!hasInitialScrolledRef.current) {
+            if (isNearBottomRef.current) {
+                markInitialScrolled();
+            }
+            return;
+        }
+
+        if (loadingOlderRef.current || maxScroll <= 0) return;
+        if (contentOffset.y >= maxScroll * (1 - LOAD_OLDER_SCROLL_PERCENT / 100)) {
             loadOldMessages();
         }
-    };
+    }, [loadOldMessages, markInitialScrolled]);
+
+    const handleContentSizeChange = useCallback((_w: number, h: number) => {
+        contentSizeRef.current = h;
+        if (!hasInitialScrolledRef.current && messagesRef.current.length > 0 && !isInitialLoadingRef.current) {
+            scrollToBottom(false);
+            return;
+        }
+        if (pendingFollowLatestRef.current || isNearBottomRef.current) {
+            if (loadingOlderRef.current) return;
+            const animated = pendingFollowLatestRef.current;
+            pendingFollowLatestRef.current = false;
+            scrollToBottom(animated);
+        }
+    }, [scrollToBottom]);
 
     const renderLeftReplyAction = () => (
         <View style={{ width: 64, justifyContent: 'center', alignItems: 'center' }}>
@@ -3293,62 +3522,37 @@ const SingleMessage = () => {
         if (!isTyping) return null;
 
         return (
-            <View style={{
-                marginBottom: 8,
-                marginHorizontal: 16,
-                flexDirection: 'row',
-                alignItems: 'flex-end',
-            }}>
-                <UserPP image={friend?.profilePic} isActive={false} size={36} />
-
-                <View style={{
-                    marginLeft: 8,
-                    backgroundColor: chatTheme.colors.recvBg,
-                    paddingHorizontal: 14,
-                    paddingVertical: 10,
-                    borderRadius: 18,
-                    borderBottomLeftRadius: 4,
-                    maxWidth: '78%',
-                    borderWidth: 1,
-                    borderColor: chatTheme.colors.recvBorder,
-                }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            gap: 4,
-                        }}>
-                            <View style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 4,
-                                backgroundColor: chatTheme.colors.accent,
-                                opacity: 0.4,
-                            }} />
-                            <View style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 4,
-                                backgroundColor: chatTheme.colors.accent,
-                                opacity: 0.6,
-                            }} />
-                            <View style={{
-                                width: 8,
-                                height: 8,
-                                borderRadius: 4,
-                                backgroundColor: chatTheme.colors.accent,
-                                opacity: 0.8,
-                            }} />
-                        </View>
-                        <Text style={{
-                            color: '#FFFFFF',
-                            fontSize: 14,
-                            marginLeft: 8,
-                            fontStyle: 'italic',
-                        }}>
-                            {typingMessage && typingMessage.length > 0 ? `typing "${typingMessage}"...` : 'typing...'}
+            <View
+                style={{
+                    marginHorizontal: 12,
+                    marginTop: 4,
+                    marginBottom: 8,
+                    flexDirection: 'row',
+                    alignItems: 'flex-end',
+                    zIndex: 3,
+                }}
+            >
+                <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={36} />
+                <View
+                    style={{
+                        marginLeft: 8,
+                        backgroundColor: chatTheme.colors.recvBg,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
+                        borderRadius: 18,
+                        borderBottomLeftRadius: 4,
+                        maxWidth: '78%',
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.recvBorder,
+                    }}
+                >
+                    {typingMessage ? (
+                        <Text style={{ color: '#FFFFFF', fontSize: 15, lineHeight: 20 }}>
+                            {typingMessage}
                         </Text>
-                    </View>
+                    ) : (
+                        <TypingDots color={chatTheme.colors.accent || '#ffffff'} />
+                    )}
                 </View>
             </View>
         );
@@ -3381,8 +3585,8 @@ const SingleMessage = () => {
         if (!isLoadingOldMessages) return null;
 
         return (
-            <View style={{ paddingTop: 4, paddingBottom: 8 }}>
-                <ChatBubblesSkeleton count={3} theme={chatTheme.colors} scrollable={false} />
+            <View style={{ paddingVertical: 10, alignItems: 'center', justifyContent: 'center' }}>
+                <ActivityIndicator size="small" color={chatTheme.colors.accent || '#ffffff'} />
             </View>
         );
     };
@@ -3491,13 +3695,22 @@ const SingleMessage = () => {
     }
 
     return (
-        <View style={{ flex: 1, backgroundColor: chatTheme.colors.headerBg, overflow: 'visible' }}>
+        <View
+            style={{
+                flex: 1,
+                width: '100%',
+                backgroundColor: chatTheme.colors.headerBg,
+            }}
+        >
 
-            <View style={{
+            <Pressable
+                onPress={dismissKeyboard}
+                style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 16,
                 paddingVertical: 8,
+                paddingTop: Math.max(insets.top, 8),
                 backgroundColor: chatTheme.colors.headerBg,
                 borderBottomWidth: 1,
                 borderBottomColor: chatTheme.colors.sentBorder,
@@ -3727,85 +3940,13 @@ const SingleMessage = () => {
                 >
                     <Icon name="more-vert" size={20} color="#FFFFFF" />
                 </TouchableOpacity>
-                <TouchableOpacity
-                    onPress={() => setIsChatSettingsOpen(true)}
-                    style={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: 20,
-                        backgroundColor: `${chatTheme.colors.accent}22`,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginLeft: 5,
-                        borderWidth: 1,
-                        borderColor: chatTheme.colors.sentBorder,
-                    }}
-                >
-                    <Icon name="palette" size={18} color={chatTheme.colors.accent} />
-                </TouchableOpacity>
-                <TouchableOpacity
-                    onPress={async () => {
-                        if (!friend?._id) return;
-                        setInfoMenuVisible(true);
-                        setLoadingUserInfo(true);
-                        try {
-                            const res = await api.get(`/profile?profileId=${friend._id}`);
-                            if (res.status === 200) {
-                                setUserInfoData(res.data);
-                                // Set initial location from profile
-                                if (res.data?.lastLocation?.latitude && res.data?.lastLocation?.longitude) {
-                                    setFriendLocation({
-                                        latitude: res.data.lastLocation.latitude,
-                                        longitude: res.data.lastLocation.longitude,
-                                        timestamp: res.data.lastLocation.timestamp || Date.now(),
-                                    });
-                                } else {
-                                    // Clear location if not available
-                                    setFriendLocation(null);
-                                }
-                            }
-                        } catch (error) {
-                            console.error('Error fetching user info:', error);
-                            setUserInfoData(friend);
-                            // Try to get location from friend object
-                            if (friend?.lastLocation?.latitude && friend?.lastLocation?.longitude) {
-                                setFriendLocation({
-                                    latitude: friend.lastLocation.latitude,
-                                    longitude: friend.lastLocation.longitude,
-                                    timestamp: friend.lastLocation.timestamp || Date.now(),
-                                });
-                            } else {
-                                setFriendLocation(null);
-                            }
-                        } finally {
-                            setLoadingUserInfo(false);
-                        }
-                    }}
-                    style={{
-                        width: 35,
-                        height: 35,
-                        borderRadius: 20,
-                        backgroundColor: `${chatTheme.colors.accent}22`,
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        marginLeft: 5,
-                        borderWidth: 1,
-                        borderColor: chatTheme.colors.sentBorder,
-                    }}
-                >
-                    <Icon name="info" size={20} color="#FFFFFF" />
-                </TouchableOpacity>
-            </View>
+            </Pressable>
 
-            <KeyboardAvoidingView
-                style={{ flex: 1, overflow: 'visible' }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={0}
-            >
+            <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
 
             {isInitialLoading ? (
-                <View style={{ flex: 1, overflow: 'hidden', paddingBottom: composerHeight }}>
+                <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {wallpaper.type === 'image' ? (
                         <ImageBackground
                             source={{ uri: wallpaper.value }}
@@ -3835,7 +3976,7 @@ const SingleMessage = () => {
                     <ChatBubblesSkeleton count={14} theme={chatTheme.colors} />
                 </View>
             ) : (
-                <View style={{ flex: 1, overflow: 'hidden' }}>
+                <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
                     {wallpaper.type === 'image' ? (
                         <ImageBackground
                             source={{ uri: wallpaper.value }}
@@ -3865,49 +4006,61 @@ const SingleMessage = () => {
                     {chatTheme.loveRain ? <LoveEmojiRain burstId={loveRainBurst} /> : null}
                     <FlatList
                         ref={flatListRef}
-                        data={messages}
+                        data={listData}
                         renderItem={renderMessage}
                         keyExtractor={(item) => item._id || item.tempId || item.timestamp?.toString()}
-                        extraData={messages}
+                        extraData={`${messages.length}-${isLoadingOldMessages}-${highlightedMessageId}`}
                         style={{ flex: 1, zIndex: 2 }}
-                        contentContainerStyle={{ paddingVertical: 8, paddingBottom: composerHeight + 8 }}
+                        contentContainerStyle={{
+                            flexGrow: 1,
+                            paddingTop: 8,
+                            paddingBottom: 8,
+                        }}
                         showsVerticalScrollIndicator={false}
-                        keyboardShouldPersistTaps="handled"
-                        keyboardDismissMode="interactive"
-                        ListHeaderComponent={renderLoadingOldMessages}
+                        keyboardShouldPersistTaps="never"
+                        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+                        onScrollBeginDrag={dismissKeyboard}
+                        onTouchStart={() => {
+                            if (emojiPanelOpen || showAttachTray || showMicMenu) {
+                                setEmojiPanelOpen(false);
+                                setShowAttachTray(false);
+                                setShowMicMenu(false);
+                            }
+                        }}
                         ListEmptyComponent={renderEmptyConversation}
-                        ListFooterComponent={renderTypingIndicator}
+                        ListFooterComponent={renderLoadingOldMessages}
                         onScroll={handleScroll}
                         scrollEventThrottle={16}
                         onViewableItemsChanged={onViewableItemsChanged}
                         viewabilityConfig={viewabilityConfigRef.current as any}
-                        onContentSizeChange={() => {
-                            if (pendingScrollToBottomRef.current) {
+                        onContentSizeChange={handleContentSizeChange}
+                        onLayout={() => {
+                            if (!hasInitialScrolledRef.current && messages.length > 0 && !isInitialLoading) {
                                 scrollToBottom(false);
+                            }
+                        }}
+                        onEndReached={() => {
+                            if (skipNextEndReachedRef.current) {
+                                skipNextEndReachedRef.current = false;
                                 return;
                             }
-                            if (isNearBottomRef.current && !isLoadingOldMessages) {
-                                scrollToBottom(true);
-                            }
+                            if (!hasInitialScrolledRef.current) return;
+                            loadOldMessages();
                         }}
-                        onLayout={() => {
-                            if (pendingScrollToBottomRef.current && messages.length > 0) {
-                                scrollToBottom(false);
-                            }
-                        }}
+                        onEndReachedThreshold={0.3}
                         onScrollToIndexFailed={(info) => {
                             const wait = new Promise<void>(resolve => setTimeout(() => resolve(), 200));
                             wait.then(() => {
                                 flatListRef.current?.scrollToIndex({ index: info.index, animated: true });
                             });
                         }}
-                        inverted={false}
+                        inverted
+                        initialNumToRender={MESSAGES_PER_PAGE}
+                        maxToRenderPerBatch={MESSAGES_PER_PAGE}
+                        windowSize={12}
                         removeClippedSubviews={false}
-                        maintainVisibleContentPosition={lockVisibleOnPrepend ? {
-                            minIndexForVisible: 0,
-                            autoscrollToTopThreshold: 10
-                        } : undefined}
                     />
+                    {renderTypingIndicator()}
                 </View>
             )}
 
@@ -4336,6 +4489,46 @@ const SingleMessage = () => {
                             </TouchableOpacity>
 
                             <TouchableOpacity
+                                key="user-info"
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: themeColors.border.primary,
+                                }}
+                                onPress={openUserInfo}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.primary + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
+                                }}>
+                                    <Icon name="info" size={20} color={themeColors.primary} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.text.primary,
+                                    }}>
+                                        Info
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.text.secondary,
+                                        marginTop: 2,
+                                    }}>
+                                        View {friend?.fullName?.split(' ')[0] || 'contact'} details
+                                    </Text>
+                                </View>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
                                 key="bump"
                                 style={{
                                     flexDirection: 'row',
@@ -4708,9 +4901,9 @@ const SingleMessage = () => {
                                         borderBottomColor: themeColors.border.primary,
                                     }}>
                                         <View style={{ position: 'relative', marginBottom: 15 }}>
-                                            <Image
-                                                source={getProfileImageSource(userInfoData?.profilePic || friend?.profilePic || '', 200) || { uri: userInfoData?.profilePic || friend?.profilePic || '' }}
-                                                {...googleImageWebProps}
+                                            <ProfileImage
+                                                uri={userInfoData?.profilePic || friend?.profilePic || ''}
+                                                pixelSize={200}
                                                 style={{
                                                     width: 100,
                                                     height: 100,
@@ -4718,7 +4911,6 @@ const SingleMessage = () => {
                                                     borderWidth: 4,
                                                     borderColor: themeColors.primary + '50',
                                                 }}
-                                                defaultSource={require('../assets/images/default-profile-pic.png')}
                                             />
                                             {isFriendOnline && (
                                                 <View style={{
@@ -5122,11 +5314,10 @@ const SingleMessage = () => {
 
             <View
                 style={{
-                    position: 'absolute',
-                    left: 0,
-                    right: 0,
-                    bottom: 0,
+                    width: '100%',
+                    marginBottom: composerBottomOffset,
                     zIndex: 60,
+                    backgroundColor: chatTheme.colors.footerBg,
                 }}
                 onLayout={(e) => {
                     const next = e.nativeEvent.layout.height;
@@ -5149,7 +5340,7 @@ const SingleMessage = () => {
                         borderTopColor: chatTheme.colors.sentBorder,
                         paddingHorizontal: 12,
                         paddingTop: 8,
-                        paddingBottom: 8,
+                        paddingBottom: 30,
                     }}
                 >
                 {replyingTo ? (
@@ -5517,7 +5708,7 @@ const SingleMessage = () => {
                 </View>
             )}
             </View>
-            </KeyboardAvoidingView>
+            </View>
 
             {/* Video and Audio Call Components */}
             {/* VideoCall and AudioCall components now rendered globally in App.tsx */}

@@ -6,11 +6,12 @@
  */
 
 import * as React from 'react';
-import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRoute } from '@react-navigation/native';
+import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRoute, useNavigationState } from '@react-navigation/native';
 import { navigationRef, markNavigationReady } from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, SafeAreaView, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text } from 'react-native';
+import { StatusBar, useColorScheme, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -94,7 +95,7 @@ function MessageStack() {
         component={SingleMessage}
         options={{
           headerShown: false,
-          contentStyle: { flex: 1 },
+          contentStyle: { flex: 1, height: '100%' },
           safeAreaInsets: { top: 0, bottom: 0 },
         }}
       />
@@ -944,16 +945,25 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
   // Always call hooks unconditionally; the hook internally no-ops without a valid id
   useProfileData(user?.profile || null);
 
+  const deepestRoute = useNavigationState((state) => (state ? getDeepestRouteName(state) : ''));
+  const isChatPage = deepestRoute === 'SingleMessage';
+  const appSafeAreaEdges = isChatPage
+    ? []
+    : (Platform.OS === 'ios' ? (['top', 'right', 'bottom', 'left'] as const) : []);
+
   return (
     <ThemeContext.Consumer>
       {(themeContext) => {
         if (!themeContext) return null;
         const { colors: themeColors, isDarkMode: themeIsDarkMode } = themeContext;
         return (
-        <SafeAreaView style={{
-          flex: 1,
-          backgroundColor: themeIsDarkMode ? themeColors.background.primary : themeColors.background.primary
-        }}>
+        <SafeAreaView
+          edges={appSafeAreaEdges}
+          style={{
+            flex: 1,
+            backgroundColor: themeIsDarkMode ? themeColors.background.primary : themeColors.background.primary
+          }}
+        >
             <StatusBar 
               barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'}
               backgroundColor={themeColors.background.primary}

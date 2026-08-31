@@ -265,6 +265,8 @@ export const friendAPI = {
     api.post('/friend/block', { friendId }),
   unblockUser: (friendId: string): Promise<AxiosResponse> => 
     api.post('/friend/unblock', { friendId }),
+  getBlockStatus: (friendId: string): Promise<AxiosResponse> =>
+    api.get('/friend/block-status', { params: { friendId } }),
 };
 
 export const storyAPI = {

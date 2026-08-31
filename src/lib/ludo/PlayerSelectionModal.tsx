@@ -5,7 +5,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Modal,
-  Image,
   TextInput,
   ScrollView,
   ActivityIndicator,
@@ -13,6 +12,7 @@ import {
 } from 'react-native';
 import { COLORS, PLAYER_LETTERS, THEME } from './constants';
 import type { FriendUser, Player } from './types';
+import ProfileImage from '../../components/ProfileImage';
 
 interface PlayerSelectionModalProps {
   show: boolean;
@@ -192,7 +192,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                       >
                         <View style={styles.friendLeft}>
                           {f?.profilePic ? (
-                            <Image source={{ uri: f.profilePic }} style={styles.avatar} />
+                            <ProfileImage uri={f.profilePic} pixelSize={80} style={styles.avatar} />
                           ) : (
                             <View style={styles.avatarFallback}>
                               <Text style={styles.avatarLetter}>{initial}</Text>
@@ -254,7 +254,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                 <View key={`seat-${i}`} style={styles.seat}>
                   <View style={[styles.seatColor, { backgroundColor: COLORS[i === 1 && selectedPlayerCount === 2 ? 3 : i] }]} />
                   {seat?.avatar ? (
-                    <Image source={{ uri: seat.avatar }} style={styles.seatAvatar} />
+                    <ProfileImage uri={seat.avatar} pixelSize={80} style={styles.seatAvatar} />
                   ) : (
                     <View style={styles.seatAvatarFallback}>
                       <Text style={styles.avatarLetter}>{PLAYER_LETTERS[i] || 'P'}</Text>
