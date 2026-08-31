@@ -110,8 +110,7 @@ export async function requestPushPermission(): Promise<boolean> {
         allowAlert: true,
         allowBadge: true,
         allowSound: true,
-        allowTimeSensitive: true,
-      },
+      } as any,
     });
 
     return settings.status === 'granted' || settings.granted === true;
