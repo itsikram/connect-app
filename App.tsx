@@ -41,7 +41,8 @@ import Videos from './src/screens/Videos';
 import SinglePost from './src/screens/SinglePost';
 import SingleVideo from './src/screens/SingleVideo';
 import EditPost from './src/screens/EditPost';
-// Video calling components removed for Expo compatibility
+import AudioCall from './src/components/AudioCall';
+import VideoCall from './src/components/VideoCall';
 import CameraScreen from './src/screens/CameraScreen';
 import GalleryScreen from './src/screens/GalleryScreen';
 import GalleryPreview from './src/screens/GalleryPreview';
@@ -699,93 +700,8 @@ function AppContent() {
 
     on('bumpUser', handleBumpUser)
 
-    // Video calling functionality removed for Expo compatibility
-    // const handleIncomingVideo = ({ from, channelName, callerName, callerProfilePic }: any) => {
-    //   // Video call handling code removed
-    // };
-    
-    const handleIncomingAudio = ({ from, channelName, callerName, callerProfilePic }: any) => {
-      // Global guards to prevent ghost/duplicate navigations
-      if (isCallEndingRef.current) {
-        console.log('🚫 Ignoring incoming audio call - call ending in progress');
-        return;
-      }
-      if (Date.now() < ignoreIncomingCallsUntilRef.current) {
-        console.log('🚫 Ignoring incoming audio call - within cooldown window');
-        return;
-      }
-      // If there's already an active incoming call, clear it first
-      if (activeIncomingCallRef.current) {
-        console.log('🔄 Clearing previous incoming call to show new audio call:', activeIncomingCallRef.current);
-        // Clear the existing timeout
-        if (incomingCallTimeoutRef.current) {
-          clearTimeout(incomingCallTimeoutRef.current);
-          incomingCallTimeoutRef.current = null;
-        }
-        // Clear the active call state
-        setActiveIncomingCall(null);
-      }
-      
-      console.log('📞 New incoming audio call from:', from);
-      setActiveIncomingCall({ callerId: from, channelName, isAudio: true });
-      
-      // Set a timeout to automatically clear the active call state after 30 seconds
-      if (incomingCallTimeoutRef.current) {
-        clearTimeout(incomingCallTimeoutRef.current);
-      }
-      incomingCallTimeoutRef.current = setTimeout(() => {
-        console.log('⏰ Incoming call timeout - clearing active call state');
-        setActiveIncomingCall(null);
-      }, 30000); // 30 seconds timeout
-      emit('update-call-status', { to: String(from), status: "Ringing..." });
-
-      (navigation as any).navigate('Message', {
-        screen: 'IncomingCall',
-        params: {
-        callerId: from,
-        callerName: callerName || 'Unknown',
-        callerProfilePic: callerProfilePic,
-        channelName,
-        isAudio: true,
-        prevScreenId: currentScreenRef.current,
-        }
-      });
-    };
-
-    // Call handling functionality removed for Expo compatibility
-    // const handleCallEnd = () => {
-    //   // Call end handling code removed
-    // };
-    
-    const handleAudioCallEnd = (friendId: string) => {
-      console.log('📞 Audio call ended from friend:', friendId);
-      // handleCallEnd();
-    };
-
-    // const handleVideoCallEnd = (friendId: string) => {
-    //   console.log('📞 Video call ended from friend:', friendId);
-    //   handleCallEnd();
-    // };
-
-    const handleCallAccepted = () => {
-      console.log('📞 Call accepted, clearing active incoming call state');
-      setActiveIncomingCall(null);
-      // Clear timeout if it exists
-      if (incomingCallTimeoutRef.current) {
-        clearTimeout(incomingCallTimeoutRef.current);
-        incomingCallTimeoutRef.current = null;
-      }
-      // Briefly ignore any stray incoming-call events that might race the accept action
-      ignoreIncomingCallsUntilRef.current = Date.now() + 2000; // 2s cooldown
-    };
-
-    // on('incoming-video-call', handleIncomingVideo);
-    on('incoming-audio-call', handleIncomingAudio);
-    on('call-accepted', handleCallAccepted);
-    
-    // Listen to call end events to clear active incoming call state
-    on('audio-call-ended', handleAudioCallEnd);
-    // on('video-call-ended', handleVideoCallEnd); // Removed for Expo compatibility
+    // Incoming/outgoing audio and video calls are handled by the global
+    // AudioCall and VideoCall overlays (same socket events as the web app).
 
     // Global online/offline presence listeners
     const handleFriendOnline = (data: any) => {
@@ -831,23 +747,6 @@ function AppContent() {
     let handleNewMessage = (data: any) => {
       let {updatedMessage, senderName, senderPP, chatPage, friendProfile} = data;
 
-      if(currentScreenRef.current === 'MessageList' || currentScreenRef.current === 'SingleMessage'){
-        return;
-      }
-
-      showMessageToast({
-        userProfilePic: senderPP,
-        fullName:  `${senderName} messaged you`,
-        message: `${updatedMessage.message.substring(0, 40)}...`,
-        onPress: () => {
-          (navigation as any).navigate('Message', { 
-            screen: 'SingleMessage',
-            params: { friend: friendProfile }
-          })
-        },
-      })
-
-      // Update Redux chat state for unread badge
       try {
         if (myProfile?._id && friendProfile?._id && updatedMessage) {
           dispatch(addNewMessage({
@@ -868,6 +767,22 @@ function AppContent() {
           }));
         }
       } catch (_) { }
+
+      if (currentScreenRef.current === 'MessageList' || currentScreenRef.current === 'SingleMessage') {
+        return;
+      }
+
+      showMessageToast({
+        userProfilePic: senderPP,
+        fullName:  `${senderName} messaged you`,
+        message: `${(updatedMessage?.message || '').substring(0, 40)}...`,
+        onPress: () => {
+          (navigation as any).navigate('Message', { 
+            screen: 'SingleMessage',
+            params: { friend: friendProfile }
+          })
+        },
+      })
     }
 
     on('newMessageToUser', handleNewMessage)
@@ -922,11 +837,6 @@ function AppContent() {
       off('newNotification', handleNewNotification)
       // TTS disabled - no longer listening to 'speak_message' events
       // off('speak_message', handleSpeakMessage)
-      // off('incoming-video-call', handleIncomingVideo) // Removed for Expo compatibility
-      off('incoming-audio-call', handleIncomingAudio)
-      off('call-accepted', handleCallAccepted)
-      off('audio-call-ended', handleAudioCallEnd)
-      // off('video-call-ended', handleVideoCallEnd) // Removed for Expo compatibility
       off('friend_online', handleFriendOnline)
       off('friend_offline', handleFriendOffline)
       off('is_active', handleIsActive)
@@ -964,14 +874,12 @@ function AppContent() {
             <NotificationSetup />
             {/* Request required permissions on app start */}
             <PermissionsInitializer user={user} />
-            {/* Global call components - removed for Expo compatibility */}
-            {/* {myProfile?._id && (
+            {myProfile?._id ? (
               <>
                 <VideoCall myId={myProfile._id} />
                 <AudioCall myId={myProfile._id} />
-                <LiveVoice myId={myProfile._id} />
               </>
-            )} */}
+            ) : null}
             {/* Global update modal */}
             <UpdateModal
               visible={updateModalVisible}

@@ -10,6 +10,7 @@ interface SocketContextType {
   on: (event: string, callback: (...args: any[]) => void) => void;
   off: (event: string, callback?: (...args: any[]) => void) => void;
   joinChat: (user1: string, user2: string) => void;
+  joinRoom: (roomId: string) => void;
   sendMessage: (room: string, senderId: string, receiverId: string, message: string, attachment?: any, parent?: string) => void;
   loadMessages: (myId: string, friendId: string, skip: number) => void;
   markMessageAsSeen: (message: any) => void;
@@ -97,6 +98,10 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.joinChat(user1, user2);
   }, []);
 
+  const joinRoom = useCallback((roomId: string) => {
+    socketService.joinRoom(roomId);
+  }, []);
+
   const sendMessage = useCallback((room: string, senderId: string, receiverId: string, message: string, attachment?: any, parent?: string) => {
     socketService.sendMessage(room, senderId, receiverId, message, attachment, parent);
   }, []);
@@ -164,6 +169,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     on,
     off,
     joinChat,
+    joinRoom,
     sendMessage,
     loadMessages,
     markMessageAsSeen,
@@ -186,6 +192,7 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     on,
     off,
     joinChat,
+    joinRoom,
     sendMessage,
     loadMessages,
     markMessageAsSeen,

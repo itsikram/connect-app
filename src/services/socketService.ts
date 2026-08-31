@@ -122,35 +122,45 @@ class SocketService {
   }
 
   joinChat(user1: string, user2: string): void {
-    const room = [user1, user2].sort().join('-');
-    this.emit('join-chat', { room, user1, user2 });
+    const room = [user1, user2].sort().join('_');
+    this.emit('startChat', { user1, user2 });
+    this.emit('joinRoom', room);
+  }
+
+  joinRoom(roomId: string): void {
+    this.emit('joinRoom', roomId);
   }
 
   sendMessage(room: string, senderId: string, receiverId: string, message: string, attachment?: any, parent?: string): void {
-    this.emit('send-message', {
+    this.emit('sendMessage', {
       room,
       senderId,
       receiverId,
       message,
       attachment,
-      parent
+      parent,
+      messageType: 'text',
     });
   }
 
   loadMessages(myId: string, friendId: string, skip: number): void {
-    this.emit('load-messages', { myId, friendId, skip });
+    this.emit('loadMessages', { myId, friendId, skip });
   }
 
   markMessageAsSeen(message: any): void {
-    this.emit('mark-message-seen', message);
+    this.emit('seenMessage', message);
   }
 
-  setTyping(room: string, isTyping: boolean, type: string, receiverId: string): void {
-    this.emit('typing', { room, isTyping, type, receiverId });
+  setTyping(room: string, isTyping: boolean, type: string, receiverId: string, senderId?: string): void {
+    this.emit('typing', { room, isTyping, type, receiverId, senderId });
   }
 
   fetchMessages(profileId: string): void {
-    this.emit('fetch-messages', { profileId });
+    this.emit('fetchMessages', profileId);
+  }
+
+  updateCallStatus(to: string, status: string): void {
+    this.emit('update-call-status', { to, status });
   }
 
   updateLastLogin(userId: string): void {

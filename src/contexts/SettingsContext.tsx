@@ -26,6 +26,7 @@ interface SettingsData {
   messagePreview?: boolean;
   autoSaveDrafts?: boolean;
   chatBackground?: string | null;
+  friendChatSettings?: Record<string, any>;
   
   // Privacy Settings
   postVisibility?: string;
@@ -98,6 +99,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     messagePreview: true,
     autoSaveDrafts: true,
     chatBackground: null,
+    friendChatSettings: {},
     postVisibility: 'public',
     friendRequestVisibility: 'public',
     timelinePostVisibility: 'public',
@@ -213,6 +215,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         messagePreview: true,
         autoSaveDrafts: true,
         chatBackground: null,
+        friendChatSettings: {},
         postVisibility: 'public',
         friendRequestVisibility: 'public',
         timelinePostVisibility: 'public',

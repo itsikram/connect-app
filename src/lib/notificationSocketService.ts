@@ -11,9 +11,9 @@ export const emitCallRejection = (callerId: string, channelName: string, isAudio
   if (globalSocketService) {
     try {
       if (isAudio) {
-        globalSocketService.endAudioCall(callerId);
+        globalSocketService.endAudioCall(callerId, channelName, 'reject');
       } else {
-        globalSocketService.endVideoCall(callerId);
+        globalSocketService.endVideoCall(callerId, channelName, 'reject');
       }
       console.log('Call rejection sent via global socket service');
     } catch (error) {

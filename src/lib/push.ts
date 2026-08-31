@@ -4,6 +4,7 @@ import { Platform, Linking, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
 import { callNotificationService } from './callNotificationService';
+import { emitIncomingCallFromPush, emitRejectCallFromPush } from './callEvents';
 // Background TTS service removed for Expo compatibility
 
 // Import Notifee types and functions - made optional for Expo Go compatibility
@@ -11,6 +12,29 @@ let Notifee: any = null;
 let AndroidImportance: any = null;
 let AndroidVisibility: any = null;
 let EventType: any = null;
+
+function openIncomingCallFromNotification(data: any, autoAccept = false) {
+  const isAudio = data?.isAudio === 'true' || data?.isAudio === true;
+  emitIncomingCallFromPush({
+    from: data.callerId,
+    channelName: data.channelName,
+    callerName: data.callerName,
+    callerProfilePic: data.callerProfilePic,
+    isAudio,
+    autoAccept,
+  });
+}
+
+function rejectIncomingCallFromNotification(data: any) {
+  const isAudio = data?.isAudio === 'true' || data?.isAudio === true;
+  emitRejectCallFromPush({
+    from: data.callerId,
+    channelName: data.channelName,
+    callerName: data.callerName,
+    callerProfilePic: data.callerProfilePic,
+    isAudio,
+  });
+}
 
 try {
   const notifeeModule = require('@notifee/react-native');
@@ -303,19 +327,8 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           }
         }
         
-        // Navigate to IncomingCall screen with auto-accept flag
-        console.log('📞 Navigating to IncomingCall with auto-accept');
-        navigate('Message', {
-          screen: 'IncomingCall',
-          params: {
-            callerId: data.callerId,
-            callerName: data.callerName,
-            callerProfilePic: data.callerProfilePic,
-            channelName: data.channelName,
-            isAudio: data.isAudio === 'true',
-            autoAccept: true,
-          }
-        });
+        console.log('📞 Opening incoming call from notification');
+        openIncomingCallFromNotification(data, true);
       } else if (data.type === 'new_message') {
         // Navigate to SingleMessage screen
         navigate('Message', {
@@ -348,19 +361,8 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
             }
           }
           
-          // Navigate to IncomingCall screen with auto-accept flag
-          console.log('📞 Navigating to IncomingCall with auto-accept');
-          navigate('Message', {
-            screen: 'IncomingCall',
-            params: {
-              callerId: data.callerId,
-              callerName: data.callerName,
-              callerProfilePic: data.callerProfilePic,
-              channelName: data.channelName,
-              isAudio: data.isAudio === 'true',
-              autoAccept: true,
-            }
-          });
+          console.log('📞 Opening incoming call from notification with auto-accept');
+          openIncomingCallFromNotification(data, true);
         } else if (actionId === 'reject_call') {
           // Cancel the notification
           if (notificationId) {
@@ -378,41 +380,10 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           } catch (error) {
             console.error('Error sending call rejection:', error);
           }
+          rejectIncomingCallFromNotification(data);
         } else if (actionId === 'incoming_call_fullscreen' || actionId === 'open_incoming_call' || actionId === 'open-incoming') {
-          // Full screen action or default action - open the IncomingCall screen
-          console.log('📞 Opening IncomingCall screen from notification');
-          
-          // Try to use native bridge first for better reliability
-          try {
-            const { openIncomingCallScreen } = await import('./CallNotificationBridge');
-            const success = await openIncomingCallScreen({
-              callerId: data.callerId,
-              callerName: data.callerName,
-              callerProfilePic: data.callerProfilePic,
-              channelName: data.channelName,
-              isAudio: data.isAudio === 'true',
-              autoAccept: false,
-            });
-            
-            if (success) {
-              console.log('✅ Successfully opened incoming call screen via native bridge');
-              return;
-            }
-          } catch (error) {
-            console.warn('Native bridge failed, using navigation fallback:', error);
-          }
-          
-          // Fallback to navigation
-          navigate('Message', {
-            screen: 'IncomingCall',
-            params: {
-              callerId: data.callerId,
-              callerName: data.callerName,
-              callerProfilePic: data.callerProfilePic,
-              channelName: data.channelName,
-              isAudio: data.isAudio === 'true',
-            }
-          });
+          console.log('📞 Opening incoming call overlay from notification');
+          openIncomingCallFromNotification(data, false);
         }
       }
     }

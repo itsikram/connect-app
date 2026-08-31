@@ -46,8 +46,13 @@ import { CameraView, Camera } from 'expo-camera';
 import { useSettings } from '../contexts/SettingsContext';
 import { io, Socket } from 'socket.io-client';
 import config from '../lib/config';
-// Agora removed for Expo compatibility
+import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 import LiveVoiceModal from '../components/LiveVoiceModal';
+import useFriendChatSettings from '../hooks/useFriendChatSettings';
+import { isRomanticMessage } from '../utils/chatThemes';
+import ChatSettingsModal from '../components/ChatSettingsModal';
+import LoveEmojiRain from '../components/LoveEmojiRain';
+import { LinearGradient } from 'expo-linear-gradient';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 
@@ -94,9 +99,22 @@ const SingleMessage = () => {
     const [isCallActive, setIsCallActive] = useState<boolean>(false);
     const { colors: themeColors, isDarkMode } = useTheme();
     const settings = useSettings();
+    const {
+        settings: chatAppearance,
+        theme: chatTheme,
+        wallpaper,
+        updateSettings: updateChatAppearance,
+    } = useFriendChatSettings(friend?._id);
+    const [loveRainBurst, setLoveRainBurst] = useState(0);
+    const lastLoveRainRef = useRef(0);
+    const chatThemeRef = useRef(chatTheme);
+    const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
     const getMessagesStorageKey = (friendId: string) => `@chat_messages_${friendId}`;
 
+    useEffect(() => {
+        chatThemeRef.current = chatTheme;
+    }, [chatTheme]);
     const isFriendOnline = React.useMemo(() => {
         try { return !!friend?._id && activeFriends.includes(friend._id); } catch (_) { return false; }
     }, [activeFriends, friend?._id]);
@@ -587,10 +605,12 @@ const SingleMessage = () => {
         const handleVideoEnd = () => setIsCallActive(false);
         const handleAudioEnd = () => setIsCallActive(false);
         on('call-accepted', handleCallAccepted);
+        on('video-call-ended', handleVideoEnd);
         on('videoCallEnd', handleVideoEnd);
         on('audio-call-ended', handleAudioEnd);
         return () => {
             off('call-accepted', handleCallAccepted);
+            off('video-call-ended', handleVideoEnd);
             off('videoCallEnd', handleVideoEnd);
             off('audio-call-ended', handleAudioEnd);
         };
@@ -616,20 +636,24 @@ const SingleMessage = () => {
         // Only emit and set up listeners if socket is connected
         if (isConnected) {
             emit('startChat', { user1: myProfile._id, user2: friend._id });
+            emit('joinRoom', newRoom);
             try { checkUserActive(friend._id, myProfile._id); } catch (_) {}
 
             // Set up room joined listener
             const handleRoomJoined = ({ room }: { room: string }) => {
                 console.log(`Joined room: ${room}`);
-                // Note: localStorage is not available in React Native, use AsyncStorage instead
-                // localStorage.setItem('roomId', room);
+            };
+
+            const rejoinRoom = () => {
+                emit('joinRoom', newRoom);
             };
 
             on('roomJoined', handleRoomJoined);
+            on('connect', rejoinRoom);
 
-            // Cleanup listener when component unmounts or dependencies change
             return () => {
                 off('roomJoined', handleRoomJoined);
+                off('connect', rejoinRoom);
             };
         }
     }, [friend?._id, myProfile?._id, isConnected, emit, on, off, checkUserActive]);
@@ -792,9 +816,15 @@ const SingleMessage = () => {
         on('previousMessages', handlePreviousMessages);
 
         const handleNewMessage = (messageData: any) => {
-            console.log('New message received:', messageData, messages);
-            let updatedMessage = messageData.updatedMessage;
-            // Add the new message to the messages state
+            console.log('New message received:', messageData);
+            let updatedMessage = messageData?.updatedMessage || messageData;
+            if (!updatedMessage) return;
+
+            const isForThisChat =
+                (String(updatedMessage.senderId) === String(friend?._id) && String(updatedMessage.receiverId) === String(myProfile?._id)) ||
+                (String(updatedMessage.senderId) === String(myProfile?._id) && String(updatedMessage.receiverId) === String(friend?._id));
+            if (!isForThisChat) return;
+
             const newMessage: Message = {
                 _id: updatedMessage._id || Date.now().toString(),
                 message: updatedMessage.message || '',
@@ -802,13 +832,14 @@ const SingleMessage = () => {
                 senderId: updatedMessage.senderId,
                 tempId: updatedMessage.tempId,
                 timestamp: new Date(updatedMessage.timestamp || Date.now()),
-                isSeen: false,
+                isSeen: Boolean(updatedMessage.isSeen),
                 room,
                 attachment: updatedMessage.attachment,
                 parent: updatedMessage.parent || null,
                 messageType: updatedMessage.messageType,
                 callType: updatedMessage.callType,
                 callEvent: updatedMessage.callEvent,
+                reacts: updatedMessage.reacts || [],
             };
 
             // Create a serializable version for Redux
@@ -825,38 +856,42 @@ const SingleMessage = () => {
                 __v: 0
             };
 
-            if (messageData.chatPage === true) {
-
-                setMessages(prev => {
-                    // If a message with the same tempId exists, replace it with the new message
-                    const tempId = newMessage.tempId;
-                    if (tempId) {
-                        const index = prev.findIndex(msg => msg.tempId && msg.tempId === tempId);
-                        if (index !== -1) {
-                            // Replace the message at the found index
-                            const updated = [...prev];
-                            updated[index] = newMessage;
-                            return updated;
-                        }
+            setMessages(prev => {
+                const tempId = newMessage.tempId;
+                if (tempId) {
+                    const index = prev.findIndex(msg => msg.tempId && msg.tempId === tempId);
+                    if (index !== -1) {
+                        const updated = [...prev];
+                        updated[index] = newMessage;
+                        return updated;
                     }
-                    // Otherwise, append as new
-                    return [...prev, newMessage];
-                });
-                
-                // Remove from pending messages when real message arrives
-                if (newMessage.tempId) {
-                    setPendingMessages(prev => prev.filter(msg => msg.tempId !== newMessage.tempId));
                 }
+                if (prev.some(msg => msg._id === newMessage._id)) {
+                    return prev;
+                }
+                return [...prev, newMessage];
+            });
 
-                // Dispatch action to update message count in Redux
-                dispatch(addNewMessage({
-                    chatId: friend?._id,
-                    message: serializableMessage,
-                    currentUserId: myProfile?._id
-                }));
-
-                // setMessages(prev => [...prev, newMessage]);
+            if (newMessage.tempId) {
+                setPendingMessages(prev => prev.filter(msg => msg.tempId !== newMessage.tempId));
             }
+
+            if (String(newMessage.senderId) === String(friend?._id)) {
+                const currentTheme = chatThemeRef.current;
+                if (currentTheme?.loveRain && isRomanticMessage(newMessage.message)) {
+                    const now = Date.now();
+                    if (now - lastLoveRainRef.current >= 450) {
+                        lastLoveRainRef.current = now;
+                        setLoveRainBurst((n) => n + 1);
+                    }
+                }
+            }
+
+            dispatch(addNewMessage({
+                chatId: friend?._id,
+                message: serializableMessage,
+                currentUserId: myProfile?._id
+            }));
         };
 
         const handleReceiveTyping = (typingData: any) => {
@@ -936,9 +971,22 @@ const SingleMessage = () => {
         };
         on('friend_location_update', handleFriendLocationUpdate);
 
+        const handleMessageSeenRest = (data: any) => {
+            const messageId = data?.messageId || data?._id;
+            if (!messageId) return;
+            setMessages((prevMessages) =>
+                prevMessages.map((msg) =>
+                    String(msg._id) === String(messageId) ? { ...msg, isSeen: true } : msg
+                )
+            );
+        };
+
         on('seenMessage', handleSeenMessage);
+        on('messageSeen', handleMessageSeenRest);
 
         on('newMessage', handleNewMessage);
+        on('newMessageToUser', handleNewMessage);
+        on('messageSent', handleNewMessage);
         on('typing', handleReceiveTyping);
 
         const handleDeleteMessage = (messageId: string) => {
@@ -951,8 +999,11 @@ const SingleMessage = () => {
 
         return () => {
             off('newMessage', handleNewMessage);
+            off('newMessageToUser', handleNewMessage);
+            off('messageSent', handleNewMessage);
             off('typing', handleReceiveTyping);
             off('seenMessage', handleSeenMessage);
+            off('messageSeen', handleMessageSeenRest);
             off('previousMessages', handlePreviousMessages);
             off('emotion_change', handleEmotionChange);
             off('friend_location_update', handleFriendLocationUpdate);
@@ -1941,20 +1992,34 @@ const SingleMessage = () => {
 
     // Track which messages we've already emitted seen for (avoid duplicate emits)
     const seenEmittedRef = useRef<Set<string>>(new Set());
+    const pendingSeenIdsRef = useRef<Set<string>>(new Set());
+    const seenFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Helper to emit seen for a specific message if eligible
+    const flushSeen = () => {
+        const ids = Array.from(pendingSeenIdsRef.current);
+        pendingSeenIdsRef.current.clear();
+        seenFlushTimerRef.current = null;
+        if (ids.length === 0) return;
+        api.post('/message/seen', { messageIds: ids }).catch(() => {
+            ids.forEach((id) => seenEmittedRef.current.delete(id));
+        });
+        try {
+            dispatch(markMessagesAsRead({ chatId: friend?._id, currentUserId: myProfile?._id }));
+        } catch (_) { }
+    };
+
     const emitSeenFor = (msg: Message | undefined | null) => {
         try {
             if (!msg || !msg._id) return;
             if (!isConnected) return;
-            if (msg.senderId === myProfile?._id) return; // don't mark own messages
+            if (msg.senderId === myProfile?._id) return;
             if (seenEmittedRef.current.has(msg._id)) return;
             emit('seenMessage', msg);
             seenEmittedRef.current.add(msg._id);
-            // Also update Redux unread counts for this chat
-            try {
-                dispatch(markMessagesAsRead({ chatId: friend?._id, currentUserId: myProfile?._id }));
-            } catch (_) { }
+            pendingSeenIdsRef.current.add(String(msg._id));
+            if (!seenFlushTimerRef.current) {
+                seenFlushTimerRef.current = setTimeout(flushSeen, 250);
+            }
         } catch (_) { }
     };
 
@@ -1993,6 +2058,14 @@ const SingleMessage = () => {
     }).current;
     const viewabilityConfigRef = useRef({ itemVisiblePercentThreshold: 70, minimumViewTime: 400 });
 
+    const triggerLoveRain = (text?: string | null) => {
+        if (!chatTheme?.loveRain) return;
+        if (!isRomanticMessage(text)) return;
+        const now = Date.now();
+        if (now - lastLoveRainRef.current < 450) return;
+        lastLoveRainRef.current = now;
+        setLoveRainBurst((n) => n + 1);
+    };
 
     const sendMessage = () => {
         console.log('Sending message:', inputText.trim());
@@ -2036,11 +2109,13 @@ const SingleMessage = () => {
                 message: messageContent,
                 attachment: pendingAttachment || undefined,
                 parent: replyingTo?._id || false,
+                messageType: 'text',
                 tempId,
                 timestamp: new Date().toISOString()
             });
 
             console.log('Message sent:', messageContent);
+            triggerLoveRain(messageContent);
             setPendingAttachment(null);
             setPendingAttachmentLocal(null);
             setUploadProgress(null);
@@ -2055,24 +2130,43 @@ const SingleMessage = () => {
     };
 
     const handleTyping = () => {
-        emit('typing', { room, isTyping: true, type: inputText.trim(), receiverId: friend?._id });
+        emit('typing', { room, isTyping: true, type: inputText.trim(), receiverId: friend?._id, senderId: myProfile?._id });
 
         setTimeout(() => {
 
-            emit('typing', { room, isTyping: false, type: '', receiverId: friend?._id });
+            emit('typing', { room, isTyping: false, type: '', receiverId: friend?._id, senderId: myProfile?._id });
         }, 5000);
     };
 
     const handleEmojiPress = () => {
-        setInputText('');
-        // Send message through socket
+        const emoji = chatAppearance?.actionEmoji || '👍';
+        if (!isConnected || !friend?._id) return;
+        const tempId = Date.now().toString();
+        const pendingMessage: Message = {
+            _id: tempId,
+            message: emoji,
+            receiverId: friend?._id,
+            senderId: myProfile?._id,
+            room,
+            timestamp: new Date(),
+            isSeen: false,
+            tempId,
+        };
+        setMessages(prev => [...prev, pendingMessage]);
+        setPendingMessages(prev => [...prev, pendingMessage]);
         emit('sendMessage', {
             room,
             senderId: myProfile?._id,
             receiverId: friend?._id,
-            message: '👍',
-            timestamp: new Date().toISOString()
+            message: emoji,
+            messageType: 'text',
+            tempId,
+            timestamp: new Date().toISOString(),
         });
+        triggerLoveRain(emoji);
+        setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+        }, 50);
     };
 
     const formatTime = (date: Date) => {
@@ -2244,20 +2338,15 @@ const SingleMessage = () => {
         }
 
         const channelName = `${myProfile._id}-${friend._id}`;
-        navigation.navigate('Message', {
-            screen: 'OutgoingCall',
-            params: {
-                calleeId: friend._id,
-                calleeName: friend.fullName,
-                calleeProfilePic: friend.profilePic,
-                channelName,
-                isAudio: false,
-                prevScreenId: 'Message',
-            }
+        emitStartVideoCall({
+            to: friend._id,
+            channelName,
+            callerName: friend.fullName,
+            callerProfilePic: friend.profilePic,
         });
+        startVideoCall(friend._id, channelName);
     };
 
-    // Handle audio call
     const handleAudioCall = () => {
         if (!friend?._id || !myProfile?._id) {
             Alert.alert('Error', 'Unable to start call. Please try again.');
@@ -2265,17 +2354,13 @@ const SingleMessage = () => {
         }
 
         const channelName = `${myProfile._id}-${friend._id}`;
-        navigation.navigate('Message', {
-            screen: 'OutgoingCall',
-            params: {
-                calleeId: friend._id,
-                calleeName: friend.fullName,
-                calleeProfilePic: friend.profilePic,
-                channelName,
-                isAudio: true,
-                prevScreenId: 'Message',
-            }
+        emitStartAudioCall({
+            to: friend._id,
+            channelName,
+            callerName: friend.fullName,
+            callerProfilePic: friend.profilePic,
         });
+        startAudioCall(friend._id, channelName);
     };
 
     // Handle live voice transfer
@@ -2810,14 +2895,16 @@ const SingleMessage = () => {
                             <View style={{
                                 backgroundColor: item.messageType === 'call'
                                     ? (item.callEvent === 'missed' ? (isDarkMode ? '#3a0d12' : '#fee2e2') : (isDarkMode ? '#0f172a' : '#e2e8f0'))
-                                    : (isMyMessage ? themeColors.primary : (isDarkMode ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.9)')),
+                                    : (isMyMessage ? chatTheme.colors.sentBg : chatTheme.colors.recvBg),
                                 paddingHorizontal: 12,
                                 paddingVertical: 8,
                                 borderRadius: 18,
                                 borderBottomLeftRadius: isMyMessage ? 18 : 4,
                                 borderBottomRightRadius: isMyMessage ? 4 : 18,
-                                borderWidth: highlightedMessageId === item._id ? 3 : 0,
-                                borderColor: highlightedMessageId === item._id ? themeColors.primary : 'transparent',
+                                borderWidth: highlightedMessageId === item._id ? 3 : 1,
+                                borderColor: highlightedMessageId === item._id
+                                    ? chatTheme.colors.accent
+                                    : (isMyMessage ? chatTheme.colors.sentBorder : chatTheme.colors.recvBorder),
                             }}>
                                 {/* Reply preview for sent messages */}
                                 {item.parent && isMyMessage && (
@@ -2910,7 +2997,7 @@ const SingleMessage = () => {
                                 ) : (
                                     /* Text messages */
                                     <Text style={{
-                                        color: isMyMessage ? '#FFFFFF' : (isDarkMode ? '#FFFFFF' : '#000000'),
+                                        color: isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.recvText,
                                         fontSize: 15,
                                         lineHeight: 20,
                                     }}>
@@ -3180,16 +3267,16 @@ const SingleMessage = () => {
     }
 
     return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: themeColors.background.primary }}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: chatTheme.colors.headerBg }}>
 
             <View style={{
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 16,
                 paddingVertical: 8,
-                backgroundColor: themeColors.surface.header,
+                backgroundColor: chatTheme.colors.headerBg,
                 borderBottomWidth: 1,
-                borderBottomColor: themeColors.border.primary,
+                borderBottomColor: chatTheme.colors.sentBorder,
             }}>
                 <TouchableOpacity
                     onPress={() => navigation.navigate('Message', { screen: 'MessageList' })}
@@ -3199,7 +3286,7 @@ const SingleMessage = () => {
                         marginRight: 5,
                     }}
                 >
-                    <Icon name="arrow-back" size={22} color={themeColors.text.primary} />
+                    <Icon name="arrow-back" size={22} color="#FFFFFF" />
                 </TouchableOpacity>
 
                 <View style={{ flex: 1 }}>

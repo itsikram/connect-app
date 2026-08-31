@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,1031 +9,447 @@ import {
   SafeAreaView,
   StatusBar,
   Image,
-  Platform,
-  Linking,
+  AppState,
+  AppStateStatus,
+  DeviceEventEmitter,
 } from 'react-native';
-import RtcEngine, {
-  ChannelProfile,
-} from 'react-native-agora';
+import { Audio } from 'expo-av';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import api from '../lib/api';
-import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useNavigation } from '@react-navigation/native';
-import * as expoAv from 'expo-av';
-
-// Cross-mount guards to prevent duplicate joins/subscriptions
-let joiningAudioChannel: string | null = null;
-let activeAudioChannel: string | null = null;
+import { hashProfileUid } from '../lib/agoraUid';
+import { CALL_EVENTS } from '../lib/callEvents';
+import { isCallBusy, setActiveCallKind } from '../lib/callSession';
+import { configureInCallAudio, playIncomingRingtone, stopIncomingRingtone } from '../lib/callRingtone';
+import AgoraWebEngine, { AgoraWebEngineHandle } from './AgoraWebEngine';
 
 interface AudioCallProps {
   myId: string;
-  peerName?: string;
-  peerProfilePic?: string;
 }
 
-interface IncomingCall {
-  from: string;
-  channelName: string;
-  name: string;
-  profilePic: string;
-}
-
-const AudioCall: React.FC<AudioCallProps> = ({ myId, peerName, peerProfilePic }) => {
-
-  useEffect(() => {
-    console.log('AudioCall: Component mounted with pp:', myId);
-    if (!myId) return;
-  }, [myId]);
-
+const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
-  const { on, off, answerAudioCall, endAudioCall, isConnected } = useSocket();
-
-  console.log('AudioCall: Socket connection status:', isConnected);
-  const { minimizeCall, restoreCall, endMinimizedCall, updateMinimizedCall } = useCallMinimize();
-  const myProfile = useSelector((state: RootState) => state.profile);
-  const navigation = useNavigation();
+  const { on, off, emit } = useSocket();
+  const { minimizeCall, endMinimizedCall } = useCallMinimize();
 
   const [isAudioCall, setIsAudioCall] = useState(false);
+  const [receivingCall, setReceivingCall] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
-  const [callStatus, setCallStatus] = useState<string | null>('Connecting...');
-  const [incomingCall, setIncomingCall] = useState<IncomingCall | null>(null);
+  const [caller, setCaller] = useState('');
+  const [callerName, setCallerName] = useState('');
+  const [callerProfilePic, setCallerProfilePic] = useState('');
+  const [incomingCall, setIncomingCall] = useState<{ from: string; channelName: string; name: string; profilePic?: string } | null>(null);
   const [currentChannel, setCurrentChannel] = useState<string | null>(null);
-  const [remoteFriendId, setRemoteFriendId] = useState<string | null>(null); // Track the other user's ID
-  const [isMinimized, setIsMinimized] = useState(false);
+  const [outgoingCallStatus, setOutgoingCallStatus] = useState('');
   const [callDuration, setCallDuration] = useState(0);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
-  const [remoteUid, setRemoteUid] = useState<number | null>(null);
-  const [errorShown, setErrorShown] = useState(false);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const [mediaActive, setMediaActive] = useState(false);
 
-  const engineRef = useRef<any>(null);
-  const isLeavingRef = useRef<boolean>(false);
+  const engineRef = useRef<AgoraWebEngineHandle>(null);
+  const isTerminating = useRef(false);
+  const isJoiningOrJoined = useRef(false);
+  const receivingCallRef = useRef(false);
+  const callAcceptedRef = useRef(false);
+  const currentChannelRef = useRef<string | null>(null);
+  const callerRef = useRef('');
+  const incomingCallRef = useRef(incomingCall);
   const callStartTime = useRef<number | null>(null);
-  const minimizedDurationInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  const lastCallEndTime = useRef<number>(0);
-  const isEndingCallRef = useRef<boolean>(false);
-  const hasJoinedRef = useRef<boolean>(false);
-  const listenersSetupRef = useRef<boolean>(false);
-  const callAcceptedRef = useRef<boolean>(false);
-  const isAudioCallRef = useRef<boolean>(false);
-  const handleCallAcceptedRef = useRef<any>(null);
-  const handleCallEndRef = useRef<any>(null);
-  const leaveChannelRef = useRef<any>(null);
+  const callSeenStatusSentRef = useRef(false);
+  const callIgnoredStatusSentRef = useRef(false);
+  const pendingAutoAcceptRef = useRef(false);
+  const answerCallRef = useRef<(() => void) | null>(null);
+  const pendingJoinRef = useRef<{ appId: string; token: string; channelName: string; uid: number } | null>(null);
+  const startCallRef = useRef<(channelName: string) => Promise<void>>(async () => {});
 
-  // Track component lifecycle
-  useEffect(() => {
-    console.log('AudioCall: Component mounted, setting up...');
-    console.log('AudioCall: Socket on/off functions available:', !!on, !!off);
+  const numericUid = hashProfileUid(myId);
 
-    return () => {
-      console.log('AudioCall: Component unmounting, cleaning up...');
-    };
-  }, []);
+  useEffect(() => { receivingCallRef.current = receivingCall; }, [receivingCall]);
+  useEffect(() => { callAcceptedRef.current = callAccepted; }, [callAccepted]);
+  useEffect(() => { currentChannelRef.current = currentChannel; }, [currentChannel]);
+  useEffect(() => { callerRef.current = caller; }, [caller]);
+  useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
-  // Request microphone permission using Expo
-  const requestMicrophonePermission = async (): Promise<boolean> => {
-    try {
-      console.log('Requesting microphone permission...');
-      
-      // Use expo-av for audio permissions instead of react-native-permissions
-      const { status } = await expoAv.Audio.requestPermissionsAsync();
-      console.log('Current microphone permission:', status);
-
-      // Check if permission is granted
-      const hasPermission = status === 'granted';
-
-      if (!hasPermission) {
-        Alert.alert(
-          'Permission Required',
-          'Microphone access is required for voice calls. Please enable it in your device settings.',
-          [
-            { text: 'Cancel', onPress: () => endCall() },
-            { text: 'Settings', onPress: () => Linking.openSettings() }
-          ]
-        );
-        return false;
-      }
-
-      console.log('Microphone permission granted successfully');
-      return true;
-    } catch (error) {
-      console.error('Error requesting microphone permission:', error);
-      Alert.alert(
-        'Permission Error',
-        'Failed to request microphone permission. Please check your device settings.',
-        [{ text: 'OK', onPress: () => endCall() }]
-      );
-      return false;
-    }
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
-  // Get Agora token
-  const getToken = async (channelName: string, uid: number = 0) => {
-    try {
-      console.log('Requesting Agora token for channel:', channelName, 'uid:', uid);
-      const { data } = await api.post('agora/token', { channelName, uid });
-
-      if (!data || !data.appId || !data.token) {
-        throw new Error('Invalid token response from server');
-      }
-
-      setCallStatus("Waiting for user...")
-
-      console.log('Token received successfully:', {
-        appId: data.appId,
-        hasToken: !!data.token,
-        channelName: data.channelName
-      });
-      return data; // { appId, token }
-    } catch (error: any) {
-      console.error('Failed to get Agora token:', error);
-
-      // Handle specific error cases
-      if (error.response?.status === 500) {
-        const errorMsg = error.response?.data?.error || 'Server configuration error';
-        if (errorMsg.includes('agora-access-token')) {
-          Alert.alert('Setup Error', 'Server is missing Agora SDK. Please contact support.');
-        } else if (errorMsg.includes('AGORA_APP_ID') || errorMsg.includes('AGORA_APP_CERTIFICATE')) {
-          Alert.alert('Configuration Error', 'Agora credentials are not configured on the server. Please contact support.');
-        } else {
-          Alert.alert('Server Error', 'Failed to generate call token. Please try again.');
-        }
-      } else if (error.response?.status === 400) {
-        Alert.alert('Invalid Request', 'Invalid call parameters. Please try again.');
-      } else {
-        Alert.alert('Network Error', 'Unable to connect to server. Please check your internet connection.');
-      }
-
-      throw error;
+  const cleanupAudioCall = useCallback(async () => {
+    isTerminating.current = true;
+    await stopIncomingRingtone();
+    try { engineRef.current?.leave(); } catch (_) {}
+    setMediaActive(false);
+    pendingJoinRef.current = null;
+    isJoiningOrJoined.current = false;
+    setActiveCallKind(null);
+    if (currentChannelRef.current) {
+      try { endMinimizedCall(`audio-${currentChannelRef.current}`); } catch (_) {}
     }
+    setIsAudioCall(false);
+    setReceivingCall(false);
+    setCallAccepted(false);
+    setCaller('');
+    setCallerName('');
+    setCallerProfilePic('');
+    setIncomingCall(null);
+    setCurrentChannel(null);
+    setOutgoingCallStatus('');
+    setCallDuration(0);
+    setIsMinimized(false);
+    setIsMuted(false);
+    callStartTime.current = null;
+    callSeenStatusSentRef.current = false;
+    callIgnoredStatusSentRef.current = false;
+    pendingAutoAcceptRef.current = false;
+    setTimeout(() => { isTerminating.current = false; }, 400);
+  }, [endMinimizedCall]);
+
+  const getToken = async (channelName: string) => {
+    const { data } = await api.post('/agora/token', { channelName, uid: numericUid });
+    return data;
   };
 
-  // Initialize Agora Engine
-  const initializeEngine = useCallback(async () => {
+  const startCall = useCallback(async (channelName: string) => {
     try {
-      // Request microphone permission first
-      const hasPermission = await requestMicrophonePermission();
-      if (!hasPermission) {
-        throw new Error('Microphone permission not granted');
-      }
-
-      if (engineRef.current) {
-        return engineRef.current;
-      }
-
-      console.log('Initializing Agora engine...');
-      const { appId } = await getToken('test', 0); // Get appId from server
-
-      if (!appId) {
-        throw new Error('No App ID received from server');
-      }
-
-      console.log('Creating Agora engine with App ID:', appId);
-      const engine = await RtcEngine.create(appId);
-
-      // Disable video for audio-only call
-      await engine.disableVideo();
-      // Enable audio (permission already granted)
-      console.log('Enabling audio...');
-      await engine.enableAudio();
-
-      // Set channel profile
-      await engine.setChannelProfile(ChannelProfile.Communication);
-
-      // Add event listeners
-      engine.addListener('UserJoined', (uid: number) => {
-        console.log('Remote user joined:', uid);
-        setCallStatus("Connected")
-        setRemoteUid(uid);
-      });
-
-      engine.addListener('UserOffline', async (uid: number, reason: number) => {
-        console.log('Remote user left:', uid);
-        console.log('UserOffline reason:', reason);
-
-        // Log reason details
-        const reasonMessages: { [key: number]: string } = {
-          0: 'User quit',
-          1: 'User dropped (network issue)',
-          2: 'Became audience',
-          3: 'Same UID logged in from another device',
-          4: 'Switched to voice-only',
-        };
-        const reasonMessage = reasonMessages[reason] || `Unknown reason (code: ${reason})`;
-        console.log(`UserOffline reason: ${reasonMessage}`);
-        await cleanupCall();
-
-
-        setRemoteUid(null);
-        // End audio call locally when remote leaves to ensure both sides end instantly
-        // if (!isEndingCallRef.current && (callAccepted || isAudioCall || currentChannel)) {
-        //   try {
-        //     isEndingCallRef.current = true;
-        //     await cleanupCall();
-        //   } catch (e) {
-        //     console.warn('Audio cleanup after remote offline failed:', e);
-        //   }
-        // }
-      });
-
-      engine.addListener('JoinChannelSuccess', (channel: string, uid: number) => {
-        console.log('Joined channel successfully:', channel, uid);
-        // Note: isConnected is now managed by socket context, not local state
-      });
-
-      engine.addListener('LeaveChannel', () => {
-        console.log('Left channel');
-        // Note: isConnected is now managed by socket context, not local state
-        setRemoteUid(null);
-      });
-
-      // engine.addListener('Error', (errorCode: number, errorMsg?: string) => {
-      //   console.error('Agora audio error:', { errorCode, errorMsg });
-
-      //   // Prevent multiple alerts for the same error
-      //   if (errorShown) {
-      //     console.warn('Suppressing duplicate audio error alert for code:', errorCode);
-      //     return;
-      //   }
-
-      //   // Handle specific error codes
-      //   switch (errorCode) {
-      //     case 1027:
-      //       setErrorShown(true);
-      //       Alert.alert(
-      //         'Authentication Error',
-      //         'The audio call token has expired or is invalid. Please try starting the call again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 17:
-      //       Alert.alert(
-      //         'Network Error',
-      //         'Unable to connect to Agora servers. Please check your internet connection and try again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 2:
-      //       Alert.alert(
-      //         'Invalid Parameters',
-      //         'Invalid call parameters. Please try starting the call again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 3:
-      //       Alert.alert(
-      //         'Not Ready',
-      //         'Call service is not ready. Please wait a moment and try again.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     case 109:
-      //       setErrorShown(true);
-      //       Alert.alert(
-      //         'Token Expired',
-      //         'Your call session has expired. Please start a new call.',
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //       break;
-      //     default:
-      //       console.error('Unhandled Agora error:', errorCode, errorMsg);
-      //       Alert.alert(
-      //         'Call Error',
-      //         `An error occurred during the call (Code: ${errorCode}). Please try again.`,
-      //         [{ text: 'OK', onPress: () => endCall() }]
-      //       );
-      //   }
-      // });
-
-      engineRef.current = engine;
-      console.log('Agora engine initialized successfully');
-      return engine;
-    } catch (error: any) {
-      console.error('Failed to initialize Agora engine:', error);
-
-      // Handle initialization errors
-      if (error.message?.includes('App ID')) {
-        Alert.alert(
-          'Configuration Error',
-          'Invalid App ID. The call service is not properly configured.',
-          [{ text: 'OK', onPress: () => endCall() }]
-        );
-      } else {
-        Alert.alert(
-          'Initialization Error',
-          'Failed to initialize the call service. Please try again.',
-          [{ text: 'OK', onPress: () => endCall() }]
-        );
-      }
-
-      throw error;
-    }
-  }, [myId]);
-
-  // Join channel
-  const joinChannel = useCallback(async (channelName: string) => {
-    try {
-      // Global guard across remounts
-      if (joiningAudioChannel === channelName || activeAudioChannel === channelName) {
-        console.log('Join channel skipped by global guard - already joining/joined:', channelName);
-        return;
-      }
-      // Prevent duplicate join attempts
-      if (hasJoinedRef.current) {
-        console.log('Join channel skipped - already joining/joined:', channelName);
-        return;
-      }
-      hasJoinedRef.current = true;
-      joiningAudioChannel = channelName;
-      console.log('Attempting to join audio channel:', channelName);
-      const engine = await initializeEngine();
-      const numericUid = Number.isFinite(Number(myId)) ? Number(myId) : 0;
-
-      console.log('Getting token for channel:', channelName, 'uid:', numericUid);
-      const { token } = await getToken(channelName, numericUid);
-
-      if (!token) {
-        throw new Error('No token received from server');
-      }
-
-      console.log('Token received, joining channel...');
-      // Join channel
-      await engine.joinChannel(token, channelName, null, numericUid);
-      console.log('Successfully requested to join audio channel:', channelName);
-
+      if (isTerminating.current) return;
       setCallAccepted(true);
       setCurrentChannel(channelName);
-      setIsAudioCall(true);
-      activeAudioChannel = channelName;
-      joiningAudioChannel = null;
+      if (!callStartTime.current) callStartTime.current = Date.now();
+      if (isJoiningOrJoined.current) return;
+      isJoiningOrJoined.current = true;
+      setActiveCallKind('audio');
 
-      // Set call start time for duration tracking
-      if (!callStartTime.current) {
-        callStartTime.current = Date.now();
-      }
+      await Audio.requestPermissionsAsync();
+      await configureInCallAudio(true);
+      const { appId, token } = await getToken(channelName);
+      pendingJoinRef.current = { appId, token, channelName, uid: numericUid };
+      setMediaActive(true);
+      engineRef.current?.join({ appId, token, channelName, uid: numericUid, isAudio: true });
     } catch (error: any) {
-      console.error('Failed to join audio channel:', error);
-      const message = (error?.message || '').toString().toLowerCase();
-      // If join is rejected (often means already joined), treat as no-op
-      if (message.includes('rejected')) {
-        console.log('Join request rejected (likely already joined). Ignoring.');
-        // Keep hasJoinedRef as true and do not reset state/engine
-        joiningAudioChannel = null;
+      console.error('AudioCall: failed to start', error);
+      Alert.alert('Call failed', error?.message || 'Could not start the audio call.');
+      isJoiningOrJoined.current = false;
+      setActiveCallKind(null);
+      setIsAudioCall(false);
+      setCallAccepted(false);
+    }
+  }, [numericUid]);
+
+  useEffect(() => { startCallRef.current = startCall; }, [startCall]);
+
+  const answerCall = useCallback(async () => {
+    const incoming = incomingCallRef.current;
+    if (!incoming) return;
+    await stopIncomingRingtone();
+    emit('answer-call', {
+      to: String(incoming.from),
+      channelName: incoming.channelName,
+      isAudio: true,
+    });
+    await startCall(incoming.channelName);
+  }, [emit, startCall]);
+
+  useEffect(() => { answerCallRef.current = answerCall; }, [answerCall]);
+
+  const endCall = useCallback(async () => {
+    await stopIncomingRingtone();
+    const incoming = incomingCallRef.current;
+    let friendIdToNotify: string | undefined;
+    if (incoming?.from && incoming.from !== myId) {
+      friendIdToNotify = incoming.from;
+      if (!callAcceptedRef.current) {
+        emit('audio-call-reject', { to: String(friendIdToNotify), channelName: currentChannelRef.current });
+        await cleanupAudioCall();
         return;
       }
-
-      // Don't show additional alert if token request already showed one
-      if (!error.response) {
-        Alert.alert(
-          'Call Failed',
-          'Unable to join the call. Please check your connection and try again.',
-          [{ text: 'OK' }]
-        );
-      }
-
-      // Reset call state
-      setIsAudioCall(false);
-      setCallAccepted(false);
-      setCurrentChannel(null);
-      hasJoinedRef.current = false;
-      joiningAudioChannel = null;
-
-      // Clean up engine if it was created
-      if (engineRef.current) {
-        try {
-          await engineRef.current.destroy();
-          engineRef.current = null;
-        } catch (cleanupError) {
-          console.warn('Error cleaning up engine:', cleanupError);
-        }
+    } else if (callerRef.current && callerRef.current !== myId) {
+      friendIdToNotify = callerRef.current;
+      if (!callAcceptedRef.current) {
+        emit('audio-call-cancel', { to: String(friendIdToNotify), channelName: currentChannelRef.current });
+        await cleanupAudioCall();
+        return;
       }
     }
-  }, [initializeEngine, myId]);
+    if (friendIdToNotify && friendIdToNotify !== myId && currentChannelRef.current) {
+      emit('audio-call-end', { to: String(friendIdToNotify), channelName: currentChannelRef.current });
+    }
+    await cleanupAudioCall();
+  }, [cleanupAudioCall, emit, myId]);
 
-  // Leave channel
-  const leaveChannel = useCallback(async () => {
-    // Prevent multiple calls to leaveChannel
-    if (isLeavingRef.current) {
-      console.log('Already leaving audio channel, ignoring duplicate call');
+  const applyIncomingAudioCall = useCallback(({ from, channelName, callerName: name, callerProfilePic: pic }: any) => {
+    if (!from || !channelName) return;
+    if (isTerminating.current) return;
+    if (receivingCallRef.current && currentChannelRef.current === channelName) return;
+    if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) {
+      emit('audio-call-reject', { to: String(from), channelName });
       return;
     }
+    emit('update-call-status', { to: String(from), status: 'Ringing...' });
+    receivingCallRef.current = true;
+    callAcceptedRef.current = false;
+    currentChannelRef.current = channelName;
+    callSeenStatusSentRef.current = false;
+    callIgnoredStatusSentRef.current = false;
+    setIsAudioCall(true);
+    setReceivingCall(true);
+    setCaller(from);
+    setIncomingCall({ from, channelName, name: name || 'Unknown Caller', profilePic: pic });
+    setCallerName(name || 'Unknown Caller');
+    setCallerProfilePic(pic || '');
+    setCurrentChannel(channelName);
+    playIncomingRingtone().catch(() => {});
+  }, [emit]);
 
-    isLeavingRef.current = true;
-
-    try {
-      if (engineRef.current) {
-        await engineRef.current.leaveChannel();
-        await engineRef.current.destroy();
-        engineRef.current = null;
-      }
-
-      setCallAccepted(false);
-      setIsAudioCall(false);
-      setCurrentChannel(null);
-      setIncomingCall(null);
-      setRemoteFriendId(null); // Clear remote friend ID
-      setIsMinimized(false);
-      setCallDuration(0);
-      setRemoteUid(null);
-      hasJoinedRef.current = false;
-      activeAudioChannel = null;
-      joiningAudioChannel = null;
-      // Note: isConnected is now managed by socket context, not local state
-      setErrorShown(false);
-      callStartTime.current = null;
-
-      // Clear duration interval
-      if (minimizedDurationInterval.current) {
-        clearInterval(minimizedDurationInterval.current);
-        minimizedDurationInterval.current = null;
-      }
-    } catch (error) {
-      console.error('Failed to leave audio channel:', error);
-    } finally {
-      isLeavingRef.current = false;
-    }
-  }, []);
-
-
-  // Reset status bar when leaving this component to avoid translucent persisting globally
   useEffect(() => {
+    const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
+      if (isAudio === false) return;
+      applyIncomingAudioCall({ from, channelName, callerName: name, callerProfilePic: pic });
+    };
+    const onCallAccepted = ({ channelName, isAudio }: any) => {
+      if (!isAudio) return;
+      if (!receivingCallRef.current) {
+        stopIncomingRingtone();
+        setOutgoingCallStatus('');
+        startCallRef.current(channelName);
+      }
+    };
+    const onEnded = () => { stopIncomingRingtone(); cleanupAudioCall(); };
+    const onCancelled = () => { stopIncomingRingtone(); cleanupAudioCall(); };
+    const onRejected = () => {
+      stopIncomingRingtone();
+      setOutgoingCallStatus('Call rejected');
+      setTimeout(() => cleanupAudioCall(), 500);
+    };
+    const onNotAccepted = ({ isAudio, channelName }: any) => {
+      if (!isAudio) return;
+      if (channelName && currentChannelRef.current && channelName !== currentChannelRef.current) return;
+      stopIncomingRingtone();
+      setOutgoingCallStatus('No answer');
+      setTimeout(() => cleanupAudioCall(), 500);
+    };
+    const onStatus = ({ from, status }: any) => {
+      if (!receivingCallRef.current && !callAcceptedRef.current && callerRef.current && from === callerRef.current) {
+        setOutgoingCallStatus(status || '');
+      }
+    };
+    const onOutgoing = (detail: any) => {
+      if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) return;
+      callSeenStatusSentRef.current = false;
+      callIgnoredStatusSentRef.current = false;
+      setIsAudioCall(true);
+      setReceivingCall(false);
+      setCaller(detail.to);
+      setCallerName(detail.callerName || 'Friend');
+      setCallerProfilePic(detail.callerProfilePic || '');
+      setCurrentChannel(detail.channelName);
+      setIncomingCall({
+        from: myId,
+        channelName: detail.channelName,
+        name: detail.callerName || 'Friend',
+        profilePic: detail.callerProfilePic,
+      });
+      setOutgoingCallStatus('Calling...');
+    };
+    const onPushIncoming = (detail: any) => {
+      if (detail?.isAudio === false) return;
+      if (detail?.autoAccept) pendingAutoAcceptRef.current = true;
+      applyIncomingAudioCall({
+        from: detail.from,
+        channelName: detail.channelName,
+        callerName: detail.callerName,
+        callerProfilePic: detail.callerProfilePic,
+      });
+    };
+    const onPushReject = (detail: any) => {
+      if (detail?.isAudio === false) return;
+      stopIncomingRingtone();
+      if (detail.from && detail.channelName) {
+        emit('audio-call-reject', { to: String(detail.from), channelName: detail.channelName });
+      }
+      cleanupAudioCall();
+    };
+
+    on('incoming-audio-call', onIncoming);
+    on('call-accepted', onCallAccepted);
+    on('audio-call-ended', onEnded);
+    on('audio-call-cancelled', onCancelled);
+    on('audio-call-rejected', onRejected);
+    on('call-not-accepted', onNotAccepted);
+    on('updated-call-status', onStatus);
+    const subStart = DeviceEventEmitter.addListener(CALL_EVENTS.START_AUDIO, onOutgoing);
+    const subPush = DeviceEventEmitter.addListener(CALL_EVENTS.INCOMING_FROM_PUSH, onPushIncoming);
+    const subReject = DeviceEventEmitter.addListener(CALL_EVENTS.REJECT_FROM_PUSH, onPushReject);
+
     return () => {
-      try {
-        if (Platform.OS === 'android') {
-          StatusBar.setTranslucent(false);
-          StatusBar.setBackgroundColor(themeColors.background.primary);
-        }
-        StatusBar.setBarStyle(isDarkMode ? 'light-content' : 'dark-content');
-      } catch (e) { }
+      off('incoming-audio-call', onIncoming);
+      off('call-accepted', onCallAccepted);
+      off('audio-call-ended', onEnded);
+      off('audio-call-cancelled', onCancelled);
+      off('audio-call-rejected', onRejected);
+      off('call-not-accepted', onNotAccepted);
+      off('updated-call-status', onStatus);
+      subStart.remove();
+      subPush.remove();
+      subReject.remove();
     };
-  }, [isDarkMode, themeColors.background.primary]);
+  }, [applyIncomingAudioCall, cleanupAudioCall, emit, myId, off, on]);
 
-  // Local cleanup without emitting to server
-  const cleanupCall = useCallback(async () => {
-    console.log('AudioCall: cleanupCall called');
-    setCallStatus("Ending call...")
-    if (currentChannel) {
-      const callId = `audio-${currentChannel}`;
-      endMinimizedCall(callId);
+  useEffect(() => {
+    if (pendingAutoAcceptRef.current && receivingCall && incomingCall && !callAccepted) {
+      pendingAutoAcceptRef.current = false;
+      const t = setTimeout(() => answerCallRef.current?.(), 250);
+      return () => clearTimeout(t);
     }
+  }, [receivingCall, incomingCall, callAccepted]);
 
-    await leaveChannel();
-    activeAudioChannel = null;
-    joiningAudioChannel = null;
-
-    // Ensure status bar is not translucent after closing the call (prevents overlay on header)
-    if (Platform.OS === 'android') {
-      try {
-        StatusBar.setTranslucent(false);
-        StatusBar.setBackgroundColor(themeColors.background.primary);
-      } catch (e) {
-        // no-op
-      }
-    }
-
-    // Simply navigate back without complex navigation logic to prevent loops
-    try {
-      const nav: any = navigation;
-      nav.navigate('Message', { screen: 'MessageList' });
-    } catch (e) {
-      console.warn('Navigation error after call end:', e);
-    }
-  }, [currentChannel, leaveChannel, endMinimizedCall, navigation]);
-
-  // End call - called when user clicks end button
-  const endCall = useCallback(async () => {
-    console.log('AudioCall: endCall called, isEndingCallRef:', isEndingCallRef.current);
-
-    console.log('AudioCall: Ending audio call...');
-    console.log('AudioCall: Debug state:', {
-      remoteFriendId,
-      incomingCallFrom: incomingCall?.from,
-      currentChannel,
-      myId,
-      callAccepted,
-      isAudioCall
-    });
-
-    // Emit leaveAudioCall to notify the other user (server will broadcast to both)
-    // Try multiple sources to get the friend ID:
-    // 1. remoteFriendId (set when call is accepted)
-    // 2. incomingCall?.from (person who called us)
-    // 3. Extract from channel name (format: userId1-userId2)
-    let friendIdToNotify = remoteFriendId || incomingCall?.from;
-
-    // Fallback: Extract friend ID from channel name
-    if (!friendIdToNotify && currentChannel) {
-      const channelParts = currentChannel.split('-');
-      if (channelParts.length === 2) {
-        // Channel format is myId-friendId or friendId-myId
-        friendIdToNotify = channelParts[0] === myId ? channelParts[1] : channelParts[0];
-        console.log('AudioCall: Extracted friend ID from channel name:', friendIdToNotify);
-      }
-    }
-
-    console.log('AudioCall: Friend ID to notify:', friendIdToNotify);
-
-    if (friendIdToNotify && friendIdToNotify !== myId) {
-      console.log('AudioCall: ✅ Emitting endAudioCall to friend:', friendIdToNotify);
-      endAudioCall(friendIdToNotify, currentChannel || undefined, 'end');
-    } else {
-      console.error('AudioCall: ❌ ERROR - No valid friend ID to notify! Cannot end call for other user.');
-      console.error('AudioCall: Debug - friendIdToNotify:', friendIdToNotify, ', myId:', myId);
-    }
-
-    // Do local cleanup
-    await cleanupCall();
-
-    // DON'T reset the flag - keep it set to prevent any further calls
-    // isEndingCallRef.current = false;
-  }, [remoteFriendId, callAccepted, isAudioCall, currentChannel, myId, incomingCall, endAudioCall, cleanupCall]);
-
-  // Toggle mute
-  const toggleMute = useCallback(async () => {
-    if (engineRef.current) {
-      await engineRef.current.muteLocalAudioStream(!isMuted);
-      setIsMuted(!isMuted);
-    }
-  }, [isMuted]);
-
-  // Toggle speaker
-  const toggleSpeaker = useCallback(async () => {
-    if (engineRef.current) {
-      await engineRef.current.setEnableSpeakerphone(!isSpeakerOn);
-      setIsSpeakerOn(!isSpeakerOn);
-    }
-  }, [isSpeakerOn]);
-
-  // Minimize call
-  const minimizeAudioCall = useCallback(() => {
-    if (!callAccepted || !currentChannel || !incomingCall) return;
-
-    const callId = `audio-${currentChannel}`;
-    const callData = {
-      id: callId,
-      type: 'audio' as const,
-      callerName: incomingCall.name || 'Unknown Caller',
-      callerProfilePic: incomingCall.profilePic,
-      callerId: incomingCall.from,
-      status: 'connected' as const,
-      duration: callDuration,
-      isMuted: isMuted,
-      onRestore: () => {
-        setIsMinimized(false);
-        setIsAudioCall(true);
-      },
-      onEnd: () => {
-        endCall();
-      },
-      onToggleMute: () => {
-        toggleMute();
-      }
-    };
-
-    minimizeCall(callData);
-    setIsMinimized(true);
-    setIsAudioCall(false);
-  }, [callAccepted, currentChannel, incomingCall, callDuration, isMuted, minimizeCall, endCall, toggleMute]);
-
-  // Call duration tracking
   useEffect(() => {
     let interval: ReturnType<typeof setInterval> | null = null;
     if (callAccepted && !isMinimized) {
-      if (!callStartTime.current) {
-        callStartTime.current = Date.now();
-      }
+      if (!callStartTime.current) callStartTime.current = Date.now();
       interval = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - (callStartTime.current || 0)) / 1000);
-        setCallDuration(elapsed);
+        setCallDuration(Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000));
       }, 1000);
     }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
+    return () => { if (interval) clearInterval(interval); };
   }, [callAccepted, isMinimized]);
 
-  // While minimized, push duration into minimized call bar
   useEffect(() => {
-    if (callAccepted && isMinimized && currentChannel && callStartTime.current) {
-      const callId = `audio-${currentChannel}`;
-      minimizedDurationInterval.current = setInterval(() => {
-        const elapsed = Math.floor((Date.now() - (callStartTime.current || 0)) / 1000);
-        try {
-          updateMinimizedCall(callId, { duration: elapsed });
-        } catch (e) {
-          console.warn('Failed to update minimized call duration:', e);
+    const onAppState = (state: AppStateStatus) => {
+      if (state === 'active' && receivingCallRef.current && !callAcceptedRef.current && callerRef.current) {
+        if (!callSeenStatusSentRef.current) {
+          callSeenStatusSentRef.current = true;
+          emit('update-call-status', { to: String(callerRef.current), status: 'Call seen' });
         }
-      }, 1000);
-    }
-    return () => {
-      if (minimizedDurationInterval.current) {
-        clearInterval(minimizedDurationInterval.current);
-        minimizedDurationInterval.current = null;
+      } else if (state !== 'active' && receivingCallRef.current && !callAcceptedRef.current && callSeenStatusSentRef.current && !callIgnoredStatusSentRef.current) {
+        callIgnoredStatusSentRef.current = true;
+        emit('update-call-status', { to: String(callerRef.current), status: 'Call ignored' });
       }
     };
-  }, [callAccepted, isMinimized, currentChannel, updateMinimizedCall]);
+    const sub = AppState.addEventListener('change', onAppState);
+    return () => sub.remove();
+  }, [emit]);
 
-  // Handle call acceptance
-  const handleCallAccepted = useCallback(({ channelName, isAudio, callerName, callerProfilePic, callerId }: any) => {
-    console.log('AudioCall: Call accepted event received:', { channelName, isAudio, callerName, callerProfilePic });
-    console.log('AudioCall: Current state before handling - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall);
+  const toggleMute = useCallback(() => {
+    const next = !isMuted;
+    setIsMuted(next);
+    engineRef.current?.muteAudio(next);
+  }, [isMuted]);
 
-    // Only handle audio call acceptance
-    if (isAudio) {
-      // Ignore duplicate accept events for the same channel
-      if (hasJoinedRef.current && currentChannel === channelName) {
-        console.log('AudioCall: Duplicate call-accepted for same channel, ignoring:', channelName);
-        return;
-      }
-      // Global guard in case of remounts
-      if (joiningAudioChannel === channelName || activeAudioChannel === channelName) {
-        console.log('AudioCall: Global guard prevented duplicate accept handling for channel:', channelName);
-        return;
-      }
-      console.log('AudioCall: Audio call accepted, joining channel:', channelName);
-      console.log('AudioCall: Setting remote friend ID:', callerId);
+  const toggleSpeaker = useCallback(async () => {
+    const next = !isSpeakerOn;
+    setIsSpeakerOn(next);
+    await configureInCallAudio(next);
+  }, [isSpeakerOn]);
 
-      // Set up call information for audio calls
-      setIncomingCall({
-        from: callerId || 'caller',
-        channelName,
-        name: callerName || 'Audio Call',
-        profilePic: callerProfilePic || ''
-      });
-      setRemoteFriendId(callerId || null); // IMPORTANT: Track the other user's ID
-      setIsAudioCall(true);
-      setCallAccepted(true);
-      setCurrentChannel(channelName);
-      setCallStatus("Connecting..."); // Reset call status for new call
+  const minimizeAudioCall = useCallback(() => {
+    if (!callAccepted || !currentChannel) return;
+    const callId = `audio-${currentChannel}`;
+    minimizeCall({
+      id: callId,
+      type: 'audio',
+      callerName: callerName || 'Unknown Caller',
+      callerProfilePic: callerProfilePic,
+      callerId: caller,
+      status: 'connected',
+      duration: callDuration,
+      isMuted,
+      isCameraOn: false,
+      onRestore: () => { setIsMinimized(false); setIsAudioCall(true); },
+      onEnd: () => { endCall(); },
+      onToggleMute: () => toggleMute(),
+    });
+    setIsMinimized(true);
+    setIsAudioCall(false);
+  }, [callAccepted, currentChannel, callerName, callerProfilePic, caller, callDuration, isMuted, minimizeCall, endCall, toggleMute]);
 
-      console.log('AudioCall: Set states - isAudioCall: true, callAccepted: true, channel:', channelName);
-
-      // Join the audio channel
-      joinChannel(channelName);
-    } else {
-      console.log('AudioCall: Video call accepted, but letting VideoCall component handle it:', channelName);
-      // Don't handle video calls here - let VideoCall component handle them
-      return;
+  const handleEngineEvent = useCallback((event: any) => {
+    if (event.type === 'ready' && pendingJoinRef.current) {
+      engineRef.current?.join({ ...pendingJoinRef.current, isAudio: true });
     }
-  }, [joinChannel]);
-
-  // Handle call end
-  const handleCallEnd = useCallback(() => {
-    console.log('AudioCall: Received audioCallEnd event from server');
-
-    const now = Date.now();
-    if (now - lastCallEndTime.current < 2000) {
-      console.log('AudioCall: Ignoring rapid-fire call end event (debounce)');
-      return;
+    if (event.type === 'user-left' && callAcceptedRef.current) {
+      cleanupAudioCall();
     }
-    lastCallEndTime.current = now;
-
-    // Handle call end if we're in any call state or if we have an active channel
-    if (callAccepted || isAudioCall || currentChannel) {
-      console.log('AudioCall: Processing audio-call-ended - doing local cleanup only (NO re-emit)');
-      // IMPORTANT: Only do local cleanup, do NOT call endCall() which would re-emit
-      cleanupCall();
-      // DON'T reset the flag - keep it set to prevent any further calls
-    } else {
-      console.log('AudioCall: Ignoring call end event - not in active audio call state');
-      console.log('AudioCall: Debug - callAccepted:', callAccepted, 'isAudioCall:', isAudioCall, 'currentChannel:', currentChannel);
+    if (event.type === 'error') {
+      console.warn('AudioCall media error', event.message);
     }
-  }, [callAccepted, isAudioCall, currentChannel, incomingCall, cleanupCall]);
+  }, [cleanupAudioCall]);
 
-  // Keep callbacks in ref for stable references
-  useEffect(() => {
-    handleCallAcceptedRef.current = handleCallAccepted;
-  }, [handleCallAccepted]);
+  const statusText = callAccepted
+    ? `Connected • ${formatDuration(callDuration)}`
+    : receivingCall
+      ? `${callerName || 'Someone'} is calling you`
+      : `Calling ${callerName || 'Friend'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
 
-  useEffect(() => {
-    handleCallEndRef.current = handleCallEnd;
-  }, [handleCallEnd]);
-
-  // Socket event listeners
-  useEffect(() => {
-    if (!isConnected) {
-      console.log('AudioCall: Socket not connected, skipping event listener setup');
-      return;
-    }
-
-    if (listenersSetupRef.current) {
-      console.log('AudioCall: Socket event listeners already set, skipping');
-      return;
-    }
-    listenersSetupRef.current = true;
-
-    console.log('AudioCall: Setting up socket event listeners');
-    console.log('AudioCall: Dependencies - on:', !!on, 'off:', !!off);
-
-    const handleCallAcceptedWrapper = (data: any) => {
-      if (handleCallAcceptedRef.current) {
-        handleCallAcceptedRef.current(data);
-      }
-    };
-
-    const handleCallEndWrapper = () => {
-      if (handleCallEndRef.current) {
-        handleCallEndRef.current();
-      }
-    };
-
-    on('call-accepted', handleCallAcceptedWrapper);
-    on('audio-call-ended', handleCallEndWrapper);
-    const handleUpdatedCallStatus = (data: any) => {
-      const { from, status } = data || {};
-      // Only update on outgoing side (we initiated call): when not yet connected
-      if (!callAccepted && remoteFriendId && from === remoteFriendId) {
-        setCallStatus(status || '');
-      }
-    };
-    on('updated-call-status', handleUpdatedCallStatus);
-
-
-    return () => {
-      console.log('AudioCall: Cleaning up socket event listeners');
-      listenersSetupRef.current = false;
-      off('call-accepted', handleCallAcceptedWrapper);
-      off('audio-call-ended', handleCallEndWrapper);
-      off('updated-call-status', handleUpdatedCallStatus);
-    };
-  }, [isConnected, on, off, callAccepted, remoteFriendId]);
-
-  // Keep refs in sync with latest state to avoid stale logs/guards
-  useEffect(() => {
-    callAcceptedRef.current = callAccepted;
-  }, [callAccepted]);
-  useEffect(() => {
-    isAudioCallRef.current = isAudioCall;
-  }, [isAudioCall]);
-
-  // Keep leaveChannel in ref for stable cleanup reference
-  useEffect(() => {
-    leaveChannelRef.current = leaveChannel;
-  }, [leaveChannel]);
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (leaveChannelRef.current) {
-        leaveChannelRef.current();
-      }
-    };
-  }, []);
-
-  // Format duration
-  const formatDuration = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  if (!isAudioCall || isMinimized) {
+  if (!isAudioCall && !mediaActive) {
     return null;
   }
 
-  const displayName = incomingCall?.name || 'Unknown Caller';
-  const displayPic = incomingCall?.profilePic || '';
-
   return (
-    <Modal
-      visible={isAudioCall}
-      animationType="slide"
-      presentationStyle="fullScreen"
-      onRequestClose={endCall}
-    >
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} backgroundColor={themeColors.background.primary} translucent={false} />
-      <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-        {/* Header with Top Controls (aligned with VideoCall) */}
-        <View style={[styles.header, { backgroundColor: themeColors.surface.header }]}>
-          <View style={styles.topControls}>
-            <View style={styles.topLeftControls}>
-              <TouchableOpacity
-                style={[styles.topControlButton, { backgroundColor: 'rgba(0, 0, 0, 0.3)' }]}
-                onPress={minimizeAudioCall}
-              >
-                <Icon name="minimize" size={20} color="white" />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.topCenterInfo}>
-              <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>
-                {`Audio Call - ${displayName}`}
-              </Text>
-              {callAccepted && (
-                <Text style={[styles.duration, { color: themeColors.text.secondary }]}>
-                  {formatDuration(callDuration)}
-                </Text>
-              )}
-            </View>
-
-            <View style={styles.topRightControls}>
-              <TouchableOpacity
-                style={[
-                  styles.topControlButton,
-                  { backgroundColor: isSpeakerOn ? 'rgba(41, 177, 169, 0.8)' : 'rgba(0, 0, 0, 0.3)' }
-                ]}
-                onPress={toggleSpeaker}
-              >
-                <Icon name={isSpeakerOn ? 'volume-up' : 'volume-down'} size={20} color="white" />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* Audio Call UI */}
-        <View style={styles.audioContainer}>
-          {/* Profile Picture */}
-          <View style={styles.profileContainer}>
-            {displayPic ? (
-              <Image source={{ uri: displayPic }} style={styles.profileImage} />
+    <>
+      <AgoraWebEngine
+        ref={engineRef}
+        visible={mediaActive}
+        isAudio
+        onEvent={handleEngineEvent}
+      />
+      <Modal visible={isAudioCall && !isMinimized} animationType="slide" presentationStyle="fullScreen" onRequestClose={endCall}>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+        <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+          <View style={styles.center}>
+            {callerProfilePic ? (
+              <Image source={{ uri: callerProfilePic }} style={styles.avatar} />
             ) : (
-              <View style={[styles.profilePlaceholder, { backgroundColor: themeColors.gray[700] }]}>
-                <Icon name="person" size={80} color={themeColors.text.secondary} />
+              <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: themeColors.gray?.[700] || '#333' }]}>
+                <Icon name="person" size={80} color="#fff" />
               </View>
             )}
-
-            <Text style={[styles.callerName, { color: themeColors.text.primary }]}>
-              {displayName}
-            </Text>
-
-
-            <Text style={[styles.callStatus, { color: callStatus === 'Connecting...' ? themeColors.text.secondary : themeColors.status.success || '#34C759' }]}>
-              {callStatus}
-            </Text>
+            <Text style={[styles.name, { color: themeColors.text.primary }]}>{callerName || 'Unknown'}</Text>
+            <Text style={[styles.status, { color: themeColors.text.secondary }]}>{statusText}</Text>
           </View>
 
-          {/* Audio Visualizer - only show when remote user has joined */}
-          {callAccepted && remoteUid !== null && (
-            <View style={styles.audioStatusContainer}>
-              <View style={styles.audioWaves}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <View
-                    key={i}
-                    style={[
-                      styles.audioWave,
-                      { backgroundColor: themeColors.primary, height: Math.random() * 26 + 14 }
-                    ]}
-                  />
-                ))}
-              </View>
-            </View>
-          )}
-        </View>
-
-        {/* Controls */}
-        <View style={[styles.controls, { backgroundColor: themeColors.surface.header }]}>
-          {callAccepted && (
-            <>
-              <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isMuted ? '#666666' : '#29B1A9' }]}
-                onPress={toggleMute}
-              >
-                <Icon name={isMuted ? 'mic-off' : 'mic'} size={24} color="white" />
+          <View style={styles.controls}>
+            {callAccepted && (
+              <>
+                <TouchableOpacity style={[styles.btn, { backgroundColor: isMuted ? '#666' : '#29B1A9' }]} onPress={toggleMute}>
+                  <Icon name={isMuted ? 'mic-off' : 'mic'} size={26} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, { backgroundColor: isSpeakerOn ? '#29B1A9' : '#666' }]} onPress={toggleSpeaker}>
+                  <Icon name={isSpeakerOn ? 'volume-up' : 'volume-down'} size={26} color="#fff" />
+                </TouchableOpacity>
+                <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.35)' }]} onPress={minimizeAudioCall}>
+                  <Icon name="expand-more" size={26} color="#fff" />
+                </TouchableOpacity>
+              </>
+            )}
+            {receivingCall && !callAccepted && (
+              <TouchableOpacity style={[styles.btn, { backgroundColor: '#34C759' }]} onPress={answerCall}>
+                <Icon name="call" size={26} color="#fff" />
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.controlButton, { backgroundColor: isSpeakerOn ? '#29B1A9' : '#666666' }]}
-                onPress={toggleSpeaker}
-              >
-                <Icon name={isSpeakerOn ? 'volume-up' : 'volume-down'} size={24} color="white" />
-              </TouchableOpacity>
-            </>
-          )}
-
-          {/* Answer/Decline buttons removed - handled by IncomingCall screen */}
-
-          {/* End call button */}
-          <TouchableOpacity
-            style={[styles.controlButton, styles.endButton, { backgroundColor: themeColors.status.error }]}
-            onPress={endCall}
-          >
-            <Icon name="call-end" size={24} color="white" />
-          </TouchableOpacity>
-        </View>
-      </SafeAreaView>
-    </Modal>
+            )}
+            <TouchableOpacity style={[styles.btn, { backgroundColor: '#E53935' }]} onPress={endCall}>
+              <Icon name="call-end" size={26} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
+      </Modal>
+    </>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  header: {
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-  },
-  topControls: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  topLeftControls: {
-    flex: 1,
-    alignItems: 'flex-start',
-  },
-  topCenterInfo: {
-    flex: 2,
-    alignItems: 'center',
-  },
-  topRightControls: {
-    flex: 1,
-    alignItems: 'flex-end',
-  },
-  topControlButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-  headerTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    textAlign: 'center',
-  },
-  duration: {
-    fontSize: 12,
-    marginTop: 2,
-    textAlign: 'center',
-  },
-  audioContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 32,
-  },
-  profileContainer: {
-    alignItems: 'center',
-    marginBottom: 48,
-  },
-  profileImage: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    marginBottom: 20,
-  },
-  profilePlaceholder: {
-    width: 160,
-    height: 160,
-    borderRadius: 80,
-    marginBottom: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  callerName: {
-    fontSize: 22,
-    fontWeight: '700',
-    marginBottom: 6,
-    textAlign: 'center',
-  },
-  callStatus: {
-    fontSize: 14,
-    textAlign: 'center',
-  },
-  audioStatusContainer: {
-    alignItems: 'center',
-  },
-  audioWaves: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    height: 44,
-  },
-  audioWave: {
-    width: 5,
-    marginHorizontal: 3,
-    borderRadius: 3,
-  },
-  controls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    alignItems: 'center',
-    paddingVertical: 20,
-    paddingHorizontal: 20,
-  },
-  controlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  answerButton: {
-    // Additional styling for answer button if needed
-  },
-  endButton: {
-    // Additional styling for end button if needed
-  },
+  container: { flex: 1 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#29B1A9' },
+  avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
+  name: { marginTop: 20, fontSize: 24, fontWeight: '700' },
+  status: { marginTop: 8, fontSize: 16, textAlign: 'center' },
+  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18, paddingBottom: 40 },
+  btn: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
 });
 
 export default AudioCall;
