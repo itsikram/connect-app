@@ -1,5 +1,7 @@
 import { Platform, Alert, Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { Camera } from 'expo-camera';
+import { Audio } from 'expo-av';
 import { requestPushPermission } from './push';
 
 export interface PermissionStatus {
@@ -13,7 +15,7 @@ export interface PermissionStatus {
  */
 export async function checkCameraPermission(): Promise<boolean> {
   try {
-    const { status } = await Notifications.getPermissionsAsync();
+    const { status } = await Camera.getCameraPermissionsAsync();
     return status === 'granted';
   } catch (error) {
     console.error('Error checking camera permission:', error);
@@ -26,7 +28,7 @@ export async function checkCameraPermission(): Promise<boolean> {
  */
 export async function requestCameraPermission(): Promise<boolean> {
   try {
-    const { status } = await Notifications.requestPermissionsAsync();
+    const { status } = await Camera.requestCameraPermissionsAsync();
     return status === 'granted';
   } catch (error) {
     console.error('Error requesting camera permission:', error);
@@ -39,7 +41,7 @@ export async function requestCameraPermission(): Promise<boolean> {
  */
 export async function checkMicrophonePermission(): Promise<boolean> {
   try {
-    const { status } = await Notifications.getPermissionsAsync();
+    const { status } = await Audio.getPermissionsAsync();
     return status === 'granted';
   } catch (error) {
     console.error('Error checking microphone permission:', error);
@@ -52,7 +54,7 @@ export async function checkMicrophonePermission(): Promise<boolean> {
  */
 export async function requestMicrophonePermission(): Promise<boolean> {
   try {
-    const { status } = await Notifications.requestPermissionsAsync();
+    const { status } = await Audio.requestPermissionsAsync();
     return status === 'granted';
   } catch (error) {
     console.error('Error requesting microphone permission:', error);
