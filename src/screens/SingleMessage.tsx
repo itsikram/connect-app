@@ -3317,9 +3317,7 @@ const SingleMessage = () => {
                             alignItems: isMyMessage ? 'flex-end' : 'flex-start',
                         }}>
                             <View style={{
-                                backgroundColor: item.messageType === 'call'
-                                    ? (item.callEvent === 'missed' ? (isDarkMode ? '#3a0d12' : '#fee2e2') : (isDarkMode ? '#0f172a' : '#e2e8f0'))
-                                    : (isMyMessage ? chatTheme.colors.sentBg : chatTheme.colors.recvBg),
+                                backgroundColor: isMyMessage ? chatTheme.colors.sentBg : chatTheme.colors.recvBg,
                                 paddingHorizontal: 12,
                                 paddingVertical: 8,
                                 borderRadius: 18,
@@ -3378,10 +3376,10 @@ const SingleMessage = () => {
                                         <Icon
                                             name={item.callType === 'video' ? 'videocam' : 'call'}
                                             size={18}
-                                            color={item.callEvent === 'missed' ? '#ef4444' : (isMyMessage ? '#FFFFFF' : '#000000')}
+                                            color={isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.recvText}
                                         />
                                         <Text style={{
-                                            color: isMyMessage ? '#FFFFFF' : '#000000',
+                                            color: isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.recvText,
                                             fontSize: 15,
                                             fontWeight: '500',
                                         }}>
@@ -4361,8 +4359,8 @@ const SingleMessage = () => {
                         borderTopRightRadius: 20,
                         paddingTop: 20,
                         paddingHorizontal: 20,
-                        maxHeight: '80%',
-                        minHeight: '40%',
+                        paddingBottom: insets.bottom,
+                        height: Dimensions.get('window').height * 0.7,
                     }}>
                         <View style={{
                             alignSelf: 'center',
