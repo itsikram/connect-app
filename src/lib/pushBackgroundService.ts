@@ -80,6 +80,7 @@ const normalizeIncomingCallPayload = (raw: any) => {
     channelName: raw?.channelName || raw?.channel || raw?.room || '',
     isAudio,
     callerId: raw?.callerId || raw?.from || raw?.userId || raw?.id || '',
+    ringtoneId: raw?.ringtoneId,
   };
 };
 
@@ -103,15 +104,29 @@ async function ensureAndroidForegroundPrereqs(): Promise<void> {
     // Ignore errors - channels may already exist
   }
   try {
+    const { getIncomingCallChannelId, getRingtoneSoundName, MAX_RINGTONE_ID } = await import('./ringtoneAssets');
+    for (let i = 1; i <= MAX_RINGTONE_ID; i += 1) {
+      const id = String(i);
+      await notifee.createChannel({
+        id: getIncomingCallChannelId(id),
+        name: 'Incoming Calls',
+        description: 'Incoming call notifications',
+        importance: AndroidImportance.HIGH,
+        visibility: AndroidVisibility.PUBLIC,
+        sound: getRingtoneSoundName(id),
+        vibration: true,
+        bypassDnd: true,
+      });
+    }
     await notifee.createChannel({
       id: 'incoming_calls',
       name: 'Incoming Calls',
       description: 'Incoming call notifications',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-      sound: undefined, // No sound
-      vibration: false, // No vibration
-      bypassDnd: true, // Bypass Do Not Disturb
+      sound: getRingtoneSoundName('1'),
+      vibration: true,
+      bypassDnd: true,
     });
   } catch (e) {
     // Ignore errors - channels may already exist
@@ -170,14 +185,14 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
     // Handle speak_message type
     if (data.type === 'speak_message' || data.type === 'speak-message') {
       try {
-        const { backgroundTtsService } = await import('./backgroundTtsService');
-        const message = data.message || data.text || data.body || '';
-        if (message && message.trim().length > 0) {
-          const priority = data.priority === 'high' ? 'high' : (data.priority === 'low' ? 'low' : 'normal');
-          const interrupt = String(data.interrupt ?? 'true') !== 'false';
-          await backgroundTtsService.speakMessage(message, { priority, interrupt });
-          console.log('🔊 Spoke message from FCM speak_message');
-        }
+        const { playSpeakPayload } = await import('./speakMessagePlayback');
+        await playSpeakPayload({
+          message: data.message || data.text || data.body || '',
+          attachment: data.attachment || '',
+          messageType: data.messageType || '',
+          interrupt: String(data.interrupt ?? 'true') !== 'false',
+        });
+        console.log('🔊 Spoke message from FCM speak_message');
       } catch (ttsError) {
         console.error('❌ Error speaking FCM speak_message:', ttsError);
       }
@@ -193,26 +208,33 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
       });
       
       try {
+        const { startIncomingCallAlert } = await import('./incomingCallAlerts');
         const { callNotificationService } = await import('./callNotificationService');
-        await callNotificationService.displayIncomingCallNotification({
+        const callPayload = {
           callerName: data.callerName || 'Unknown Caller',
           callerProfilePic: data.callerProfilePic || '',
           channelName: data.channelName || '',
           isAudio: String(data.isAudio) === 'true',
           callerId: data.callerId || data.from || '',
-        });
+          ringtoneId: data.ringtoneId,
+        };
+        await startIncomingCallAlert(callPayload);
+        await callNotificationService.displayIncomingCallNotification(callPayload);
         console.log('✅ Incoming call notification displayed from FCM');
       } catch (error) {
         console.error('❌ Error displaying incoming call notification from FCM:', error);
         // Fallback to basic notification
         try {
+          const { getIncomingCallChannelId, getRingtoneSoundName, getStoredRingtoneId } = await import('./ringtoneAssets');
+          const ringtoneId = data.ringtoneId || (await getStoredRingtoneId());
           await notifee.displayNotification({
             title: String(data.isAudio) === 'true' ? 'Incoming Audio Call' : 'Incoming Video Call',
             body: `Call from ${data.callerName || 'Unknown Caller'}`,
             android: {
-              channelId: 'incoming_calls',
+              channelId: getIncomingCallChannelId(ringtoneId),
               smallIcon: 'ic_notification',
               ongoing: true,
+              sound: getRingtoneSoundName(ringtoneId),
               pressAction: { id: 'open_incoming_call', launchActivity: 'default' },
               fullScreenAction: { id: 'incoming_call_fullscreen', launchActivity: 'default' },
             },
@@ -369,29 +391,34 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
       // Generic incoming call handler (covers multiple event names)
       const handleIncoming = async (payload: any) => {
         try {
+          const { startIncomingCallAlert } = await import('./incomingCallAlerts');
           const { callNotificationService } = await import('./callNotificationService');
           const normalized = normalizeIncomingCallPayload(payload);
           if (!normalized.channelName || !normalized.callerId) {
             return;
           }
+          await startIncomingCallAlert(normalized);
           await callNotificationService.displayIncomingCallNotification(normalized);
         } catch (e) {
           // Fallback: minimal notifee notification if service import fails
           try {
+            const { getIncomingCallChannelId, getRingtoneSoundName, getStoredRingtoneId } = await import('./ringtoneAssets');
             const normalized = normalizeIncomingCallPayload(payload);
-            // Ensure channel exists before displaying notification
+            const ringtoneId = await getStoredRingtoneId();
             await notifee.createChannel({
-              id: 'incoming_calls',
+              id: getIncomingCallChannelId(ringtoneId),
               name: 'Incoming Calls',
               importance: AndroidImportance.HIGH,
+              sound: getRingtoneSoundName(ringtoneId),
             });
             await notifee.displayNotification({
               title: normalized.isAudio ? 'Incoming Audio Call' : 'Incoming Video Call',
               body: `Call from ${normalized.callerName}`,
               android: {
-                channelId: 'incoming_calls',
+                channelId: getIncomingCallChannelId(ringtoneId),
                 smallIcon: 'ic_notification',
                 ongoing: true,
+                sound: getRingtoneSoundName(ringtoneId),
                 pressAction: { id: 'open_incoming_call', launchActivity: 'default' },
                 fullScreenAction: { id: 'incoming_call_fullscreen', launchActivity: 'default' },
               },
@@ -417,18 +444,9 @@ async function ensureBackgroundSocketConnected(): Promise<void> {
       // Speak message handler (server-driven TTS) - re-enabled for socket 'speak_message' events
       const handleSpeakMessage = async (payload: any) => {
         try {
-          const { backgroundTtsService } = await import('./backgroundTtsService');
-          await backgroundTtsService.initialize();
-          const message: string = String(
-            payload?.message || payload?.text || payload?.body || ''
-          );
-          if (!message.trim()) return;
-
-          const priority = (payload?.priority === 'high' || payload?.priority === 'low') ? payload.priority : 'normal';
-          const interrupt = payload?.interrupt !== false; // default true
-
+          const { playSpeakPayload } = await import('./speakMessagePlayback');
           console.log('🔊 Speaking message from socket speak_message event:', payload);
-          await backgroundTtsService.speakMessage(message, { priority, interrupt });
+          await playSpeakPayload(payload);
         } catch (error) {
           console.error('❌ Error speaking message from socket:', error);
         }

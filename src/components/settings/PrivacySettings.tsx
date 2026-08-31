@@ -1,69 +1,67 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-} from 'react-native';
-import { Picker } from '@react-native-picker/picker';
-import { useTheme } from '../../contexts/ThemeContext';
+import { View, StyleSheet } from 'react-native';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
+import {
+  SettingsSectionHeader,
+  SettingsField,
+  SettingsPicker,
+  SettingsSwitchRow,
+  SettingsPrimaryButton,
+} from './settingsUi';
 
-interface PrivacySettings {
-  postVisibility: string;
-  friendRequestVisibility: string;
-  timelinePostVisibility: string;
-  isShareLocation?: boolean;
-}
+const VISIBILITY_OPTIONS = [
+  { label: 'Only Me', value: 'om' },
+  { label: 'Friend of Friends', value: 'fof' },
+  { label: 'Public', value: 'public' },
+];
+
+const normalizeVisibility = (value?: string) => {
+  if (value === 'only-me' || value === 'om') return 'om';
+  if (value === 'friends' || value === 'fof') return 'fof';
+  return value || 'public';
+};
 
 const PrivacySettings = () => {
-  const { colors: themeColors } = useTheme();
   const { settings, updateSettings } = useSettings();
   const { showSuccess, showError } = useToast();
-  
-  const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
-    postVisibility: settings.postVisibility ?? 'public',
-    friendRequestVisibility: settings.friendRequestVisibility ?? 'public',
-    timelinePostVisibility: settings.timelinePostVisibility ?? 'public',
+  const [saving, setSaving] = useState(false);
+
+  const [privacySettings, setPrivacySettings] = useState({
+    postVisibility: normalizeVisibility(settings.postVisibility),
+    friendRequestVisibility: normalizeVisibility(settings.friendRequestVisibility),
+    timelinePostVisibility: normalizeVisibility(settings.timelinePostVisibility),
     isShareLocation: settings.isShareLocation ?? true,
   });
 
   React.useEffect(() => {
     setPrivacySettings({
-      postVisibility: settings.postVisibility ?? 'public',
-      friendRequestVisibility: settings.friendRequestVisibility ?? 'public',
-      timelinePostVisibility: settings.timelinePostVisibility ?? 'public',
+      postVisibility: normalizeVisibility(settings.postVisibility),
+      friendRequestVisibility: normalizeVisibility(settings.friendRequestVisibility),
+      timelinePostVisibility: normalizeVisibility(settings.timelinePostVisibility),
       isShareLocation: settings.isShareLocation ?? true,
     });
   }, [settings]);
 
-  const visibilityOptions = [
-    { label: 'Only Me', value: 'only-me' },
-    { label: 'Friends of Friends', value: 'fof' },
-    { label: 'Public', value: 'public' },
-  ];
-
   const handleSave = async () => {
-    console.log('Privacy settings:', privacySettings);
     try {
+      setSaving(true);
       const success = await updateSettings(privacySettings);
       if (success) {
-        showSuccess('Privacy settings saved');
+        showSuccess('Privacy settings saved successfully!');
       } else {
         showError('Failed to save privacy settings');
       }
     } catch (error) {
       console.error('Error saving privacy settings:', error);
       showError('Failed to save privacy settings');
+    } finally {
+      setSaving(false);
     }
   };
 
   const handleLocationSharingToggle = async (value: boolean) => {
-    setPrivacySettings(prev => ({ ...prev, isShareLocation: value }));
-    // Auto-save location sharing setting
+    setPrivacySettings((prev) => ({ ...prev, isShareLocation: value }));
     try {
       await updateSettings({ isShareLocation: value });
     } catch (error) {
@@ -71,200 +69,52 @@ const PrivacySettings = () => {
     }
   };
 
-  const renderPicker = (
-    label: string,
-    value: string,
-    onValueChange: (value: string) => void,
-    description?: string
-  ) => (
-    <View style={styles.settingItem}>
-      <Text style={[styles.settingLabel, { color: themeColors.text.primary }]}>
-        {label}
-      </Text>
-      <View style={[styles.pickerContainer, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
-        <Picker
-          selectedValue={value}
-          onValueChange={onValueChange}
-          style={[styles.picker, { color: themeColors.text.primary }]}
-          dropdownIconColor={themeColors.text.primary}
-        >
-          {visibilityOptions.map((option) => (
-            <Picker.Item
-              key={option.value}
-              label={option.label}
-              value={option.value}
-              color={themeColors.text.primary}
-            />
-          ))}
-        </Picker>
-      </View>
-      {description && (
-        <Text style={[styles.description, { color: themeColors.text.secondary }]}>
-          {description}
-        </Text>
-      )}
-    </View>
-  );
-
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text.primary }]}>
-          Privacy Settings
-        </Text>
-        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
-          Control who can see your content and interact with you
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <SettingsSectionHeader
+        title="Privacy Settings"
+        description="Control who can see your posts, timeline, and location."
+      />
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Content Visibility
-        </Text>
-        
-        {renderPicker(
-          'Who can see your posts?',
-          privacySettings.postVisibility,
-          (value) => setPrivacySettings(prev => ({ ...prev, postVisibility: value })),
-          'Choose who can see the posts you create'
-        )}
-        
-        {renderPicker(
-          'Who can send you friend requests?',
-          privacySettings.friendRequestVisibility,
-          (value) => setPrivacySettings(prev => ({ ...prev, friendRequestVisibility: value })),
-          'Control who can send you friend requests'
-        )}
-        
-        {renderPicker(
-          'Who can post on your timeline?',
-          privacySettings.timelinePostVisibility,
-          (value) => setPrivacySettings(prev => ({ ...prev, timelinePostVisibility: value })),
-          'Manage who can post content on your timeline'
-        )}
-      </View>
+      <SettingsField label="Who Can See your Posts?">
+        <SettingsPicker
+          value={privacySettings.postVisibility}
+          onValueChange={(value) => setPrivacySettings((prev) => ({ ...prev, postVisibility: value }))}
+          options={VISIBILITY_OPTIONS}
+        />
+      </SettingsField>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Location Sharing
-        </Text>
-        
-        <View style={[styles.settingItem, { backgroundColor: themeColors.surface.secondary, borderRadius: 12, padding: 16, borderWidth: 1, borderColor: themeColors.border.primary }]}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <View style={{ flex: 1, marginRight: 16 }}>
-              <Text style={[styles.settingLabel, { color: themeColors.text.primary }]}>
-                Share Location with Friends
-              </Text>
-              <Text style={[styles.description, { color: themeColors.text.secondary, marginTop: 4 }]}>
-                Allow friends to see your real-time location in the info modal
-              </Text>
-            </View>
-            <Switch
-              value={privacySettings.isShareLocation ?? true}
-              onValueChange={handleLocationSharingToggle}
-              trackColor={{ false: themeColors.gray[300], true: themeColors.primary + '80' }}
-              thumbColor={privacySettings.isShareLocation ? themeColors.primary : themeColors.gray[400]}
-            />
-          </View>
-        </View>
-      </View>
+      <SettingsField label="Who Can Send you Friend Request?">
+        <SettingsPicker
+          value={privacySettings.friendRequestVisibility}
+          onValueChange={(value) => setPrivacySettings((prev) => ({ ...prev, friendRequestVisibility: value }))}
+          options={VISIBILITY_OPTIONS}
+        />
+      </SettingsField>
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Additional Privacy Options
-        </Text>
-        
-        <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
-          <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
-            Profile Privacy
-          </Text>
-          <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
-            Your profile information visibility is controlled by your general privacy settings. 
-            You can customize specific fields in the Profile tab.
-          </Text>
-        </View>
-      </View>
+      <SettingsField label="Who Can Post on your Timeline?">
+        <SettingsPicker
+          value={privacySettings.timelinePostVisibility}
+          onValueChange={(value) => setPrivacySettings((prev) => ({ ...prev, timelinePostVisibility: value }))}
+          options={VISIBILITY_OPTIONS}
+        />
+      </SettingsField>
 
-      {/* Save Button */}
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
-        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Privacy Settings</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      <SettingsSwitchRow
+        label="Share Location with Friends"
+        help="Allow friends to see your real-time location in the info modal"
+        value={privacySettings.isShareLocation ?? true}
+        onValueChange={handleLocationSharingToggle}
+      />
+
+      <SettingsPrimaryButton title="Save Settings" onPress={handleSave} loading={saving} />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  settingItem: {
-    marginBottom: 20,
-  },
-  settingLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  pickerContainer: {
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
-  },
-  picker: {
-    height: 50,
-  },
-  description: {
-    fontSize: 14,
-    marginTop: 8,
-    lineHeight: 20,
-  },
-  infoCard: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  saveButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  saveButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+    paddingBottom: 8,
   },
 });
 

@@ -1,6 +1,6 @@
-import Tts from 'react-native-tts';
-import { Platform, AppState } from 'react-native';
+import * as Speech from 'expo-speech';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { playSpeakPayload, stopSpokenPlayback } from './speakMessagePlayback';
 
 interface TtsSettings {
   enabled: boolean;
@@ -15,97 +15,16 @@ class BackgroundTtsService {
   private isSpeaking = false;
   private settings: TtsSettings = {
     enabled: true,
-    language: 'bn-IN',
-    rate: 0.5,
+    language: 'en-US',
+    rate: 1,
     volume: 1.0,
     pitch: 1.0,
   };
 
   async initialize(): Promise<void> {
     if (this.isInitialized) return;
-
-    try {
-      // Load settings from storage
-      await this.loadSettings();
-      
-      // Configure TTS language with graceful fallback if unsupported
-      let appliedLanguage = this.settings.language;
-      try {
-        // Try to use a supported voice if available
-        const voices: any[] = (await Tts.voices().catch(() => [])) as any[];
-        const installedVoices = Array.isArray(voices)
-          ? voices.filter((v: any) => !v?.notInstalled)
-          : [];
-        const installedLanguages = installedVoices.map((v: any) => v?.language).filter(Boolean);
-
-        const fallbackCandidates = [
-          this.settings.language,
-          'en-US',
-          'en_GB',
-          'en-IN',
-          'en',
-        ].filter(Boolean) as string[];
-
-        let selectedLanguage: string | undefined;
-        for (const lang of fallbackCandidates) {
-          if (installedLanguages.includes(lang)) {
-            selectedLanguage = lang;
-            break;
-          }
-        }
-        // If we didn't find a match by inspection, still attempt in order using setDefaultLanguage
-        if (!selectedLanguage) {
-          for (const lang of fallbackCandidates) {
-            try {
-              await Tts.setDefaultLanguage(lang);
-              selectedLanguage = lang;
-              break;
-            } catch (_) {
-              // keep trying
-            }
-          }
-        } else {
-          await Tts.setDefaultLanguage(selectedLanguage);
-        }
-
-        // If still nothing worked, skip language configuration rather than crashing
-        if (selectedLanguage) {
-          appliedLanguage = selectedLanguage;
-          // Try to set a matching voice for better reliability
-          const matchingVoice = installedVoices.find((v: any) => v?.language === selectedLanguage);
-          if (matchingVoice?.id) {
-            try {
-              await (Tts as any).setDefaultVoice?.(matchingVoice.id);
-            } catch (_) {}
-          }
-        } else {
-          console.warn('🎤 No supported TTS language found from candidates; continuing without explicit language');
-        }
-      } catch (langError) {
-        console.warn('🎤 Could not configure preferred TTS language, proceeding with platform default:', langError);
-      }
-
-      // Configure rate after language selection
-      await Tts.setDefaultRate(this.settings.rate);
-      
-      // Set up event listeners
-      Tts.addEventListener('tts-start', this.onTtsStart);
-      Tts.addEventListener('tts-finish', this.onTtsFinish);
-      Tts.addEventListener('tts-cancel', this.onTtsCancel);
-      Tts.addEventListener('tts-error', this.onTtsError);
-
-      this.isInitialized = true;
-      console.log('🎤 Background TTS Service initialized');
-
-      // Persist applied language if it differs (prevents repeated unsupported-language attempts next boot)
-      if (appliedLanguage && appliedLanguage !== this.settings.language) {
-        try {
-          await this.saveSettings({ language: appliedLanguage });
-        } catch (_) {}
-      }
-    } catch (error) {
-      console.error('❌ Error initializing Background TTS Service:', error);
-    }
+    await this.loadSettings();
+    this.isInitialized = true;
   }
 
   private async loadSettings(): Promise<void> {
@@ -120,93 +39,76 @@ class BackgroundTtsService {
   }
 
   async saveSettings(settings: Partial<TtsSettings>): Promise<void> {
-    try {
-      this.settings = { ...this.settings, ...settings };
-      await AsyncStorage.setItem('ttsSettings', JSON.stringify(this.settings));
-    } catch (error) {
-      console.error('Error saving TTS settings:', error);
-    }
+    this.settings = { ...this.settings, ...settings };
+    await AsyncStorage.setItem('ttsSettings', JSON.stringify(this.settings));
   }
 
   async speakMessage(message: string, options?: {
     priority?: 'high' | 'normal' | 'low';
     interrupt?: boolean;
   }): Promise<void> {
-    if (!this.settings.enabled || !message.trim()) {
-      console.log('🎤 TTS disabled or empty message, skipping');
-      return;
+    await this.initialize();
+    if (!this.settings.enabled || !message.trim()) return;
+
+    const interrupt = options?.interrupt !== false;
+    if (interrupt) {
+      await Speech.stop();
     }
 
-    try {
-      // Stop current speech if interrupting is allowed
-      if (options?.interrupt !== false && this.isSpeaking) {
-        await Tts.stop();
-      }
+    this.isSpeaking = true;
+    const rate = options?.priority === 'high'
+      ? Math.max(0.5, this.settings.rate * 0.9)
+      : this.settings.rate;
 
-      // Wait a bit if we just stopped speech
-      if (options?.interrupt !== false && this.isSpeaking) {
-        await new Promise<void>(resolve => setTimeout(resolve, 100));
-      }
-
-      // Configure TTS based on priority
-      const rate = options?.priority === 'high' ? this.settings.rate * 0.8 : this.settings.rate;
-      await Tts.setDefaultRate(rate);
-
-      console.log('🎤 Speaking message:', message.substring(0, 50) + '...');
-      await Tts.speak(message);
-    } catch (error) {
-      console.error('❌ Error speaking message:', error);
-    }
+    await Speech.speak(message, {
+      language: this.settings.language || 'en-US',
+      pitch: this.settings.pitch || 1,
+      rate: rate || 1,
+      onDone: () => {
+        this.isSpeaking = false;
+      },
+      onStopped: () => {
+        this.isSpeaking = false;
+      },
+      onError: () => {
+        this.isSpeaking = false;
+      },
+    });
   }
 
   async speakNotification(title: string, body: string, options?: {
     priority?: 'high' | 'normal' | 'low';
     interrupt?: boolean;
   }): Promise<void> {
-    const message = `${title}. ${body}`;
-    await this.speakMessage(message, options);
+    await this.speakMessage(`${title}. ${body}`, options);
   }
 
   async speakIncomingCall(callerName: string, isAudio: boolean): Promise<void> {
     const callType = isAudio ? 'audio' : 'video';
-    const message = `Incoming ${callType} call from ${callerName}`;
-    await this.speakMessage(message, { priority: 'high', interrupt: true });
+    await this.speakMessage(`Incoming ${callType} call from ${callerName}`, {
+      priority: 'high',
+      interrupt: true,
+    });
   }
 
   async speakNewMessage(senderName: string, message: string): Promise<void> {
-    const truncatedMessage = message.length > 50 ? message.substring(0, 50) + '...' : message;
-    const fullMessage = `New message from ${senderName}: ${truncatedMessage}`;
-    await this.speakMessage(fullMessage, { priority: 'normal', interrupt: false });
+    const truncatedMessage = message.length > 50 ? `${message.substring(0, 50)}...` : message;
+    await this.speakMessage(`New message from ${senderName}: ${truncatedMessage}`, {
+      priority: 'normal',
+      interrupt: false,
+    });
+  }
+
+  async speakPayload(payload: any): Promise<void> {
+    await this.initialize();
+    if (!this.settings.enabled) return;
+    await playSpeakPayload(payload);
   }
 
   async stopSpeaking(): Promise<void> {
-    try {
-      await Tts.stop();
-      console.log('🎤 TTS stopped');
-    } catch (error) {
-      console.error('❌ Error stopping TTS:', error);
-    }
+    await stopSpokenPlayback();
+    this.isSpeaking = false;
   }
-
-  private onTtsStart = (): void => {
-    this.isSpeaking = true;
-    console.log('🎤 TTS started speaking');
-  };
-
-  private onTtsFinish = (): void => {
-    this.isSpeaking = false;
-    console.log('🎤 TTS finished speaking');
-  };
-
-  private onTtsCancel = (): void => {
-    this.isSpeaking = false;
-    console.log('🎤 TTS cancelled');
-  };
-
-  private onTtsError = (error: any): void => {
-    this.isSpeaking = false;
-    console.error('❌ TTS error:', error);
-  };
 
   getSettings(): TtsSettings {
     return { ...this.settings };
@@ -217,21 +119,11 @@ class BackgroundTtsService {
   }
 
   async destroy(): Promise<void> {
-    try {
-      await Tts.stop();
-      Tts.removeEventListener('tts-start', this.onTtsStart);
-      Tts.removeEventListener('tts-finish', this.onTtsFinish);
-      Tts.removeEventListener('tts-cancel', this.onTtsCancel);
-      Tts.removeEventListener('tts-error', this.onTtsError);
-      this.isInitialized = false;
-      console.log('🎤 Background TTS Service destroyed');
-    } catch (error) {
-      console.error('❌ Error destroying Background TTS Service:', error);
-    }
+    await this.stopSpeaking();
+    this.isInitialized = false;
   }
 }
 
-// Create singleton instance
 export const backgroundTtsService = new BackgroundTtsService();
 
 export default backgroundTtsService;

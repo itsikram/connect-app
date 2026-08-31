@@ -1,21 +1,60 @@
-import React, { useState, useEffect, memo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions } from 'react-native';
-import Svg, { Circle as SvgCircle, Path as SvgPath, SvgXml } from 'react-native-svg';
+import React, { useState, useEffect, memo, useRef } from 'react';
+import { View, Text, Image, TouchableOpacity, Pressable, StyleSheet, Modal, TextInput, ActivityIndicator, Dimensions, Alert } from 'react-native';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-// import socket from '../../common/socket'; // Use socket.io-client for React Native
+import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
-import ProfileImage from './ProfileImage';
 import config from '../lib/config';
-import { FEED } from '../theme/feedTokens';
+import { useFeedTokens } from '../theme/feedTokens';
+import {
+  CurrentReactIcon,
+  PlacedReactIcons,
+  ReactPicker,
+  getReactLabel,
+  uniquePlacedReacts,
+} from './post/ReactIcons';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const POST_IMAGE_MAX_HEIGHT = 620;
+const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
+
+const sameId = (a: any, b: any) => String(a?._id || a || '') === String(b?._id || b || '');
+
+const uniqueReactTypes = (reacts: any[] = []) => uniquePlacedReacts(reacts);
+
+const commentHasMyReact = (comment: any, myId: any) => {
+  const reacts = Array.isArray(comment?.reacts) ? comment.reacts : [];
+  return reacts.some((r: any) => sameId(r, myId) || sameId(r?._id, myId));
+};
+
+const uniqueReactCount = (reacts: any[] = []) => {
+  const seen = new Set<string>();
+  reacts.forEach((react) => {
+    const id = String(react?.profile?._id || react?.profile || '');
+    if (id) seen.add(id);
+  });
+  return seen.size;
+};
+
+const isPopulatedComment = (comment: any) =>
+  !!comment &&
+  typeof comment === 'object' &&
+  !Array.isArray(comment) &&
+  Boolean(comment.body || comment.text || comment.author);
+
+const normalizeComments = (list: any) =>
+  (Array.isArray(list) ? list : []).filter(isPopulatedComment);
+
+const commentAuthorName = (comment: any) =>
+  comment?.author?.fullName ||
+  comment?.author?.displayName ||
+  [comment?.author?.user?.firstName, comment?.author?.user?.surname].filter(Boolean).join(' ').trim() ||
+  'User';
 // Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
@@ -38,58 +77,53 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const post = data || {};
   const myProfile = useSelector((state: any) => state.profile);
   const myProfileId = myProfile?._id;
-  const [totalReacts, setTotalReacts] = useState<number>(post.reacts?.length || 0);
+  const [totalReacts, setTotalReacts] = useState<number>(uniqueReactCount(post.reacts));
   const [totalShares, setTotalShares] = useState<number>(post.shares?.length || 0);
-  const [totalComments] = useState<number>(post.comments?.length || 0);
+  const [totalComments, setTotalComments] = useState<number>(
+    Array.isArray(post.comments) ? post.comments.length : 0,
+  );
   const [reactType, setReactType] = useState<string | false>(false);
   const [isReacted, setIsReacted] = useState<boolean>(false);
   const [shareCap, setShareCap] = useState<string>('');
-  const [placedReacts, setPlacedReacts] = useState<string[]>([]);
+  const [placedReacts, setPlacedReacts] = useState<string[]>(uniqueReactTypes(post.reacts));
   const [isShareModal, setIsShareModal] = useState<boolean>(false);
   const [isPostOption, setIsPostOption] = useState<boolean>(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState<boolean>(false);
   const [showReactions, setShowReactions] = useState<boolean>(false);
-  const [showCommentBox, setShowCommentBox] = useState<boolean>(false);
   const [commentText, setCommentText] = useState<string>('');
-  const [comments, setComments] = useState<any[]>(post.comments || []);
+  const [comments, setComments] = useState<any[]>(() => normalizeComments(post.comments));
+  const [loadingComments, setLoadingComments] = useState<boolean>(false);
   const [type, setType] = useState<string>(post.type || 'post');
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [replyText, setReplyText] = useState<string>('');
-  const [showReplyBox, setShowReplyBox] = useState<boolean>(false);
   const [isPostingComment, setIsPostingComment] = useState<boolean>(false);
   const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
+  const [likingCommentId, setLikingCommentId] = useState<string | null>(null);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
   const [imageHeight, setImageHeight] = useState<number>(Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH));
 
+  const reactLockRef = useRef(false);
+  const commentsFetchedRef = useRef<string | null>(null);
+  const commentInputRef = useRef<TextInput>(null);
+
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { colors: themeColors } = useTheme();
-  const cardBg = FEED.postBg;
-  const textColor = FEED.postText;
-  const subTextColor = FEED.postTextMuted;
-  const borderColor = FEED.postBorder;
-  const inputBg = 'rgba(255, 255, 255, 0.05)';
-  const inputText = FEED.postText;
-  const accentColor = FEED.postAccent;
+  const { colors: themeColors, isDarkMode } = useTheme();
+  const feed = useFeedTokens();
+  const cardBg = feed.postBg;
+  const textColor = feed.postText;
+  const subTextColor = feed.postTextMuted;
+  const borderColor = feed.postBorder;
+  const inputBg = feed.inputBg;
+  const inputText = feed.postText;
+  const accentColor = feed.postAccent;
 
   const isAuth = post.author?._id === myProfileId;
   const postType = post.type || type || 'post';
-
-  const reactionEmojiMap: Record<string, string> = {
-    like: '👍',
-    love: '❤️',
-    haha: '😂',
-    wow: '😮',
-    sad: '😢',
-    angry: '😡',
-  };
-
-  // Use vector icons for consistent alignment across footer buttons
-  const reactionIconMap: Record<string, { name: string; color: string }> = {
-    like: { name: 'thumb-up', color: accentColor },
-    love: { name: 'favorite', color: '#FF3B5C' },
-    haha: { name: 'emoji-emotions', color: '#F5C84B' },
-    sad: { name: 'sentiment-dissatisfied', color: '#6A3318' },
-  };
+  const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
+  const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
+  const commentTimeColor = '#8b93a1';
 
   const getAssetUrl = (path?: string): string => {
     if (!path) return '';
@@ -106,65 +140,11 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     return trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || (trimmedUrl.startsWith('/') && trimmedUrl.length > 1);
   };
 
-  const RemoteSvg = ({ uri, size = 28 }: { uri: string; size?: number }) => {
-    const [xml, setXml] = useState<string | null>(null);
-    useEffect(() => {
-      let cancelled = false;
-      if (!uri) return;
-      fetch(uri)
-        .then(r => r.text())
-        .then(t => {
-          if (!cancelled) setXml(t);
-        })
-        .catch(() => {
-          if (!cancelled) setXml(null);
-        });
-      return () => {
-        cancelled = true;
-      };
-    }, [uri]);
-    if (!xml) return null;
-    return <SvgXml xml={xml} width={size} height={size} />;
-  };
-
-  const SvgIcon = ({ source, size = 28 }: { source: any; size?: number }) => {
-    const isComponent = typeof source === 'function' || (source && typeof source === 'object' && (source.render || source.$$typeof));
-    if (isComponent) {
-      const Comp: any = source;
-      return <Comp width={size} height={size} />;
-    }
-    // Fallback when Metro still treats SVG as a numeric resource
-    return <Image source={source} style={{ width: size, height: size, resizeMode: 'contain' }} />;
-  };
-
-  const LikeColorIcon = ({ size = 28 }: { size?: number }) => (
-    <Svg width={size} height={size} viewBox="0 0 16 16">
-      <SvgCircle cx="8" cy="8" r="8" fill="#0B84FF" />
-      <SvgPath fill="#FFFFFF" d="M12.162 7.338c.176.123.338.245.338.674 0 .43-.229.604-.474.725a.73.73 0 01.089.546c-.077.344-.392.611-.672.69.121.194.159.385.015.62-.185.295-.346.407-1.058.407H7.5c-.988 0-1.5-.546-1.5-1V7.665c0-1.23 1.467-2.275 1.467-3.13L7.361 3.47c-.005-.065.008-.224.058-.27.08-.079.301-.2.635-.2.218 0 .363.041.534.123.581.277.732.978.732 1.542 0 .271-.414 1.083-.47 1.364 0 0 .867-.192 1.879-.199 1.061-.006 1.749.19 1.749.842 0 .261-.219.523-.316.666zM3.6 7h.8a.6.6 0 01.6.6v3.8a.6.6 0 01-.6.6h-.8a.6.6 0 01-.6-.6V7.6a.6.6 0 01.6-.6z" />
-    </Svg>
-  );
-
-  const LoveColorIcon = ({ size = 28 }: { size?: number }) => (
-    <Svg width={size} height={size} viewBox="0 0 16 16">
-      <SvgCircle cx="8" cy="8" r="8" fill="#FF3B5C" />
-      <SvgPath fill="#FFFFFF" d="M10.473 4C8.275 4 8 5.824 8 5.824S7.726 4 5.528 4c-2.114 0-2.73 2.222-2.472 3.41C3.736 10.55 8 12.75 8 12.75s4.265-2.2 4.945-5.34c.257-1.188-.36-3.41-2.472-3.41" />
-    </Svg>
-  );
-
-  const HahaColorIcon = ({ size = 28 }: { size?: number }) => (
-    <Svg width={size} height={size} viewBox="0 0 16 16">
-      <SvgCircle cx="8" cy="8" r="8" fill="#F5C84B" />
-      <SvgPath fill="#6A3318" d="M3 8.008C3 10.023 4.006 14 8 14c3.993 0 5-3.977 5-5.992C13 7.849 11.39 7 8 7c-3.39 0-5 .849-5 1.008" />
-      <SvgPath fill="#E84D6A" d="M4.541 12.5c.804.995 1.907 1.5 3.469 1.5 1.563 0 2.655-.505 3.459-1.5-.551-.588-1.599-1.5-3.459-1.5s-2.917.912-3.469 1.5" />
-      <SvgPath fill="#2A3755" d="M6.213 4.144c.263.188.502.455.41.788-.071.254-.194.369-.422.371-.78.011-1.708.255-2.506.612-.065.029-.197.088-.332.085-.124-.003-.251-.058-.327-.237-.067-.157-.073-.388.276-.598.545-.33 1.257-.48 1.909-.604a7.077 7.077 0 00-1.315-.768c-.427-.194-.38-.457-.323-.6.127-.317.609-.196 1.078.026a9 9 0 011.552.925zm3.577 0a8.953 8.953 0 011.55-.925c.47-.222.95-.343 1.078-.026.057.143.104.406-.323.6a7.029 7.029 0 00-1.313.768c.65.123 1.363.274 1.907.604.349.21.342.44.276.598-.077.18-.203.234-.327.237-.135.003-.267-.056-.332-.085-.797-.357-1.725-.6-2.504-.612-.228-.002-.351-.117-.422-.37-.091-.333.147-.6.41-.788z" />
-    </Svg>
-  );
-
   // Safety check for required post data
   if (!post._id || !post.author) {
     console.warn('Post component received invalid data:', post);
     return (
-      <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}>
+      <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor, shadowOpacity: feed.shadowOpacity }]}>
         <Text style={[styles.caption, { color: textColor }]}>
           Invalid post data
         </Text>
@@ -175,23 +155,71 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   // ... socket logic can be added here if needed
 
   useEffect(() => {
-    // Set placed reacts and isReacted
-    let storedReacts: string[] = [];
-    if (post.reacts && Array.isArray(post.reacts)) {
-      post.reacts.forEach((react: any) => {
-        if (react.profile) {
-          if (!storedReacts.includes(react.type)) {
-            storedReacts.push(react.type);
-          }
-          if (react.profile === myProfileId) {
-            setReactType(react.type);
-            setIsReacted(true);
-          }
-        }
-      });
+    const reacts = Array.isArray(post.reacts) ? post.reacts : [];
+    setPlacedReacts(uniqueReactTypes(reacts));
+    setTotalReacts(uniqueReactCount(reacts));
+    const mine = reacts.find((react: any) => sameId(react?.profile, myProfileId));
+    if (mine?.type) {
+      setReactType(mine.type);
+      setIsReacted(true);
+    } else {
+      setReactType(false);
+      setIsReacted(false);
     }
-    setPlacedReacts(storedReacts);
-  }, [post.reacts, myProfileId]);
+  }, [post._id, post.reacts, myProfileId]);
+
+  useEffect(() => {
+    commentsFetchedRef.current = null;
+    const next = normalizeComments(post.comments);
+    setComments(next);
+    setTotalComments(Array.isArray(post.comments) ? post.comments.length : next.length);
+  }, [post._id]);
+
+  useEffect(() => {
+    const next = normalizeComments(post.comments);
+    setTotalComments(Array.isArray(post.comments) ? post.comments.length : next.length);
+    if (next.length > 0) {
+      setComments(next);
+      commentsFetchedRef.current = post._id;
+    }
+  }, [post._id, post.comments]);
+
+  useEffect(() => {
+    if (!post._id) return;
+    if (commentsFetchedRef.current === post._id) return;
+
+    const populated = normalizeComments(post.comments);
+    if (populated.length > 0) {
+      setComments(populated);
+      commentsFetchedRef.current = post._id;
+      return;
+    }
+
+    const expected = Array.isArray(post.comments) ? post.comments.length : 0;
+    if (expected === 0) {
+      commentsFetchedRef.current = post._id;
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingComments(true);
+    api
+      .get('/post/single', { params: { postId: post._id } })
+      .then((res) => {
+        if (cancelled) return;
+        const data = res.data?.comments || res.data?.post?.comments || [];
+        setComments(normalizeComments(data));
+        commentsFetchedRef.current = post._id;
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoadingComments(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [post._id, post.comments]);
 
   // Reset image load error when post changes
   useEffect(() => {
@@ -200,29 +228,65 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Like, Love, Haha, Sad, Remove React, Place React logic
   const removeReact = async () => {
-    setTotalReacts(state => state - 1);
+    if (reactLockRef.current) return;
+    reactLockRef.current = true;
+    const prevType = reactType;
+    const prevCount = totalReacts;
+    setTotalReacts((state) => Math.max(0, state - 1));
     setReactType(false);
-    let res = await api.post('/react/removeReact', { id: post._id, postType: 'post', reactor: myProfileId });
-    if (res.status === 200) {
-      setIsReacted(false);
-      return true;
-    } else {
-      setTotalReacts(state => state + 1);
+    setIsReacted(false);
+    try {
+      const res = await api.post('/react/removeReact', { id: post._id, postType: 'post', reactor: myProfileId });
+      if (res.status === 200 && Array.isArray(res.data?.reacts)) {
+        setTotalReacts(uniqueReactCount(res.data.reacts));
+        setPlacedReacts(uniqueReactTypes(res.data.reacts));
+        return true;
+      }
+      if (res.status !== 200) {
+        setTotalReacts(prevCount);
+        setReactType(prevType);
+        setIsReacted(!!prevType);
+      }
+    } catch (e) {
+      setTotalReacts(prevCount);
+      setReactType(prevType);
+      setIsReacted(!!prevType);
+    } finally {
+      reactLockRef.current = false;
     }
   };
 
   const placeReact = async (type: string) => {
-    if (!isReacted) setTotalReacts(state => state + 1);
-    setPlacedReacts([...placedReacts, type]);
+    if (reactLockRef.current) return;
+    reactLockRef.current = true;
+    const prevType = reactType;
+    const prevCount = totalReacts;
+    const alreadyReacted = isReacted;
+    if (!alreadyReacted) setTotalReacts((state) => state + 1);
+    setPlacedReacts((prev) => {
+      const withoutPrev = prev.filter((item) => item !== prevType);
+      return withoutPrev.includes(type) ? withoutPrev : [...withoutPrev, type];
+    });
     setReactType(type);
-    let res = await api.post('/react/addReact', { id: post._id, postType: 'post', reactType: type });
-    if (res.status === 200) {
-      setIsReacted(true);
-      return true;
-    } else {
-      setTotalReacts(post.reacts.length);
-      setPlacedReacts([...placedReacts]);
-      setReactType(false);
+    setIsReacted(true);
+    try {
+      const res = await api.post('/react/addReact', { id: post._id, postType: 'post', reactType: type });
+      if (res.status === 200 && Array.isArray(res.data?.reacts)) {
+        setTotalReacts(uniqueReactCount(res.data.reacts));
+        setPlacedReacts(uniqueReactTypes(res.data.reacts));
+        const mine = res.data.reacts.find((react: any) => sameId(react?.profile, myProfileId));
+        if (mine?.type) setReactType(mine.type);
+        return true;
+      }
+      setTotalReacts(prevCount);
+      setReactType(prevType);
+      setIsReacted(!!prevType);
+    } catch (e) {
+      setTotalReacts(prevCount);
+      setReactType(prevType);
+      setIsReacted(!!prevType);
+    } finally {
+      reactLockRef.current = false;
     }
   };
 
@@ -321,7 +385,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Handle comment button tap
   const handleCommentPress = () => {
-    setShowCommentBox((prev) => !prev);
+    commentInputRef.current?.focus();
   };
 
   const handlePostImageLoad = (event: any) => {
@@ -357,7 +421,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           createdAt: res.data.createdAt || new Date().toISOString()
         };
         console.log('Processed comment:', newComment);
-        setComments((prev) => [newComment, ...prev]);
+        setComments((prev) => [newComment, ...normalizeComments(prev)]);
+        setTotalComments((count) => count + 1);
         setCommentText('');
       }
     } catch (e) {
@@ -370,51 +435,46 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   // Handle reply button press
   const handleReplyPress = (comment: any) => {
     setReplyingTo(comment);
-    setShowReplyBox(true);
     setReplyText('');
   };
 
   // Handle posting a reply
   const handlePostReply = async () => {
-    if (!replyText.trim() || !replyingTo || isPostingReply) return;
+    if (!replyText.trim() || !replyingTo || isPostingReply || !myProfileId) return;
     setIsPostingReply(true);
     try {
       const res = await api.post('/comment/addReply', {
-        body: replyText,
-        post: post._id,
-        parentComment: replyingTo._id,
-        // attachment: '', // Add support for image/file attachment if needed
+        replyMsg: replyText.trim(),
+        authorId: myProfileId,
+        commentId: replyingTo._id,
       });
-      if (res.status === 200 && res.data) {
-        console.log('Reply response data:', res.data);
-        // Ensure the reply has proper author information
+      if (res.status === 200 && res.data?._id) {
         const newReply = {
           ...res.data,
-          author: {
+          author: res.data.author || {
             fullName: myProfile?.fullName || 'You',
             profilePic: myProfile?.profilePic || default_pp_src,
-            _id: myProfile?._id
+            _id: myProfileId,
           },
-          text: res.data.text || res.data.body || replyText,
+          text: res.data.text || res.data.body || replyText.trim(),
           createdAt: res.data.createdAt || new Date().toISOString(),
-          isReply: true,
-          parentCommentId: replyingTo._id
         };
-        console.log('Processed reply:', newReply);
 
-        // Add reply to the parent comment
-        setComments((prev) => prev.map(comment => {
-          if (comment._id === replyingTo._id) {
+        setComments((prev) => prev.map((comment) => {
+          if (sameId(comment._id, replyingTo._id)) {
+            const existing = Array.isArray(comment.replies) ? comment.replies : [];
+            if (existing.some((reply: any) => sameId(reply?._id, newReply._id))) {
+              return comment;
+            }
             return {
               ...comment,
-              replies: [...(comment.replies || []), newReply]
+              replies: [...existing, newReply],
             };
           }
           return comment;
         }));
 
         setReplyText('');
-        setShowReplyBox(false);
         setReplyingTo(null);
       }
     } catch (e) {
@@ -424,20 +484,226 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     }
   };
 
-  // Cancel reply
+  const handleDeleteComment = (comment: any) => {
+    if (!comment?._id || deletingId) return;
+    Alert.alert('Delete comment', 'Delete this comment?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingId(comment._id);
+          try {
+            const res = await api.post('/comment/deleteComment', {
+              commentId: comment._id,
+              postId: post._id,
+            });
+            if (res.status === 200) {
+              setComments((prev) => prev.filter((item) => !sameId(item._id, comment._id)));
+              setTotalComments((count) => Math.max(0, count - 1));
+              if (sameId(replyingTo?._id, comment._id)) {
+                cancelReply();
+              }
+            }
+          } catch (e) {
+            console.log(e);
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteReply = (commentId: string, reply: any) => {
+    if (!reply?._id || deletingId) return;
+    Alert.alert('Delete reply', 'Delete this reply?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          setDeletingId(reply._id);
+          try {
+            const res = await api.post('/comment/deleteReply', { replyId: reply._id });
+            if (res.status === 200) {
+              setComments((prev) => prev.map((comment) => {
+                if (!sameId(comment._id, commentId)) return comment;
+                return {
+                  ...comment,
+                  replies: (comment.replies || []).filter((item: any) => !sameId(item?._id, reply._id)),
+                };
+              }));
+            }
+          } catch (e) {
+            console.log(e);
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  const handleCommentLike = async (comment: any) => {
+    if (!comment?._id || !myProfileId || likingCommentId) return;
+    const already = commentHasMyReact(comment, myProfileId);
+    setLikingCommentId(comment._id);
+    try {
+      const endpoint = already ? '/comment/removeReact' : '/comment/addReact';
+      const res = await api.post(endpoint, { commentId: comment._id, reactorId: myProfileId });
+      if (res.status === 200) {
+        const nextReacts = Array.isArray(res.data?.reacts)
+          ? res.data.reacts
+          : already
+            ? (comment.reacts || []).filter((r: any) => !sameId(r, myProfileId) && !sameId(r?._id, myProfileId))
+            : [...(comment.reacts || []), myProfileId];
+        setComments((prev) =>
+          prev.map((item) => (sameId(item._id, comment._id) ? { ...item, reacts: nextReacts } : item)),
+        );
+      }
+    } catch (e) {
+      console.log(e);
+    } finally {
+      setLikingCommentId(null);
+    }
+  };
+
   const cancelReply = () => {
     setReplyingTo(null);
-    setShowReplyBox(false);
     setReplyText('');
+  };
+
+  const renderCommentThread = (c: any, isReply = false, parentId?: string) => {
+    const body = c.text || c.body || c.content || c.message || '';
+    const liked = commentHasMyReact(c, myProfileId);
+    const reactCount = Array.isArray(c.reacts) ? c.reacts.length : 0;
+    const replies = Array.isArray(c.replies) ? c.replies.filter(isPopulatedComment) : [];
+    const isMine = sameId(c.author, myProfileId);
+    const menuOpen = commentMenuId === c._id;
+    const attachment = c.image || c.photo || c.attachment;
+    const isReplyingHere = !isReply && sameId(replyingTo?._id, c._id);
+
+    return (
+      <View key={c._id || Math.random()} style={[styles.fbCommentRow, isReply && styles.fbReplyRow]}>
+        <UserPP
+          image={c.author?.profilePic || default_pp_src}
+          isActive={false}
+          size={isReply ? 28 : 32}
+        />
+        <View style={styles.fbCommentInfo}>
+          <View style={styles.fbCommentBox}>
+            <View style={[styles.fbNameComment, { backgroundColor: commentBubbleBg }]}>
+              <Text style={[styles.fbAuthorName, { color: textColor }]}>{commentAuthorName(c)}</Text>
+              {!!body.trim() && (
+                <Text style={[styles.fbCommentText, { color: textColor }]}>{body}</Text>
+              )}
+            </View>
+            {isMine ? (
+              <View style={styles.fbOptionsWrap}>
+                <TouchableOpacity
+                  onPress={() => setCommentMenuId(menuOpen ? null : c._id)}
+                  hitSlop={8}
+                  style={styles.fbOptionsBtn}
+                >
+                  <FAIcon name="ellipsis-h" size={12} color={commentActionColor} />
+                </TouchableOpacity>
+                {menuOpen ? (
+                  <View style={[styles.fbOptionsMenu, { backgroundColor: cardBg, borderColor }]}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setCommentMenuId(null);
+                        if (isReply && parentId) handleDeleteReply(parentId, c);
+                        else handleDeleteComment(c);
+                      }}
+                      disabled={deletingId === c._id}
+                    >
+                      <Text style={[styles.fbOptionsDanger, { color: themeColors.status?.error || '#FF4444' }]}>
+                        {deletingId === c._id ? 'Deleting...' : isReply ? 'Delete Reply' : 'Delete Comment'}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : null}
+              </View>
+            ) : null}
+          </View>
+          {attachment ? (
+            <Image
+              source={{ uri: attachment }}
+              style={styles.commentAttachment}
+              onError={() => console.log('Failed to load comment attachment')}
+            />
+          ) : null}
+          <View style={styles.fbCommentReact}>
+            {!isReply ? (
+              <TouchableOpacity onPress={() => handleCommentLike(c)} disabled={likingCommentId === c._id}>
+                <Text style={[styles.fbReactLink, { color: liked ? accentColor : commentActionColor }, liked && { fontWeight: '700' }]}>
+                  {likingCommentId === c._id ? '…' : `Like${reactCount > 0 ? ` · ${reactCount}` : ''}`}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {!isReply ? (
+              <TouchableOpacity onPress={() => handleReplyPress(c)}>
+                <Text style={[styles.fbReactLink, { color: commentActionColor }]}>Reply</Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={[styles.fbCommentTime, { color: commentTimeColor }]}>
+              {c.createdAt ? moment(c.createdAt).fromNow() : ''}
+            </Text>
+            {!isReply && replies.length > 0 ? (
+              <Text style={[styles.fbReplyCount, { color: commentActionColor }]}>
+                · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+              </Text>
+            ) : null}
+          </View>
+          {isReplyingHere ? (
+            <View style={styles.fbNewReply}>
+              <View style={styles.fbReplyingToRow}>
+                <Text style={[styles.fbReplyingToLabel, { color: subTextColor }]}>
+                  Replying to <Text style={{ fontWeight: '700', color: textColor }}>{commentAuthorName(c)}</Text>
+                </Text>
+                <TouchableOpacity onPress={cancelReply} hitSlop={8}>
+                  <Icon name="close" size={14} color={subTextColor} />
+                </TouchableOpacity>
+              </View>
+              <View style={[styles.fbCommentField, { backgroundColor: inputBg, borderColor }]}>
+                <TextInput
+                  style={[styles.fbFieldText, { color: inputText }, isPostingReply ? { opacity: 0.6 } : null]}
+                  placeholder={isPostingReply ? 'Posting reply...' : `Reply to ${commentAuthorName(c)}`}
+                  placeholderTextColor={subTextColor}
+                  value={replyText}
+                  onChangeText={setReplyText}
+                  editable={!isPostingReply}
+                  returnKeyType="send"
+                  onSubmitEditing={handlePostReply}
+                />
+                <TouchableOpacity onPress={handlePostReply} disabled={isPostingReply} style={styles.fbFieldSend}>
+                  {isPostingReply ? (
+                    <ActivityIndicator size="small" color={accentColor} />
+                  ) : (
+                    <FAIcon name="paper-plane" size={14} color={accentColor} solid={false} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
+          {!isReply && replies.length > 0 ? (
+            <View style={[styles.fbRepliesThread, { borderLeftColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+              {replies.map((reply: any) => renderCommentThread(reply, true, c._id))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
   };
 
   // Render
   return (
-    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor }]}>
+    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor, shadowOpacity: feed.shadowOpacity }]}>
       <View style={styles.header}>
         {postType === 'profilePic' && (
-          <View style={styles.reasonRow}>
-            <View style={[styles.reasonBadge, { backgroundColor: FEED.postAccentSoft }]}>
+          <View style={[styles.reasonRow, { borderBottomColor: feed.postDivider }]}>
+            <View style={[styles.reasonBadge, { backgroundColor: feed.postAccentSoft }]}>
               <Icon name="photo-camera" size={12} color={accentColor} />
               <Text style={[styles.reasonBadgeText, { color: textColor }]}>Updated profile picture</Text>
             </View>
@@ -466,7 +732,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                 {post.author?.fullName || 'Unknown User'}
               </Text>
               {post.author?.isOfficial ? (
-                <View style={styles.officialBadge}>
+                <View style={[styles.officialBadge, { backgroundColor: feed.postAccentSoft }]}>
                   <Icon name="check" size={9} color="#7ce7ff" />
                 </View>
               ) : null}
@@ -661,12 +927,13 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             activeOpacity={0.92}
             style={[
               styles.attachmentContainer,
+              { backgroundColor: feed.mediaBg },
               postType === 'profilePic' && styles.attachmentProfilePic,
             ]}
           >
             <Image
               source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
-              style={postType === 'profilePic' ? styles.postProfilePic : [styles.postImage, { height: imageHeight }]}
+              style={postType === 'profilePic' ? [styles.postProfilePic, { borderColor: feed.postBorder }] : [styles.postImage, { height: imageHeight, backgroundColor: feed.mediaBg }]}
               resizeMode="cover"
               onError={() => {
                 setImageLoadError(true);
@@ -678,237 +945,121 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
         )}
       </View>
       <View style={styles.footer}>
-        <View style={[styles.countsRow, { borderBottomColor: FEED.postDivider }]}>
+        {showReactions ? (
+          <Pressable style={styles.reactDismiss} onPress={handleOutsidePress} />
+        ) : null}
+        <View style={[styles.countsRow, { borderBottomColor: feed.postDivider }]}>
           <TouchableOpacity style={styles.reactsCountLeft} onPress={openSinglePost} activeOpacity={0.7}>
-            <View style={styles.reactionIconsStack}>
-              {placedReacts.slice(0, 3).map((t, idx) => (
-                <Text key={`${t}-${idx}`} style={[styles.reactionSmallIcon, idx > 0 ? { marginLeft: -4 } : null]}>
-                  {reactionEmojiMap[t] || '👍'}
-                </Text>
-              ))}
-            </View>
+            <PlacedReactIcons placedReacts={placedReacts} />
             <Text style={[styles.countText, { color: subTextColor }]}>
-              {totalReacts > 0
-                ? `${totalReacts} ${totalReacts > 1 ? 'Reacts' : 'React'}`
-                : 'Be the first to react'}
+              {post.reacts ? totalReacts : ''} {totalReacts > 1 ? 'Reacts' : 'React'}
             </Text>
           </TouchableOpacity>
           <View style={styles.countsRight}>
             <TouchableOpacity style={styles.countItem} onPress={openSinglePost} activeOpacity={0.7}>
-              <Icon name="chat-bubble-outline" size={15} color={subTextColor} />
-              <Text style={[styles.countText, { color: subTextColor }]}>{totalComments || 0}</Text>
+              <Text style={[styles.countText, { color: subTextColor }]}>{post.comments ? totalComments : ''}</Text>
+              <FAIcon name="comment" size={13} color={subTextColor} solid={false} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.countItem} onPress={openSinglePost} activeOpacity={0.7}>
-              <Icon name="share" size={15} color={subTextColor} />
-              <Text style={[styles.countText, { color: subTextColor }]}>{totalShares || 0}</Text>
+              <Text style={[styles.countText, { color: subTextColor }]}>{post.shares ? totalShares : ''}</Text>
+              <FAIcon name="share" size={13} color={subTextColor} />
             </TouchableOpacity>
           </View>
         </View>
-        <View style={[styles.actionBar, { borderBottomColor: FEED.postDivider }]}>
-          <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
+        <View style={[styles.actionBar, { borderBottomColor: feed.postDivider }]}>
+          <View style={styles.reactButtonsWrap}>
             <TouchableOpacity
               onPress={handleLikePress}
               onLongPress={handleLikeLongPress}
               delayLongPress={450}
-              style={[styles.actionButton, styles.actionBarItem]}
+              style={[
+                styles.actionButton,
+                styles.actionBarItemFill,
+                reactType ? { backgroundColor: feed.postHover } : null,
+              ]}
             >
-              {reactType ? (
-                <Icon
-                  name={(reactionIconMap[reactType] && reactionIconMap[reactType].name) || 'thumb-up'}
-                  size={18}
-                  color={(reactionIconMap[reactType] && reactionIconMap[reactType].color) || accentColor}
-                />
-              ) : (
-                <Icon name="thumb-up-off-alt" size={18} color={subTextColor} />
-              )}
-            </TouchableOpacity>
-            {showReactions && (
-              <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
-                <View style={[styles.reactionPopup, { backgroundColor: cardBg, borderColor }]}>
-                  <TouchableOpacity onPress={() => handleSelectReaction('like')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <LikeColorIcon size={28} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleSelectReaction('love')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <LoveColorIcon size={28} />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => handleSelectReaction('haha')} style={styles.reactionButton} activeOpacity={0.7}>
-                    <HahaColorIcon size={28} />
-                  </TouchableOpacity>
+              <View style={styles.reactLikeInner}>
+                <View style={styles.reactIconSlot}>
+                  <CurrentReactIcon reactType={reactType} size={18} />
                 </View>
-                <View style={[styles.reactionCaret, { backgroundColor: cardBg, borderColor }]} />
+                {SHOW_ACTION_LABELS ? (
+                  <Text style={[styles.actionLabel, { color: reactType ? accentColor : subTextColor }]}>
+                    {getReactLabel(reactType)}
+                  </Text>
+                ) : null}
               </View>
-            )}
+            </TouchableOpacity>
+            {showReactions ? (
+              <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
+                <ReactPicker
+                  reactType={reactType}
+                  onSelect={handleSelectReaction}
+                  backgroundColor={cardBg}
+                  borderColor={borderColor}
+                />
+              </View>
+            ) : null}
           </View>
           <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem]}>
-            <Icon name="chat-bubble-outline" size={18} color={subTextColor} />
+            <FAIcon name="comment" size={16} color={subTextColor} solid={false} />
+            {SHOW_ACTION_LABELS ? (
+              <Text style={[styles.actionLabel, { color: subTextColor }]}>Comment</Text>
+            ) : null}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
-            <Icon name="share" size={18} color={subTextColor} />
-          </TouchableOpacity>
+          {!isAuth ? (
+            <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
+              <FAIcon name="share" size={16} color={subTextColor} solid={false} />
+              {SHOW_ACTION_LABELS ? (
+                <Text style={[styles.actionLabel, { color: subTextColor }]}>Share</Text>
+              ) : null}
+            </TouchableOpacity>
+          ) : (
+            <View style={[styles.actionBarItem, { width: '33%' }]} />
+          )}
+        </View>
+        <View style={styles.commentsList}>
+          {loadingComments ? (
+            <Text style={[styles.noCommentsText, { color: subTextColor }]}>Loading comments…</Text>
+          ) : comments.length === 0 ? (
+            <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet</Text>
+          ) : (
+            comments.map((c) => renderCommentThread(c))
+          )}
+          {totalComments > 3 ? (
+            <TouchableOpacity onPress={openSinglePost} style={styles.moreCommentsBtn}>
+              <Text style={[styles.moreCommentsText, { color: accentColor }]}>View more comments</Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
         <View style={styles.commentBoxContainer}>
           <View style={styles.commentInputRow}>
             <UserPP image={myProfile?.profilePic || default_pp_src} isActive={false} size={34} />
-            <TextInput
-              style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingComment ? { opacity: 0.6 } : null]}
-              placeholder="Write a comment..."
-              placeholderTextColor={subTextColor}
-              value={commentText}
-              onChangeText={setCommentText}
-              editable={!isPostingComment}
-              onFocus={() => setShowCommentBox(true)}
-              returnKeyType="send"
-              onSubmitEditing={handlePostComment}
-            />
-            <TouchableOpacity
-              style={[styles.commentPostBtn, { backgroundColor: accentColor }, isPostingComment ? { opacity: 0.7 } : null]}
-              onPress={handlePostComment}
-              disabled={isPostingComment}
-            >
-              {isPostingComment ? (
-                <ActivityIndicator size="small" color="#04222a" />
-              ) : (
-                <Icon name="send" size={16} color="#04222a" />
-              )}
-            </TouchableOpacity>
-          </View>
-          {isPostingComment && (
-            <View style={styles.inlineStatusRow}>
-              <ActivityIndicator size="small" color={accentColor} style={{ marginRight: 8 }} />
-              <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Posting comment…</Text>
-            </View>
-          )}
-        </View>
-        {showCommentBox && (
-          <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <View style={styles.commentsList}>
-              {comments.length === 0 ? (
-                <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
-              ) : (
-                comments.map((c) => (
-                  <View key={c._id || Math.random()} style={styles.commentItem}>
-                    <ProfileImage
-                      uri={c.author?.profilePic}
-                      pixelSize={72}
-                      style={[styles.commentProfilePic, { backgroundColor: inputBg, borderColor }]}
-                    />
-                    <View style={[styles.commentBody, { backgroundColor: inputBg, borderColor }]}>
-                      <Text style={[styles.commentAuthor, { color: textColor }]}>
-                        {c.author?.fullName ||
-                          c.author?.firstName ||
-                          c.author?.name ||
-                          (c.author?.user
-                            ? (
-                              <Text>
-                                {c.author.user.firstName || ''} {c.author.user.surname || ''}
-                              </Text>
-                            )
-                            : 'Unknown User'
-                          )}
-                      </Text>
-                      <Text style={[styles.commentText, { color: textColor }]}>
-                        {c.text || c.body || c.content || c.message || 'No comment text'}
-                      </Text>
-                      {c.image || c.photo || c.attachment ? (
-                        <Image
-                          source={{ uri: c.image || c.photo || c.attachment }}
-                          style={styles.commentAttachment}
-                          onError={() => console.log('Failed to load comment attachment')}
-                        />
-                      ) : null}
-                      <View style={styles.commentActions}>
-                        <View style={styles.commentMeta}>
-                          <Text style={[styles.commentTime, { color: subTextColor }]}>
-                            {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
-                          </Text>
-                        </View>
-                        <TouchableOpacity onPress={() => handleReplyPress(c)} style={[styles.replyButton, { backgroundColor: FEED.postAccentSoft, borderColor: accentColor + '4D' }]}>
-                          <Text style={[styles.replyButtonText, { color: accentColor }]}>Reply</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-
-                    {c.replies && c.replies.length > 0 && (
-                      <View style={[styles.repliesContainer, { borderLeftColor: FEED.postAccentSoft }]}>
-                        {c.replies.map((reply: any) => (
-                          <View key={reply._id || Math.random()} style={styles.replyItem}>
-                            <ProfileImage
-                              uri={reply.author?.profilePic}
-                              pixelSize={56}
-                              style={[styles.replyProfilePic, { backgroundColor: inputBg, borderColor }]}
-                            />
-                            <View style={[styles.replyBody, { backgroundColor: inputBg, borderColor }]}>
-                              <Text style={[styles.replyAuthor, { color: textColor }]}>
-                                {reply.author?.fullName ||
-                                  reply.author?.firstName ||
-                                  reply.author?.name ||
-                                  (reply.author?.user
-                                    ? (
-                                      <Text>
-                                        {reply.author.user.firstName || ''} {reply.author.user.surname || ''}
-                                      </Text>
-                                    )
-                                    : 'Unknown User'
-                                  )}
-                              </Text>
-                              <Text style={[styles.replyText, { color: textColor }]}>
-                                {reply.text || reply.body || reply.content || reply.message || 'No reply text'}
-                              </Text>
-                              <Text style={[styles.replyTime, { color: subTextColor }]}>
-                                {reply.createdAt ? moment(reply.createdAt).fromNow() : 'Unknown time'}
-                              </Text>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                ))
-              )}
-            </View>
-
-            {showReplyBox && replyingTo && (
-              <View style={[styles.replyInputContainer, { backgroundColor: inputBg, borderTopColor: borderColor }]}>
-                <View style={styles.replyInputHeader}>
-                  <Text style={[styles.replyingToText, { color: subTextColor, backgroundColor: FEED.postAccentSoft, borderColor: accentColor + '33' }]}>
-                    Replying to {replyingTo.author?.fullName || replyingTo.author?.firstName || 'Unknown'}
-                  </Text>
-                  <TouchableOpacity onPress={cancelReply} style={[styles.cancelReplyBtn, { backgroundColor: inputBg, borderColor }]}>
-                    <Icon name="close" size={16} color={subTextColor} />
-                  </TouchableOpacity>
-                </View>
-                <View style={styles.replyInputRow}>
-                  <TextInput
-                    style={[styles.replyInput, { backgroundColor: cardBg, color: inputText, borderColor }, isPostingReply ? { opacity: 0.6 } : null]}
-                    placeholder="Write a reply..."
-                    placeholderTextColor={subTextColor}
-                    value={replyText}
-                    onChangeText={setReplyText}
-                    editable={!isPostingReply}
-                  />
-                  <TouchableOpacity style={[styles.replyPostBtn, { backgroundColor: accentColor, shadowColor: accentColor }, isPostingReply ? { opacity: 0.7 } : null]} onPress={handlePostReply} disabled={isPostingReply}>
-                    {isPostingReply ? (
-                      <View style={styles.btnContentRow}>
-                        <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
-                        <Text style={styles.replyPostBtnText}>Sending</Text>
-                      </View>
-                    ) : (
-                      <Text style={styles.replyPostBtnText}>Reply</Text>
-                    )}
-                  </TouchableOpacity>
-                </View>
-                {isPostingReply && (
-                  <View style={styles.inlineStatusRow}>
-                    <ActivityIndicator size="small" color={accentColor} style={{ marginRight: 8 }} />
-                    <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Sending reply…</Text>
-                  </View>
+            <View style={[styles.fbCommentField, styles.fbComposerField, { backgroundColor: inputBg, borderColor }]}>
+              <TextInput
+                ref={commentInputRef}
+                style={[styles.fbFieldText, { color: inputText }, isPostingComment ? { opacity: 0.6 } : null]}
+                placeholder={isPostingComment ? 'Posting comment...' : 'Write a public comment…'}
+                placeholderTextColor={subTextColor}
+                value={commentText}
+                onChangeText={setCommentText}
+                editable={!isPostingComment}
+                returnKeyType="send"
+                onSubmitEditing={handlePostComment}
+              />
+              <TouchableOpacity
+                style={styles.fbFieldSend}
+                onPress={handlePostComment}
+                disabled={isPostingComment}
+              >
+                {isPostingComment ? (
+                  <ActivityIndicator size="small" color={accentColor} />
+                ) : (
+                  <FAIcon name="paper-plane" size={15} color={accentColor} solid={false} />
                 )}
-              </View>
-            )}
-          </KeyboardAvoidingView>
-        )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </View>
       <Modal visible={isShareModal} transparent animationType="slide">
         <View style={styles.modalOverlay}>
@@ -936,7 +1087,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
 const styles = StyleSheet.create({
   postContainer: {
-    backgroundColor: FEED.postBg,
     marginHorizontal: 0,
     marginBottom: 10,
     borderRadius: 12,
@@ -945,7 +1095,6 @@ const styles = StyleSheet.create({
     overflow: 'visible',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.22,
     shadowRadius: 12,
     elevation: 4,
   },
@@ -958,7 +1107,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     paddingBottom: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(255,255,255,0.07)',
+    borderBottomColor: 'transparent',
   },
   reasonBadge: {
     alignSelf: 'flex-start',
@@ -1003,7 +1152,6 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    backgroundColor: 'rgba(0, 212, 255, 0.16)',
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -1020,7 +1168,6 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   time: {
-    color: FEED.postTextMuted,
     fontSize: 12,
   },
   timeContainer: {
@@ -1049,7 +1196,6 @@ const styles = StyleSheet.create({
     lineHeight: 21.5,
   },
   attachmentContainer: {
-    backgroundColor: 'rgba(0,0,0,0.2)',
     width: '100%',
   },
   attachmentProfilePic: {
@@ -1061,7 +1207,6 @@ const styles = StyleSheet.create({
   postImage: {
     width: '100%',
     maxHeight: POST_IMAGE_MAX_HEIGHT,
-    backgroundColor: '#111',
   },
   postProfilePic: {
     width: Math.min(280, SCREEN_WIDTH - 24),
@@ -1069,12 +1214,14 @@ const styles = StyleSheet.create({
     maxWidth: '100%',
     borderRadius: Math.min(140, (SCREEN_WIDTH - 24) / 2),
     borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.1)',
+    borderColor: 'transparent',
     marginVertical: 4,
   },
   footer: {
     paddingHorizontal: 12,
     paddingBottom: 12,
+    overflow: 'visible',
+    position: 'relative',
   },
 
   reactText: {
@@ -1104,10 +1251,43 @@ const styles = StyleSheet.create({
   actionBarItem: {
     flex: 1,
     width: '33%',
+    flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'center',
     paddingVertical: 9,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     borderRadius: 10,
+  },
+  reactButtonsWrap: {
+    flex: 1,
+    width: '33%',
+    position: 'relative',
+    zIndex: 20,
+    overflow: 'visible',
+  },
+  actionBarItemFill: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  reactLikeInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactIconSlot: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  reactDismiss: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
   },
   modalOverlay: {
     flex: 1,
@@ -1219,12 +1399,10 @@ const styles = StyleSheet.create({
   },
   reactionPopupWrapper: {
     position: 'absolute',
-    bottom: 45,
-    left: '50%',
-    transform: [{ translateX: -60 }],
+    bottom: '100%',
+    left: 0,
     zIndex: 40,
-    alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 4,
   },
   reactionCaret: {
     width: 16,
@@ -1282,9 +1460,6 @@ const styles = StyleSheet.create({
   },
   commentBoxContainer: {
     paddingTop: 10,
-  },
-  commentsList: {
-    marginTop: 4,
   },
   commentInputRow: {
     flexDirection: 'row',
@@ -1363,9 +1538,9 @@ const styles = StyleSheet.create({
     marginVertical: 8,
   },
   actionLabel: {
-    fontSize: 14,
+    fontSize: SHOW_ACTION_LABELS ? 14.4 : 13.1,
     fontWeight: '600',
-    marginLeft: 6,
+    marginLeft: 5,
   },
   actionEmoji: {
     fontSize: 18,
@@ -1485,6 +1660,11 @@ const styles = StyleSheet.create({
   commentMeta: {
     flex: 1,
   },
+  commentActionButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   replyButton: {
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1492,6 +1672,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   replyButtonText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  deleteButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  deleteButtonText: {
     fontSize: 12,
     fontWeight: '600',
   },
@@ -1539,6 +1729,12 @@ const styles = StyleSheet.create({
   replyTime: {
     fontSize: 11,
     fontWeight: '500',
+  },
+  replyActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
   },
   // Reply input styles
   replyInputContainer: {
@@ -1621,6 +1817,149 @@ const styles = StyleSheet.create({
   viewPostButtonText: {
     fontSize: 14,
     fontWeight: '600',
+  },
+  commentsList: {
+    paddingVertical: 8,
+  },
+  moreCommentsBtn: {
+    marginLeft: 40,
+    paddingVertical: 6,
+  },
+  moreCommentsText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  fbCommentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginBottom: 12,
+  },
+  fbReplyRow: {
+    marginBottom: 8,
+  },
+  fbCommentInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  fbCommentBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    maxWidth: '100%',
+  },
+  fbNameComment: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 18,
+    maxWidth: '100%',
+  },
+  fbAuthorName: {
+    fontWeight: '600',
+    fontSize: 13,
+    marginBottom: 2,
+    lineHeight: 17,
+  },
+  fbCommentText: {
+    fontSize: 15,
+    lineHeight: 20,
+  },
+  fbOptionsWrap: {
+    marginLeft: 4,
+    position: 'relative',
+  },
+  fbOptionsBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fbOptionsMenu: {
+    position: 'absolute',
+    top: 24,
+    right: 0,
+    zIndex: 8,
+    minWidth: 150,
+    borderRadius: 8,
+    borderWidth: 1,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    elevation: 6,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  fbOptionsDanger: {
+    fontSize: 13,
+    fontWeight: '600',
+    paddingVertical: 6,
+  },
+  fbCommentReact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    gap: 10,
+    marginTop: 4,
+    paddingHorizontal: 2,
+  },
+  fbReactLink: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fbCommentTime: {
+    fontSize: 11,
+    fontWeight: '400',
+  },
+  fbReplyCount: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fbRepliesThread: {
+    marginTop: 8,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    gap: 8,
+  },
+  fbNewReply: {
+    marginTop: 8,
+  },
+  fbReplyingToRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+    paddingHorizontal: 2,
+  },
+  fbReplyingToLabel: {
+    fontSize: 12,
+    flex: 1,
+    marginRight: 8,
+  },
+  fbCommentField: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 40,
+    borderRadius: 22,
+    borderWidth: 1,
+    paddingLeft: 14,
+    paddingRight: 6,
+  },
+  fbComposerField: {
+    flex: 1,
+  },
+  fbFieldText: {
+    flex: 1,
+    fontSize: 14.5,
+    minHeight: 38,
+    paddingVertical: 8,
+  },
+  fbFieldSend: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

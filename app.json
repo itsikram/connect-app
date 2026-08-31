@@ -16,6 +16,7 @@
       "**/*"
     ],
     "ios": {
+      "icon": "./assets/icon.png",
       "supportsTablet": true,
       "bundleIdentifier": "com.connect.app",
       "infoPlist": {
@@ -47,9 +48,10 @@
       }
     },
     "android": {
+      "icon": "./assets/icon.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#29B1A9"
+        "backgroundColor": "#FFFFFF"
       },
       "package": "com.connect.app",
       "permissions": [
@@ -68,7 +70,11 @@
         "android.permission.READ_EXTERNAL_STORAGE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
+        "android.permission.POST_NOTIFICATIONS"
       ]
     },
     "web": {
@@ -79,7 +85,19 @@
       "expo-camera",
       "expo-location",
       "expo-file-system",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "sounds": [
+            "./src/assets/audio/ringtone_1.mp3",
+            "./src/assets/audio/ringtone_2.mp3",
+            "./src/assets/audio/ringtone_3.mp3",
+            "./src/assets/audio/ringtone_4.mp3",
+            "./src/assets/audio/ringtone_5.mp3",
+            "./src/assets/audio/default_ringtone.mp3"
+          ]
+        }
+      ],
       "expo-av",
       [
         "expo-media-library",

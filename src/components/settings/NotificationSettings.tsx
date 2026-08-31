@@ -1,44 +1,46 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  Switch,
-  Alert,
-  ActivityIndicator,
-} from 'react-native';
+import { Alert, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
-import { pushAPI } from '../../lib/api';
+import api, { pushAPI } from '../../lib/api';
 import { getOrCreateFcmToken } from '../../lib/push';
+import {
+  SettingsSectionHeader,
+  SettingsSwitchRow,
+  SettingsPrimaryButton,
+  SettingsDangerButton,
+} from './settingsUi';
 
-interface NotificationSettings {
-  friendRequestReceived: boolean;
-  friendRequestAccepted: boolean;
-  newMessageReceived: boolean;
-  newFriendPost: boolean;
-  newFriendStory: boolean;
-  newFriendWatch: boolean;
-  
-  friendRequestReceivedEmail: boolean;
-  friendRequestAcceptedEmail: boolean;
-  newMessageReceivedEmail: boolean;
-  newFriendPostEmail: boolean;
-  newFriendStoryEmail: boolean;
-  newFriendWatchEmail: boolean;
-}
+const PUSH_TOGGLES = [
+  { key: 'friendRequestReceived', label: 'Friend Request Received', help: 'Get notified when someone sends you a friend request' },
+  { key: 'friendRequestAccepted', label: 'Friend Request Accepted', help: 'Get notified when someone accepts your friend request' },
+  { key: 'newMessageReceived', label: 'New Message Received', help: 'Get notified when you receive a new message' },
+  { key: 'newFriendPost', label: "New Friend's Post", help: 'Get notified when your friends create new posts' },
+  { key: 'newFriendStory', label: "New Friend's Story", help: 'Get notified when your friends share new stories' },
+  { key: 'newFriendWatch', label: "New Friend's Watch", help: 'Get notified when your friends share new watch content' },
+] as const;
+
+const EMAIL_TOGGLES = [
+  { key: 'friendRequestReceivedEmail', label: 'Friend Request Received', help: 'Get email notifications for new friend requests' },
+  { key: 'friendRequestAcceptedEmail', label: 'Friend Request Accepted', help: 'Get email notifications when friend requests are accepted' },
+  { key: 'newMessageReceivedEmail', label: 'New Message Received', help: 'Get email notifications for new messages' },
+  { key: 'newFriendPostEmail', label: "New Friend's Post", help: 'Get email notifications for new friend posts' },
+  { key: 'newFriendStoryEmail', label: "New Friend's Story", help: 'Get email notifications for new friend stories' },
+  { key: 'newFriendWatchEmail', label: "New Friend's Watch", help: 'Get email notifications for new friend watch content' },
+] as const;
+
+type NotificationKey = typeof PUSH_TOGGLES[number]['key'] | typeof EMAIL_TOGGLES[number]['key'];
 
 const NotificationSettings = () => {
   const { colors: themeColors } = useTheme();
   const { settings, updateSettings } = useSettings();
   const { showSuccess, showError } = useToast();
+  const [isSaving, setIsSaving] = useState(false);
   const [isUnregistering, setIsUnregistering] = useState(false);
-  
-  const [notificationSettings, setNotificationSettings] = useState<NotificationSettings>({
+
+  const [notificationSettings, setNotificationSettings] = useState<Record<NotificationKey, boolean>>({
     friendRequestReceived: settings.friendRequestReceived ?? true,
     friendRequestAccepted: settings.friendRequestAccepted ?? true,
     newMessageReceived: settings.newMessageReceived ?? true,
@@ -70,16 +72,13 @@ const NotificationSettings = () => {
     });
   }, [settings]);
 
-  const handleToggle = (key: keyof NotificationSettings) => {
-    setNotificationSettings(prev => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
+  const handleToggle = (key: NotificationKey) => {
+    setNotificationSettings((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
   const handleSave = async () => {
-    console.log('Notification settings:', notificationSettings);
     try {
+      setIsSaving(true);
       const success = await updateSettings(notificationSettings);
       if (success) {
         showSuccess('Notification settings saved');
@@ -89,18 +88,17 @@ const NotificationSettings = () => {
     } catch (error) {
       console.error('Error saving notification settings:', error);
       showError('Failed to save notification settings');
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const handleUnregisterAllOtherDevices = async () => {
+  const handleUnregisterAllDevices = () => {
     Alert.alert(
-      'Unregister All Other Devices',
-      'This will unregister all other devices for notifications. Your current device will remain registered. Continue?',
+      'Unregister devices',
+      'Unregister all browsers and devices for notifications? This will unregister all other devices except the current one.',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Unregister',
           style: 'destructive',
@@ -109,15 +107,9 @@ const NotificationSettings = () => {
             try {
               const currentToken = await getOrCreateFcmToken();
               const authToken = await AsyncStorage.getItem('authToken');
-              
-              if (!currentToken) {
-                showError('Unable to get current device token');
-                setIsUnregistering(false);
-                return;
-              }
-
-              await pushAPI.unregisterAllOtherTokens(currentToken, authToken || undefined);
-              showSuccess('All other devices have been unregistered');
+              await api.post('/web-notification/unregister-all-browsers');
+              await pushAPI.unregisterAllOtherTokens(currentToken || '', authToken || undefined);
+              showSuccess('All other devices have been unregistered for notifications.');
             } catch (error) {
               console.error('Error unregistering devices:', error);
               showError('Failed to unregister devices. Please try again.');
@@ -130,261 +122,62 @@ const NotificationSettings = () => {
     );
   };
 
-  const renderSwitchSetting = (
-    key: keyof NotificationSettings,
-    label: string,
-    description: string
-  ) => (
-    <View style={[styles.switchItem, { borderBottomColor: themeColors.border.primary }]}>
-      <View style={styles.switchContent}>
-        <Text style={[styles.switchLabel, { color: themeColors.text.primary }]}>
-          {label}
-        </Text>
-        <Text style={[styles.switchDescription, { color: themeColors.text.secondary }]}>
-          {description}
-        </Text>
-      </View>
-      <Switch
-        value={notificationSettings[key]}
-        onValueChange={() => handleToggle(key)}
-        trackColor={{ false: themeColors.gray[300], true: themeColors.primary }}
-        thumbColor={notificationSettings[key] ? themeColors.text.inverse : themeColors.gray[400]}
-      />
-    </View>
-  );
-
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text.primary }]}>
-          Notification Settings
-        </Text>
-        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
-          Control how and when you receive notifications
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <SettingsSectionHeader
+        title="Notification Settings"
+        description="Choose which alerts you get on Connect and by email."
+      />
 
-      
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Push Notifications
-        </Text>
-        <Text style={[styles.sectionDescription, { color: themeColors.text.secondary }]}>
-          Receive instant notifications on your device
-        </Text>
-        
-        {renderSwitchSetting(
-          'friendRequestReceived',
-          'Friend Request Received',
-          'Get notified when someone sends you a friend request'
-        )}
-        
-        {renderSwitchSetting(
-          'friendRequestAccepted',
-          'Friend Request Accepted',
-          'Get notified when someone accepts your friend request'
-        )}
-        
-        {renderSwitchSetting(
-          'newMessageReceived',
-          'New Message Received',
-          'Get notified when you receive a new message'
-        )}
-        
-        {renderSwitchSetting(
-          'newFriendPost',
-          "New Friend's Post",
-          'Get notified when your friends create new posts'
-        )}
-        
-        {renderSwitchSetting(
-          'newFriendStory',
-          "New Friend's Story",
-          'Get notified when your friends share new stories'
-        )}
-        
-        {renderSwitchSetting(
-          'newFriendWatch',
-          "New Friend's Watch",
-          'Get notified when your friends share new watch content'
-        )}
-      </View>
+      <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Push Notifications</Text>
+      {PUSH_TOGGLES.map((item) => (
+        <SettingsSwitchRow
+          key={item.key}
+          label={item.label}
+          help={item.help}
+          value={notificationSettings[item.key]}
+          onValueChange={() => handleToggle(item.key)}
+        />
+      ))}
 
-      
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Email Notifications
-        </Text>
-        <Text style={[styles.sectionDescription, { color: themeColors.text.secondary }]}>
-          Receive email notifications for important updates
-        </Text>
-        
-        {renderSwitchSetting(
-          'friendRequestReceivedEmail',
-          'Friend Request Received',
-          'Get email notifications for new friend requests'
-        )}
-        
-        {renderSwitchSetting(
-          'friendRequestAcceptedEmail',
-          'Friend Request Accepted',
-          'Get email notifications when friend requests are accepted'
-        )}
-        
-        {renderSwitchSetting(
-          'newMessageReceivedEmail',
-          'New Message Received',
-          'Get email notifications for new messages'
-        )}
-        
-        {renderSwitchSetting(
-          'newFriendPostEmail',
-          "New Friend's Post",
-          'Get email notifications for new friend posts'
-        )}
-        
-        {renderSwitchSetting(
-          'newFriendStoryEmail',
-          "New Friend's Story",
-          'Get email notifications for new friend stories'
-        )}
-        
-        {renderSwitchSetting(
-          'newFriendWatchEmail',
-          "New Friend's Watch",
-          'Get email notifications for new friend watch content'
-        )}
-      </View>
+      <SettingsDangerButton
+        title={isUnregistering ? 'Unregistering…' : 'Unregister all browsers & devices'}
+        onPress={handleUnregisterAllDevices}
+        loading={isUnregistering}
+      />
 
-      
-      <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
-        <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
-          Notification Tips
-        </Text>
-        <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
-          • Push notifications are instant and appear on your device{'\n'}
-          • Email notifications are sent periodically and may be delayed{'\n'}
-          • You can customize these settings at any time{'\n'}
-          • Some notifications are required for app functionality
-        </Text>
-      </View>
+      <View style={styles.divider} />
 
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Device Management
-        </Text>
-        <Text style={[styles.sectionDescription, { color: themeColors.text.secondary }]}>
-          Manage notification devices registered to your account
-        </Text>
-        <TouchableOpacity 
-          style={[styles.dangerButton, { backgroundColor: themeColors.secondary || '#dc3545', opacity: isUnregistering ? 0.6 : 1 }]} 
-          onPress={handleUnregisterAllOtherDevices}
-          disabled={isUnregistering}
-        >
-          {isUnregistering ? (
-            <ActivityIndicator color={themeColors.text.inverse} />
-          ) : (
-            <Text style={[styles.dangerButtonText, { color: themeColors.text.inverse }]}>
-              Unregister All Other Devices
-            </Text>
-          )}
-        </TouchableOpacity>
-      </View>
-      
-      <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSave}>
-        <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Notification Settings</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Email Notifications</Text>
+      {EMAIL_TOGGLES.map((item) => (
+        <SettingsSwitchRow
+          key={item.key}
+          label={item.label}
+          help={item.help}
+          value={notificationSettings[item.key]}
+          onValueChange={() => handleToggle(item.key)}
+        />
+      ))}
+
+      <SettingsPrimaryButton title="Save Settings" onPress={handleSave} loading={isSaving} />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  section: {
-    marginBottom: 24,
+    paddingBottom: 8,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     marginBottom: 8,
+    marginTop: 4,
   },
-  sectionDescription: {
-    fontSize: 14,
-    marginBottom: 16,
-    lineHeight: 20,
-  },
-  switchItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  switchContent: {
-    flex: 1,
-    marginRight: 16,
-  },
-  switchLabel: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 4,
-  },
-  switchDescription: {
-    fontSize: 14,
-    lineHeight: 18,
-  },
-  infoCard: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 24,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  saveButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  saveButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  dangerButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  dangerButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+  divider: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(127,135,148,0.4)',
+    marginVertical: 16,
   },
 });
 

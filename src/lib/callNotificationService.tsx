@@ -23,6 +23,13 @@ try {
 }
 
 import { openIncomingCallScreen, bringAppToForeground } from './CallNotificationBridge';
+import {
+  getIncomingCallChannelId,
+  getRingtoneSoundName,
+  getStoredRingtoneId,
+  MAX_RINGTONE_ID,
+  normalizeRingtoneId,
+} from './ringtoneAssets';
 
 // Service to handle incoming call notifications with better reliability
 export class CallNotificationService {
@@ -44,6 +51,7 @@ export class CallNotificationService {
     channelName: string;
     isAudio: boolean;
     callerId: string;
+    ringtoneId?: string;
   }): Promise<void> {
     try {
       // Cancel any existing call notification
@@ -52,9 +60,15 @@ export class CallNotificationService {
       // Create notification ID
       this.notificationId = `incoming_call_${payload.callerId}_${Date.now()}`;
 
+      const ringtoneId = normalizeRingtoneId(
+        (payload as any).ringtoneId || (await getStoredRingtoneId()),
+      );
+      const channelId = getIncomingCallChannelId(ringtoneId);
+      const soundName = getRingtoneSoundName(ringtoneId);
+
       // Configure notification channel for calls
       if (notifee) {
-        await this.configureCallNotificationChannel();
+        await this.configureCallNotificationChannel(ringtoneId);
       }
 
       // Request permissions
@@ -91,7 +105,7 @@ export class CallNotificationService {
           title: payload.isAudio ? '📞 Incoming Audio Call' : '📹 Incoming Video Call',
           body: `Call from ${payload.callerName}`,
           android: {
-            channelId: 'incoming_calls',
+            channelId,
             importance: AndroidImportance.HIGH,
             visibility: AndroidVisibility.PUBLIC,
             category: AndroidCategory.CALL,
@@ -113,7 +127,7 @@ export class CallNotificationService {
                 },
               },
             ],
-            sound: 'default',
+            sound: soundName,
             autoCancel: false,
             ongoing: true,
           },
@@ -123,6 +137,7 @@ export class CallNotificationService {
             callerName: payload.callerName,
             channelName: payload.channelName,
             isAudio: payload.isAudio,
+            ringtoneId,
           },
         });
       } else {
@@ -139,17 +154,30 @@ export class CallNotificationService {
   }
 
   // Configure dedicated notification channel for incoming calls
-  private async configureCallNotificationChannel(): Promise<void> {
+  private async configureCallNotificationChannel(ringtoneId?: string): Promise<void> {
     if (!notifee) return;
     
     try {
+      const selectedId = normalizeRingtoneId(ringtoneId || (await getStoredRingtoneId()));
+      for (let i = 1; i <= MAX_RINGTONE_ID; i += 1) {
+        const id = String(i);
+        await notifee.createChannel({
+          id: getIncomingCallChannelId(id),
+          name: 'Incoming Calls',
+          description: 'Full-screen incoming call notifications',
+          importance: AndroidImportance.HIGH,
+          visibility: AndroidVisibility.PUBLIC,
+          sound: getRingtoneSoundName(id),
+          vibration: true,
+        });
+      }
       await notifee.createChannel({
         id: 'incoming_calls',
         name: 'Incoming Calls',
         description: 'Full-screen incoming call notifications',
         importance: AndroidImportance.HIGH,
         visibility: AndroidVisibility.PUBLIC,
-        sound: 'default',
+        sound: getRingtoneSoundName(selectedId),
         vibration: true,
       });
     } catch (error) {

@@ -126,7 +126,7 @@ export const configureNotificationsChannel = async () => {
       name: 'Incoming Calls',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 400, 200, 400],
-      sound: 'default',
+      sound: 'ringtone_1',
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
@@ -134,10 +134,20 @@ export const configureNotificationsChannel = async () => {
       name: 'Incoming Calls',
       importance: Notifications.AndroidImportance.MAX,
       vibrationPattern: [0, 400, 200, 400],
-      sound: 'default',
+      sound: 'ringtone_1',
       bypassDnd: true,
       lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     });
+    for (let i = 1; i <= 5; i += 1) {
+      await Notifications.setNotificationChannelAsync(`incoming_calls_r${i}`, {
+        name: 'Incoming Calls',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 400, 200, 400],
+        sound: `ringtone_${i}`,
+        bypassDnd: true,
+        lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+      });
+    }
   } catch (error) {
     console.error('❌ Failed to configure notification channels:', error);
   }

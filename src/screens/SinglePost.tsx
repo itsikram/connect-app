@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
     View,
     Text,
@@ -16,6 +16,7 @@ import {
     Platform,
     StatusBar,
     StyleSheet,
+    Pressable,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -29,6 +30,7 @@ type RootStackParamList = {
 };
 import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import api from '../lib/api';
@@ -36,8 +38,18 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import UserPP from '../components/UserPP';
 import { RootState } from '../store';
+import { useFeedTokens } from '../theme/feedTokens';
+import {
+    CurrentReactIcon,
+    PlacedReactIcons,
+    ReactPicker,
+    getReactLabel,
+    uniquePlacedReacts,
+} from '../components/post/ReactIcons';
+import SinglePostSkeleton from '../components/skeleton/SinglePostSkeleton';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
 
 interface Post {
     _id: string;
@@ -136,27 +148,48 @@ interface Comment {
     }>;
 }
 
+const sameId = (a: any, b: any) => String(a?._id || a || '') === String(b?._id || b || '');
+
+const isPopulatedComment = (comment: any) =>
+    !!comment &&
+    typeof comment === 'object' &&
+    !Array.isArray(comment) &&
+    Boolean(comment.body || comment.text || comment.content || comment.author);
+
+const normalizeComments = (list: any): Comment[] =>
+    (Array.isArray(list) ? list : []).filter(isPopulatedComment);
+
+const commentAuthorName = (comment: any) =>
+    comment?.author?.fullName ||
+    comment?.author?.displayName ||
+    [comment?.author?.user?.firstName, comment?.author?.user?.surname].filter(Boolean).join(' ').trim() ||
+    'User';
+
 const SinglePost = () => {
     const route = useRoute();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { postId } = route.params as { postId: string };
     
     const { colors: themeColors, isDarkMode } = useTheme();
+    const feed = useFeedTokens();
     const { emit, on, off, isConnected } = useSocket();
     const myProfile = useSelector((state: RootState) => state.profile);
+    const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
+    const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
     
     const [post, setPost] = useState<Post | null>(null);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [error, setError] = useState<string | null>(null);
-    const [showComments, setShowComments] = useState(false);
     const [commentText, setCommentText] = useState('');
     const [comments, setComments] = useState<Comment[]>([]);
-    const [loadingComments, setLoadingComments] = useState(false);
     const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
     const [replyText, setReplyText] = useState('');
+    const commentInputRef = useRef<TextInput>(null);
+    const scrollViewRef = useRef<ScrollView>(null);
     const [isPostingComment, setIsPostingComment] = useState(false);
     const [isPostingReply, setIsPostingReply] = useState(false);
+    const [deletingId, setDeletingId] = useState<string | null>(null);
     const [showReactions, setShowReactions] = useState(false);
     const [isReacted, setIsReacted] = useState(false);
     const [reactType, setReactType] = useState<string | false>(false);
@@ -168,20 +201,14 @@ const SinglePost = () => {
     const [showFullContent, setShowFullContent] = useState(false);
     const [isPostOption, setIsPostOption] = useState(false);
     const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-
-    const reactionEmojiMap: Record<string, string> = {
-        like: '👍',
-        love: '❤️',
-        haha: '😂',
-        sad: '😢',
-        angry: '😠',
-        wow: '😮',
-    };
+    const [placedReacts, setPlacedReacts] = useState<string[]>([]);
+    const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
 
     const styles = StyleSheet.create({
         container: {
             flex: 1,
             backgroundColor: themeColors.background.primary,
+            position: 'relative',
         },
         header: {
             flexDirection: 'row',
@@ -212,6 +239,7 @@ const SinglePost = () => {
             backgroundColor: themeColors.surface.primary,
             marginBottom: 12,
             borderRadius: 0,
+            overflow: 'visible',
         },
         authorSection: {
             flexDirection: 'row',
@@ -323,32 +351,103 @@ const SinglePost = () => {
         },
         actionButtons: {
             flexDirection: 'row',
-            paddingHorizontal: 20,
-            paddingVertical: 12,
+            alignItems: 'center',
+            paddingHorizontal: 12,
+            paddingVertical: 6,
             borderTopWidth: 1,
             borderTopColor: themeColors.border.primary,
+            overflow: 'visible',
+            gap: 4,
         },
         actionButton: {
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingVertical: 12,
-            paddingHorizontal: 16,
-            borderRadius: 8,
-            marginHorizontal: 4,
+            paddingVertical: 9,
+            paddingHorizontal: 10,
+            borderRadius: 10,
         },
         actionButtonActive: {
             backgroundColor: themeColors.primary + '15',
         },
         actionButtonText: {
-            color: themeColors.text.primary,
-            fontSize: 14,
+            color: themeColors.text.secondary,
+            fontSize: SHOW_ACTION_LABELS ? 14.4 : 13.1,
             fontWeight: '600',
-            marginLeft: 8,
+            marginLeft: 5,
         },
         actionButtonTextActive: {
             color: themeColors.primary,
+        },
+        webCountsRow: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            borderTopWidth: 1,
+            borderTopColor: themeColors.border.subtle || themeColors.border.primary,
+            minHeight: 40,
+        },
+        webCountItem: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+        },
+        spReactPickerWrap: {
+            position: 'absolute',
+            bottom: '100%',
+            left: 0,
+            zIndex: 40,
+            marginBottom: 4,
+        },
+        spReactDismiss: {
+            ...StyleSheet.absoluteFillObject,
+            zIndex: 8,
+        },
+        fbCommentRow: {
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 8,
+            marginBottom: 12,
+        },
+        fbNameComment: {
+            paddingVertical: 8,
+            paddingHorizontal: 12,
+            borderRadius: 18,
+            maxWidth: '100%',
+        },
+        fbAuthorName: {
+            fontWeight: '600',
+            fontSize: 13,
+            marginBottom: 2,
+            lineHeight: 17,
+        },
+        fbCommentText: {
+            fontSize: 15,
+            lineHeight: 20,
+        },
+        fbCommentReact: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginTop: 4,
+            paddingHorizontal: 2,
+        },
+        fbReactLink: {
+            fontSize: 12,
+            fontWeight: '600',
+        },
+        fbCommentTime: {
+            fontSize: 11,
+            fontWeight: '400',
+            color: '#8b93a1',
+        },
+        fbRepliesThread: {
+            marginTop: 8,
+            paddingLeft: 10,
+            borderLeftWidth: 2,
         },
         commentsSection: {
             backgroundColor: themeColors.surface.primary,
@@ -398,6 +497,16 @@ const SinglePost = () => {
         },
         replyButtonText: {
             color: themeColors.primary,
+            fontSize: 12,
+            fontWeight: '600',
+        },
+        commentActionRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 16,
+        },
+        deleteButtonText: {
+            color: themeColors.status?.error || '#FF4444',
             fontSize: 12,
             fontWeight: '600',
         },
@@ -706,11 +815,13 @@ const SinglePost = () => {
             console.log('posts data', response.data);
             if (response.status === 200) {
                 const postData = response.data.post || response.data;
+                const nextComments = normalizeComments(postData.comments);
                 setPost(postData);
-                setComments(postData.comments || []);
-                setTotalComments(postData.comments?.length || 0);
+                setComments(nextComments);
+                setTotalComments(Array.isArray(postData.comments) ? postData.comments.length : nextComments.length);
                 setTotalReacts(postData.reacts?.length || 0);
                 setTotalShares(postData.shares?.length || 0);
+                setPlacedReacts(uniquePlacedReacts(postData.reacts));
                 
                 // Check if user has reacted
                 if (postData.reacts && myProfile?._id) {
@@ -744,8 +855,11 @@ const SinglePost = () => {
         if (!isConnected || !post) return;
 
         const handleNewComment = (data: any) => {
-            if (data.postId === post._id) {
-                setComments(prev => [...prev, data.comment]);
+            if (data.postId === post._id && isPopulatedComment(data.comment)) {
+                setComments(prev => {
+                    if (prev.some((item) => sameId(item._id, data.comment._id))) return prev;
+                    return [...prev, data.comment];
+                });
                 setTotalComments(prev => prev + 1);
             }
         };
@@ -800,6 +914,7 @@ const SinglePost = () => {
                 }
                 setIsReacted(true);
                 setReactType(type);
+                setPlacedReacts((prev) => (prev.includes(type) ? prev : uniquePlacedReacts([...prev.map((k) => ({ type: k })), { type }])));
                 emit('newReaction', { postId: post._id, profileId: myProfile._id, type });
             }
         } catch (err) {
@@ -816,24 +931,24 @@ const SinglePost = () => {
             const res = await api.post('/comment/addComment', {
                 body: commentText.trim(),
                 post: post._id,
-                // attachment: '', // Add support for image/file attachment if needed
             });
 
-            if (res.status === 200 && res.data) {
-                console.log('Comment response data:', res.data);
-                // Ensure the comment has proper author information
+            if (res.status === 200 && res.data?._id) {
                 const newComment = {
                     ...res.data,
-                    author: {
+                    author: res.data.author || {
                         fullName: myProfile?.fullName || 'You',
                         profilePic: myProfile?.profilePic || '',
                         _id: myProfile?._id
                     },
                     content: res.data.text || res.data.body || res.data.content || commentText.trim(),
-                    createdAt: res.data.createdAt || new Date().toISOString()
+                    createdAt: res.data.createdAt || new Date().toISOString(),
+                    replies: Array.isArray(res.data.replies) ? res.data.replies : [],
                 };
-                console.log('Processed comment:', newComment);
-                setComments(prev => [newComment, ...prev]);
+                setComments(prev => {
+                    if (prev.some((item) => sameId(item._id, newComment._id))) return prev;
+                    return [newComment, ...prev];
+                });
                 setTotalComments(prev => prev + 1);
                 setCommentText('');
                 emit('newComment', { postId: post._id, comment: newComment });
@@ -851,35 +966,34 @@ const SinglePost = () => {
         setIsPostingReply(true);
         try {
             const res = await api.post('/comment/addReply', {
-                body: replyText.trim(),
-                post: post._id,
-                parentComment: replyingTo._id,
-                // attachment: '', // Add support for image/file attachment if needed
+                replyMsg: replyText.trim(),
+                authorId: myProfile._id,
+                commentId: replyingTo._id,
             });
 
-            if (res.status === 200 && res.data) {
-                console.log('Reply response data:', res.data);
-                // Ensure the reply has proper author information
+            if (res.status === 200 && res.data?._id) {
                 const newReply = {
                     ...res.data,
-                    author: {
+                    author: res.data.author || {
                         fullName: myProfile?.fullName || 'You',
                         profilePic: myProfile?.profilePic || '',
-                        _id: myProfile?._id
+                        _id: myProfile._id
                     },
                     content: res.data.text || res.data.body || res.data.content || replyText.trim(),
                     createdAt: res.data.createdAt || new Date().toISOString(),
                     isReply: true,
                     parentCommentId: replyingTo._id
                 };
-                console.log('Processed reply:', newReply);
 
-                // Add reply to the parent comment
                 setComments(prev => prev.map(comment => {
                     if (comment._id === replyingTo._id) {
+                        const existing = Array.isArray(comment.replies) ? comment.replies : [];
+                        if (existing.some((reply: any) => String(reply?._id) === String(newReply._id))) {
+                            return comment;
+                        }
                         return {
                             ...comment,
-                            replies: [...(comment.replies || []), newReply]
+                            replies: [...existing, newReply]
                         };
                     }
                     return comment;
@@ -894,6 +1008,47 @@ const SinglePost = () => {
         } finally {
             setIsPostingReply(false);
         }
+    };
+
+    const handleDeleteComment = (comment: Comment, isReply = false, parentId?: string) => {
+        if (!comment?._id || deletingId) return;
+        Alert.alert(isReply ? 'Delete reply' : 'Delete comment', isReply ? 'Delete this reply?' : 'Delete this comment?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    setDeletingId(comment._id);
+                    try {
+                        const res = isReply
+                            ? await api.post('/comment/deleteReply', { replyId: comment._id })
+                            : await api.post('/comment/deleteComment', { commentId: comment._id, postId: post?._id });
+                        if (res.status === 200) {
+                            if (isReply && parentId) {
+                                setComments((prev) => prev.map((item) => {
+                                    if (item._id !== parentId) return item;
+                                    return {
+                                        ...item,
+                                        replies: (item.replies || []).filter((reply: any) => reply?._id !== comment._id),
+                                    };
+                                }));
+                            } else {
+                                setComments((prev) => prev.filter((item) => item._id !== comment._id));
+                                setTotalComments((count) => Math.max(0, count - 1));
+                                if (replyingTo?._id === comment._id) {
+                                    setReplyingTo(null);
+                                    setReplyText('');
+                                }
+                            }
+                        }
+                    } catch (err: any) {
+                        Alert.alert('Error', err?.response?.data?.message || 'Failed to delete');
+                    } finally {
+                        setDeletingId(null);
+                    }
+                },
+            },
+        ]);
     };
 
     const handleShare = async () => {
@@ -947,100 +1102,114 @@ const SinglePost = () => {
     };
 
     const renderReactionButton = () => (
-        <TouchableOpacity
-            onPress={() => setShowReactions(!showReactions)}
-            style={[
-                styles.actionButton,
-                isReacted && styles.actionButtonActive,
-            ]}
-        >
-            <Text style={styles.reactionEmoji}>
-                {isReacted && reactType ? reactionEmojiMap[reactType] : '👍'}
-            </Text>
-            <Text style={[
-                styles.actionButtonText,
-                isReacted && styles.actionButtonTextActive,
-            ]}>
-                {totalReacts > 0 ? totalReacts : 'Like'}
-            </Text>
-        </TouchableOpacity>
+        <View style={{ flex: 1, position: 'relative' }}>
+            <TouchableOpacity
+                onPress={() => handleReaction('like')}
+                onLongPress={() => setShowReactions(true)}
+                delayLongPress={450}
+                style={[
+                    styles.actionButton,
+                    isReacted && styles.actionButtonActive,
+                ]}
+            >
+                <CurrentReactIcon reactType={reactType} size={18} />
+                {SHOW_ACTION_LABELS ? (
+                    <Text style={[
+                        styles.actionButtonText,
+                        isReacted && styles.actionButtonTextActive,
+                    ]}>
+                        {getReactLabel(reactType)}
+                    </Text>
+                ) : null}
+            </TouchableOpacity>
+            {showReactions ? (
+                <View style={styles.spReactPickerWrap}>
+                    <ReactPicker
+                        reactType={reactType}
+                        onSelect={(type) => handleReaction(type)}
+                        backgroundColor={feed.postBg}
+                        borderColor={feed.postBorder}
+                    />
+                </View>
+            ) : null}
+        </View>
     );
 
     const renderReactionsModal = () => (
-        <Modal
-            visible={showReactions}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowReactions(false)}
-        >
-            <TouchableOpacity
-                style={styles.reactionsModal}
-                onPress={() => setShowReactions(false)}
-            >
-                <View style={styles.reactionsContainer}>
-                    {Object.entries(reactionEmojiMap).map(([type, emoji]) => (
-                        <TouchableOpacity
-                            key={type}
-                            onPress={() => handleReaction(type)}
-                            style={[
-                                styles.reactionButton,
-                                reactType === type && styles.reactionButtonActive,
-                            ]}
-                        >
-                            <Text style={styles.reactionEmoji}>{emoji}</Text>
-                        </TouchableOpacity>
-                    ))}
-                </View>
-            </TouchableOpacity>
-        </Modal>
+        showReactions ? (
+            <Pressable style={styles.spReactDismiss} onPress={() => setShowReactions(false)} />
+        ) : null
     );
 
-    const renderComment = (comment: Comment, isReply = false) => (
-        <View key={comment._id} style={[
-            styles.commentItem,
-            isReply && { marginLeft: 20, backgroundColor: themeColors.gray[50] }
-        ]}>
-            <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+    const renderComment = (comment: Comment, isReply = false, parentId?: string) => {
+        const body = comment.content || comment.text || comment.body || '';
+        const replies = normalizeComments(comment.replies);
+        const isMine = sameId(comment.author, myProfile?._id);
+        const menuOpen = commentMenuId === comment._id;
+        return (
+            <View key={comment._id} style={[styles.fbCommentRow, isReply && { marginBottom: 8 }]}>
                 <UserPP
                     image={comment.author?.profilePic || ''}
                     size={isReply ? 28 : 32}
                     isActive={false}
                 />
-                <View style={{ flex: 1, marginLeft: 12 }}>
-                    <View style={styles.commentHeader}>
-                        <Text style={styles.commentAuthor}>
-                            {comment.author?.fullName ||
-                                comment.author?.firstName ||
-                                comment.author?.name ||
-                                (comment.author?.user
-                                    ? `${comment.author.user.firstName || ''} ${comment.author.user.surname || ''}`.trim()
-                                    : 'Unknown User')
-                            }
-                        </Text>
-                        <Text style={styles.commentTime}>
-                            {comment.createdAt ? moment(comment.createdAt).fromNow() : 'Unknown time'}
-                        </Text>
+                <View style={{ flex: 1, minWidth: 0 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                        <View style={[styles.fbNameComment, { backgroundColor: commentBubbleBg }]}>
+                            <Text style={[styles.fbAuthorName, { color: themeColors.text.primary }]}>
+                                {commentAuthorName(comment)}
+                            </Text>
+                            {!!body.trim() && (
+                                <Text style={[styles.fbCommentText, { color: themeColors.text.primary }]}>{body}</Text>
+                            )}
+                        </View>
+                        {isMine ? (
+                            <TouchableOpacity
+                                onPress={() => setCommentMenuId(menuOpen ? null : comment._id)}
+                                hitSlop={8}
+                                style={{ marginLeft: 4, padding: 4 }}
+                            >
+                                <FAIcon name="ellipsis-h" size={12} color={commentActionColor} />
+                            </TouchableOpacity>
+                        ) : null}
                     </View>
-                    <Text style={styles.commentContent}>
-                        {comment.content || comment.text || comment.body || 'No comment text'}
-                    </Text>
-                    {!isReply && (
+                    {menuOpen ? (
                         <TouchableOpacity
-                            onPress={() => setReplyingTo(comment)}
-                            style={styles.replyButton}
+                            onPress={() => {
+                                setCommentMenuId(null);
+                                handleDeleteComment(comment, isReply, parentId);
+                            }}
+                            style={{ paddingVertical: 6, paddingHorizontal: 4 }}
                         >
-                            <Text style={styles.replyButtonText}>
-                                Reply
+                            <Text style={styles.deleteButtonText}>
+                                {deletingId === comment._id ? 'Deleting...' : isReply ? 'Delete Reply' : 'Delete Comment'}
                             </Text>
                         </TouchableOpacity>
-                    )}
+                    ) : null}
+                    <View style={styles.fbCommentReact}>
+                        {!isReply ? (
+                            <TouchableOpacity onPress={() => setReplyingTo(comment)}>
+                                <Text style={[styles.fbReactLink, { color: commentActionColor }]}>Reply</Text>
+                            </TouchableOpacity>
+                        ) : null}
+                        <Text style={styles.fbCommentTime}>
+                            {comment.createdAt ? moment(comment.createdAt).fromNow() : ''}
+                        </Text>
+                        {!isReply && replies.length > 0 ? (
+                            <Text style={[styles.fbReactLink, { color: commentActionColor }]}>
+                                · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+                            </Text>
+                        ) : null}
+                    </View>
+                    {!isReply && replies.length > 0 ? (
+                        <View style={[styles.fbRepliesThread, { borderLeftColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
+                            {replies.map(reply => renderComment(reply, true, comment._id))}
+                        </View>
+                    ) : null}
                 </View>
             </View>
-            
-            {/* Render replies */}
-            {comment.replies?.map(reply => renderComment(reply, true))}
-        </View>
-    );
+        );
+    };
 
     if (loading || !myProfile) {
         return (
@@ -1049,12 +1218,18 @@ const SinglePost = () => {
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
                 />
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="large" color={themeColors.primary} />
-                    <Text style={styles.loadingText}>
-                        {!myProfile ? 'Loading user profile...' : 'Loading post...'}
+                <View style={styles.header}>
+                    <TouchableOpacity
+                        onPress={() => navigation.goBack()}
+                        style={styles.backButton}
+                    >
+                        <Icon name="arrow-back" size={24} color={themeColors.text.primary} />
+                    </TouchableOpacity>
+                    <Text style={styles.headerTitle}>
+                        Post
                     </Text>
                 </View>
+                <SinglePostSkeleton />
             </SafeAreaView>
         );
     }
@@ -1090,6 +1265,11 @@ const SinglePost = () => {
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                 backgroundColor={themeColors.surface.header} 
             />
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={0}
+            >
             
             {/* Header */}
             <View style={styles.header}>
@@ -1105,7 +1285,9 @@ const SinglePost = () => {
             </View>
 
             <ScrollView
+                ref={scrollViewRef}
                 style={{ flex: 1 }}
+                keyboardShouldPersistTaps="handled"
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -1191,165 +1373,141 @@ const SinglePost = () => {
                     )}
 
                     {/* Stats */}
-                    <View style={styles.statsSection}>
+                    <View style={styles.webCountsRow}>
                         <View style={styles.statsLeft}>
-                            {totalReacts > 0 && (
-                                <View style={styles.reactionStats}>
-                                    <Text style={styles.reactionEmojiSmall}>
-                                        {isReacted && reactType ? reactionEmojiMap[reactType] : '👍'}
-                                    </Text>
-                                    <Text style={styles.statsText}>
-                                        {totalReacts} {totalReacts === 1 ? 'reaction' : 'reactions'}
-                                    </Text>
-                                </View>
-                            )}
+                            <PlacedReactIcons placedReacts={placedReacts} />
+                            <Text style={styles.statsText}>
+                                {post.reacts ? totalReacts : ''} {totalReacts > 1 ? 'Reacts' : 'React'}
+                            </Text>
                         </View>
                         <View style={styles.statsRight}>
-                            <Text style={styles.statsText}>
-                                {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
-                            </Text>
-                            <Text style={styles.statsText}>
-                                {totalShares} {totalShares === 1 ? 'share' : 'shares'}
-                            </Text>
+                            <View style={styles.webCountItem}>
+                                <Text style={styles.statsText}>{post.comments ? totalComments : ''}</Text>
+                                <FAIcon name="comment" size={13} color={themeColors.text.secondary} solid={false} />
+                            </View>
+                            <View style={styles.webCountItem}>
+                                <Text style={styles.statsText}>{post.shares ? totalShares : ''}</Text>
+                                <FAIcon name="share" size={13} color={themeColors.text.secondary} />
+                            </View>
                         </View>
                     </View>
 
                     {/* Action Buttons */}
-                    <View style={styles.actionButtons}>
+                    <View style={[styles.actionButtons, { overflow: 'visible' }]}>
                         {renderReactionButton()}
                         <TouchableOpacity
-                            onPress={() => setShowComments(!showComments)}
-                            style={[
-                                styles.actionButton,
-                                showComments && styles.actionButtonActive,
-                            ]}
-                        >
-                            <Icon name="comment" size={18} color={showComments ? themeColors.primary : themeColors.text.primary} />
-                            <Text style={[
-                                styles.actionButtonText,
-                                showComments && styles.actionButtonTextActive,
-                            ]}>
-                                Comment
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            onPress={handleShare}
+                            onPress={() => {
+                                scrollViewRef.current?.scrollToEnd({ animated: true });
+                                commentInputRef.current?.focus();
+                            }}
                             style={styles.actionButton}
                         >
-                            <Icon name="share" size={18} color={themeColors.text.primary} />
-                            <Text style={styles.actionButtonText}>
-                                Share
-                            </Text>
+                            <FAIcon name="comment" size={16} color={themeColors.text.secondary} solid={false} />
+                            {SHOW_ACTION_LABELS ? (
+                                <Text style={styles.actionButtonText}>Comment</Text>
+                            ) : null}
                         </TouchableOpacity>
+                        {post.author?._id !== myProfile?._id ? (
+                            <TouchableOpacity
+                                onPress={handleShare}
+                                style={styles.actionButton}
+                            >
+                                <FAIcon name="share" size={16} color={themeColors.text.secondary} solid={false} />
+                                {SHOW_ACTION_LABELS ? (
+                                    <Text style={styles.actionButtonText}>Share</Text>
+                                ) : null}
+                            </TouchableOpacity>
+                        ) : (
+                            <View style={styles.actionButton} />
+                        )}
                     </View>
                 </View>
 
-                {/* Comments Section */}
-                {showComments && (
-                    <View style={styles.commentsSection}>
-                        <View style={styles.commentsHeader}>
-                            <Text style={styles.commentsTitle}>
-                                Comments ({totalComments})
-                            </Text>
-                        </View>
-
-                        {/* Comments List */}
-                        {comments.length > 0 ? (
-                            comments.map(comment => renderComment(comment))
-                        ) : (
-                            <View style={{ padding: 20, alignItems: 'center' }}>
-                                <Icon name="comment" size={48} color={themeColors.text.secondary} />
-                                <Text style={{ color: themeColors.text.secondary, marginTop: 8, fontSize: 16 }}>
-                                    No comments yet
-                                </Text>
-                                <Text style={{ color: themeColors.text.secondary, fontSize: 14, textAlign: 'center', marginTop: 4 }}>
-                                    Be the first to comment on this post
-                                </Text>
-                            </View>
-                        )}
-
-                        {/* Comment Input */}
-                        <View style={styles.commentInput}>
-                            <UserPP
-                                image={myProfile?.profilePic || ''}
-                                size={36}
-                                isActive={false}
-                            />
-                            <View style={styles.inputContainer}>
-                                <TextInput
-                                    value={commentText}
-                                    onChangeText={setCommentText}
-                                    placeholder="Write a comment..."
-                                    placeholderTextColor={themeColors.text.secondary}
-                                    style={styles.textInput}
-                                    multiline
-                                />
-                                <TouchableOpacity
-                                    onPress={handleComment}
-                                    disabled={!commentText.trim() || isPostingComment}
-                                    style={[
-                                        styles.sendButton,
-                                        { opacity: (commentText.trim() && !isPostingComment) ? 1 : 0.5 }
-                                    ]}
-                                >
-                                    {isPostingComment ? (
-                                        <ActivityIndicator size="small" color={themeColors.primary} />
-                                    ) : (
-                                        <Icon name="send" size={20} color={themeColors.primary} />
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-
-                        {/* Reply Input */}
-                        {replyingTo && (
-                            <View style={[
-                                styles.commentInput,
-                                { backgroundColor: themeColors.gray[50] }
-                            ]}>
-                                <UserPP
-                                    image={myProfile?.profilePic || ''}
-                                    size={32}
-                                    isActive={false}
-                                />
-                                <View style={[
-                                    styles.inputContainer,
-                                    { borderRadius: 20 }
-                                ]}>
-                                    <TextInput
-                                        value={replyText}
-                                        onChangeText={setReplyText}
-                                        placeholder={`Reply to ${replyingTo.author.fullName}...`}
-                                        placeholderTextColor={themeColors.text.secondary}
-                                        style={styles.textInput}
-                                        multiline
-                                    />
-                                    <TouchableOpacity
-                                        onPress={handleReply}
-                                        disabled={!replyText.trim() || isPostingReply}
-                                        style={[
-                                            styles.sendButton,
-                                            { opacity: (replyText.trim() && !isPostingReply) ? 1 : 0.5 }
-                                        ]}
-                                    >
-                                        {isPostingReply ? (
-                                            <ActivityIndicator size="small" color={themeColors.primary} />
-                                        ) : (
-                                            <Icon name="send" size={18} color={themeColors.primary} />
-                                        )}
-                                    </TouchableOpacity>
-                                </View>
-                                <TouchableOpacity
-                                    onPress={() => setReplyingTo(null)}
-                                    style={{ marginLeft: 8, padding: 8 }}
-                                >
-                                    <Icon name="close" size={20} color={themeColors.text.secondary} />
-                                </TouchableOpacity>
-                            </View>
-                        )}
-                    </View>
-                )}
+                <View style={[styles.commentsSection, { paddingHorizontal: 12, paddingTop: 8 }]}>
+                    {comments.length > 0 ? (
+                        comments.map(comment => renderComment(comment))
+                    ) : (
+                        <Text style={{ color: themeColors.text.secondary, textAlign: 'center', marginVertical: 8, fontSize: 14 }}>
+                            No comments yet
+                        </Text>
+                    )}
+                </View>
             </ScrollView>
+
+            {replyingTo ? (
+                <View style={[styles.commentInput, { backgroundColor: themeColors.surface.secondary }]}>
+                    <UserPP
+                        image={myProfile?.profilePic || ''}
+                        size={32}
+                        isActive={false}
+                    />
+                    <View style={[styles.inputContainer, { borderRadius: 20 }]}>
+                        <TextInput
+                            value={replyText}
+                            onChangeText={setReplyText}
+                            placeholder={`Reply to ${commentAuthorName(replyingTo)}...`}
+                            placeholderTextColor={themeColors.text.secondary}
+                            style={styles.textInput}
+                            multiline
+                            autoFocus
+                        />
+                        <TouchableOpacity
+                            onPress={handleReply}
+                            disabled={!replyText.trim() || isPostingReply}
+                            style={[
+                                styles.sendButton,
+                                { opacity: (replyText.trim() && !isPostingReply) ? 1 : 0.5 }
+                            ]}
+                        >
+                            {isPostingReply ? (
+                                <ActivityIndicator size="small" color={themeColors.primary} />
+                            ) : (
+                                <Icon name="send" size={18} color={themeColors.primary} />
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                        onPress={() => { setReplyingTo(null); setReplyText(''); }}
+                        style={{ marginLeft: 8, padding: 8 }}
+                    >
+                        <Icon name="close" size={20} color={themeColors.text.secondary} />
+                    </TouchableOpacity>
+                </View>
+            ) : (
+                <View style={[styles.commentInput, { backgroundColor: themeColors.surface.primary }]}>
+                    <UserPP
+                        image={myProfile?.profilePic || ''}
+                        size={36}
+                        isActive={false}
+                    />
+                    <View style={styles.inputContainer}>
+                        <TextInput
+                            ref={commentInputRef}
+                            value={commentText}
+                            onChangeText={setCommentText}
+                            placeholder="Write a public comment…"
+                            placeholderTextColor={themeColors.text.secondary}
+                            style={styles.textInput}
+                            multiline
+                        />
+                        <TouchableOpacity
+                            onPress={handleComment}
+                            disabled={!commentText.trim() || isPostingComment}
+                            style={[
+                                styles.sendButton,
+                                { opacity: (commentText.trim() && !isPostingComment) ? 1 : 0.5 }
+                            ]}
+                        >
+                            {isPostingComment ? (
+                                <ActivityIndicator size="small" color={themeColors.primary} />
+                            ) : (
+                                <Icon name="send" size={20} color={themeColors.primary} />
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
+            </KeyboardAvoidingView>
 
             {/* Image Modal */}
             <Modal

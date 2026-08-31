@@ -9,7 +9,7 @@ import api from '../lib/api';
 import { ModernButton } from './modern';
 import { useModernToast } from '../contexts/ModernToastContext';
 import ProfileImage from './ProfileImage';
-import { FEED } from '../theme/feedTokens';
+import { useFeedTokens } from '../theme/feedTokens';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -217,6 +217,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const textInputPlaceholder = `What's On Your Mind ${user?.firstName || 'there'}?`;
 
   // Theme colors
+  const feed = useFeedTokens();
   const cardBg = themeColors.surface.primary;
   const modalBg = themeColors.surface.primary;
   const textColor = themeColors.text.primary;
@@ -225,21 +226,21 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const borderColor = themeColors.border.primary;
 
   return (
-    <View style={styles.composerCard}>
-      <View style={styles.topRow}>
+    <View style={[styles.composerCard, { backgroundColor: feed.composerBg, borderColor: feed.cardBorder }]}>
+      <View style={[styles.topRow, { borderBottomColor: feed.postDivider }]}>
         <View style={styles.profilePicWrapper}>
           {user?.profile?.profilePic ? (
-            <ProfileImage uri={user.profile.profilePic} pixelSize={80} style={styles.profilePic} />
+            <ProfileImage uri={user.profile.profilePic} pixelSize={80} style={[styles.profilePic, { backgroundColor: feed.composerField }]} />
           ) : (
-            <Image source={require('../assets/images/logo.png')} style={styles.profilePic} />
+            <Image source={require('../assets/images/logo.png')} style={[styles.profilePic, { backgroundColor: feed.composerField }]} />
           )}
         </View>
         <TouchableOpacity
-          style={styles.inputWrapper}
+          style={[styles.inputWrapper, { backgroundColor: feed.composerField, borderColor: feed.postBorder }]}
           onPress={() => openModal()}
           activeOpacity={0.7}
         >
-          <Text style={styles.inputPlaceholder} numberOfLines={1}>{textInputPlaceholder}</Text>
+          <Text style={[styles.inputPlaceholder, { color: feed.postTextMuted }]} numberOfLines={1}>{textInputPlaceholder}</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.bottomRow}>
@@ -249,7 +250,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           activeOpacity={0.75}
         >
           <Icon name="photo-library" size={22} color="#45bd62" />
-          <Text style={styles.composerActionText}>Photo/video</Text>
+          <Text style={[styles.composerActionText, { color: feed.postText }]}>Photo/video</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={styles.composerAction}
@@ -257,7 +258,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           activeOpacity={0.75}
         >
           <Icon name="videocam" size={22} color="#f3425f" />
-          <Text style={styles.composerActionText}>Live Video</Text>
+          <Text style={[styles.composerActionText, { color: feed.postText }]}>Live Video</Text>
         </TouchableOpacity>
       </View>
 
@@ -269,16 +270,17 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       >
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
           <TouchableOpacity style={[styles.modalContent, { backgroundColor: modalBg }]} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
-            <View style={[styles.modalHeader, { borderBottomColor: borderColor, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 16 }]}>
-              <Text style={[styles.modalTitle, { color: textColor, fontSize: 20, fontWeight: '600', fontFamily: 'Inter-SemiBold' }]}>Create a Post</Text>
-              <ModernButton
-                title=""
+            <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
+              <Text style={[styles.modalTitle, { color: textColor }]} numberOfLines={1}>Create a Post</Text>
+              <TouchableOpacity
                 onPress={closeModal}
-                variant="ghost"
-                size="small"
-                icon={<Icon name="close" size={20} color={textColor} />}
-                style={{ width: 40, height: 40, padding: 0 }}
-              />
+                style={[styles.closeButton, { backgroundColor: feed.chipBg, borderColor: feed.postBorder }]}
+                hitSlop={8}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+              >
+                <Icon name="close" size={22} color={textColor} />
+              </TouchableOpacity>
             </View>
             <View style={styles.modalBody}>
               <View style={styles.cpmHeader}>
@@ -444,13 +446,11 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
 
 const styles = StyleSheet.create({
   composerCard: {
-    backgroundColor: FEED.composerBg,
     padding: 10,
     borderRadius: 12,
     marginTop: 12,
     marginBottom: 10,
     borderWidth: 1,
-    borderColor: FEED.cardBorder,
   },
   container: {
     backgroundColor: '#fff',
@@ -468,7 +468,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: FEED.postDivider,
   },
   profilePicWrapper: {
     marginRight: 12,
@@ -477,21 +476,17 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: FEED.composerField,
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: FEED.composerField,
     borderRadius: 25,
     paddingVertical: 8,
     paddingHorizontal: 14,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: FEED.postBorder,
     minHeight: 40,
   },
   inputPlaceholder: {
-    color: FEED.postTextMuted,
     fontSize: 14,
     fontWeight: '400',
   },
@@ -511,7 +506,6 @@ const styles = StyleSheet.create({
   },
   composerActionText: {
     marginTop: 4,
-    color: FEED.postText,
     fontWeight: '600',
     fontSize: 12,
   },
@@ -556,12 +550,12 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     paddingBottom: 12,
     borderBottomWidth: 1,
-    borderBottomColor: '#F1F3F4',
+    gap: 12,
   },
   modalTitle: {
+    flex: 1,
     fontSize: 20,
     fontWeight: '700',
-    color: '#212529',
   },
   modalBody: {},
   cpmHeader: {
@@ -695,11 +689,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   closeButton: {
-    padding: 8,
+    width: 40,
+    height: 40,
     borderRadius: 20,
-    backgroundColor: '#F8F9FA',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
     borderWidth: 1,
-    borderColor: '#F1F3F4',
   },
 });
 

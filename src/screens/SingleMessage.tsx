@@ -29,8 +29,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 // react-native-permissions replaced with expo-permissions for Expo compatibility
-import { Video, Audio } from 'expo-av';
-import * as Speech from 'expo-speech';
+import { Audio } from 'expo-av';
+import useComposerLiveTranscribe, {
+    requestChatMicPermission,
+    restoreChatPlaybackAudioMode,
+    setChatRecordingAudioMode,
+} from '../hooks/useComposerLiveTranscribe';
 // Audio recording functionality moved to expo-av
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatBubblesSkeleton, ChatComposerSkeleton, ChatPageSkeleton } from '../components/skeleton/ChatSkeleton';
@@ -59,6 +63,8 @@ import ChatSettingsModal from '../components/ChatSettingsModal';
 import LoveEmojiRain from '../components/LoveEmojiRain';
 import { LinearGradient } from 'expo-linear-gradient';
 import { upsertConfirmedMessage, mergeHistoryWithLive, isConversationMessage } from '../utils/optimisticMessage';
+import { playSpeakPayload, stopSpokenPlayback } from '../lib/speakMessagePlayback';
+import { createPlayableVoiceSound, isAudioAttachmentUrl } from '../lib/voiceMessageAudio';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 
@@ -106,9 +112,16 @@ const isValidImageUrl = (url: string): boolean => {
     return /^https?:\/\/.+\.(jpg|jpeg|png|gif|bmp|webp|svg)$/i.test(url);
 };
 
-const isAudioUrl = (url: string): boolean => {
-    if (typeof url !== 'string') return false;
-    return /^https?:\/\/.+\.(mp3|m4a|aac|ogg|oga|opus|wav|webm)$/i.test(url);
+const isAudioUrl = (url: string): boolean => isAudioAttachmentUrl(url);
+
+const VOICE_MESSAGE_RECORDING: Audio.RecordingOptions = {
+    ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
+    isMeteringEnabled: true,
+};
+
+const meteringToLevel = (metering?: number | null) => {
+    if (typeof metering !== 'number' || !Number.isFinite(metering)) return 0.12;
+    return Math.max(0.08, Math.min(1, (metering + 48) / 48));
 };
 
 const getMessageTime = (timestamp: Date | string) => {
@@ -283,20 +296,36 @@ const SingleMessage = () => {
     
     React.useEffect(() => {
         return () => {
-            // Clean up recording on unmount
+            if (recordTimerRef.current) {
+                clearInterval(recordTimerRef.current);
+                recordTimerRef.current = null;
+            }
             if (recordingRef.current) {
                 recordingRef.current.stopAndUnloadAsync();
                 recordingRef.current = null;
+            }
+            if (voiceSoundRef.current) {
+                voiceSoundRef.current.unloadAsync().catch(() => {});
+                voiceSoundRef.current = null;
             }
         };
     }, []);
     const [isRecording, setIsRecording] = useState(false);
     const [recordSecs, setRecordSecs] = useState(0);
     const [recordTime, setRecordTime] = useState('00:00');
+    const [recordMeter, setRecordMeter] = useState(0.12);
     const [isUploadingAudio, setIsUploadingAudio] = useState(false);
+    const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+    const recordStartedAtRef = useRef(0);
+    const isRecordingRef = useRef(false);
+    const stopTranscriptionRef = useRef<(opts?: { discard?: boolean }) => void | Promise<void>>(() => {});
+    const sendVoiceMessageRef = useRef<(url: string) => void>(() => {});
+    const emitTypingForTextRef = useRef<(text: string) => void>(() => {});
+    const stopVoicePlaybackRef = useRef<() => Promise<void>>(async () => {});
     const [playingId, setPlayingId] = useState<string | null>(null);
     const [playingProgress, setPlayingProgress] = useState<Record<string, { current: number; duration: number }>>({});
-    const videoRefs = useRef(new Map<string, any>()).current;
+    const voiceSoundRef = useRef<Audio.Sound | null>(null);
+    const playingIdRef = useRef<string | null>(null);
     const [isMicPermissionGranted, setIsMicPermissionGranted] = useState<boolean>(false);
     const [isCameraPermissionGranted, setIsCameraPermissionGranted] = useState<boolean>(false);
     const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -361,97 +390,84 @@ const SingleMessage = () => {
     };
 
     const ensureMicPermission = async () => {
-        try {
-            // Expo handles microphone permissions differently
-            const { status } = await Camera.requestMicrophonePermissionsAsync();
-            const granted = status === 'granted';
-            
-            setIsMicPermissionGranted(granted);
-            
-            if (!granted) {
-                Alert.alert('Permission needed', 'Microphone permission is required for this feature.', [
-                    { text: 'OK' }
-                ]);
-            }
-            
-            return granted;
-        } catch (e) {
-            console.error('[SingleMessage] ❌ Error checking microphone permission:', e);
-            setIsMicPermissionGranted(false);
-            return false;
+        const granted = await requestChatMicPermission();
+        setIsMicPermissionGranted(granted);
+        if (!granted) {
+            Alert.alert('Permission needed', 'Microphone permission is required for this feature.', [
+                { text: 'OK' }
+            ]);
         }
+        return granted;
     };
 
     const startRecording = async () => {
-        console.log('startRecording called', { isRecording, isUploadingAudio });
-        if (isRecording || isUploadingAudio) return;
-        
+        if (isRecordingRef.current || isUploadingAudio) return;
+
+        await stopTranscriptionRef.current?.();
+        await stopVoicePlaybackRef.current?.();
+
         const ok = await ensureMicPermission();
         if (!ok) {
             Alert.alert('Permission required', 'Microphone permission is required to record voice messages');
             return;
         }
-        
+
         try {
+            await setChatRecordingAudioMode();
+            isRecordingRef.current = true;
             setIsRecording(true);
             setRecordSecs(0);
             setRecordTime('00:00');
-            
-            // Start recording with expo-av
+            setRecordMeter(0.12);
+            recordStartedAtRef.current = Date.now();
+
             const { recording } = await Audio.Recording.createAsync(
-                Audio.RecordingOptionsPresets.HIGH_QUALITY
+                VOICE_MESSAGE_RECORDING,
+                (status) => {
+                    if (!status.isRecording) return;
+                    setRecordMeter(meteringToLevel(status.metering));
+                    const elapsed = Math.floor((Date.now() - recordStartedAtRef.current) / 1000);
+                    setRecordSecs(elapsed);
+                    setRecordTime(formatSecs(elapsed));
+                },
+                120,
             );
-            
+
             setRecording(recording);
             recordingRef.current = recording;
-            
-            // Update recording time
-            const interval = setInterval(() => {
-                setRecordSecs(prev => {
-                    const newSecs = prev + 1;
-                    setRecordTime(formatSecs(newSecs));
-                    return newSecs;
-                });
-            }, 1000);
-            
-            // Store interval ID for cleanup
-            (recording as any)._interval = interval;
-            
-            console.log('Recording started');
         } catch (e: any) {
             console.error('Error in startRecording:', e);
+            isRecordingRef.current = false;
             setIsRecording(false);
             setRecordSecs(0);
             setRecordTime('00:00');
+            setRecordMeter(0.12);
+            await restoreChatPlaybackAudioMode();
             Alert.alert('Error', 'Failed to start recording');
         }
     };
 
     const stopRecording = async (shouldSend: boolean) => {
-        console.log('stopRecording called', { shouldSend, isRecording });
-        
-        // Don't do anything if we're not actually recording
-        if (!isRecording) {
-            console.log('Not currently recording, ignoring stop request');
-            return;
-        }
-        
+        if (!isRecordingRef.current && !recordingRef.current) return;
+
+        isRecordingRef.current = false;
         setIsRecording(false);
+        setRecordMeter(0.12);
+        if (recordTimerRef.current) {
+            clearInterval(recordTimerRef.current);
+            recordTimerRef.current = null;
+        }
+        const elapsedMs = Date.now() - recordStartedAtRef.current;
         
         try {
             if (!recordingRef.current) {
                 console.error('Recording is null in stopRecording');
                 setRecordSecs(0);
                 setRecordTime('00:00');
+                await restoreChatPlaybackAudioMode();
                 return;
             }
             
-            // Clear the interval
-            if ((recordingRef.current as any)._interval) {
-                clearInterval((recordingRef.current as any)._interval);
-            }
-            
-            // Stop the recording
             await recordingRef.current.stopAndUnloadAsync();
             const uri = recordingRef.current.getURI();
             console.log('Recording stopped, URI:', uri);
@@ -460,8 +476,13 @@ const SingleMessage = () => {
             recordingRef.current = null;
             setRecordSecs(0);
             setRecordTime('00:00');
+            await restoreChatPlaybackAudioMode();
             
             if (shouldSend && uri) {
+                if (elapsedMs < 400) {
+                    Alert.alert('Voice message', 'Hold a bit longer to record a voice message.');
+                    return;
+                }
                 await uploadAndSendAudio(uri);
             }
         } catch (e) {
@@ -469,7 +490,6 @@ const SingleMessage = () => {
             setRecordSecs(0);
             setRecordTime('00:00');
             
-            // Try to reset the recording state
             try {
                 if (recordingRef.current) {
                     await recordingRef.current.stopAndUnloadAsync();
@@ -479,6 +499,7 @@ const SingleMessage = () => {
             }
             setRecording(null);
             recordingRef.current = null;
+            await restoreChatPlaybackAudioMode();
         }
     };
 
@@ -489,9 +510,8 @@ const SingleMessage = () => {
     const uploadAndSendAudio = async (filePath: string) => {
         try {
             setIsUploadingAudio(true);
-            // Normalize uri for RN
             let uri = filePath;
-            if (!uri.startsWith('file://')) {
+            if (!uri.startsWith('file://') && !uri.startsWith('content://')) {
                 uri = `file://${uri}`;
             }
             const fileName = `voice-${Date.now()}.m4a`;
@@ -499,25 +519,17 @@ const SingleMessage = () => {
             formData.append('file', {
                 uri,
                 name: fileName,
-                type: Platform.OS === 'ios' ? 'audio/m4a' : 'audio/aac',
+                type: 'audio/mp4',
             } as any);
 
             const res = await api.post('/upload/file', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             } as any);
             const voiceUrl = res?.data?.secure_url || res?.data?.url;
-            if (voiceUrl && isConnected) {
-                emit('sendMessage', {
-                    room,
-                    senderId: myProfile?._id,
-                    receiverId: friend?._id,
-                    message: '',
-                    attachment: voiceUrl,
-                    parent: replyingTo?._id || false,
-                    messageType: 'audio',
-                    tempId: Date.now().toString(),
-                    timestamp: new Date().toISOString(),
-                });
+            if (voiceUrl) {
+                sendVoiceMessageRef.current?.(voiceUrl);
+            } else {
+                Alert.alert('Upload failed', 'Could not upload voice message.');
             }
         } catch (e) {
             Alert.alert('Upload failed', 'Could not upload voice message.');
@@ -526,68 +538,91 @@ const SingleMessage = () => {
         }
     };
 
-    const togglePlay = (item: Message) => {
-        if (!item.attachment) return;
-        if (playingId === item._id) {
-            setPlayingId(null);
-            return;
+    const unloadVoiceSound = async () => {
+        const sound = voiceSoundRef.current;
+        voiceSoundRef.current = null;
+        playingIdRef.current = null;
+        setPlayingId(null);
+        if (!sound) return;
+        try {
+            await sound.stopAsync();
+        } catch {
+            /* ignore */
         }
-        setPlayingId(item._id);
+        try {
+            await sound.unloadAsync();
+        } catch {
+            /* ignore */
+        }
     };
 
-    const seekTo = (item: Message, seconds: number) => {
-        const ref = videoRefs.get(item._id);
-        try { ref?.seek?.(seconds); } catch (e) {}
-        setPlayingProgress(prev => ({
-            ...prev,
-            [item._id]: { current: seconds, duration: prev[item._id]?.duration || 0 }
-        }));
-    };
+    stopVoicePlaybackRef.current = unloadVoiceSound;
 
-    const onVideoProgress = (item: Message, progress: { currentTime: number; playableDuration: number }) => {
-        setPlayingProgress(prev => ({
-            ...prev,
-            [item._id]: { current: progress.currentTime, duration: Math.max(progress.playableDuration || prev[item._id]?.duration || 0, progress.currentTime) }
-        }));
-    };
+    const togglePlay = async (item: Message) => {
+        if (!item.attachment || isRecordingRef.current) return;
 
-    const onVideoLoad = (item: Message, meta: { duration?: number }) => {
-        const duration = meta?.duration || 0;
-        setPlayingProgress(prev => ({
-            ...prev,
-            [item._id]: { current: prev[item._id]?.current || 0, duration }
-        }));
-    };
+        if (playingIdRef.current === item._id && voiceSoundRef.current) {
+            try {
+                const status = await voiceSoundRef.current.getStatusAsync();
+                if (status.isLoaded && status.isPlaying) {
+                    await voiceSoundRef.current.pauseAsync();
+                    setPlayingId(null);
+                    playingIdRef.current = null;
+                    return;
+                }
+                if (status.isLoaded) {
+                    await voiceSoundRef.current.playAsync();
+                    playingIdRef.current = item._id;
+                    setPlayingId(item._id);
+                    return;
+                }
+            } catch {
+                /* fall through and recreate */
+            }
+        }
 
-    const onVideoEnd = (item: Message) => {
-        setPlayingId(prev => (prev === item._id ? null : prev));
-        setPlayingProgress(prev => ({
-            ...prev,
-            [item._id]: { current: prev[item._id]?.duration || 0, duration: prev[item._id]?.duration || 0 }
-        }));
-    };
-
-    const renderHiddenVideo = (item: Message) => {
-        if (!item.attachment) return null;
-        return (
-            <Video
-                ref={(r: any) => { if (r) { videoRefs.set(item._id, r); } else { videoRefs.delete(item._id); } }}
-                source={{ uri: item.attachment }}
-                shouldPlay={playingId === item._id}
-                useNativeControls={false}
-                isLooping={false}
-                onPlaybackStatusUpdate={(e: any) => {
-                    if (e.isLoaded) {
-                        onVideoLoad(item, e);
-                        if (e.didJustFinish) {
-                            onVideoEnd(item);
-                        }
+        await unloadVoiceSound();
+        try {
+            await stopSpokenPlayback();
+            await restoreChatPlaybackAudioMode();
+            let sound: Audio.Sound | null = null;
+            sound = await createPlayableVoiceSound(
+                item.attachment,
+                { shouldPlay: true, progressUpdateIntervalMillis: 200, volume: 1, isLooping: false },
+                (status) => {
+                    if (!status.isLoaded) return;
+                    setPlayingProgress((prev) => ({
+                        ...prev,
+                        [item._id]: {
+                            current: (status.positionMillis || 0) / 1000,
+                            duration: Math.max((status.durationMillis || 0) / 1000, 0),
+                        },
+                    }));
+                    if (status.didJustFinish) {
+                        playingIdRef.current = null;
+                        setPlayingId(null);
+                        sound?.setPositionAsync(0).catch(() => {});
                     }
-                    onVideoProgress(item, e);
-                }}
-                style={{ width: 0, height: 0 }}
-            />
-        );
+                },
+            );
+            voiceSoundRef.current = sound;
+            playingIdRef.current = item._id;
+            setPlayingId(item._id);
+        } catch (error) {
+            console.error('Voice message playback failed:', error);
+            Alert.alert('Playback failed', 'Could not play this voice message.');
+        }
+    };
+
+    const seekTo = async (item: Message, seconds: number) => {
+        setPlayingProgress((prev) => ({
+            ...prev,
+            [item._id]: { current: seconds, duration: prev[item._id]?.duration || 0 },
+        }));
+        if (playingIdRef.current !== item._id || !voiceSoundRef.current) return;
+        try {
+            await voiceSoundRef.current.setPositionAsync(Math.max(0, seconds) * 1000);
+        } catch (e) {}
     };
 
     const formatSecs = (secs: number) => {
@@ -686,6 +721,49 @@ const SingleMessage = () => {
     const incomingTypingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const isTypingOutgoingRef = useRef(false);
     const lastTypingEmitRef = useRef(0);
+    const transcribeBaseRef = useRef('');
+    const inputTextRef = useRef('');
+    const [transcribeLang, setTranscribeLang] = useState('en-US');
+    const [transcribeInterim, setTranscribeInterim] = useState('');
+
+    const handleTranscriptInterim = useCallback((text: string) => {
+        if (!text) return;
+        const next = [transcribeBaseRef.current, text].filter(Boolean).join(' ');
+        inputTextRef.current = next;
+        setInputText(next);
+        setTranscribeInterim(text);
+        emitTypingForTextRef.current(next);
+    }, []);
+
+    const handleTranscriptFinal = useCallback((text: string) => {
+        if (!text) return;
+        const next = [transcribeBaseRef.current, text].filter(Boolean).join(' ');
+        transcribeBaseRef.current = next;
+        inputTextRef.current = next;
+        setInputText(next);
+        setTranscribeInterim('');
+        emitTypingForTextRef.current(next);
+    }, []);
+
+    const {
+        listening: isTranscribing,
+        supported: isTranscribeSupported,
+        start: startTranscription,
+        stop: stopTranscription,
+    } = useComposerLiveTranscribe({
+        onFinal: handleTranscriptFinal,
+        onInterim: handleTranscriptInterim,
+    });
+
+    stopTranscriptionRef.current = stopTranscription;
+
+    useEffect(() => {
+        inputTextRef.current = inputText;
+    }, [inputText]);
+
+    useEffect(() => {
+        if (!isTranscribing) setTranscribeInterim('');
+    }, [isTranscribing]);
 
     // Pagination state for loading old messages
     const [isLoadingOldMessages, setIsLoadingOldMessages] = useState(false);
@@ -1234,6 +1312,14 @@ const SingleMessage = () => {
 
         on('deleteMessage', handleDeleteMessage);
 
+        const handleSpeakMessage = (payload: any) => {
+            playSpeakPayload(payload).catch((error) => {
+                console.error('speak_message playback failed:', error);
+            });
+        };
+        on('speak_message', handleSpeakMessage);
+        on('speak-message', handleSpeakMessage);
+
         // Note: Live voice receiver logic is now handled globally in LiveVoice component
 
         return () => {
@@ -1247,6 +1333,8 @@ const SingleMessage = () => {
             off('emotion_change', handleEmotionChange);
             off('friend_location_update', handleFriendLocationUpdate);
             off('deleteMessage', handleDeleteMessage);
+            off('speak_message', handleSpeakMessage);
+            off('speak-message', handleSpeakMessage);
             if (incomingTypingTimeoutRef.current) {
                 clearTimeout(incomingTypingTimeoutRef.current);
                 incomingTypingTimeoutRef.current = null;
@@ -2383,11 +2471,15 @@ const SingleMessage = () => {
         setLoveRainBurst((n) => n + 1);
     };
 
-    const sendMessage = (overrides?: { message?: string }) => {
+    const sendMessage = (overrides?: { message?: string; attachment?: string | null; messageType?: 'text' | 'audio' }) => {
         const messageContent = (overrides?.message ?? inputText).trim();
-        if ((!messageContent && !pendingAttachment) || !isConnected || isUploading) return;
+        const attachment = overrides?.attachment !== undefined ? overrides.attachment : pendingAttachment;
+        const messageType = overrides?.messageType || 'text';
+        if ((!messageContent && !attachment) || !isConnected || isUploading) return;
         if (isSendingRef.current) return;
         if (!friend?._id || !myProfile?._id) return;
+
+        stopTranscriptionRef.current?.({ discard: true });
 
         const roomId = room || [myProfile._id, friend._id].sort().join('_');
         isSendingRef.current = true;
@@ -2398,17 +2490,23 @@ const SingleMessage = () => {
             receiverId: friend._id,
             senderId: myProfile._id,
             room: roomId,
-            attachment: pendingAttachment || undefined,
+            attachment: attachment || undefined,
             timestamp: new Date(),
             isSeen: false,
             tempId,
             parent: replyingTo || undefined,
             isOptimistic: true,
             sendFailed: false,
+            messageType,
         };
 
         setMessages(prev => [...prev, pendingMessage]);
-        setInputText('');
+        if (messageType !== 'audio') {
+            setInputText('');
+            transcribeBaseRef.current = '';
+            inputTextRef.current = '';
+            setTranscribeInterim('');
+        }
         setEmojiPanelOpen(false);
         setShowAttachTray(false);
         setShowMicMenu(false);
@@ -2422,9 +2520,9 @@ const SingleMessage = () => {
             senderId: myProfile._id,
             receiverId: friend._id,
             message: messageContent,
-            attachment: pendingAttachment || false,
+            attachment: attachment || false,
             parent: replyingTo?._id || false,
-            messageType: 'text',
+            messageType,
             tempId,
             timestamp: new Date().toISOString(),
         };
@@ -2457,10 +2555,12 @@ const SingleMessage = () => {
         });
 
         triggerLoveRain(messageContent);
-        setPendingAttachment(null);
-        setPendingAttachmentLocal(null);
-        setUploadProgress(null);
-        setIsUploading(false);
+        if (overrides?.attachment === undefined) {
+            setPendingAttachment(null);
+            setPendingAttachmentLocal(null);
+            setUploadProgress(null);
+            setIsUploading(false);
+        }
         setReplyingTo(null);
         if (activeSwipeId) {
             const ref = swipeableRefs.current.get(activeSwipeId);
@@ -2471,6 +2571,10 @@ const SingleMessage = () => {
         setTimeout(() => {
             isSendingRef.current = false;
         }, 400);
+    };
+
+    sendVoiceMessageRef.current = (voiceUrl: string) => {
+        sendMessage({ message: '', attachment: voiceUrl, messageType: 'audio' });
     };
 
     const stopTyping = () => {
@@ -2487,6 +2591,8 @@ const SingleMessage = () => {
 
     const handleInputChange = (value: string) => {
         setInputText(value);
+        transcribeBaseRef.current = value.trim();
+        inputTextRef.current = value;
         const showTyping =
             settings.settings?.showIsTyping !== false &&
             settings.settings?.showTyping !== false &&
@@ -2512,6 +2618,8 @@ const SingleMessage = () => {
             stopTyping();
         }
     };
+
+    emitTypingForTextRef.current = handleInputChange;
 
     const handleEmojiPress = () => {
         sendMessage({ message: chatAppearance?.actionEmoji || '👍' });
@@ -2558,26 +2666,26 @@ const SingleMessage = () => {
         }
     };
 
-    const playSound = async () => {
-        try {
-            console.log('🎤 User clicked speaker button - speaking message:', selectedMessage?.message);
-            if (!selectedMessage?.message) {
-                console.warn('No message to speak');
-                return;
-            }
-            
-            // Use expo-speech for TTS when user clicks speaker button
-            // No longer using socket events to prevent automatic TTS
-            const options = {
-                pitch: 1.0,
-                rate: 0.8,
-                volume: 1.0,
-            };
-            await Speech.speak(selectedMessage.message, options);
-        } catch (error) {
-            console.error('❌ Error speaking message:', error);
+    const playSound = () => {
+        const msg = selectedMessage;
+        setContextMenuVisible(false);
+        if (!msg || String(msg.senderId) !== String(myProfile?._id)) return;
+
+        const msgId = msg._id;
+        const targetFriendId = friend?._id || msg.receiverId;
+        if (!targetFriendId || !msgId) {
+            console.warn('Speak failed: missing friendId or msgId', { targetFriendId, msgId });
+            return;
         }
-    }
+
+        emit('speak_message', {
+            msgId: String(msgId),
+            friendId: String(targetFriendId),
+            message: msg.message || '',
+            attachment: typeof msg.attachment === 'string' ? msg.attachment : '',
+            messageType: msg.messageType || '',
+        });
+    };
 
     // Add function to copy message
     const copyMessage = () => {
@@ -3084,10 +3192,50 @@ const SingleMessage = () => {
             stopRecording(true);
             return;
         }
+        if (isTranscribing) {
+            stopTranscription();
+            return;
+        }
         setShowAttachTray(false);
         setEmojiPanelOpen(false);
         setMicMenuView('main');
         setShowMicMenu((prev) => !prev);
+    };
+
+    const startLiveTranscribe = async (langCode: string) => {
+        setShowMicMenu(false);
+        setMicMenuView('main');
+        setShowAttachTray(false);
+        await stopVoicePlaybackRef.current?.();
+        if (isRecording) {
+            await stopRecording(false);
+        }
+        if (!isTranscribeSupported) {
+            Alert.alert(
+                'Live transcription',
+                'Live transcription is not available right now. Check your connection and try again.',
+            );
+            return;
+        }
+        setTranscribeLang(langCode);
+        setTranscribeInterim('');
+        transcribeBaseRef.current = String(inputTextRef.current || '').trim();
+        const started = await startTranscription(langCode);
+        if (started) {
+            setTimeout(() => inputRef.current?.focus(), 50);
+        } else {
+            Alert.alert(
+                'Live transcription',
+                'Could not start live transcription. Please allow microphone access and try again.',
+            );
+        }
+    };
+
+    const startVoiceMessage = () => {
+        setShowMicMenu(false);
+        setMicMenuView('main');
+        setShowAttachTray(false);
+        startRecording();
     };
 
     const composerIconBtn = (active?: boolean) => ({
@@ -3429,7 +3577,6 @@ const SingleMessage = () => {
                                         }}>
                                             {formatSecs(playingProgress[item._id]?.current || 0)} / {formatSecs(playingProgress[item._id]?.duration || 0)}
                                         </Text>
-                                        {renderHiddenVideo(item)}
                                     </View>
                                 ) : (
                                     /* Text messages */
@@ -4111,7 +4258,7 @@ const SingleMessage = () => {
                             >
                                 <Icon name="speaker" size={20} color={themeColors.text.primary} />
                                 <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
-                                    Play Sound
+                                    Speak
                                 </Text>
                             </TouchableOpacity>
                         )}
@@ -5407,6 +5554,32 @@ const SingleMessage = () => {
                         ) : null}
                     </View>
                 ) : null}
+                {isTranscribing ? (
+                    <View style={{
+                        marginBottom: 8,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: chatTheme.colors.recvBg,
+                        borderRadius: 14,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        borderWidth: 1,
+                        borderColor: chatTheme.colors.recvBorder,
+                    }}>
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: chatTheme.colors.accent, marginRight: 8 }} />
+                        <View style={{ flex: 1, marginRight: 12 }}>
+                            <Text style={{ color: '#FFFFFF', fontWeight: '600' }}>
+                                Listening · {String(transcribeLang).startsWith('bn') ? 'Bangla' : 'English'}
+                            </Text>
+                            <Text style={{ color: chatTheme.colors.meta, fontSize: 12, marginTop: 2 }} numberOfLines={2}>
+                                {transcribeInterim || 'Speak now — text appears in the message box'}
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => stopTranscription()}>
+                            <Text style={{ color: chatTheme.colors.accent, fontWeight: '700' }}>Done</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : null}
                 {isRecording ? (
                     <View style={{
                         marginBottom: 8,
@@ -5420,8 +5593,22 @@ const SingleMessage = () => {
                         borderColor: chatTheme.colors.recvBorder,
                     }}>
                         <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444', marginRight: 8 }} />
-                        <Text style={{ color: '#FFFFFF', fontWeight: '600', marginRight: 12 }}>Recording</Text>
-                        <Text style={{ color: chatTheme.colors.meta, marginRight: 'auto' }}>{recordTime}</Text>
+                        <Text style={{ color: '#FFFFFF', fontWeight: '600', marginRight: 10 }}>Recording</Text>
+                        <Text style={{ color: chatTheme.colors.meta, marginRight: 10 }}>{recordTime}</Text>
+                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', height: 22, marginRight: 12 }}>
+                            {[0.45, 0.7, 1, 0.82, 0.55].map((weight, index) => (
+                                <View
+                                    key={`meter-${index}`}
+                                    style={{
+                                        width: 3,
+                                        height: Math.max(4, 20 * recordMeter * weight),
+                                        borderRadius: 2,
+                                        marginRight: 3,
+                                        backgroundColor: chatTheme.colors.accent,
+                                    }}
+                                />
+                            ))}
+                        </View>
                         <TouchableOpacity onPress={() => stopRecording(true)} style={{ marginRight: 12 }}>
                             <Icon name="send" size={20} color={chatTheme.colors.accent} />
                         </TouchableOpacity>
@@ -5487,7 +5674,11 @@ const SingleMessage = () => {
                                 setShowMicMenu(false);
                             }}
                             onBlur={stopTyping}
-                            placeholder="Message"
+                            placeholder={
+                                isTranscribing
+                                    ? (String(transcribeLang).startsWith('bn') ? 'Listening in Bangla…' : 'Listening in English…')
+                                    : 'Message'
+                            }
                             placeholderTextColor={chatTheme.colors.meta}
                             underlineColorAndroid="transparent"
                             style={{
@@ -5541,12 +5732,16 @@ const SingleMessage = () => {
                                 <TouchableOpacity
                                     onPress={handleMicButtonClick}
                                     disabled={isUploadingAudio}
-                                    style={composerIconBtn(isRecording || showMicMenu)}
+                                    style={composerIconBtn(isRecording || isTranscribing || showMicMenu)}
                                 >
                                     {isUploadingAudio ? (
                                         <ActivityIndicator color={chatTheme.colors.meta} />
                                     ) : (
-                                        <Icon name={isRecording ? 'stop' : 'mic'} size={20} color={isRecording ? '#ef4444' : chatTheme.colors.meta} />
+                                        <Icon
+                                            name={(isRecording || isTranscribing) ? 'stop' : 'mic'}
+                                            size={20}
+                                            color={(isRecording || isTranscribing) ? '#ef4444' : chatTheme.colors.meta}
+                                        />
                                     )}
                                 </TouchableOpacity>
                                 {showMicMenu ? (
@@ -5573,20 +5768,14 @@ const SingleMessage = () => {
                                                     <Text style={{ color: '#fff', marginLeft: 8, fontWeight: '600' }}>Live transcribe</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
-                                                    onPress={() => {
-                                                        setShowMicMenu(false);
-                                                        Alert.alert('Live transcribe', 'Speech-to-text is available in the web app.');
-                                                    }}
+                                                    onPress={() => startLiveTranscribe('bn-BD')}
                                                     style={{ padding: 12 }}
                                                 >
                                                     <Text style={{ color: '#fff', fontWeight: '600' }}>Bangla</Text>
                                                     <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12 }}>Recognize speech in Bangla</Text>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
-                                                    onPress={() => {
-                                                        setShowMicMenu(false);
-                                                        Alert.alert('Live transcribe', 'Speech-to-text is available in the web app.');
-                                                    }}
+                                                    onPress={() => startLiveTranscribe('en-US')}
                                                     style={{ padding: 12 }}
                                                 >
                                                     <Text style={{ color: '#fff', fontWeight: '600' }}>English</Text>
@@ -5606,10 +5795,7 @@ const SingleMessage = () => {
                                                     </View>
                                                 </TouchableOpacity>
                                                 <TouchableOpacity
-                                                    onPress={() => {
-                                                        setShowMicMenu(false);
-                                                        startRecording();
-                                                    }}
+                                                    onPress={startVoiceMessage}
                                                     style={{ flexDirection: 'row', alignItems: 'center', padding: 12 }}
                                                 >
                                                     <Icon name="mic" size={20} color={chatTheme.colors.accent} />
@@ -5640,7 +5826,7 @@ const SingleMessage = () => {
                             {[
                                 { key: 'photo', label: 'Photo', icon: 'image', onPress: () => pickAndUploadImage(false) },
                                 { key: 'file', label: 'File', icon: 'attach-file', onPress: pickAndUploadFile },
-                                { key: 'live', label: isLiveVoiceActive ? 'Stop' : 'Live', icon: isLiveVoiceActive ? 'phone-disabled' : 'headset', onPress: () => { setShowAttachTray(false); handleLiveVoiceButtonClick(); } },
+                                { key: 'live', label: isLiveVoiceActive ? 'Stop' : 'Live', icon: isLiveVoiceActive ? 'phone-disabled' : 'headset', onPress: () => { setShowAttachTray(false); stopTranscriptionRef.current?.(); handleLiveVoiceButtonClick(); } },
                                 { key: 'react', label: 'React', icon: null, onPress: () => { setShowAttachTray(false); handleEmojiPress(); } },
                                 { key: 'edit', label: 'Edit', icon: 'edit', onPress: () => setEditReactionOpen((v) => !v) },
                             ].map((item) => (

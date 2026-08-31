@@ -1,20 +1,31 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import { SkeletonBlock, SkeletonRow, SkeletonColumn } from './Skeleton';
-import { FEED } from '../../theme/feedTokens';
+import { useFeedTokens } from '../../theme/feedTokens';
 
 interface PostSkeletonProps {
     count?: number;
 }
 
 const PostSkeleton: React.FC<PostSkeletonProps> = ({ count = 3 }) => {
+    const feed = useFeedTokens();
     return (
         <View>
             {Array.from({ length: count }).map((_, idx) => (
-                <View key={idx} style={styles.card}>
+                <View
+                    key={idx}
+                    style={[
+                        styles.card,
+                        {
+                            backgroundColor: feed.postBg,
+                            borderColor: feed.postBorder,
+                            shadowOpacity: feed.shadowOpacity,
+                        },
+                    ]}
+                >
                     <View style={styles.header}>
                         <SkeletonRow style={styles.authorRow} spacing={10}>
-                            <SkeletonBlock width={40} height={40} borderRadius={20} style={styles.avatar} />
+                            <SkeletonBlock width={40} height={40} borderRadius={20} style={[styles.avatar, { borderColor: feed.postBorder }]} />
                             <SkeletonColumn style={{ flex: 1 }} spacing={8}>
                                 <SkeletonBlock width={120} height={13} borderRadius={999} />
                                 <SkeletonBlock width={78} height={9} borderRadius={999} />
@@ -30,7 +41,7 @@ const PostSkeleton: React.FC<PostSkeletonProps> = ({ count = 3 }) => {
                         <SkeletonBlock width={'46%'} height={12} borderRadius={999} />
                     </SkeletonColumn>
 
-                    <SkeletonBlock width={'100%'} height={220} borderRadius={0} style={styles.media} />
+                    <SkeletonBlock width={'100%'} height={220} borderRadius={0} style={[styles.media, { backgroundColor: feed.mediaBg }]} />
 
                     <View style={styles.footer}>
                         <SkeletonRow style={styles.reactRow} spacing={10}>
@@ -66,16 +77,13 @@ const PostSkeleton: React.FC<PostSkeletonProps> = ({ count = 3 }) => {
 
 const styles = StyleSheet.create({
     card: {
-        backgroundColor: FEED.postBg,
         borderRadius: 12,
         marginHorizontal: 0,
         marginBottom: 10,
         borderWidth: 1,
-        borderColor: FEED.postBorder,
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 6 },
-        shadowOpacity: 0.22,
         shadowRadius: 12,
         elevation: 4,
     },
@@ -90,15 +98,12 @@ const styles = StyleSheet.create({
     },
     avatar: {
         borderWidth: 1.5,
-        borderColor: 'rgba(255,255,255,0.1)',
     },
     caption: {
         paddingHorizontal: 12,
         marginBottom: 12,
     },
-    media: {
-        backgroundColor: 'rgba(0,0,0,0.22)',
-    },
+    media: {},
     footer: {
         paddingHorizontal: 12,
         paddingBottom: 12,

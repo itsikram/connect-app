@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -8,6 +8,8 @@ import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import ProfileImage from '../components/ProfileImage'
+import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
+import PostSkeleton from '../components/skeleton/PostSkeleton'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -54,6 +56,7 @@ const FriendProfile = () => {
     const [posts, setPosts] = React.useState<any[]>([])
     const [postsLoading, setPostsLoading] = React.useState<boolean>(false)
     const [images, setImages] = React.useState<string[]>([])
+    const [imagesLoading, setImagesLoading] = React.useState<boolean>(true)
     const [imageViewerOpen, setImageViewerOpen] = React.useState(false)
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0)
     const [friends, setFriends] = React.useState<any[]>([])
@@ -164,6 +167,7 @@ const FriendProfile = () => {
         let isMounted = true;
         
         const fetchImages = async () => {
+            setImagesLoading(true);
             try {
                 const res = await api.get('/profile/getImages', { params: { profileId: friendId } });
                 if (isMounted && res.status === 200 && Array.isArray(res.data)) {
@@ -182,6 +186,8 @@ const FriendProfile = () => {
                     const derived = posts.filter((p: any) => p?.photos).map((p: any) => p.photos);
                     setImages(derived);
                 }
+            } finally {
+                if (isMounted) setImagesLoading(false);
             }
         };
         
@@ -328,7 +334,7 @@ const FriendProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {postsLoading && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading posts...</Text></View>
+                        <PostSkeleton count={2} />
                     )}
                     {!postsLoading && posts.length === 0 && (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
@@ -346,7 +352,7 @@ const FriendProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {friendsLoading && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading friends...</Text></View>
+                        <ProfileFriendsSkeleton count={4} />
                     )}
                     {!friendsLoading && friends.length === 0 && (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No friends found.</Text></View>
@@ -389,7 +395,9 @@ const FriendProfile = () => {
             count: images.length || undefined,
             render: () => (
                 <View>
-                    {images.length === 0 ? (
+                    {imagesLoading ? (
+                        <ProfileMediaSkeleton count={2} />
+                    ) : images.length === 0 ? (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No images found.</Text></View>
                     ) : (
                         <View>
@@ -430,7 +438,7 @@ const FriendProfile = () => {
             render: () => (
                 <View>
                     {videosLoading && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading videos...</Text></View>
+                        <ProfileMediaSkeleton count={2} />
                     )}
                     {!videosLoading && videos.length === 0 && (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No videos found.</Text></View>
@@ -440,10 +448,15 @@ const FriendProfile = () => {
                             {videos.map((v: any) => {
                                 const thumb = v.thumbnail || v.photos || v.videoUrl
                                 return (
-                                    <View key={v._id} style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
+                                    <TouchableOpacity
+                                        key={v._id}
+                                        activeOpacity={0.85}
+                                        onPress={() => (navigation as any).navigate('SingleWatch', { watchId: v._id })}
+                                        style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
+                                    >
                                         <Image source={{ uri: thumb }} style={styles.mediaImage} />
                                         <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={themeColors.text.secondary} /></View>
-                                    </View>
+                                    </TouchableOpacity>
                                 )
                             })}
                         </View>
@@ -454,12 +467,7 @@ const FriendProfile = () => {
     ]
 
     if (isLoading) {
-        return (
-            <View style={[styles.loadingContainer, { backgroundColor: themeColors.background.primary }]}>
-                <ActivityIndicator size="large" color={themeColors.primary} />
-                <Text style={[styles.loadingText, { color: themeColors.text.primary }]}>Loading profile...</Text>
-            </View>
-        );
+        return <ProfileSkeleton showBackHeader />;
     }
 
     return (

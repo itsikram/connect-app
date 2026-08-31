@@ -44,6 +44,7 @@ export type DownloadSaveOptions = {
   extension?: 'mp4' | 'mp3' | 'm4a';
   isCancelled?: () => boolean;
   silent?: boolean;
+  exactName?: boolean;
 };
 
 export function sanitizeFileName(name: string): string {
@@ -96,7 +97,17 @@ export async function downloadVideoAndSave(
   }
 
   const baseName = ensureExtension(suggestedName || candidate, ext);
-  const toFile = await uniqueFilePath(DOWNLOADS_DIR, baseName);
+  const toFile = options.exactName
+    ? `${DOWNLOADS_DIR}${baseName}`
+    : await uniqueFilePath(DOWNLOADS_DIR, baseName);
+
+  if (options.exactName) {
+    const existing = await FileSystem.getInfoAsync(toFile);
+    if (existing.exists) {
+      options.onProgress?.(100, (existing as any).size || 0, (existing as any).size || 0);
+      return toFileUri(toFile);
+    }
+  }
 
   if (!options.silent) {
     await Notifications.requestPermissionsAsync();

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../lib/api';
+import { persistRingtonePreference } from '../lib/ringtoneAssets';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 
@@ -94,7 +95,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   const [settings, setSettings] = useState<SettingsData>({
     // Default values
     showTyping: true,
+    showIsTyping: true,
     isShareEmotion: false,
+    isShareLocation: true,
     readReceipts: true,
     typingIndicators: true,
     messagePreview: true,
@@ -140,6 +143,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       if (localSettings) {
         const parsedSettings = JSON.parse(localSettings);
         setSettings(prev => ({ ...prev, ...parsedSettings }));
+        if (parsedSettings?.ringtone != null) {
+          persistRingtonePreference(parsedSettings.ringtone).catch(() => {});
+        }
       }
 
       // Load from server if profile is available
@@ -147,7 +153,16 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         const response = await api.get(`/setting?profileId=${profile._id}`);
         if (response.status === 200 && response.data) {
           const serverSettings = response.data;
+          if (serverSettings.showIsTyping !== undefined && serverSettings.showTyping === undefined) {
+            serverSettings.showTyping = serverSettings.showIsTyping;
+          }
+          if (serverSettings.showTyping !== undefined && serverSettings.showIsTyping === undefined) {
+            serverSettings.showIsTyping = serverSettings.showTyping;
+          }
           setSettings(prev => ({ ...prev, ...serverSettings }));
+          if (serverSettings.ringtone != null) {
+            persistRingtonePreference(serverSettings.ringtone).catch(() => {});
+          }
           // Update local storage with server data
           await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...settings, ...serverSettings }));
         }
@@ -167,6 +182,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
       // Save to local storage immediately
       await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(newSettings));
+      if (key === 'ringtone') {
+        await persistRingtonePreference(value);
+      }
 
       // Save to server if profile is available
       if (profile?._id) {
@@ -185,15 +203,24 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // Update multiple settings
   const updateSettings = async (newSettings: Partial<SettingsData>): Promise<boolean> => {
     try {
-      const updatedSettings = { ...settings, ...newSettings };
+      const syncedSettings = { ...newSettings };
+      if (syncedSettings.showIsTyping !== undefined) {
+        syncedSettings.showTyping = syncedSettings.showIsTyping;
+      } else if (syncedSettings.showTyping !== undefined) {
+        syncedSettings.showIsTyping = syncedSettings.showTyping;
+      }
+      const updatedSettings = { ...settings, ...syncedSettings };
       setSettings(updatedSettings);
 
       // Save to local storage immediately
       await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updatedSettings));
+      if (updatedSettings.ringtone != null) {
+        await persistRingtonePreference(updatedSettings.ringtone);
+      }
 
       // Save to server if profile is available
       if (profile?._id) {
-        const response = await api.post('/setting/update', newSettings);
+        const response = await api.post('/setting/update', syncedSettings);
         if (response.status === 200) {
           return true;
         }
@@ -210,7 +237,9 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     try {
       const defaultSettings: SettingsData = {
         showTyping: true,
-        isShareEmotion: true,
+        showIsTyping: true,
+        isShareEmotion: false,
+        isShareLocation: true,
         readReceipts: true,
         typingIndicators: true,
         messagePreview: true,
@@ -247,6 +276,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       
       setSettings(defaultSettings);
       await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(defaultSettings));
+      await persistRingtonePreference(defaultSettings.ringtone);
       
       if (profile?._id) {
         await api.post('/setting/update', defaultSettings);

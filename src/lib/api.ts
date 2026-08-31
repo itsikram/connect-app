@@ -246,6 +246,15 @@ export const pushAPI = {
 };
 
 
+export const profileAPI = {
+  follow: (profileId: string): Promise<AxiosResponse> =>
+    api.post('/profile/follow', { profileId }),
+  unfollow: (profileId: string): Promise<AxiosResponse> =>
+    api.post('/profile/unfollow', { profileId }),
+  followStatus: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/profile/follow-status', { params: { profileId } }),
+};
+
 export const friendAPI = {
   getFriendList: (profileId: string): Promise<AxiosResponse> => 
     api.get(`/friend/getFriends?profileId=${profileId}`),
@@ -274,14 +283,16 @@ export const storyAPI = {
     api.get('/story/'),
   getSingleStory: (storyId: string): Promise<AxiosResponse> => 
     api.get(`/story/single?storyId=${storyId}`),
-  createStory: (storyData: FormData): Promise<AxiosResponse> => 
-    api.post('/story/create', storyData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
-    }),
+  createStory: (data: { image: string; storyBg: string; audience: number }): Promise<AxiosResponse> =>
+    api.post('/story/create', data),
   deleteStory: (storyId: string): Promise<AxiosResponse> => 
     api.post('/story/delete', { storyId }),
+  addReact: (storyId: string, reactType: string): Promise<AxiosResponse> =>
+    api.post('/react/addReact', { id: storyId, reactType, postType: 'story' }),
+  removeReact: (storyId: string): Promise<AxiosResponse> =>
+    api.post('/react/removeReact', { id: storyId, postType: 'story' }),
+  addComment: (storyId: string, body: string): Promise<AxiosResponse> =>
+    api.post('/comment/story/addComment', { body, storyId }),
 };
 
 // Debug function to check stored tokens

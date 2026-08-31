@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { FEED } from '../theme/feedTokens';
+import { useFeedTokens } from '../theme/feedTokens';
 import { formatBilingualPrompt, getDailyIcebreaker, isoDateKey } from '../utils/feedPrompts';
 
 const WELCOME_KEY = 'feedBoost:welcomeDismissed';
@@ -21,6 +21,7 @@ const FeedBoostCards: React.FC<FeedBoostCardsProps> = ({
   postCount = 0,
 }) => {
   const navigation = useNavigation<any>();
+  const feed = useFeedTokens();
   const icebreaker = useMemo(() => getDailyIcebreaker(), []);
   const thinFeed = !!feedLoaded && postCount < 4;
   const [icebreakerHidden, setIcebreakerHidden] = useState(true);
@@ -50,63 +51,63 @@ const FeedBoostCards: React.FC<FeedBoostCardsProps> = ({
   return (
     <View style={styles.wrap}>
       {showIcebreaker && (
-        <View style={[styles.card, styles.promptCard]}>
+        <View style={[styles.card, { backgroundColor: feed.promptCardBg, borderColor: feed.postBorder }]}>
           <TouchableOpacity
-            style={styles.dismiss}
+            style={[styles.dismiss, { backgroundColor: feed.chipBg }]}
             onPress={() => {
               setIcebreakerHidden(true);
               AsyncStorage.setItem(icebreakerKey(), '1');
             }}
             hitSlop={8}
           >
-            <Icon name="close" size={16} color={FEED.postTextMuted} />
+            <Icon name="close" size={16} color={feed.postTextMuted} />
           </TouchableOpacity>
-          <Text style={styles.kicker}>Today's question</Text>
-          <Text style={styles.title}>{icebreaker.en}</Text>
-          <Text style={styles.bn}>{icebreaker.bn}</Text>
+          <Text style={[styles.kicker, { color: feed.kicker }]}>Today's question</Text>
+          <Text style={[styles.title, { color: feed.postText }]}>{icebreaker.en}</Text>
+          <Text style={[styles.bn, { color: feed.postTextMuted }]}>{icebreaker.bn}</Text>
           <TouchableOpacity
-            style={styles.cta}
+            style={[styles.cta, { backgroundColor: feed.postAccent }]}
             onPress={() => onPostPrompt?.(formatBilingualPrompt(icebreaker))}
             activeOpacity={0.85}
           >
-            <Text style={styles.ctaText}>Post this</Text>
+            <Text style={[styles.ctaText, { color: feed.ctaText }]}>Post this</Text>
           </TouchableOpacity>
         </View>
       )}
 
       {showWelcome && (
-        <View style={styles.card}>
+        <View style={[styles.card, { backgroundColor: feed.postBg, borderColor: feed.postBorder }]}>
           <TouchableOpacity
-            style={styles.dismiss}
+            style={[styles.dismiss, { backgroundColor: feed.chipBg }]}
             onPress={() => {
               setWelcomeHidden(true);
               AsyncStorage.setItem(WELCOME_KEY, '1');
             }}
             hitSlop={8}
           >
-            <Icon name="close" size={16} color={FEED.postTextMuted} />
+            <Icon name="close" size={16} color={feed.postTextMuted} />
           </TouchableOpacity>
-          <Text style={styles.kicker}>Welcome to Connect</Text>
-          <Text style={styles.title}>Make this feed yours</Text>
+          <Text style={[styles.kicker, { color: feed.kicker }]}>Welcome to Connect</Text>
+          <Text style={[styles.title, { color: feed.postText }]}>Make this feed yours</Text>
           <View style={styles.actions}>
             <TouchableOpacity
-              style={styles.chip}
+              style={[styles.chip, { backgroundColor: feed.chipBg, borderColor: feed.postBorder }]}
               onPress={() => navigation.navigate('Friends')}
               activeOpacity={0.8}
             >
-              <Icon name="person-add" size={14} color={FEED.postText} />
-              <Text style={styles.chipText}>Add friends</Text>
+              <Icon name="person-add" size={14} color={feed.postText} />
+              <Text style={[styles.chipText, { color: feed.postText }]}>Add friends</Text>
             </TouchableOpacity>
             <TouchableOpacity
-              style={styles.chip}
+              style={[styles.chip, { backgroundColor: feed.chipBg, borderColor: feed.postBorder }]}
               onPress={() => onPostPrompt?.('')}
               activeOpacity={0.8}
             >
-              <Icon name="photo-camera" size={14} color={FEED.postText} />
-              <Text style={styles.chipText}>First photo</Text>
+              <Icon name="photo-camera" size={14} color={feed.postText} />
+              <Text style={[styles.chipText, { color: feed.postText }]}>First photo</Text>
             </TouchableOpacity>
           </View>
-          <Text style={styles.hint}>Post something, or answer today's question.</Text>
+          <Text style={[styles.hint, { color: feed.postTextMuted }]}>Post something, or answer today's question.</Text>
         </View>
       )}
     </View>
@@ -120,16 +121,11 @@ const styles = StyleSheet.create({
   },
   card: {
     position: 'relative',
-    backgroundColor: FEED.postBg,
     borderWidth: 1,
-    borderColor: FEED.postBorder,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 14,
-  },
-  promptCard: {
-    backgroundColor: 'rgba(0, 40, 54, 0.96)',
   },
   dismiss: {
     position: 'absolute',
@@ -138,7 +134,6 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 2,
@@ -149,17 +144,14 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.8,
     textTransform: 'uppercase',
-    color: '#7ce7ff',
   },
   title: {
     marginBottom: 6,
     fontSize: 18,
     fontWeight: '700',
-    color: FEED.postText,
   },
   bn: {
     marginBottom: 12,
-    color: FEED.postTextMuted,
     fontSize: 13,
   },
   cta: {
@@ -167,10 +159,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: FEED.postAccent,
   },
   ctaText: {
-    color: '#04222a',
     fontWeight: '700',
     fontSize: 13,
   },
@@ -187,17 +177,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 999,
-    backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
-    borderColor: FEED.postBorder,
   },
   chipText: {
-    color: FEED.postText,
     fontSize: 13,
     fontWeight: '600',
   },
   hint: {
-    color: FEED.postTextMuted,
     fontSize: 13,
   },
 });

@@ -40,7 +40,7 @@ import SingleMessage from './src/screens/SingleMessage';
 import FriendProfile from './src/screens/FriendProfile';
 import Videos from './src/screens/Videos';
 import SinglePost from './src/screens/SinglePost';
-import SingleVideo from './src/screens/SingleVideo';
+import SingleWatch from './src/screens/SingleWatch';
 import EditPost from './src/screens/EditPost';
 import AudioCall from './src/components/AudioCall';
 import VideoCall from './src/components/VideoCall';
@@ -61,6 +61,8 @@ import FacebookHeader from './src/components/FacebookHeader';
 import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext';
 import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
+import { WatchPipProvider } from './src/contexts/WatchPipContext';
+import WatchPipPlayer from './src/components/watch/WatchPipPlayer';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
@@ -68,6 +70,7 @@ import PermissionsInitializer from './src/components/PermissionsInitializer';
 import ExpoGoFallback from './src/components/ExpoGoFallback';
 
 import * as Speech from 'expo-speech';
+import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
 import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
 import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/reducers/presenceReducer';
@@ -100,6 +103,7 @@ function MessageStack() {
         }}
       />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="SingleWatch" component={SingleWatch} />
       {/* Video calling screens removed for Expo compatibility */}
     </Stack.Navigator>
   );
@@ -111,6 +115,7 @@ function HomeStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="HomeMain" component={Home} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
+      <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
       <Stack.Screen name="Camera" component={CameraScreen} />
@@ -125,7 +130,9 @@ function VideosStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="VideosMain" component={Videos} />
-      <Stack.Screen name="SingleVideo" component={SingleVideo} />
+      <Stack.Screen name="SingleVideo" component={SingleWatch} />
+      <Stack.Screen name="SingleWatch" component={SingleWatch} />
+      <Stack.Screen name="FriendProfile" component={FriendProfile} />
     </Stack.Navigator>
   );
 }
@@ -136,6 +143,7 @@ function FriendsStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="FriendsMain" component={Friends} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="SingleWatch" component={SingleWatch} />
     </Stack.Navigator>
   );
 }
@@ -215,6 +223,7 @@ function MenuStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MenuHome" component={Menu} />
       <Stack.Screen name="MyProfile" component={MyProfile} />
+      <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="VideoLibrary">
         {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
@@ -275,7 +284,7 @@ function TabBarWithLudoCheck(props: any) {
   const routeName = getDeepestRouteName(props.state) || getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) || '';
   
   // Hide tab bar for specific screens
-  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
+  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'SingleWatch' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
     return null;
   }
   
@@ -602,29 +611,15 @@ function AppContent() {
   }, [apkUrl, serverVersion, ensureStoragePermission]);
 
   React.useEffect(() => {
-    // Stop any currently playing TTS immediately
-    const stopTts = async () => {
-      try {
-        await Speech.stop();
-      } catch (e) {
-        // Ignore errors
-      }
-    };
-    stopTts();
-
-    // Initialize TTS system
+    ensureSpeakMessageListener();
     const initializeTts = async () => {
       try {
-        // Initialize main TTS
         const voices = await Speech.getAvailableVoicesAsync();
         console.log('Available TTS voices:', voices.length);
-        
-        console.log('✅ TTS system initialized successfully');
       } catch (error) {
         console.error('❌ Error initializing TTS systems:', error);
       }
     };
-    
     initializeTts();
   }, []);
 
@@ -855,26 +850,13 @@ function AppContent() {
       }
     }
 
-    // TTS disabled - no longer automatically speaking messages when receiving 'speak_message' events
-    // TTS will only work when user explicitly clicks the speaker button
-    // let handleSpeakMessage = (message: any) => {
-    //   // Use background TTS service for better reliability
-    //   backgroundTtsService.speakMessage(message, { priority: 'normal', interrupt: false });
-    //   console.log('🎤 Speaking message via background TTS service:', message)
-    // }
-
     on('newNotification', handleNewNotification)
-
-    // TTS disabled - no longer listening to 'speak_message' events for automatic TTS
-    // on('speak_message', handleSpeakMessage)
 
     return () => {
       off('bumpUser',handleBumpUser)
       off('newMessage', handleRoomMessage)
       off('newMessageToUser', handleUserMessage)
       off('newNotification', handleNewNotification)
-      // TTS disabled - no longer listening to 'speak_message' events
-      // off('speak_message', handleSpeakMessage)
       off('friend_online', handleFriendOnline)
       off('friend_offline', handleFriendOffline)
       off('is_active', handleIsActive)
@@ -1060,6 +1042,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
               </Tab.Navigator>
             )}
             <MinimizedCallBar />
+            <WatchPipPlayer />
         </SafeAreaView>
         );
       }}
@@ -1116,7 +1099,9 @@ function App() {
                             <LudoGameProvider>
                               <ChessGameProvider>
                                 <HeaderVisibilityProvider>
-                                  <AppWithTopProgress />
+                                  <WatchPipProvider>
+                                    <AppWithTopProgress />
+                                  </WatchPipProvider>
                                 </HeaderVisibilityProvider>
                               </ChessGameProvider>
                             </LudoGameProvider>

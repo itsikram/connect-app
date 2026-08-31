@@ -2,22 +2,30 @@ import React, { useState, useEffect, useContext } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ScrollView,
-  Alert,
-  ActivityIndicator,
 } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState } from '../../store';
 import { setProfile } from '../../reducers/profileReducer';
 import { AuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
-import api from '../../lib/api';
+import api, { userAPI } from '../../lib/api';
+import {
+  SettingsSectionHeader,
+  SettingsField,
+  SettingsInput,
+  SettingsPrimaryButton,
+  SettingsSecondaryButton,
+} from './settingsUi';
+
+const resolveProfileId = (user: any, currentProfile?: any) => {
+  if (typeof currentProfile?._id === 'string' && currentProfile._id) return currentProfile._id;
+  if (typeof user?.profile === 'string' && user.profile) return user.profile;
+  if (typeof user?.profile?._id === 'string' && user.profile._id) return user.profile._id;
+  if (typeof user?.user_id === 'string' && user.user_id) return user.user_id;
+  return null;
+};
 
 interface ProfileData {
   firstName: string;
@@ -25,48 +33,45 @@ interface ProfileData {
   nickname: string;
   username: string;
   displayName: string;
-  bio: string;
+  banglaName: string;
   presentAddress: string;
   permanentAddress: string;
   workPlaces: Array<{ name: string; designation: string }>;
   schools: Array<{ name: string; degree: string }>;
 }
 
+const emptyWorkplace = () => ({ name: '', designation: '' });
+const emptySchool = () => ({ name: '', degree: '' });
+
 const ProfileSettings = () => {
   const { colors: themeColors } = useTheme();
-  const { updateSettings } = useSettings();
   const { showSuccess, showError } = useToast();
   const dispatch = useDispatch();
   const { user } = useContext(AuthContext);
-  
-  // Get current profile data from Redux store
   const currentProfile = useSelector((state: RootState) => state.profile);
-  
-  const [profileData, setProfileData] = useState({
+
+  const [profileData, setProfileData] = useState<ProfileData>({
     firstName: '',
     surname: '',
     nickname: '',
     username: '',
     displayName: '',
-    bio: '',
+    banglaName: '',
     presentAddress: '',
     permanentAddress: '',
-    workPlaces: [{ name: '', designation: '' }],
-    schools: [{ name: '', degree: '' }],
+    workPlaces: [emptyWorkplace()],
+    schools: [emptySchool()],
   });
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [isSaving, setIsSaving] = useState<boolean>(false);
-  const [isInitialized, setIsInitialized] = useState<boolean>(false);
-
-  // Fetch profile data when component mounts (only once)
   useEffect(() => {
+    const profileId = resolveProfileId(user, currentProfile);
+    if (!profileId) return;
+    if (currentProfile?._id === profileId && currentProfile?.user) return;
+
     const fetchProfileData = async () => {
-      if (!user?.profile && !user?.user_id) return;
-      
       try {
-        const profileId = user?.profile || user?.user_id;
-        const response = await api.get(`/profile/${profileId}`);
-        
+        const response = await userAPI.getProfile(profileId);
         if (response.data) {
           dispatch(setProfile(response.data));
         }
@@ -74,157 +79,65 @@ const ProfileSettings = () => {
         console.error('Error fetching profile data:', error);
       }
     };
+    fetchProfileData();
+  }, [user, currentProfile?._id, currentProfile?.user, dispatch]);
 
-    if (!isInitialized) {
-      fetchProfileData();
-      setIsInitialized(true);
-    }
-  }, [user, dispatch, isInitialized]);
-
-  // Update local state when Redux store changes (only when profile actually changes)
   useEffect(() => {
     if (!currentProfile || Object.keys(currentProfile).length === 0) return;
-    
-    console.log('ProfileSettings: currentProfile from Redux:', currentProfile);
-    console.log('ProfileSettings: user from AuthContext:', user);
-    
-    console.log('ProfileSettings: Setting profile data from Redux store');
-    setProfileData(prev => ({
-      ...prev,
-      user: {
-        ...currentProfile.user,
-      },
+    const schools = currentProfile.schools?.length
+      ? currentProfile.schools
+      : currentProfile.education?.length
+        ? currentProfile.education
+        : [emptySchool()];
+    const workPlaces = currentProfile.workPlaces?.length
+      ? currentProfile.workPlaces
+      : currentProfile.workplaces?.length
+        ? currentProfile.workplaces
+        : [emptyWorkplace()];
+
+    setProfileData({
       firstName: currentProfile.user?.firstName || currentProfile.user?.first_name || user?.firstName || '',
       surname: currentProfile.user?.surname || currentProfile.user?.last_name || user?.surname || '',
       nickname: currentProfile.nickname || '',
       username: currentProfile.username || currentProfile.user_name || '',
       displayName: currentProfile.displayName || currentProfile.display_name || '',
-      bio: currentProfile.bio || '',
+      banglaName: currentProfile.banglaName || '',
       presentAddress: currentProfile.presentAddress || currentProfile.present_address || '',
       permanentAddress: currentProfile.permanentAddress || currentProfile.permanent_address || '',
-      workPlaces: currentProfile.workPlaces && currentProfile.workPlaces.length > 0 
-        ? currentProfile.workPlaces 
-        : currentProfile.workplaces && currentProfile.workplaces.length > 0
-        ? currentProfile.workplaces
-        : [{ name: '', designation: '' }],
-      schools: currentProfile.schools && currentProfile.schools.length > 0 
-        ? currentProfile.schools 
-        : currentProfile.education && currentProfile.education.length > 0
-        ? currentProfile.education
-        : [{ name: '', degree: '' }],
-    }));
-  }, [currentProfile?._id]); // Only depend on profile ID, not the entire profile object
+      workPlaces,
+      schools,
+    });
+  }, [currentProfile?._id, user?.firstName, user?.surname]);
 
   const handleInputChange = (field: keyof ProfileData, value: string) => {
-    setProfileData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
-
-  const handleWorkplaceChange = (index: number, field: 'name' | 'designation', value: string) => {
-    const newWorkPlaces = [...profileData.workPlaces];
-    newWorkPlaces[index] = {
-      ...newWorkPlaces[index],
-      [field]: value,
-    };
-    setProfileData(prev => ({
-      ...prev,
-      workPlaces: newWorkPlaces,
-    }));
+    setProfileData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSchoolChange = (index: number, field: 'name' | 'degree', value: string) => {
-    const newSchools = [...profileData.schools];
-    newSchools[index] = {
-      ...newSchools[index],
-      [field]: value,
-    };
-    setProfileData(prev => ({
-      ...prev,
-      schools: newSchools,
-    }));
+    const next = [...profileData.schools];
+    next[index] = { ...next[index], [field]: value };
+    setProfileData((prev) => ({ ...prev, schools: next }));
   };
 
-  const addWorkplace = () => {
-    setProfileData(prev => ({
-      ...prev,
-      workPlaces: [...prev.workPlaces, { name: '', designation: '' }],
-    }));
-  };
-
-  const addSchool = () => {
-    setProfileData(prev => ({
-      ...prev,
-      schools: [...prev.schools, { name: '', degree: '' }],
-    }));
-  };
-
-  const removeWorkplace = (index: number) => {
-    Alert.alert(
-      'Remove Workplace',
-      'Are you sure you want to remove this workplace?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            const newWorkPlaces = profileData.workPlaces.filter((_, i) => i !== index);
-            setProfileData(prev => ({
-              ...prev,
-              workPlaces: newWorkPlaces.length > 0 ? newWorkPlaces : [{ name: '', designation: '' }],
-            }));
-          },
-        },
-      ]
-    );
-  };
-
-  const removeSchool = (index: number) => {
-    if (profileData.schools.length > 1) {
-      const newSchools = profileData.schools.filter((_, i) => i !== index);
-      setProfileData(prev => ({
-        ...prev,
-        schools: newSchools,
-      }));
-    }
+  const handleWorkplaceChange = (index: number, field: 'name' | 'designation', value: string) => {
+    const next = [...profileData.workPlaces];
+    next[index] = { ...next[index], [field]: value };
+    setProfileData((prev) => ({ ...prev, workPlaces: next }));
   };
 
   const handleSave = async () => {
-    if (isSaving) return; // Prevent multiple saves
-    
-    // Filter out empty entries
+    if (isSaving) return;
     const filteredData = {
       ...profileData,
-      workPlaces: profileData.workPlaces.filter(wp => wp.name.trim() !== '' || wp.designation.trim() !== ''),
-      schools: profileData.schools.filter(school => school.name.trim() !== '' || school.degree.trim() !== ''),
-    } as ProfileData & { workPlaces: Array<{ name: string; designation: string }>; schools: Array<{ name: string; degree: string }> };
-
-    // Ensure at least one workplace entry exists
-    if (filteredData.workPlaces.length === 0) {
-      filteredData.workPlaces = [{ name: '', designation: '' }];
-    }
-
-    // Ensure at least one school entry exists
-    if (filteredData.schools.length === 0) {
-      filteredData.schools = [{ name: '', degree: '' }];
-    }
-
+      workPlaces: profileData.workPlaces.filter((wp) => wp.name.trim() || wp.designation.trim()),
+      schools: profileData.schools.filter((school) => school.name.trim() || school.degree.trim()),
+    };
     try {
       setIsSaving(true);
-      // Make API call to save profile data
       const response = await api.post('/profile/update', filteredData);
-      
       if (response.status === 200) {
-        // Update Redux store with the response data
         dispatch(setProfile(response.data));
-        // Update settings context
-        await updateSettings(filteredData);
-        showSuccess('Profile settings saved successfully!');
+        showSuccess('Your Profile Updated Successfully');
       } else {
         showError('Failed to save profile settings. Please try again.');
       }
@@ -236,352 +149,158 @@ const ProfileSettings = () => {
     }
   };
 
-  const renderInputField = (
-    label: string,
-    value: string,
-    onChangeText: (text: string) => void,
-    placeholder: string,
-    icon?: string,
-    keyboardType: 'default' | 'email-address' | 'numeric' | 'phone-pad' = 'default'
-  ) => (
-    <View style={styles.inputContainer}>
-      <Text style={[styles.label, { color: themeColors.text.primary }]}>
-        {label}
-      </Text>
-      <View style={[
-        styles.inputWrapper,
-        { 
-          backgroundColor: themeColors.surface.secondary,
-          borderColor: themeColors.border.primary,
-        }
-      ]}>
-        {icon && (
-          <Icon 
-            name={icon} 
-            size={20} 
-            color={themeColors.gray[400]}
-            style={styles.inputIcon}
-          />
-        )}
-        <TextInput
-          style={[
-            styles.textInput,
-            { 
-              color: themeColors.text.primary,
-              paddingLeft: icon ? 40 : 16,
-            }
-          ]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={themeColors.gray[400]}
-          keyboardType={keyboardType}
+  return (
+    <View style={styles.container}>
+      <SettingsSectionHeader
+        title="Profile Settings"
+        description="Update how your name and details appear on Connect."
+      />
+
+      <SettingsField label="First Name">
+        <SettingsInput
+          value={profileData.firstName}
+          onChangeText={(text) => handleInputChange('firstName', text)}
+          placeholder="Enter first name"
+        />
+      </SettingsField>
+      <SettingsField label="Surname">
+        <SettingsInput
+          value={profileData.surname}
+          onChangeText={(text) => handleInputChange('surname', text)}
+          placeholder="Enter Last Name"
+        />
+      </SettingsField>
+      <SettingsField label="Username">
+        <SettingsInput
+          value={profileData.username}
+          onChangeText={(text) => handleInputChange('username', text)}
+          placeholder="Enter Username"
+          prefix="@"
+          autoCapitalize="none"
+        />
+      </SettingsField>
+      <SettingsField label="Nickname">
+        <SettingsInput
+          value={profileData.nickname}
+          onChangeText={(text) => handleInputChange('nickname', text)}
+          placeholder="Enter Nickname"
+        />
+      </SettingsField>
+      <SettingsField label="Display Name">
+        <SettingsInput
+          value={profileData.displayName}
+          onChangeText={(text) => handleInputChange('displayName', text)}
+          placeholder="Enter Display Name"
+        />
+      </SettingsField>
+      <SettingsField
+        label="Bengali Name (বাংলা নাম)"
+        help="Enter your name in Bengali script to help Bengali speakers find you easily."
+      >
+        <SettingsInput
+          value={profileData.banglaName}
+          onChangeText={(text) => handleInputChange('banglaName', text)}
+          placeholder="আপনার বাংলা নাম লিখুন"
+        />
+      </SettingsField>
+      <SettingsField label="Present Address">
+        <SettingsInput
+          value={profileData.presentAddress}
+          onChangeText={(text) => handleInputChange('presentAddress', text)}
+          placeholder="Enter Present Address"
+          icon="home"
+        />
+      </SettingsField>
+      <SettingsField label="Permanent Address">
+        <SettingsInput
+          value={profileData.permanentAddress}
+          onChangeText={(text) => handleInputChange('permanentAddress', text)}
+          placeholder="Enter Permanent Address"
+          icon="public"
+        />
+      </SettingsField>
+
+      <View style={[styles.groupCard, { borderColor: themeColors.border.primary, backgroundColor: themeColors.surface.secondary }]}>
+        <Text style={[styles.groupTitle, { color: themeColors.text.primary }]}>Your Schools</Text>
+        {profileData.schools.map((school, index) => (
+          <View key={`school-${index}`} style={[styles.groupRow, { borderColor: themeColors.border.primary }]}>
+            <SettingsField label="Degree">
+              <SettingsInput
+                value={school.degree || ''}
+                onChangeText={(text) => handleSchoolChange(index, 'degree', text)}
+                placeholder="Your Degree"
+                icon="school"
+              />
+            </SettingsField>
+            <SettingsField label="School Name">
+              <SettingsInput
+                value={school.name || ''}
+                onChangeText={(text) => handleSchoolChange(index, 'name', text)}
+                placeholder="School Name"
+                icon="school"
+              />
+            </SettingsField>
+          </View>
+        ))}
+        <SettingsSecondaryButton
+          title={profileData.schools.length > 0 ? 'Add Another School' : 'Add School'}
+          onPress={() => setProfileData((prev) => ({ ...prev, schools: [...prev.schools, emptySchool()] }))}
         />
       </View>
-    </View>
-  );
 
-  const renderSchoolItem = (school: { name: string; degree: string }, index: number) => (
-    <View key={index} style={[
-      styles.dynamicRow,
-      { 
-        backgroundColor: themeColors.surface.secondary,
-        borderColor: themeColors.border.primary,
-      }
-    ]}>
-      <View style={styles.dynamicRowHeader}>
-        <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>
-          School {index + 1}
-        </Text>
-        {profileData.schools.length > 1 && (
-          <TouchableOpacity 
-            style={styles.removeButton} 
-            onPress={() => removeSchool(index)}
-          >
-            <Icon name="remove-circle" size={24} color={themeColors.status.error} />
-          </TouchableOpacity>
-        )}
-      </View>
-      {renderInputField('Degree', school.degree, (text) => handleSchoolChange(index, 'degree', text), 'Your Degree', 'school')}
-      {renderInputField('School Name', school.name, (text) => handleSchoolChange(index, 'name', text), 'School Name', 'school')}
-    </View>
-  );
-
-  const renderWorkplaceItem = (workplace: { name: string; designation: string }, index: number) => (
-    <View key={index} style={[
-      styles.dynamicRow,
-      { 
-        backgroundColor: themeColors.surface.secondary,
-        borderColor: themeColors.border.primary,
-      }
-    ]}>
-      <View style={styles.dynamicRowHeader}>
-        <Text style={[styles.itemTitle, { color: themeColors.text.primary }]}>
-          Workplace {index + 1}
-        </Text>
-        <TouchableOpacity 
-          style={styles.removeButton} 
-          onPress={() => removeWorkplace(index)}
-        >
-          <Icon name="remove-circle" size={24} color={themeColors.status.error} />
-        </TouchableOpacity>
-      </View>
-      {renderInputField('Designation', workplace.designation, (text) => handleWorkplaceChange(index, 'designation', text), 'Your Designation', 'work')}
-      {renderInputField('Company Name', workplace.name, (text) => handleWorkplaceChange(index, 'name', text), 'Company Name', 'business')}
-    </View>
-  );
-
-  return (
-    <ScrollView 
-      style={styles.container} 
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.scrollContent}
-      nestedScrollEnabled={true}
-    >
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text.primary }]}>
-          Profile Settings
-        </Text>
-      </View>
-
-      {/* Basic Information */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Basic Information
-        </Text>
-        
-        {renderInputField('First Name', currentProfile.user.firstName, (text) => handleInputChange('firstName', text), 'Enter First Name')}
-        {renderInputField('Surname', profileData.surname, (text) => handleInputChange('surname', text), 'Enter Last Name')}
-        {renderInputField('Username', profileData.username, (text) => handleInputChange('username', text), 'Enter Username', 'alternate-email')}
-        {renderInputField('Nickname', profileData.nickname, (text) => handleInputChange('nickname', text), 'Enter Nickname')}
-        {renderInputField('Display Name', profileData.displayName, (text) => handleInputChange('displayName', text), 'Enter Display Name')}
-        
-        {/* Bio Field - Special handling for multiline */}
-        <View style={styles.inputContainer}>
-          <Text style={[styles.label, { color: themeColors.text.primary }]}>
-            Bio
-          </Text>
-          <View style={[
-            styles.inputWrapper, 
-            { 
-              backgroundColor: themeColors.surface.secondary,
-              borderColor: themeColors.border.primary,
-            }
-          ]}>
-            <Icon 
-              name="info" 
-              size={20} 
-              color={themeColors.gray[400]} 
-              style={styles.inputIcon}
-            />
-            <TextInput
-              style={[
-                styles.textInput,
-                styles.bioTextInput,
-                { 
-                  color: themeColors.text.primary,
-                  paddingLeft: 40,
-                  textAlignVertical: 'top',
-                }
-              ]}
-              value={profileData.bio}
-              onChangeText={(text) => handleInputChange('bio', text)}
-              placeholder="Tell people about yourself..."
-              placeholderTextColor={themeColors.gray[400]}
-              multiline
-              numberOfLines={4}
-              maxLength={150}
-            />
+      <View style={[styles.groupCard, { borderColor: themeColors.border.primary, backgroundColor: themeColors.surface.secondary }]}>
+        <Text style={[styles.groupTitle, { color: themeColors.text.primary }]}>Your Workplaces</Text>
+        {profileData.workPlaces.map((workplace, index) => (
+          <View key={`work-${index}`} style={[styles.groupRow, { borderColor: themeColors.border.primary }]}>
+            <SettingsField label="Designation">
+              <SettingsInput
+                value={workplace.designation || ''}
+                onChangeText={(text) => handleWorkplaceChange(index, 'designation', text)}
+                placeholder="Your Designation"
+                icon="work"
+              />
+            </SettingsField>
+            <SettingsField label="Company Name">
+              <SettingsInput
+                value={workplace.name || ''}
+                onChangeText={(text) => handleWorkplaceChange(index, 'name', text)}
+                placeholder="Workplace Name"
+                icon="business"
+              />
+            </SettingsField>
           </View>
-          <Text style={[styles.characterCount, { color: themeColors.text.tertiary }]}>
-            {profileData.bio.length}/150 characters
-          </Text>
-        </View>
+        ))}
+        <SettingsSecondaryButton
+          title={profileData.workPlaces.length > 0 ? 'Add Another Workplace' : 'Add Workplace'}
+          onPress={() => setProfileData((prev) => ({ ...prev, workPlaces: [...prev.workPlaces, emptyWorkplace()] }))}
+        />
       </View>
 
-      {/* Address Information */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Address Information
-        </Text>
-        
-        {renderInputField('Present Address', profileData.presentAddress, (text) => handleInputChange('presentAddress', text), 'Enter Present Address', 'home')}
-        {renderInputField('Permanent Address', profileData.permanentAddress, (text) => handleInputChange('permanentAddress', text), 'Enter Permanent Address', 'public')}
-      </View>
-
-      {/* Schools */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Education
-        </Text>
-        
-        {profileData.schools.map((school, index) => renderSchoolItem(school, index))}
-        
-        <TouchableOpacity style={[styles.addButton, { backgroundColor: themeColors.secondary }]} onPress={addSchool}>
-          <Icon name="add" size={20} color={themeColors.text.inverse} />
-          <Text style={[styles.addButtonText, { color: themeColors.text.inverse }]}>Add School</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Workplaces */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Work Experience
-        </Text>
-        
-        {profileData.workPlaces.map((workplace, index) => renderWorkplaceItem(workplace, index))}
-        
-        <TouchableOpacity style={[styles.addButton, { backgroundColor: themeColors.secondary }]} onPress={addWorkplace}>
-          <Icon name="add" size={20} color={themeColors.text.inverse} />
-          <Text style={[styles.addButtonText, { color: themeColors.text.inverse }]}>Add Workplace</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Save Button */}
-      <TouchableOpacity 
-        style={[
-          styles.saveButton, 
-          { backgroundColor: isSaving ? themeColors.gray[600] : themeColors.primary }
-        ]} 
-        onPress={handleSave}
-        disabled={isSaving}
-      >
-        {isSaving ? (
-          <>
-            <ActivityIndicator size="small" color={themeColors.text.inverse} style={{ marginRight: 8 }} />
-            <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Saving...</Text>
-          </>
-        ) : (
-          <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Settings</Text>
-        )}
-      </TouchableOpacity>
-    </ScrollView>
+      <SettingsPrimaryButton title="Save Settings" onPress={handleSave} loading={isSaving} />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    paddingBottom: 8,
   },
-  scrollContent: {
-    paddingBottom: 32,
-  },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  section: {
-    marginBottom: 24,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  inputContainer: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  inputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderRadius: 12,
+  groupCard: {
     borderWidth: 1,
-    overflow: 'hidden',
-  },
-  inputIcon: {
-    position: 'absolute',
-    left: 12,
-    zIndex: 1,
-  },
-  textInput: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingRight: 16,
-    fontSize: 16,
-  },
-  bioTextInput: {
-    minHeight: 80,
-    textAlignVertical: 'top',
-    paddingTop: 12,
-  },
-  characterCount: {
-    fontSize: 12,
-    marginTop: 8,
-    alignSelf: 'flex-end',
-    fontStyle: 'italic',
-  },
-  dynamicRow: {
-    padding: 16,
-    borderRadius: 12,
+    borderRadius: 14,
+    padding: 14,
     marginBottom: 16,
+  },
+  groupTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  groupRow: {
     borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 1,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  dynamicRowHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  itemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  removeButton: {
-    padding: 8,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255, 59, 48, 0.1)',
-  },
-  addButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
-  },
-  addButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginLeft: 8,
-  },
-  saveButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
     borderRadius: 12,
-    alignItems: 'center',
-    marginTop: 16,
-    marginBottom: 32,
-  },
-  saveButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+    padding: 10,
+    marginBottom: 10,
   },
 });
 

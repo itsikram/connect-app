@@ -6,6 +6,7 @@ import {
   Image,
   StyleSheet,
   Platform,
+  DeviceEventEmitter,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
@@ -45,8 +46,7 @@ interface StorySliderProps {
   refreshKey?: number;
 }
 
-const parseStoryGradient = (bg?: string) => {
-  const fallback = ['#242526', '#1a1c1e'];
+const parseStoryGradient = (bg?: string, fallback: string[] = ['#242526', '#1a1c1e']) => {
   if (!bg) return fallback;
   const matches = bg.match(/rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}/g);
   if (matches && matches.length >= 2) return matches.slice(0, 2);
@@ -64,7 +64,10 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
   const [scrollPosition, setScrollPosition] = useState(0);
   const [contentWidth, setContentWidth] = useState(0);
   const [viewportWidth, setViewportWidth] = useState(0);
-  const { colors: themeColors } = useTheme();
+  const { colors: themeColors, isDarkMode } = useTheme();
+  const storyFallback = isDarkMode
+    ? ['#242526', '#1a1c1e']
+    : [themeColors.surface.secondary, themeColors.background.tertiary];
   const scrollViewRef = useRef<ScrollView>(null);
 
   const fetchStories = useCallback(async () => {
@@ -104,6 +107,13 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
     return () => clearTimeout(timer);
   }, [fetchStories, refreshKey]);
 
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener('story:created', () => {
+      fetchStories();
+    });
+    return () => sub.remove();
+  }, [fetchStories]);
+
   const handleStoryPress = (story: Story, index: number) => {
     if (onStoryPress) {
       onStoryPress(story);
@@ -129,6 +139,16 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
   };
 
   const handleCloseStory = () => {
+    setShowStoryModal(false);
+    setSelectedStoryIndex(-1);
+  };
+
+  const handleStoryDeleted = (storyId: string) => {
+    setStories((prev) => {
+      const next = prev.filter((item) => item._id !== storyId);
+      CacheManager.setCachedStories(profileId, next);
+      return next;
+    });
     setShowStoryModal(false);
     setSelectedStoryIndex(-1);
   };
@@ -170,7 +190,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
           scrollEventThrottle={16}
         >
           {stories.map((story, index) => {
-            const gradientColors = parseStoryGradient(story.bgColor);
+            const gradientColors = parseStoryGradient(story.bgColor, storyFallback);
             return (
               <TouchableOpacity
                 key={story._id || `story-${index}`}
@@ -182,7 +202,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
                   colors={gradientColors as [string, string, ...string[]]}
                   start={{ x: 0, y: 0 }}
                   end={{ x: 1, y: 1 }}
-                  style={styles.storyCard}
+                  style={[styles.storyCard, { backgroundColor: themeColors.surface.secondary }]}
                 >
                   <View style={styles.profilePicContainer}>
                     <UserPP
@@ -241,6 +261,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
         onPrevious={handlePreviousStory}
         hasNext={selectedStoryIndex < stories.length - 1}
         hasPrevious={selectedStoryIndex > 0}
+        onDeleted={handleStoryDeleted}
       />
     </View>
   );
@@ -272,7 +293,6 @@ const styles = StyleSheet.create({
     height: STORY_HEIGHT,
     borderRadius: 10,
     overflow: 'hidden',
-    backgroundColor: '#242526',
     ...Platform.select({
       ios: {
         shadowColor: '#000',

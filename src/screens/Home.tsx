@@ -14,7 +14,7 @@ import PostSkeleton from '../components/skeleton/PostSkeleton';
 import FeedBoostCards from '../components/FeedBoostCards';
 import CacheManager from '../utils/cacheManager';
 import { TAB_BAR_HEIGHT } from '../components/tabBarLayout';
-import { FEED } from '../theme/feedTokens';
+import { useFeedTokens } from '../theme/feedTokens';
 
 const INITIAL_POSTS_TO_RENDER = 5;
 const MAX_BATCH_SIZE = 5;
@@ -48,6 +48,7 @@ const Home = () => {
 
     const isFocused = useIsFocused();
     const { colors: themeColors, isDarkMode } = useTheme();
+    const feed = useFeedTokens();
     const myProfile = useSelector((state: RootState) => state.profile);
     const isFirstLoadRef = useRef(true);
     const loadLockRef = useRef(false);
@@ -219,18 +220,18 @@ const Home = () => {
                             paddingHorizontal: 14,
                             paddingVertical: 12,
                             borderRadius: 12,
-                            backgroundColor: 'rgba(0, 212, 255, 0.14)',
+                            backgroundColor: feed.postAccentSoft,
                             borderWidth: 1,
-                            borderColor: 'rgba(0, 212, 255, 0.35)',
+                            borderColor: themeColors.primary + '59',
                             flexDirection: 'row',
                             alignItems: 'center',
                         }}
                     >
-                        <Text style={{ flex: 1, color: FEED.postText, fontSize: 14, fontWeight: '600' }}>
+                        <Text style={{ flex: 1, color: feed.postText, fontSize: 14, fontWeight: '600' }}>
                             🆕 New Posts! {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'} available
                         </Text>
                         <TouchableOpacity onPress={() => setShowNewPostsNotification(false)} hitSlop={8}>
-                            <Icon name="close" size={18} color={FEED.postTextMuted} />
+                            <Icon name="close" size={18} color={feed.postTextMuted} />
                         </TouchableOpacity>
                     </View>
                 )}
@@ -252,6 +253,8 @@ const Home = () => {
             feedLoaded,
             uniquePosts.length,
             handleOpenComposer,
+            feed,
+            themeColors.primary,
         ],
     );
 
@@ -337,7 +340,7 @@ const Home = () => {
                     />
                 }
                 style={{ backgroundColor }}
-                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: TAB_BAR_HEIGHT + 16 }}
+                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: TAB_BAR_HEIGHT + 16, paddingHorizontal: 10 }}
                 initialNumToRender={INITIAL_POSTS_TO_RENDER}
                 maxToRenderPerBatch={MAX_BATCH_SIZE}
                 windowSize={LIST_WINDOW_SIZE}

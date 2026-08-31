@@ -12,6 +12,9 @@ import { setProfile, updateProfilePic, updateCoverPic } from '../reducers/profil
 import { useNavigation } from '@react-navigation/native'
 import ImageCropModal from '../components/ImageCropModal'
 import ProfileImage from '../components/ProfileImage'
+import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
+import PostSkeleton from '../components/skeleton/PostSkeleton'
+import CreateStoryModal from '../components/story/CreateStoryModal'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -43,18 +46,20 @@ const MyProfile = () => {
     const friendsCount = Array.isArray(myProfile?.friends) ? myProfile.friends.length : 0
 
     const [posts, setPosts] = React.useState<any[]>([])
-    const [postsLoading, setPostsLoading] = React.useState<boolean>(false)
+    const [postsLoading, setPostsLoading] = React.useState<boolean>(true)
     const [images, setImages] = React.useState<string[]>([])
+    const [imagesLoading, setImagesLoading] = React.useState<boolean>(true)
     const [imageViewerOpen, setImageViewerOpen] = React.useState(false)
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0)
     const [friends, setFriends] = React.useState<any[]>([])
-    const [friendsLoading, setFriendsLoading] = React.useState<boolean>(false)
+    const [friendsLoading, setFriendsLoading] = React.useState<boolean>(true)
     const [videos, setVideos] = React.useState<any[]>([])
-    const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
+    const [videosLoading, setVideosLoading] = React.useState<boolean>(true)
     const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
     const [refreshing, setRefreshing] = React.useState<boolean>(false)
     const [showProfileCropModal, setShowProfileCropModal] = React.useState<boolean>(false)
     const [showCoverCropModal, setShowCoverCropModal] = React.useState<boolean>(false)
+    const [showCreateStoryModal, setShowCreateStoryModal] = React.useState<boolean>(false)
     const [uploadProgress, setUploadProgress] = React.useState<number>(0)
 
     const fetchProfileData = React.useCallback(async () => {
@@ -297,7 +302,7 @@ const MyProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {postsLoading && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading posts...</Text></View>
+                        <PostSkeleton count={2} />
                     )}
                     {!postsLoading && posts.length === 0 && (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
@@ -315,7 +320,7 @@ const MyProfile = () => {
             render: () => (
                 <View style={{ gap: 10 }}>
                     {friendsLoading && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading friends...</Text></View>
+                        <ProfileFriendsSkeleton count={4} />
                     )}
                     {!friendsLoading && friends.length === 0 && (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No friends found.</Text></View>
@@ -358,7 +363,9 @@ const MyProfile = () => {
             count: images.length || undefined,
             render: () => (
                 <View>
-                    {images.length === 0 ? (
+                    {imagesLoading ? (
+                        <ProfileMediaSkeleton count={2} />
+                    ) : images.length === 0 ? (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No images found.</Text></View>
                     ) : (
                         <View>
@@ -399,7 +406,7 @@ const MyProfile = () => {
             render: () => (
                 <View>
                     {videosLoading && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>Loading videos...</Text></View>
+                        <ProfileMediaSkeleton count={2} />
                     )}
                     {!videosLoading && videos.length === 0 && (
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No videos found.</Text></View>
@@ -409,10 +416,15 @@ const MyProfile = () => {
                             {videos.map((v: any) => {
                                 const thumb = v.thumbnail || v.photos || v.videoUrl
                                 return (
-                                    <View key={v._id} style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
+                                    <TouchableOpacity
+                                        key={v._id}
+                                        activeOpacity={0.85}
+                                        onPress={() => (navigation as any).navigate('SingleWatch', { watchId: v._id })}
+                                        style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
+                                    >
                                         <Image source={{ uri: thumb }} style={styles.mediaImage} />
                                         <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={themeColors.text.secondary} /></View>
-                                    </View>
+                                    </TouchableOpacity>
                                 )
                             })}
                         </View>
@@ -425,6 +437,7 @@ const MyProfile = () => {
     // Fetch images directly from profile endpoint; fall back to deriving from posts
     React.useEffect(() => {
         if (!myProfile?._id) return
+        setImagesLoading(true)
         api.get('/profile/getImages', { params: { profileId: myProfile._id } }).then(res => {
             if (res.status === 200 && Array.isArray(res.data)) {
                 const imgs = res.data
@@ -438,8 +451,12 @@ const MyProfile = () => {
         }).catch(() => {
             const derived = posts.filter((p: any) => p?.photos).map((p: any) => p.photos)
             setImages(derived)
-        })
+        }).finally(() => setImagesLoading(false))
     }, [myProfile?._id, posts])
+
+    if (!myProfile?._id) {
+        return <ProfileSkeleton />
+    }
 
     return (
         <ScrollView style={[styles.container, { backgroundColor: themeColors.background.primary }]} contentContainerStyle={{ paddingBottom: 80 }} showsVerticalScrollIndicator={false} refreshControl={
@@ -546,7 +563,10 @@ const MyProfile = () => {
                         </View>
 
                         <View style={styles.profileButtons}>
-                            <Pressable style={[styles.button, styles.primaryButton, { backgroundColor: themeColors.primary }]}>
+                            <Pressable
+                                style={[styles.button, styles.primaryButton, { backgroundColor: themeColors.primary }]}
+                                onPress={() => setShowCreateStoryModal(true)}
+                            >
                                 <Icon name="add-circle" size={18} color={themeColors.text.inverse} />
                                 <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add to story</Text>
                             </Pressable>
@@ -596,6 +616,11 @@ const MyProfile = () => {
             onImageSelected={handleCoverImageSelected}
             type="cover"
             aspectRatio={[16, 9]}
+        />
+        <CreateStoryModal
+            visible={showCreateStoryModal}
+            onClose={() => setShowCreateStoryModal(false)}
+            profileData={myProfile}
         />
         </ScrollView>
     )

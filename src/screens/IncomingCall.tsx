@@ -7,7 +7,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { Audio } from 'expo-av';
+import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 
 interface IncomingCallParams {
   callerId: string;
@@ -31,7 +31,6 @@ const IncomingCall: React.FC = () => {
   const [callAccepted, setCallAccepted] = useState(false);
   const lastCallEndTime = useRef<number>(0);
   const callEndDebounceTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
   const params = route.params as unknown as IncomingCallParams;
 
   const { callerId, callerName, callerProfilePic, channelName, isAudio, autoAccept, prevScreenId } = params || {} as IncomingCallParams;
@@ -148,54 +147,23 @@ const IncomingCall: React.FC = () => {
   }, [isDarkMode, themeColors.background.primary]);
 
   useEffect(() => {
-    if (playRingtone) {
-      // Trigger incoming call notification when ringtone starts playing
-      import('../lib/push').then(({ displayIncomingCallNotification }) => {
-        displayIncomingCallNotification({
-          callerName: callerName || 'Unknown Caller',
-          callerProfilePic: callerProfilePic || '',
-          channelName: channelName || '',
-          isAudio: isAudio || false,
-          callerId: callerId || '',
-        });
-      }).catch(error => {
-        console.error('Error displaying incoming call notification:', error);
-      });
-    }
-  }, [playRingtone, callerName, callerProfilePic, channelName, isAudio, callerId]);
+    if (!playRingtone || !callerId || !channelName) return;
+
+    startIncomingCallAlert({
+      callerId,
+      callerName,
+      callerProfilePic,
+      channelName,
+      isAudio: Boolean(isAudio),
+    }).catch((error) => {
+      console.error('Error starting incoming call ringtone:', error);
+    });
+  }, [playRingtone, callerId, callerName, callerProfilePic, channelName, isAudio]);
 
   useEffect(() => {
-    const loadAndPlaySound = async () => {
-      try {
-        if (playRingtone) {
-          if (!soundRef.current) {
-            const { sound } = await Audio.Sound.createAsync(
-              require('../assets/ringtones/my_awesome_ringtone.mp3'),
-              { shouldPlay: true, isLooping: true, volume: 1.0 }
-            );
-            soundRef.current = sound;
-          } else {
-            await soundRef.current.replayAsync();
-          }
-        } else {
-          if (soundRef.current) {
-            await soundRef.current.stopAsync();
-          }
-        }
-      } catch (error) {
-        console.log('Error loading ringtone:', error);
-      }
-    };
-
-    loadAndPlaySound();
-
-    return () => {
-      if (soundRef.current) {
-        soundRef.current.unloadAsync();
-        soundRef.current = null;
-      }
-    };
-  }, [playRingtone]);
+    if (playRingtone) return;
+    stopIncomingCallAlert(channelName).catch(() => {});
+  }, [playRingtone, channelName]);
 
   useEffect(() => {
     if (!callerId || !channelName) {
@@ -446,6 +414,7 @@ const IncomingCall: React.FC = () => {
   useEffect(() => {
     return () => {
       setPlayRingtone(false);
+      stopIncomingCallAlert(channelName).catch(() => {});
       if (callEndDebounceTimeout.current) {
         clearTimeout(callEndDebounceTimeout.current);
       }
@@ -469,7 +438,7 @@ const IncomingCall: React.FC = () => {
           styles.gradientOverlay2,
           { backgroundColor: isDarkMode ? 'rgba(45, 45, 45, 0.6)' : 'rgba(240, 147, 251, 0.6)' }
         ]} />
-        {/* Ringtone is handled by Audio.Sound in useEffect */}
+        {/* Ringtone is handled by startIncomingCallAlert */}
 
         <Animated.View
           style={[

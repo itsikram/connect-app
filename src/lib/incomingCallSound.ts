@@ -1,6 +1,7 @@
 /**
- * Name of bundled notification sound (no extension).
- * File: `src/assets/audio/default_ringtone.mp3` + `expo-notifications` plugin `sounds` in app.json.
- * Used by Android channels, local notifications, Expo push, and FCM.
+ * Bundled incoming-call notification sounds (no extension).
+ * Files: `src/assets/audio/ringtone_1.mp3` … `ringtone_5.mp3`
+ * plus `default_ringtone.mp3` for older clients.
  */
-export const INCOMING_CALL_NOTIFICATION_SOUND = 'default_ringtone';
+export { getRingtoneSoundName as getIncomingCallNotificationSound } from './ringtoneAssets';
+export const INCOMING_CALL_NOTIFICATION_SOUND = 'ringtone_1';

@@ -3,6 +3,8 @@ import { View, StyleSheet, FlatList, Text, TouchableOpacity, Alert, Platform, Ac
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
 import { listDownloads, deleteDownload, DownloadItem } from '../lib/downloads';
+import { getWatchSavedMetaMap, parseWatchIdFromFileName, removeWatchSavedMeta } from '../lib/saveWatchVideo';
+import { subscribeWatchDownloads, WatchDownloadJob } from '../utils/watchDownloadProgress';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { getStageLabel } from '../lib/ytDownload';
@@ -22,15 +24,24 @@ const DownloadsScreen = () => {
   const { colors: themeColors } = useTheme();
   const navigation = useNavigation();
   const [files, setFiles] = useState<DownloadItem[]>([]);
+  const [titles, setTitles] = useState<Record<string, string>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [jobs, setJobs] = useState<BackgroundDownloadJob[]>([]);
+  const [watchJobs, setWatchJobs] = useState<WatchDownloadJob[]>([]);
   const activeJobs = jobs.filter((job) => job.status === 'running');
+  const activeWatchJobs = watchJobs.filter((job) => job.status === 'downloading' || job.status === 'failed');
 
   const load = useCallback(async () => {
     setRefreshing(true);
     try {
-      const items = await listDownloads();
+      const [items, meta] = await Promise.all([listDownloads(), getWatchSavedMetaMap()]);
       items.sort((a, b) => (b.mtime?.getTime() || 0) - (a.mtime?.getTime() || 0));
+      const nextTitles: Record<string, string> = {};
+      items.forEach((item) => {
+        const watchId = parseWatchIdFromFileName(item.name);
+        if (watchId && meta[watchId]?.title) nextTitles[item.path] = meta[watchId].title;
+      });
+      setTitles(nextTitles);
       setFiles(items);
     } catch (_) {}
     setRefreshing(false);
@@ -49,6 +60,15 @@ const DownloadsScreen = () => {
     });
   }, [load]);
 
+  useEffect(() => {
+    return subscribeWatchDownloads((nextJobs) => {
+      setWatchJobs(nextJobs);
+      if (nextJobs.some((job) => job.status === 'completed')) {
+        load();
+      }
+    });
+  }, [load]);
+
   useFocusEffect(
     useCallback(() => {
       load();
@@ -60,20 +80,23 @@ const DownloadsScreen = () => {
       source: {
         type: item.kind,
         uri: item.uri,
-        title: item.name,
+        title: titles[item.path] || item.name,
       },
     });
   };
 
   const handleDelete = async (item: DownloadItem) => {
-    Alert.alert('Delete download', `Remove ${item.name} from the app?`, [
+    const label = titles[item.path] || item.name;
+    Alert.alert('Delete download', `Remove ${label} from the app?`, [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
           try {
+            const watchId = parseWatchIdFromFileName(item.name);
             await deleteDownload(item.path);
+            if (watchId) await removeWatchSavedMeta(watchId);
             await load();
           } catch (e) {
             Alert.alert('Error', 'Failed to delete file');
@@ -99,9 +122,11 @@ const DownloadsScreen = () => {
         />
       </View>
       <View style={styles.info}>
-        <Text style={[styles.name, { color: themeColors.text.primary }]} numberOfLines={2}>{item.name}</Text>
+        <Text style={[styles.name, { color: themeColors.text.primary }]} numberOfLines={2}>
+          {titles[item.path] || item.name}
+        </Text>
         <Text style={[styles.meta, { color: themeColors.text.secondary }]}>
-          {humanSize(item.size)} · {item.kind === 'audio' ? 'Audio' : 'Video'}
+          {humanSize(item.size)} · {parseWatchIdFromFileName(item.name) ? 'Watch' : item.kind === 'audio' ? 'Audio' : 'Video'}
         </Text>
       </View>
       <View style={styles.actions}>
@@ -131,8 +156,32 @@ const DownloadsScreen = () => {
         refreshing={refreshing}
         contentContainerStyle={{ padding: 12 }}
         ListHeaderComponent={
-          activeJobs.length > 0 ? (
+          activeJobs.length > 0 || activeWatchJobs.length > 0 ? (
             <View style={{ marginBottom: 12 }}>
+              {activeWatchJobs.map((job) => (
+                <View
+                  key={`watch-${job.id}`}
+                  style={[styles.row, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.surface.secondary }]}
+                >
+                  <View style={[styles.iconWrap, { backgroundColor: themeColors.background.secondary }]}>
+                    {job.status === 'failed' ? (
+                      <Icon name="error" size={22} color={themeColors.status?.error || '#E53935'} />
+                    ) : (
+                      <ActivityIndicator size="small" color={themeColors.primary} />
+                    )}
+                  </View>
+                  <View style={styles.info}>
+                    <Text style={[styles.name, { color: themeColors.text.primary }]} numberOfLines={2}>
+                      {job.title}
+                    </Text>
+                    <Text style={[styles.meta, { color: themeColors.text.secondary }]}>
+                      {job.status === 'failed'
+                        ? job.error || 'Download failed'
+                        : `Saving Watch video · ${Math.round(job.percent)}%`}
+                    </Text>
+                  </View>
+                </View>
+              ))}
               {activeJobs.map((job) => (
                 <View
                   key={job.id}
@@ -158,7 +207,7 @@ const DownloadsScreen = () => {
           ) : null
         }
         ListEmptyComponent={
-          activeJobs.length > 0 ? null : (
+          activeJobs.length > 0 || activeWatchJobs.length > 0 ? null : (
             <Text style={{ textAlign: 'center', color: themeColors.text.secondary, marginTop: 40 }}>
               No downloads yet
             </Text>

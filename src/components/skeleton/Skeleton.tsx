@@ -11,14 +11,13 @@ interface SkeletonBlockProps {
 
 export const useSkeletonColors = () => {
     const { colors: themeColors, isDarkMode } = useTheme();
-    const base = themeColors?.surface?.secondary || themeColors?.gray?.[200] || 'rgba(0,0,0,0.1)';
-    // Subtle highlight based on theme
-    const highlight = isDarkMode ? (themeColors?.surface?.primary || 'rgba(255,255,255,0.1)') : (themeColors?.background?.primary || 'rgba(0,0,0,0.05)');
+    const base = themeColors?.surface?.secondary || themeColors?.gray?.[200] || (isDarkMode ? '#242526' : '#F1F3F4');
+    const highlight = isDarkMode ? 'rgba(0, 212, 255, 0.14)' : 'rgba(0, 212, 255, 0.12)';
     return { baseColor: base, highlightColor: highlight };
 };
 
 export const SkeletonBlock: React.FC<SkeletonBlockProps> = ({ width = '100%', height = 16, borderRadius = 8, style }) => {
-    const { baseColor } = useSkeletonColors();
+    const { baseColor, highlightColor } = useSkeletonColors();
     const pulse = useRef(new Animated.Value(0)).current;
 
     useEffect(() => {
@@ -38,7 +37,7 @@ export const SkeletonBlock: React.FC<SkeletonBlockProps> = ({ width = '100%', he
         <View style={[{ width: width as number, height, borderRadius, overflow: 'hidden', backgroundColor: baseColor }, style]}
         >
             <Animated.View
-                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: '#ffffff', opacity: overlayOpacity }}
+                style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: highlightColor, opacity: overlayOpacity }}
             />
         </View>
     );

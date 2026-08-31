@@ -2,9 +2,16 @@ import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { ANDROID_INCOMING_CALL_CHANNEL_ID } from './notificationChannelIds';
 import { playIncomingRingtone, stopIncomingRingtone } from './callRingtone';
+import {
+  getIncomingCallChannelId,
+  getRingtoneSoundName,
+  getStoredRingtoneId,
+  MAX_RINGTONE_ID,
+  normalizeRingtoneId,
+} from './ringtoneAssets';
 
 export const INCOMING_CALL_CATEGORY = 'incoming_call';
-const CALL_CHANNELS = ['incoming_calls', 'incoming_calls_v3', ANDROID_INCOMING_CALL_CHANNEL_ID];
+const LEGACY_CALL_CHANNELS = ['incoming_calls', 'incoming_calls_v3', ANDROID_INCOMING_CALL_CHANNEL_ID];
 
 let presentedNotificationId: string | null = null;
 let lastPresentedChannel: string | null = null;
@@ -15,6 +22,7 @@ let ringingPayload: {
   callerProfilePic?: string;
   channelName: string;
   isAudio: boolean;
+  ringtoneId?: string;
 } | null = null;
 let appStateSub: { remove: () => void } | null = null;
 
@@ -22,34 +30,63 @@ function callNotificationId(channelName?: string) {
   return `incoming_call_${channelName || 'active'}`;
 }
 
+function allCallChannelIds() {
+  const ringtoneChannels = Array.from({ length: MAX_RINGTONE_ID }, (_, i) =>
+    getIncomingCallChannelId(String(i + 1)),
+  );
+  return [...new Set([...LEGACY_CALL_CHANNELS, ...ringtoneChannels])];
+}
+
 function ensureAppStateWatch() {
   if (appStateSub) return;
   appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
     if (state !== 'active' && ringingPayload) {
       presentIncomingCallNotification(ringingPayload).catch(() => {});
-      playIncomingRingtone().catch(() => {});
+      playIncomingRingtone(ringingPayload.ringtoneId).catch(() => {});
     }
   });
 }
 
 export async function configureIncomingCallChannels(): Promise<void> {
   if (Platform.OS === 'android') {
-    const channelConfig: Notifications.NotificationChannelInput = {
-      name: 'Incoming Calls',
-      description: 'Incoming audio and video calls',
-      importance: Notifications.AndroidImportance.MAX,
-      sound: 'default',
-      vibrationPattern: [0, 400, 200, 400, 200, 400],
-      enableVibrate: true,
-      enableLights: true,
-      lightColor: '#E53935',
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-      bypassDnd: true,
-      showBadge: true,
-    };
-    for (const id of CALL_CHANNELS) {
+    for (let i = 1; i <= MAX_RINGTONE_ID; i += 1) {
+      const id = String(i);
       try {
-        await Notifications.setNotificationChannelAsync(id, channelConfig);
+        await Notifications.setNotificationChannelAsync(getIncomingCallChannelId(id), {
+          name: 'Incoming Calls',
+          description: 'Incoming audio and video calls',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: getRingtoneSoundName(id),
+          vibrationPattern: [0, 400, 200, 400, 200, 400],
+          enableVibrate: true,
+          enableLights: true,
+          lightColor: '#E53935',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: true,
+          showBadge: true,
+        });
+      } catch (error) {
+        console.warn('Failed to create call channel', getIncomingCallChannelId(id), error);
+      }
+    }
+
+    const selectedId = await getStoredRingtoneId();
+    const selectedSound = getRingtoneSoundName(selectedId);
+    for (const id of LEGACY_CALL_CHANNELS) {
+      try {
+        await Notifications.setNotificationChannelAsync(id, {
+          name: 'Incoming Calls',
+          description: 'Incoming audio and video calls',
+          importance: Notifications.AndroidImportance.MAX,
+          sound: selectedSound,
+          vibrationPattern: [0, 400, 200, 400, 200, 400],
+          enableVibrate: true,
+          enableLights: true,
+          lightColor: '#E53935',
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          bypassDnd: true,
+          showBadge: true,
+        });
       } catch (error) {
         console.warn('Failed to create call channel', id, error);
       }
@@ -80,6 +117,7 @@ export async function presentIncomingCallNotification(payload: {
   callerProfilePic?: string;
   channelName: string;
   isAudio: boolean;
+  ringtoneId?: string;
 }): Promise<void> {
   const channelName = payload.channelName || '';
   const now = Date.now();
@@ -89,11 +127,13 @@ export async function presentIncomingCallNotification(payload: {
   lastPresentedChannel = channelName;
   lastPresentedAt = now;
 
+  const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
   const identifier = callNotificationId(channelName);
   presentedNotificationId = identifier;
 
   const title = payload.isAudio ? 'Incoming audio call' : 'Incoming video call';
   const body = `${payload.callerName || 'Someone'} is calling`;
+  const soundName = getRingtoneSoundName(ringtoneId);
 
   try {
     await Notifications.dismissNotificationAsync(identifier).catch(() => {});
@@ -102,12 +142,12 @@ export async function presentIncomingCallNotification(payload: {
       content: {
         title,
         body,
-        sound: true,
+        sound: Platform.OS === 'ios' ? `${soundName}.mp3` : soundName,
         interruptionLevel: 'timeSensitive',
         categoryIdentifier: INCOMING_CALL_CATEGORY,
         sticky: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
-        channelId: ANDROID_INCOMING_CALL_CHANNEL_ID,
+        channelId: getIncomingCallChannelId(ringtoneId),
         data: {
           type: 'incoming_call',
           callerId: payload.callerId,
@@ -115,6 +155,7 @@ export async function presentIncomingCallNotification(payload: {
           callerProfilePic: payload.callerProfilePic || '',
           channelName,
           isAudio: payload.isAudio ? 'true' : 'false',
+          ringtoneId,
         },
       },
       trigger: null,
@@ -146,9 +187,9 @@ export async function cancelIncomingCallNotifications(channelName?: string): Pro
 
 /**
  * Ring the device for an incoming call:
- * - Always try looping in-app audio (works in foreground; may continue briefly in background).
- * - When the app is not focused, also post a high-priority OS notification so iOS/Android
- *   play the system call sound even after JS is suspended.
+ * - Loop the user's selected ringtone in-app (continues in background while JS can run).
+ * - When the app is not focused, also post a high-priority OS notification whose
+ *   channel/sound matches that ringtone.
  */
 export async function startIncomingCallAlert(payload: {
   callerId: string;
@@ -156,14 +197,16 @@ export async function startIncomingCallAlert(payload: {
   callerProfilePic?: string;
   channelName: string;
   isAudio: boolean;
+  ringtoneId?: string;
 }): Promise<void> {
-  ringingPayload = payload;
+  const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
+  ringingPayload = { ...payload, ringtoneId };
   ensureAppStateWatch();
-  playIncomingRingtone().catch(() => {});
+  playIncomingRingtone(ringtoneId).catch(() => {});
 
   const focused = AppState.currentState === 'active';
   if (!focused) {
-    await presentIncomingCallNotification(payload);
+    await presentIncomingCallNotification(ringingPayload);
   }
 }
 
@@ -182,5 +225,8 @@ export function parseIncomingCallNotificationData(data: any) {
     callerProfilePic: data.callerProfilePic || '',
     isAudio: data.isAudio === true || data.isAudio === 'true',
     autoAccept: Boolean(data.autoAccept),
+    ringtoneId: normalizeRingtoneId(data.ringtoneId),
   };
 }
+
+export { allCallChannelIds };

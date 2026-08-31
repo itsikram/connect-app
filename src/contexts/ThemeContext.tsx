@@ -5,11 +5,11 @@ import { themes, ThemeType } from '../theme/colors';
 import { theme } from '../theme/theme';
 
 // Extended theme type that includes 'default'
-type ExtendedThemeType = ThemeType | 'default';
+export type ExtendedThemeType = ThemeType | 'default';
 
 interface ThemeContextType {
   currentTheme: ExtendedThemeType;
-  setTheme: (theme: ThemeType) => void;
+  setTheme: (theme: ExtendedThemeType) => void;
   isDarkMode: boolean;
   colors: typeof themes.light | typeof themes.dark | typeof themes.blue | typeof themes.green | typeof themes.purple;
   toggleTheme: () => void;
@@ -72,10 +72,10 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
     }
   };
 
-  const setTheme = async (theme: ThemeType) => {
+  const setTheme = async (nextTheme: ExtendedThemeType) => {
     try {
-      await AsyncStorage.setItem(THEME_STORAGE_KEY, theme);
-      setCurrentTheme(theme);
+      await AsyncStorage.setItem(THEME_STORAGE_KEY, nextTheme);
+      setCurrentTheme(nextTheme);
     } catch (error) {
       console.log('Error saving theme:', error);
     }

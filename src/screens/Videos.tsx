@@ -1,15 +1,41 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Dimensions, FlatList, Text, View, NativeSyntheticEvent, NativeScrollEvent, AppState, AppStateStatus, Image, TouchableOpacity, Pressable, RefreshControl } from 'react-native';
+import {
+  ActivityIndicator,
+  Alert,
+  AppState,
+  AppStateStatus,
+  Dimensions,
+  FlatList,
+  KeyboardAvoidingView,
+  Modal,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  StatusBar,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { Audio, Video as ExpoVideo, ResizeMode } from 'expo-av';
-import api from '../lib/api';
-import { useTheme } from '../contexts/ThemeContext';
-import { useSelector } from 'react-redux';
-import { RootState } from '../store';
+import { Video as ExpoVideo, ResizeMode } from 'expo-av';
+import { useDispatch, useSelector } from 'react-redux';
+import api, { profileAPI } from '../lib/api';
 import { useFocusEffect } from '@react-navigation/native';
 import UserPP from '../components/UserPP';
+import { fitWatchContainSize, useWatchTokens } from '../theme/watchTokens';
+import { useToast } from '../contexts/ToastContext';
+import WatchSkeleton from '../components/skeleton/WatchSkeleton';
+import { saveWatchVideoFromUrl } from '../lib/saveWatchVideo';
+import { subscribeWatchDownloads, WatchDownloadJob } from '../utils/watchDownloadProgress';
+import { RootState } from '../store';
+import { addPost } from '../reducers/postsReducer';
+import { updateProfileField } from '../reducers/profileReducer';
 
 type Video = {
   _id: string;
@@ -18,6 +44,7 @@ type Video = {
   photos?: string;
   type?: string;
   author?: {
+    _id?: string;
     username?: string;
     fullName?: string;
     profilePic?: string;
@@ -32,44 +59,207 @@ type Video = {
   };
   likesCount?: number;
   commentsCount?: number;
+  reacts?: Array<{ profile?: any; type?: string }>;
+  comments?: any[];
+  shares?: any[];
 };
+
+const sameId = (a: any, b: any) => String(a?._id || a || '') === String(b?._id || b || '');
 
 type RootStackParamList = {
   SingleVideo: { videoId: string };
+  SingleWatch: { watchId: string };
   [key: string]: any;
 };
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
-const isVideoPost = (post: Video) => {
-  const url = (post?.videoUrl || post.photos || '').toLowerCase();
-  return post.type === 'video' || url.endsWith('.mp4') || url.includes('/video');
-};
-
-const VideoPlaceholder = ({ textColor }: { textColor: string }) => (
-  <View style={{ height: SCREEN_HEIGHT, width: SCREEN_WIDTH, justifyContent: 'center', alignItems: 'center' }}>
-    <Text style={{ color: textColor }}>Video will play here</Text>
-    <Text style={{ color: textColor, marginTop: 6, opacity: 0.7 }}>Loading video...</Text>
+const VideoPlaceholder = ({ text, muted }: { text: string; muted: string }) => (
+  <View style={styles.placeholder}>
+    <Text style={{ color: text }}>Video will play here</Text>
+    <Text style={{ color: muted, marginTop: 6 }}>Loading video...</Text>
   </View>
 );
 
-const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Video; isActive: boolean; isDarkMode: boolean; containerHeight: number }) => {
-  const { colors: themeColors } = useTheme();
+const VideoItem = ({
+  post,
+  isActive,
+  containerHeight,
+}: {
+  post: Video;
+  isActive: boolean;
+  containerHeight: number;
+}) => {
+  const t = useWatchTokens();
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const textColor = themeColors.text.primary;
+  const dispatch = useDispatch();
+  const myProfile = useSelector((state: RootState) => state.profile);
+  const { showInfo, showSuccess, showError } = useToast();
+  const [downloadJob, setDownloadJob] = useState<WatchDownloadJob | null>(null);
 
   const sourceUri = post?.videoUrl || post.photos;
-  const overlayTextColor = '#fff';
-  const overlayMutedColor = 'rgba(255,255,255,0.8)';
-
-  const authorName = post?.author?.fullName || post?.user?.name || post?.author?.username || post?.user?.username || 'Unknown';
-  const authorAvatar = post?.author?.profilePic || post?.user?.avatar || post?.user?.profilePicture || post?.user?.photo || '';
+  const authorName =
+    post?.author?.fullName ||
+    post?.user?.name ||
+    post?.author?.username ||
+    post?.user?.username ||
+    'Unknown';
+  const authorAvatar =
+    post?.author?.profilePic ||
+    post?.user?.avatar ||
+    post?.user?.profilePicture ||
+    post?.user?.photo ||
+    '';
   const authorIsActive = post?.author?.isActive || false;
-  const likesDisplay = typeof post?.likesCount === 'number' ? post.likesCount : undefined;
-  const commentsDisplay = typeof post?.commentsCount === 'number' ? post.commentsCount : undefined;
+  const myId = myProfile?._id;
+  const initialReacts = Array.isArray(post?.reacts) ? post.reacts : [];
+  const [liked, setLiked] = useState(() => initialReacts.some((react) => sameId(react?.profile, myId)));
+  const [reactsCount, setReactsCount] = useState(
+    typeof post?.likesCount === 'number' ? post.likesCount : initialReacts.length,
+  );
+  const [commentsCount, setCommentsCount] = useState(
+    typeof post?.commentsCount === 'number' ? post.commentsCount : (post?.comments?.length || 0),
+  );
+  const [sharesCount, setSharesCount] = useState(Array.isArray(post?.shares) ? post.shares.length : 0);
+  const [commentOpen, setCommentOpen] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [postingComment, setPostingComment] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareCap, setShareCap] = useState('');
+  const [sharing, setSharing] = useState(false);
+  const [following, setFollowing] = useState(() =>
+    (myProfile?.following || []).some((id: any) => sameId(id, post?.author?._id)),
+  );
+  const [followBusy, setFollowBusy] = useState(false);
+  const isOwnWatch = sameId(post?.author?._id, myId);
 
   const [isManuallyPaused, setIsManuallyPaused] = useState(false);
-  const [status, setStatus] = useState({});
+  const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
+  const videoBox = fitWatchContainSize(naturalSize.width, naturalSize.height, SCREEN_WIDTH, containerHeight);
+
+  useEffect(() => {
+    setFollowing((myProfile?.following || []).some((id: any) => sameId(id, post?.author?._id)));
+  }, [myProfile?.following, post?.author?._id]);
+
+  useEffect(() => {
+    return subscribeWatchDownloads((list) => {
+      setDownloadJob(list.find((job) => job.id === post._id) || null);
+    });
+  }, [post._id]);
+
+  const handleDownload = useCallback(async () => {
+    try {
+      const result = await saveWatchVideoFromUrl(post);
+      if (result.reason === 'in-progress') {
+        showInfo('This video is already downloading…');
+        return;
+      }
+      if (result.reason === 'already-saved') {
+        showInfo('Already saved to Downloads');
+        return;
+      }
+      showSuccess('Video saved to Downloads');
+    } catch (err: any) {
+      showError(err?.message || 'Failed to download video');
+    }
+  }, [post, showError, showInfo, showSuccess]);
+
+  const handleReact = useCallback(async () => {
+    if (!post?._id || !myId) return;
+    const next = !liked;
+    setLiked(next);
+    setReactsCount((n) => Math.max(0, n + (next ? 1 : -1)));
+    try {
+      if (next) {
+        const res = await api.post('/react/addReact', {
+          id: post._id,
+          postType: 'watch',
+          reactType: 'like',
+        });
+        if (res.status === 200 && Array.isArray(res.data?.reacts)) {
+          setReactsCount(res.data.reacts.length);
+        }
+      } else {
+        const res = await api.post('/react/removeReact', {
+          id: post._id,
+          postType: 'watch',
+          reactor: myId,
+        });
+        if (res.status === 200 && Array.isArray(res.data?.reacts)) {
+          setReactsCount(res.data.reacts.length);
+        }
+      }
+    } catch (err) {
+      setLiked(!next);
+      setReactsCount((n) => Math.max(0, n + (next ? -1 : 1)));
+      Alert.alert('Error', 'Failed to update reaction');
+    }
+  }, [liked, myId, post._id]);
+
+  const handleComment = useCallback(async () => {
+    if (!commentText.trim() || !post?._id || postingComment) return;
+    setPostingComment(true);
+    try {
+      const res = await api.post('/comment/addComment', {
+        body: commentText.trim(),
+        watch: post._id,
+      });
+      if (res.status === 200) {
+        setCommentsCount((n) => n + 1);
+        setCommentText('');
+        setCommentOpen(false);
+        showSuccess('Comment posted');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to add comment');
+    } finally {
+      setPostingComment(false);
+    }
+  }, [commentText, post._id, postingComment, showSuccess]);
+
+  const handleShareNow = useCallback(async () => {
+    if (!post?._id || sharing) return;
+    setSharing(true);
+    try {
+      const res = await api.post('/watch/share', { watchId: post._id, caption: shareCap });
+      if (res.status === 200) {
+        setSharesCount((n) => n + 1);
+        if (res.data?.post) dispatch(addPost(res.data.post));
+        setShareOpen(false);
+        setShareCap('');
+        showSuccess('Video shared to your feed');
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to share video');
+    } finally {
+      setSharing(false);
+    }
+  }, [dispatch, post._id, shareCap, sharing, showSuccess]);
+
+  const handleFollow = useCallback(async () => {
+    const targetId = post?.author?._id;
+    if (!targetId || !myId || followBusy || isOwnWatch) return;
+    const next = !following;
+    setFollowing(next);
+    setFollowBusy(true);
+    try {
+      const res = next
+        ? await profileAPI.follow(String(targetId))
+        : await profileAPI.unfollow(String(targetId));
+      if (res.status === 200) {
+        setFollowing(!!res.data?.following);
+        if (Array.isArray(res.data?.followingIds)) {
+          dispatch(updateProfileField({ field: 'following', value: res.data.followingIds }));
+        }
+        showSuccess(next ? 'Following' : 'Unfollowed');
+      }
+    } catch (err) {
+      setFollowing(!next);
+      Alert.alert('Error', 'Failed to update follow');
+    } finally {
+      setFollowBusy(false);
+    }
+  }, [dispatch, followBusy, following, isOwnWatch, myId, post?.author?._id, showSuccess]);
 
   useEffect(() => {
     if (isActive) {
@@ -78,100 +268,219 @@ const VideoItem = ({ post, isActive, isDarkMode, containerHeight }: { post: Vide
   }, [isActive]);
 
   return (
-    <View style={{ height: containerHeight, width: SCREEN_WIDTH, backgroundColor: isDarkMode ? '#000' : '#000', justifyContent: 'center', alignItems: 'center' }}>
+    <View style={[styles.item, { height: containerHeight, backgroundColor: t.pageBg }]}>
       {sourceUri ? (
         <>
-          <ExpoVideo
-            source={{ uri: sourceUri }}
-            style={{ height: 400, width: SCREEN_WIDTH }}
-            resizeMode={ResizeMode.CONTAIN}
-            shouldPlay={isActive && !isManuallyPaused}
-            isLooping
-            isMuted={false}
-            useNativeControls={false}
-            onPlaybackStatusUpdate={status => setStatus(() => status)}
-          />
-          <Pressable onPress={() => setIsManuallyPaused(p => !p)} style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 10 }} />
-          
-          {/* Navigation to SingleVideo */}
-          <TouchableOpacity
-            onPress={() => navigation.navigate('SingleVideo', { videoId: post._id })}
-            style={{
-              position: 'absolute',
-              top: 20,
-              left: 20,
-              zIndex: 15,
-              backgroundColor: 'rgba(0,0,0,0.6)',
-              borderRadius: 20,
-              paddingHorizontal: 12,
-              paddingVertical: 6,
-              flexDirection: 'row',
-              alignItems: 'center',
-              gap: 6,
-            }}
+          <View
+            style={[
+              styles.videoWell,
+              { height: containerHeight, backgroundColor: t.pageBg },
+            ]}
           >
-            <Icon name="open-outline" size={16} color="#fff" />
-            <Text style={{ color: '#fff', fontSize: 12, fontWeight: '600' }}>
-              View Details
-            </Text>
+            <ExpoVideo
+              source={{ uri: sourceUri }}
+              style={[styles.video, videoBox, { backgroundColor: t.pageBg }]}
+              resizeMode={ResizeMode.CONTAIN}
+              shouldPlay={isActive && !isManuallyPaused}
+              isLooping
+              isMuted={false}
+              useNativeControls={false}
+              onReadyForDisplay={(event) => {
+                const size = event?.naturalSize;
+                if (size?.width && size?.height) {
+                  setNaturalSize({ width: size.width, height: size.height });
+                }
+              }}
+            />
+            <Pressable
+              onPress={() => setIsManuallyPaused((p) => !p)}
+              style={styles.videoHit}
+            />
+            {isManuallyPaused && (
+              <View pointerEvents="none" style={styles.playOverlay}>
+                <View style={[styles.playBadge, { backgroundColor: t.playBadgeBg, borderColor: t.chipBorder }]}>
+                  <Icon name="play" size={36} color={t.mediaIcon} />
+                </View>
+              </View>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => navigation.navigate('SingleWatch', { watchId: post._id })}
+            style={[
+              styles.detailsChip,
+              {
+                backgroundColor: t.btnBg,
+                borderColor: t.chipBorder,
+              },
+            ]}
+          >
+            <Icon name="open-outline" size={16} color={t.primary} />
+            <Text style={{ color: t.chromeText, fontSize: 12, fontWeight: '600' }}>View Details</Text>
           </TouchableOpacity>
         </>
       ) : (
-        <VideoPlaceholder textColor={textColor} />
-      )}
-      {isManuallyPaused && (
-        <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0, alignItems: 'center', justifyContent: 'center', zIndex: 11 }}>
-          <Icon name="play" size={48} color={overlayTextColor} />
-        </View>
+        <VideoPlaceholder text={t.text} muted={t.muted} />
       )}
 
-      <View style={{ position: 'absolute', right: 12, bottom: 140, alignItems: 'center', zIndex: 12 }}>
-        <TouchableOpacity onPress={() => {}} activeOpacity={0.8} style={{ alignItems: 'center', marginBottom: 18 }}>
-          <Icon name="heart" size={28} color={overlayTextColor} />
-          {typeof likesDisplay === 'number' && (
-            <Text style={{ color: overlayMutedColor, marginTop: 4, fontSize: 12 }}>{likesDisplay}</Text>
+      <View style={styles.sideActions}>
+        <TouchableOpacity onPress={handleReact} activeOpacity={0.8} style={styles.sideAction}>
+          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+            <Icon name={liked ? 'heart' : 'heart-outline'} size={22} color={liked ? t.error : t.chromeText} />
+          </View>
+          {reactsCount > 0 ? (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{reactsCount}</Text>
+          ) : (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Like</Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => {}} activeOpacity={0.8} style={{ alignItems: 'center', marginBottom: 18 }}>
-          <Icon name="chatbubble-ellipses" size={26} color={overlayTextColor} />
-          {typeof commentsDisplay === 'number' && (
-            <Text style={{ color: overlayMutedColor, marginTop: 4, fontSize: 12 }}>{commentsDisplay}</Text>
+        <TouchableOpacity onPress={() => setCommentOpen(true)} activeOpacity={0.8} style={styles.sideAction}>
+          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+            <Icon name="chatbubble-ellipses" size={20} color={t.chromeText} />
+          </View>
+          {commentsCount > 0 ? (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{commentsCount}</Text>
+          ) : (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Comment</Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => {}} activeOpacity={0.8} style={{ alignItems: 'center', marginBottom: 18 }}>
-          <Icon name="share-social" size={26} color={overlayTextColor} />
+        <TouchableOpacity onPress={() => setShareOpen(true)} activeOpacity={0.8} style={styles.sideAction}>
+          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+            <Icon name="share-social" size={20} color={t.chromeText} />
+          </View>
+          {sharesCount > 0 ? (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{sharesCount}</Text>
+          ) : (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Share</Text>
+          )}
         </TouchableOpacity>
-        <TouchableOpacity onPress={() => {}} activeOpacity={0.8} style={{ alignItems: 'center' }}>
-          <Icon name="ellipsis-vertical" size={24} color={overlayTextColor} />
+        <TouchableOpacity onPress={handleDownload} activeOpacity={0.8} style={styles.sideAction}>
+          <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+            {downloadJob?.status === 'downloading' ? (
+              <ActivityIndicator size="small" color={t.primary} />
+            ) : (
+              <Icon
+                name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                size={20}
+                color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+              />
+            )}
+          </View>
+          {downloadJob?.status === 'downloading' ? (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>{Math.round(downloadJob.percent)}%</Text>
+          ) : (
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Save</Text>
+          )}
         </TouchableOpacity>
       </View>
 
-
-      <View style={{ position: 'absolute', left: 12, right: 80, bottom: 80, zIndex: 12 }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 }}>
+      <View style={[styles.meta, { backgroundColor: t.metaBg, borderColor: t.chipBorder }]}>
+        <View style={styles.authorRow}>
           {authorAvatar ? (
             <UserPP size={40} image={authorAvatar} isActive={authorIsActive} />
           ) : (
-            <View style={{ width: 40, height: 40, marginLeft: 20, borderRadius: 20, marginRight: 10, backgroundColor: 'rgba(255,255,255,0.2)', alignItems: 'center', justifyContent: 'center' }}>
-              <Icon name="person" size={22} color={overlayTextColor} />
+            <View style={[styles.avatarFallback, { backgroundColor: t.chipBg }]}>
+              <Icon name="person" size={22} color={t.chromeMuted} />
             </View>
           )}
-          <Text style={{ color: overlayTextColor, fontWeight: 'bold', fontSize: 16 }} numberOfLines={1}>{authorName}</Text>
-          <TouchableOpacity onPress={() => {}} activeOpacity={0.8} style={{ marginLeft: 10, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.2)' }}>
-            <Text style={{ color: overlayTextColor, fontSize: 12 }}>Follow</Text>
-          </TouchableOpacity>
+          <Text style={[styles.authorName, { color: t.chromeText }]} numberOfLines={1}>
+            {authorName}
+          </Text>
+          {isOwnWatch ? null : (
+            <TouchableOpacity
+              onPress={handleFollow}
+              disabled={followBusy}
+              activeOpacity={0.8}
+              style={[
+                styles.followBtn,
+                {
+                  backgroundColor: following ? t.chipBg : t.primary,
+                  borderWidth: following ? 1 : 0,
+                  borderColor: t.chipBorder,
+                  opacity: followBusy ? 0.6 : 1,
+                },
+              ]}
+            >
+              <Text style={{ color: following ? t.chromeText : t.ctaText, fontSize: 12, fontWeight: '700' }}>
+                {following ? 'Following' : 'Follow'}
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
         {!!post?.caption && (
-          <Text style={{ color: overlayMutedColor, fontSize: 14 }} numberOfLines={2}>{post.caption}</Text>
+          <Text style={{ color: t.chromeMuted, fontSize: 14 }} numberOfLines={2}>
+            {post.caption}
+          </Text>
         )}
       </View>
+
+      <Modal visible={commentOpen} transparent animationType="fade" onRequestClose={() => setCommentOpen(false)}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setCommentOpen(false)} />
+          <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.chipBorder }]}>
+            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>Comment</Text>
+            <TextInput
+              value={commentText}
+              onChangeText={setCommentText}
+              placeholder="Write a comment…"
+              placeholderTextColor={t.placeholder}
+              autoFocus
+              multiline
+              style={[styles.sheetInput, { backgroundColor: t.inputBg, color: t.chromeText, borderColor: t.chipBorder }]}
+            />
+            <View style={styles.sheetRow}>
+              <TouchableOpacity onPress={() => { setCommentOpen(false); navigation.navigate('SingleWatch', { watchId: post._id }); }}>
+                <Text style={{ color: t.primary, fontWeight: '700' }}>View all comments</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleComment}
+                disabled={!commentText.trim() || postingComment}
+                style={[styles.sheetCta, { backgroundColor: t.primary, opacity: commentText.trim() && !postingComment ? 1 : 0.5 }]}
+              >
+                {postingComment ? (
+                  <ActivityIndicator color={t.ctaText} />
+                ) : (
+                  <Text style={{ color: t.ctaText, fontWeight: '700' }}>Post</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShareOpen(false)} />
+          <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.chipBorder }]}>
+            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>Share video</Text>
+            <TextInput
+              value={shareCap}
+              onChangeText={setShareCap}
+              placeholder="Say something about this video"
+              placeholderTextColor={t.placeholder}
+              multiline
+              style={[styles.sheetInput, { backgroundColor: t.inputBg, color: t.chromeText, borderColor: t.chipBorder }]}
+            />
+            <TouchableOpacity
+              onPress={handleShareNow}
+              disabled={sharing}
+              style={[styles.sheetCta, { backgroundColor: t.primary, alignSelf: 'stretch' }]}
+            >
+              {sharing ? (
+                <ActivityIndicator color={t.ctaText} />
+              ) : (
+                <Text style={{ color: t.ctaText, fontWeight: '700' }}>Share Now</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 };
 
 const Videos = () => {
-  const { isDarkMode } = useTheme();
-
+  const t = useWatchTokens();
   const [videos, setVideos] = useState<Video[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -182,24 +491,28 @@ const Videos = () => {
   const [isScreenFocused, setIsScreenFocused] = useState(true);
   const [listHeight, setListHeight] = useState(SCREEN_HEIGHT);
   const [isAppBackgrounded, setIsAppBackgrounded] = useState(false);
-  const myProfile = useSelector((state: RootState) => state.profile);
 
   const fetchFeed = useCallback(async (pageNum = 1, append = false) => {
-    if (append) setLoadingMore(true); else setLoading(true);
+    if (append) setLoadingMore(true);
+    else setLoading(true);
     try {
       const res = await api.get(`watch/profileWatch?pageNumber=${pageNum}`);
       if (res.status === 200) {
         const data = res.data || {};
-        const items: Video[] = Array.isArray(data.watchs) ? data.watchs : Array.isArray(data) ? data : [];
+        const items: Video[] = Array.isArray(data.watchs)
+          ? data.watchs
+          : Array.isArray(data)
+            ? data
+            : [];
         const more = typeof data.hasNewWatch === 'boolean' ? data.hasNewWatch : false;
         setHasMore(more);
-        setVideos(prev => (append ? [...prev, ...items] : items));
+        setVideos((prev) => (append ? [...prev, ...items] : items));
       }
     } catch (e) {
-      // eslint-disable-next-line no-console
       console.log('Failed to load videos', e);
     } finally {
-      if (append) setLoadingMore(false); else setLoading(false);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   }, []);
 
@@ -214,23 +527,20 @@ const Videos = () => {
     fetchFeed(1, false);
   }, [fetchFeed]);
 
-  // Pause videos when screen loses focus
   useFocusEffect(
     useCallback(() => {
       setIsScreenFocused(true);
       return () => {
         setIsScreenFocused(false);
       };
-    }, [])
+    }, []),
   );
 
-  // Track app state to allow background playback when app is backgrounded/locked
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       setIsAppBackgrounded(nextAppState !== 'active');
     };
     const subscription = AppState.addEventListener('change', handleAppStateChange);
-    // Initialize current state
     handleAppStateChange(AppState.currentState);
     return () => {
       subscription.remove();
@@ -253,65 +563,245 @@ const Videos = () => {
     }
   }).current;
 
-  const backgroundColor = isDarkMode ? '#000' : '#000';
-  const textColor = '#fff';
-
-  const onMomentumScrollEnd = useCallback((e: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const offsetY = e.nativeEvent.contentOffset.y;
-    const newIndex = Math.round(offsetY / listHeight);
-    if (newIndex !== activeIndex) setActiveIndex(newIndex);
-  }, [activeIndex, listHeight]);
+  const onMomentumScrollEnd = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const offsetY = e.nativeEvent.contentOffset.y;
+      const newIndex = Math.round(offsetY / listHeight);
+      if (newIndex !== activeIndex) setActiveIndex(newIndex);
+    },
+    [activeIndex, listHeight],
+  );
 
   if (loading && videos.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator size="large" color="#fff" />
+      <View style={{ flex: 1, backgroundColor: t.pageBg }}>
+        <WatchSkeleton />
       </View>
     );
   }
 
   return (
-    <FlatList
-      data={videos}
-      keyExtractor={(item, idx) => item._id || String(idx)}
-      renderItem={({ item, index }) => (
-        <VideoItem
-          post={item}
-          isActive={index === activeIndex && (isScreenFocused || isAppBackgrounded)}
-          isDarkMode={isDarkMode}
-          containerHeight={listHeight}
-        />
-      )}
-      pagingEnabled
-      onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}
-      onMomentumScrollEnd={onMomentumScrollEnd}
-      showsVerticalScrollIndicator={false}
-      onEndReached={onEndReached}
-      onEndReachedThreshold={0.8}
-      viewabilityConfig={viewabilityConfig}
-      onViewableItemsChanged={onViewableItemsChanged}
-      ListFooterComponent={loadingMore ? (
-        <View style={{ height: 80, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color="#fff" />
-        </View>
-      ) : null}
-      refreshControl={
-        <RefreshControl
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-          colors={['#fff']}
-          tintColor="#fff"
-        />
-      }
-      ListEmptyComponent={
-        <View style={{ height: SCREEN_HEIGHT, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: textColor }}>No videos found.</Text>
-        </View>
-      }
-    />
+    <View style={{ flex: 1, backgroundColor: t.pageBg }}>
+      <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
+      <FlatList
+        data={videos}
+        keyExtractor={(item, idx) => item._id || String(idx)}
+        renderItem={({ item, index }) => (
+          <VideoItem
+            post={item}
+            isActive={index === activeIndex && (isScreenFocused || isAppBackgrounded)}
+            containerHeight={listHeight}
+          />
+        )}
+        pagingEnabled
+        onLayout={(e) => setListHeight(e.nativeEvent.layout.height)}
+        onMomentumScrollEnd={onMomentumScrollEnd}
+        showsVerticalScrollIndicator={false}
+        onEndReached={onEndReached}
+        onEndReachedThreshold={0.8}
+        viewabilityConfig={viewabilityConfig}
+        onViewableItemsChanged={onViewableItemsChanged}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.footer}>
+              <ActivityIndicator color={t.primary} />
+            </View>
+          ) : null
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={[t.primary]}
+            tintColor={t.primary}
+          />
+        }
+        ListEmptyComponent={
+          <View style={[styles.centered, { height: SCREEN_HEIGHT, backgroundColor: t.pageBg }]}>
+            <Icon name="videocam-outline" size={48} color={t.tertiary} />
+            <Text style={{ color: t.text, marginTop: 12, fontWeight: '600' }}>No videos found.</Text>
+            <Text style={{ color: t.muted, marginTop: 4 }}>Pull down to refresh</Text>
+          </View>
+        }
+      />
+    </View>
   );
 };
 
+const styles = StyleSheet.create({
+  centered: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  item: {
+    width: SCREEN_WIDTH,
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  placeholder: {
+    height: 400,
+    width: SCREEN_WIDTH,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  videoWell: {
+    width: SCREEN_WIDTH,
+    alignSelf: 'center',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  video: {
+    width: SCREEN_WIDTH,
+    alignSelf: 'center',
+  },
+  videoHit: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 10,
+  },
+  playOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 11,
+  },
+  playBadge: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  detailsChip: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    zIndex: 15,
+    borderRadius: 20,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderWidth: 1,
+  },
+  sideActions: {
+    position: 'absolute',
+    right: 12,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 16,
+    zIndex: 12,
+  },
+  sideAction: {
+    alignItems: 'center',
+    minWidth: 48,
+  },
+  sideBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 3,
+  },
+  sideCount: {
+    marginTop: 4,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  meta: {
+    position: 'absolute',
+    left: '5%',
+    width: '90%',
+    bottom: 80,
+    zIndex: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
+  },
+  authorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 10,
+  },
+  avatarFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authorName: {
+    flex: 1,
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  followBtn: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  footer: {
+    height: 80,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  sheet: {
+    margin: 16,
+    marginBottom: 28,
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+  },
+  sheetTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 12,
+  },
+  sheetInput: {
+    minHeight: 88,
+    borderRadius: 12,
+    borderWidth: 1,
+    padding: 12,
+    marginBottom: 12,
+    textAlignVertical: 'top',
+    fontSize: 15,
+  },
+  sheetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  sheetCta: {
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+});
+
 export default Videos;
-
-

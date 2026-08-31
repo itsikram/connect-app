@@ -132,5 +132,12 @@ try {
 import App from './App';
 import { registerRootComponent } from 'expo';
 
-// Register the app component
+try {
+  const notifeeModule = require('@notifee/react-native');
+  const notifee = notifeeModule.default;
+  if (notifee?.registerForegroundService) {
+    notifee.registerForegroundService(() => new Promise(() => {}));
+  }
+} catch (_) {}
+
 registerRootComponent(App);

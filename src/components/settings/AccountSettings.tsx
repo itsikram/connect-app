@@ -1,350 +1,400 @@
-import React, { useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  ScrollView,
   Alert,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSelector, useDispatch } from 'react-redux';
+import { RootState } from '../../store';
+import { updateProfileField } from '../../reducers/profileReducer';
+import { AuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
-import { useSettings } from '../../contexts/SettingsContext';
 import { useToast } from '../../contexts/ToastContext';
+import api, { clearTokenCache, userAPI } from '../../lib/api';
+import {
+  SettingsSectionHeader,
+  SettingsField,
+  SettingsInput,
+  SettingsPrimaryButton,
+  SettingsDangerButton,
+  SettingsSecondaryButton,
+} from './settingsUi';
 
-interface AccountData {
-  userEmail: string;
-  currentPassword: string;
-  newPassword: string;
-  confirmPassword: string;
-}
+const getProfileEmail = (profile: any) => {
+  const user = profile?.user;
+  if (!user || typeof user === 'string') return '';
+  return user.email || '';
+};
+
+const isValidEmail = (email: string) =>
+  /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(email || '').trim());
 
 const AccountSettings = () => {
   const { colors: themeColors } = useTheme();
-  const { settings, updateSettings } = useSettings();
   const { showSuccess, showError } = useToast();
-  
-  const [accountData, setAccountData] = useState<AccountData>({
-    userEmail: 'user@example.com',
+  const dispatch = useDispatch();
+  const { logout } = useContext(AuthContext);
+  const currentProfile = useSelector((state: RootState) => state.profile);
+  const currentEmail = getProfileEmail(currentProfile);
+  const emailFetchAttempted = useRef(false);
+
+  const [data, setData] = useState({
+    userEmail: currentEmail,
     currentPassword: '',
     newPassword: '',
     confirmPassword: '',
   });
-  
+  const [banglaName, setBanglaName] = useState(currentProfile?.banglaName || '');
   const [editEmail, setEditEmail] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSavingBangla, setIsSavingBangla] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleInputChange = (field: keyof AccountData, value: string) => {
-    setAccountData(prev => ({
-      ...prev,
-      [field]: value,
-    }));
-  };
+  useEffect(() => {
+    setBanglaName(currentProfile?.banglaName || '');
+    if (!editEmail) {
+      setData((prev) => ({ ...prev, userEmail: currentEmail }));
+    }
+  }, [currentProfile?.banglaName, currentEmail, editEmail]);
 
-  const handleEditEmail = () => {
-    setEditEmail(!editEmail);
-  };
+  useEffect(() => {
+    if (currentEmail || !currentProfile?._id || emailFetchAttempted.current) return;
+    emailFetchAttempted.current = true;
 
-  const handleSubmit = () => {
-    if (accountData.newPassword && accountData.newPassword.length < 6) {
-      showError('New password must be at least 6 characters long');
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await userAPI.getProfile(currentProfile._id);
+        const email = getProfileEmail(res.data);
+        if (!cancelled && email) {
+          dispatch(
+            updateProfileField({
+              field: 'user',
+              value: {
+                ...(typeof currentProfile.user === 'object' ? currentProfile.user : {}),
+                ...(res.data?.user || {}),
+              },
+            })
+          );
+        }
+      } catch (error) {
+        console.error('Error loading account email:', error);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentEmail, currentProfile?._id, dispatch]);
+
+  const handleSaveBanglaName = async () => {
+    const trimmedName = banglaName.trim();
+    if (!trimmedName) {
+      showError('Bengali name cannot be empty');
       return;
     }
-
-    if (accountData.newPassword !== accountData.confirmPassword) {
-      showError('New password and confirm password do not match');
-      return;
+    setIsSavingBangla(true);
+    try {
+      const res = await api.post('/profile/update/bangla-name', { banglaName: trimmedName });
+      if (res.status === 200) {
+        dispatch(updateProfileField({ field: 'banglaName', value: trimmedName }));
+        showSuccess('Bengali name updated successfully');
+      }
+    } catch (error: any) {
+      showError(error?.response?.data?.message || 'Failed to update Bengali name');
+    } finally {
+      setIsSavingBangla(false);
     }
-
-    if (accountData.newPassword && !accountData.currentPassword) {
-      showError('Current password is required to change password');
-      return;
-    }
-
-    showSuccess('Account settings updated successfully!');
-    
-    setAccountData(prev => ({
-      ...prev,
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
-    }));
   };
 
-  const handleDeleteAccount = () => {
+  const persistAuthPayload = async (payload: any, email?: string) => {
+    if (!payload && !email) return;
+    const stored = await AsyncStorage.getItem('user');
+    const userData = stored ? JSON.parse(stored) : {};
+    const savedEmail = email || payload?.email || userData.email;
+    const nextProfile =
+      payload?.profile && typeof payload.profile === 'object' && payload.profile._id
+        ? payload.profile
+        : userData.profile;
+    const profileWithEmail =
+      nextProfile && typeof nextProfile === 'object' && savedEmail
+        ? {
+            ...nextProfile,
+            user: {
+              ...(typeof nextProfile.user === 'object' ? nextProfile.user : {}),
+              email: savedEmail,
+            },
+          }
+        : nextProfile;
+
+    const nextUser = {
+      ...userData,
+      firstName: payload?.firstName ?? userData.firstName,
+      surname: payload?.surname ?? userData.surname,
+      user_id: payload?.user_id ?? userData.user_id,
+      profile: profileWithEmail,
+      email: savedEmail,
+    };
+    const pairs: [string, string][] = [['user', JSON.stringify(nextUser)]];
+    if (payload?.accessToken) {
+      pairs.push(['authToken', payload.accessToken]);
+      clearTokenCache();
+    }
+    await AsyncStorage.multiSet(pairs);
+  };
+
+  const applyEmailToProfile = (email: string) => {
+    dispatch(
+      updateProfileField({
+        field: 'user',
+        value: {
+          ...(typeof currentProfile?.user === 'object' ? currentProfile.user : {}),
+          email,
+        },
+      })
+    );
+  };
+
+  const handleSubmit = async () => {
+    setIsSaving(true);
+    try {
+      const nextEmail = String(data.userEmail || '').trim().toLowerCase();
+      if (nextEmail && nextEmail !== currentEmail.toLowerCase()) {
+        if (!isValidEmail(nextEmail)) {
+          showError('Please enter a valid email address');
+          return;
+        }
+        const emailChangeRes = await api.post('auth/changeEmail', { email: nextEmail });
+        if (emailChangeRes.status === 200) {
+          const savedEmail = emailChangeRes.data?.email || nextEmail;
+          await persistAuthPayload(emailChangeRes.data, savedEmail);
+          applyEmailToProfile(savedEmail);
+          setData((prev) => ({ ...prev, userEmail: savedEmail }));
+          setEditEmail(false);
+          showSuccess('Email updated successfully');
+          return;
+        }
+      }
+
+      if (!data.newPassword && !data.confirmPassword && !data.currentPassword) {
+        return;
+      }
+
+      if (!data.currentPassword || !data.newPassword || !data.confirmPassword) {
+        showError('Please fill in all password fields');
+        return;
+      }
+
+      if (data.newPassword.length < 6) {
+        showError('New password must be at least 6 characters');
+        return;
+      }
+
+      if (data.newPassword !== data.confirmPassword) {
+        showError('Your new password and confirm password do not match');
+        return;
+      }
+
+      const res = await api.post('auth/changePass', data);
+      if (res.status === 400) {
+        showError('Your current password is invalid');
+        return;
+      }
+      if (res.status === 200 || res.status === 202) {
+        await persistAuthPayload(res.data);
+        showSuccess('Password updated successfully');
+        setData((prev) => ({
+          ...prev,
+          currentPassword: '',
+          newPassword: '',
+          confirmPassword: '',
+        }));
+      }
+    } catch (error: any) {
+      showError(error?.response?.data?.message || 'Failed to update account settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const deleteAccount = useCallback(() => {
     Alert.alert(
       'Delete Account',
-      'Are you sure you want to delete your account? This action cannot be undone.',
+      'Delete your account permanently? This cannot be undone.',
       [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            showSuccess('Your account has been deleted successfully.');
+          onPress: async () => {
+            setIsDeleting(true);
+            try {
+              const deletedAccountRes = await api.post('auth/delete');
+              if (deletedAccountRes.status === 200) {
+                showSuccess(deletedAccountRes.data?.message || 'Account deleted');
+                await logout();
+              }
+            } catch (error: any) {
+              showError(error?.response?.data?.message || 'Failed to delete account');
+            } finally {
+              setIsDeleting(false);
+            }
           },
         },
       ]
     );
-  };
-
-  const renderInputField = (
-    label: string,
-    value: string,
-    onChangeText: (text: string) => void,
-    placeholder: string,
-    secureTextEntry: boolean = false,
-    editable: boolean = true,
-    icon?: string
-  ) => (
-    <View style={styles.inputContainer}>
-      <Text style={[styles.label, { color: themeColors.text.primary }]}>
-        {label}
-      </Text>
-      <View style={[styles.inputWrapper, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
-        {icon && (
-          <Icon 
-            name={icon} 
-            size={20} 
-            color={themeColors.gray[400]} 
-            style={styles.inputIcon}
-          />
-        )}
-        <TextInput
-          style={[
-            styles.textInput,
-            { 
-              color: themeColors.text.primary,
-              paddingLeft: icon ? 40 : 16,
-            }
-          ]}
-          value={value}
-          onChangeText={onChangeText}
-          placeholder={placeholder}
-          placeholderTextColor={themeColors.gray[400]}
-          secureTextEntry={secureTextEntry}
-          editable={editable}
-        />
-      </View>
-    </View>
-  );
+  }, [logout, showError, showSuccess]);
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: themeColors.text.primary }]}>
-          Account Settings
-        </Text>
-        <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
-          Manage your account information and security
-        </Text>
-      </View>
+    <View style={styles.container}>
+      <SettingsSectionHeader
+        title="Account Settings"
+        description="Manage your email, password, and Bengali name."
+      />
 
-      {/* Email Settings */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Email Settings
+      <View style={[styles.banglaBlock, { borderBottomColor: themeColors.border.primary }]}>
+        <Text style={[styles.subTitle, { color: themeColors.text.primary }]}>Bengali Name (বাংলা নাম)</Text>
+        <Text style={[styles.muted, { color: themeColors.text.secondary }]}>
+          Add your name in Bengali script to make it easier for Bengali speakers to find you.
         </Text>
-        
-        <View style={styles.emailContainer}>
-          {renderInputField(
-            'Email Address',
-            accountData.userEmail,
-            (text) => handleInputChange('userEmail', text),
-            'Enter email address',
-            false,
-            editEmail,
-            'email'
-          )}
-          
-          <TouchableOpacity 
-            style={[styles.editButton, { backgroundColor: editEmail ? themeColors.status.error : themeColors.secondary }]} 
-            onPress={handleEditEmail}
-          >
-            <Icon name={editEmail ? 'close' : 'edit'} size={16} color={themeColors.text.inverse} />
-            <Text style={[styles.editButtonText, { color: themeColors.text.inverse }]}>
-              {editEmail ? 'Cancel' : 'Edit'}
-            </Text>
-          </TouchableOpacity>
+        <SettingsField label="Bengali Name">
+          <SettingsInput
+            value={banglaName}
+            onChangeText={setBanglaName}
+            placeholder="আপনার বাংলা নাম লিখুন"
+          />
+        </SettingsField>
+        <View style={styles.row}>
+          <View style={styles.rowItem}>
+            <SettingsPrimaryButton
+              title="Save Bengali Name"
+              loadingTitle="Saving Bengali Name…"
+              onPress={handleSaveBanglaName}
+              loading={isSavingBangla}
+              disabled={!banglaName.trim()}
+            />
+          </View>
+          {banglaName ? (
+            <SettingsSecondaryButton
+              title="Clear"
+              onPress={() => setBanglaName('')}
+              disabled={isSavingBangla}
+            />
+          ) : null}
         </View>
       </View>
 
-      {/* Password Change */}
-      <View style={styles.section}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-          Change Password
-        </Text>
-        
-        {renderInputField(
-          'Current Password',
-          accountData.currentPassword,
-          (text) => handleInputChange('currentPassword', text),
-          'Enter current password',
-          true,
-          true,
-          'lock'
-        )}
-        
-        {renderInputField(
-          'New Password',
-          accountData.newPassword,
-          (text) => handleInputChange('newPassword', text),
-          'Enter new password',
-          true,
-          true,
-          'lock-outline'
-        )}
-        
-        {renderInputField(
-          'Confirm New Password',
-          accountData.confirmPassword,
-          (text) => handleInputChange('confirmPassword', text),
-          'Confirm new password',
-          true,
-          true,
-          'lock-outline'
-        )}
-      </View>
+      <Text style={[styles.subTitle, { color: themeColors.text.primary }]}>Change Password & Email</Text>
+      <SettingsField label="Email">
+        <View style={styles.emailRow}>
+          <View style={styles.emailInput}>
+            <SettingsInput
+              value={data.userEmail}
+              onChangeText={(text) => setData((prev) => ({ ...prev, userEmail: text }))}
+              placeholder="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
+              editable={editEmail}
+            />
+          </View>
+          <TouchableOpacity
+            style={[styles.editEmailBtn, { backgroundColor: themeColors.status.error }]}
+            onPress={() => {
+              setEditEmail((prev) => {
+                if (prev) {
+                  setData((current) => ({ ...current, userEmail: currentEmail }));
+                }
+                return !prev;
+              });
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={editEmail ? 'Cancel email edit' : 'Edit email'}
+          >
+            <Icon name={editEmail ? 'close' : 'edit'} size={16} color={themeColors.text.inverse} />
+          </TouchableOpacity>
+        </View>
+      </SettingsField>
+      <SettingsField label="Current Password">
+        <SettingsInput
+          value={data.currentPassword}
+          onChangeText={(text) => setData((prev) => ({ ...prev, currentPassword: text }))}
+          placeholder="Current Password"
+          secureTextEntry
+        />
+      </SettingsField>
+      <SettingsField label="New Password">
+        <SettingsInput
+          value={data.newPassword}
+          onChangeText={(text) => setData((prev) => ({ ...prev, newPassword: text }))}
+          placeholder="New Password"
+          secureTextEntry
+        />
+      </SettingsField>
+      <SettingsField label="Confirm Password">
+        <SettingsInput
+          value={data.confirmPassword}
+          onChangeText={(text) => setData((prev) => ({ ...prev, confirmPassword: text }))}
+          placeholder="Confirm Password"
+          secureTextEntry
+        />
+      </SettingsField>
 
-      {/* Security Info */}
-      <View style={[styles.infoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}>
-        <Text style={[styles.infoTitle, { color: themeColors.text.primary }]}>
-          Password Requirements
-        </Text>
-        <Text style={[styles.infoText, { color: themeColors.text.secondary }]}>
-          • Minimum 6 characters{'\n'}
-          • Include letters and numbers for better security{'\n'}
-          • Avoid using personal information{'\n'}
-          • Change your password regularly
-        </Text>
-      </View>
-
-      {/* Action Buttons */}
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={[styles.saveButton, { backgroundColor: themeColors.primary }]} onPress={handleSubmit}>
-          <Text style={[styles.saveButtonText, { color: themeColors.text.inverse }]}>Save Changes</Text>
-        </TouchableOpacity>
-        
-        <TouchableOpacity style={[styles.deleteButton, { backgroundColor: themeColors.status.error }]} onPress={handleDeleteAccount}>
-          <Icon name="delete-forever" size={20} color={themeColors.text.inverse} />
-          <Text style={[styles.deleteButtonText, { color: themeColors.text.inverse }]}>Delete My Account</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+      <SettingsPrimaryButton title="Save Settings" onPress={handleSubmit} loading={isSaving} />
+      <SettingsDangerButton
+        title={isDeleting ? 'Deleting…' : 'Delete My Account'}
+        onPress={deleteAccount}
+        loading={isDeleting}
+      />
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    paddingBottom: 8,
   },
-  header: {
-    alignItems: 'center',
-    marginBottom: 24,
+  banglaBlock: {
+    marginBottom: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 8,
-  },
-  subtitle: {
+  subTitle: {
     fontSize: 16,
-    textAlign: 'center',
-    lineHeight: 22,
+    fontWeight: '700',
+    marginBottom: 6,
   },
-  section: {
-    marginBottom: 24,
+  muted: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginBottom: 12,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-  },
-  emailContainer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 12,
-  },
-  inputContainer: {
-    flex: 1,
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 16,
-    fontWeight: '500',
-    marginBottom: 8,
-  },
-  inputWrapper: {
+  row: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    borderWidth: 1,
-    overflow: 'hidden',
+    gap: 8,
+    flexWrap: 'wrap',
   },
-  inputIcon: {
-    position: 'absolute',
-    left: 12,
-    zIndex: 1,
+  rowItem: {
+    flexGrow: 1,
   },
-  textInput: {
-    flex: 1,
-    paddingVertical: 14,
-    paddingRight: 16,
-    fontSize: 16,
-  },
-  editButton: {
+  emailRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 8,
-    gap: 6,
-  },
-  editButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  infoCard: {
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    marginBottom: 24,
-  },
-  infoTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-  },
-  infoText: {
-    fontSize: 14,
-    lineHeight: 20,
-  },
-  buttonContainer: {
-    gap: 16,
-    marginBottom: 32,
-  },
-  saveButton: {
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
-    alignItems: 'center',
-  },
-  saveButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  deleteButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 32,
-    borderRadius: 12,
     gap: 8,
   },
-  deleteButtonText: {
-    fontSize: 18,
-    fontWeight: '600',
+  emailInput: {
+    flex: 1,
+  },
+  editEmailBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
 

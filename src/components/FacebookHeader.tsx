@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, FlatList, Animated, Dimensions, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, Pressable, StyleSheet, FlatList, Animated, Dimensions, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -206,9 +206,30 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
       </TouchableOpacity>
 
       <View style={styles.rightSection}>
-        <TouchableOpacity onPress={handleSearchPress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
-          <Icon name="search" size={20} color={iconColor} />
-        </TouchableOpacity>
+        <Pressable
+          onPress={handleSearchPress}
+          style={({ pressed }) => [
+            styles.actionButton,
+            styles.searchButton,
+            {
+              backgroundColor: isDarkMode ? 'rgba(36, 37, 38, 0.55)' : 'rgba(248, 249, 250, 0.9)',
+              borderColor: pressed ? themeColors.primary + '66' : isDarkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+            },
+          ]}
+          accessibilityRole="button"
+          accessibilityLabel="Search"
+        >
+          {({ pressed }) => (
+            <>
+              <View style={styles.searchButtonHighlight} />
+              <Icon
+                name="search"
+                size={20}
+                color={pressed ? themeColors.primary : themeColors.text.secondary}
+              />
+            </>
+          )}
+        </Pressable>
         <TouchableOpacity onPress={handleMessagePress} style={[styles.actionButton, { backgroundColor: themeColors.surface.secondary }]}>
           <View style={styles.messageButtonContainer}>
             <Icon name="chat" size={20} color={iconColor} />
@@ -392,6 +413,26 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  searchButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 3,
+  },
+  searchButtonHighlight: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
+    backgroundColor: 'rgba(255, 255, 255, 0.08)',
   },
   notificationButtonContainer: {
     position: 'relative',

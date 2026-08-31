@@ -141,7 +141,10 @@
         android:exported="false"
         android:foregroundServiceType="dataSync" />
 
-      <!-- Background TTS Service for push notifications -->
+      <service
+        android:name="app.notifee.core.ForegroundService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
       <service
         android:name="com.connect.app.BackgroundTtsService"
         android:exported="false"
