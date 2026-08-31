@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const KeyboardAvoidanceContext = createContext(false);
 
-export const KEYBOARD_AVOIDING_BEHAVIOR = Platform.OS === 'ios' ? ('padding' as const) : undefined;
+export const KEYBOARD_AVOIDING_BEHAVIOR = Platform.OS === 'ios' ? ('padding' as const) : ('height' as const);
 
 export function useKeyboardVerticalOffset(nested = false, extra = 0) {
   const insets = useSafeAreaInsets();

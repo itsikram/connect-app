@@ -321,8 +321,8 @@ function TabBarWithLudoCheck(props: any) {
     { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
     { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
   ] : [
-    { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },
-    { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3' },
+    { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50', iconSet: 'material' },
+    { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3', iconSet: 'material' },
     { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
   ];
   return <ProfessionalTabBar {...props} tabs={tabs} />;
@@ -985,7 +985,6 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
               backgroundColor={themeColors.background.primary}
               translucent={false}
             />
-            <KeyboardSafeView nested enabled={!isChatThread}>
             {isLoading ? (
               <LoadingScreen message="Initializing app..." />
             ) : (
@@ -1080,7 +1079,6 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
               </Tab.Navigator>
             )}
             <WatchPipPlayer />
-            </KeyboardSafeView>
         </SafeAreaView>
         <MinimizedCallBar />
         </>

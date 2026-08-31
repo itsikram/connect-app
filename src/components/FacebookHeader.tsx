@@ -132,6 +132,54 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
     );
   };
 
+  const handleNotificationPress = (notification: any) => {
+    // Mark as read in UI
+    markNotificationAsRead(notification._id);
+
+    // Try to navigate to the relevant screen based on notification type.
+    // Fallbacks are defensive since payload shape varies.
+    const type = notification.type;
+    try {
+      switch (type) {
+        case 'message': {
+          // Open messages screen / specific thread if available
+          const threadId = notification.threadId || notification.conversationId || notification.meta?.threadId;
+          if (threadId) {
+            (navigation as any).navigate('Message', {
+              screen: 'Chat',
+              params: { threadId },
+            });
+          } else {
+            (navigation as any).navigate('Message', { screen: 'MessageList' });
+          }
+          break;
+        }
+        case 'friend_request': {
+          const userId = notification.fromUserId || notification.userId || notification.actor?._id || notification.meta?.userId;
+          if (userId) {
+            (navigation as any).navigate('Profile', { userId });
+          }
+          break;
+        }
+        case 'post':
+        case 'comment':
+        case 'like': {
+          const postId = notification.postId || notification.entityId || notification.meta?.postId;
+          if (postId) {
+            (navigation as any).navigate('Post', { postId });
+          }
+          break;
+        }
+        default:
+          // No-op for unknown types — the notification is already marked read.
+          break;
+      }
+    } catch (err) {
+      // Ignore navigation errors — ensure UI still marks notification as read.
+      console.warn('Failed to navigate for notification', err);
+    }
+  };
+
   const clearAllNotifications = () => {
     setNotifications([]);
     setUnreadCount(0);
@@ -144,7 +192,16 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   };
 
   const handleLogoPress = () => {
-    (navigation as any).navigate('Home');
+    try {
+      // Reset navigation stack to the root Home screen so logo always returns home
+      (navigation as any).reset({
+        index: 0,
+        routes: [{ name: 'Home' }],
+      });
+    } catch (err) {
+      // Fallback to navigate if reset isn't supported by this navigator instance
+      (navigation as any).navigate('Home');
+    }
   };
 
   React.useEffect(() => {

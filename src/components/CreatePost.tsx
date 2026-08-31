@@ -34,6 +34,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  // uploadProgress is a number between 0 and 1 while uploading, null otherwise
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isFeelingsPickerVisible, setIsFeelingsPickerVisible] = useState(false);
   const [isAudiencePickerVisible, setIsAudiencePickerVisible] = useState(false);
   const [postData, setPostData] = useState<PostData>({
@@ -98,6 +100,18 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   }, [seedNonce]);
 
   const pickMedia = async (mediaType: 'image' | 'video') => {
+    // Prevent starting another pick while uploading
+    if (isUploading) {
+      showToast({ type: 'info', title: 'Please wait', message: 'Upload in progress' });
+      return;
+    }
+
+    // If a video is already selected, don't allow adding images
+    if (mediaType === 'image' && postData.type === 'video') {
+      showToast({ type: 'error', title: 'Cannot add image', message: 'Video already selected. A video post is treated as a watch item.' });
+      return;
+    }
+
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: mediaType === 'image' 
@@ -110,7 +124,12 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.uri) {
-          setPostData((prev) => ({ ...prev, urls: asset.uri, type: mediaType }));
+          // When selecting a video, clear any existing images
+          if (mediaType === 'video') {
+            setPostData((prev) => ({ ...prev, urls: asset.uri, type: mediaType }));
+          } else {
+            setPostData((prev) => ({ ...prev, urls: asset.uri, type: mediaType }));
+          }
         }
       }
     } catch (error) {
@@ -169,8 +188,18 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         console.log('Field name:', fieldName);
         console.log('File data:', fileData);
         
+        setUploadProgress(0);
         const uploadRes = await api.post(uploadEndpoint, formData, {
           headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent: any) => {
+            try {
+              if (progressEvent && progressEvent.total) {
+                setUploadProgress(progressEvent.loaded / progressEvent.total);
+              }
+            } catch (err) {
+              // ignore progress errors
+            }
+          },
         });
         if (uploadRes.status === 200) {
           uploadedUrl = uploadRes.data.secure_url || uploadRes.data.url;
@@ -186,7 +215,16 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       // Create post
       const postFormData = new FormData();
       postFormData.append('caption', postData.caption);
-      postFormData.append('photos', uploadedUrl || '');
+      // If this is a video, mark the post as a "watch" and include videoUrl so backend can treat it as a watch item
+      if (postData.type === 'video') {
+        postFormData.append('type', 'watch');
+        postFormData.append('videoUrl', uploadedUrl || '');
+      } else {
+        // For images or regular posts, use the photos field
+        postFormData.append('photos', uploadedUrl || '');
+        // Provide explicit type for images or fallback to 'post'
+        postFormData.append('type', postData.type === 'image' ? 'image' : 'post');
+      }
       postFormData.append('feelings', postData.feelings);
       postFormData.append('location', postData.location);
       postFormData.append('audience', postData.audience.toString());
@@ -210,6 +248,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         message: e?.response?.data?.message || 'Something went wrong. Please try again.',
       });
     } finally {
+      // clear progress UI
+      setUploadProgress(null);
       setIsUploading(false);
     }
   }, [postData, onPostCreated]);
@@ -344,7 +384,16 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 <Image source={{ uri: postData.urls }} style={styles.attachmentPreview} />
               )}
               {postData.urls && postData.type === 'video' && (
-                <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
+                uploadProgress !== null && isUploading ? (
+                  <View style={{ marginVertical: 8 }}>
+                    <View style={{ height: 8, backgroundColor: themeColors.gray?.[300] || '#eee', borderRadius: 6, overflow: 'hidden' }}>
+                      <View style={{ width: `${Math.round((uploadProgress || 0) * 100)}%`, height: '100%', backgroundColor: themeColors.primary }} />
+                    </View>
+                    <Text style={{ color: themeColors.primary, marginTop: 6 }}>{Math.round((uploadProgress || 0) * 100)}% uploading</Text>
+                  </View>
+                ) : (
+                  <Text style={{ color: themeColors.primary, marginVertical: 8 }}>Video selected</Text>
+                )
               )}
               <View style={styles.attachmentRow}>
                 <ModernButton
@@ -354,6 +403,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   size="small"
                   icon={<Icon name="photo-camera" size={18} color={themeColors.primary} />}
                   style={{ flex: 1, marginRight: 8 }}
+                  disabled={isUploading || postData.type === 'video'}
                 />
                 <ModernButton
                   title="Camera"
@@ -362,6 +412,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   size="small"
                   icon={<Icon name="camera-alt" size={18} color={themeColors.primary} />}
                   style={{ flex: 1, marginRight: 8 }}
+                  disabled={isUploading}
                 />
                 <ModernButton
                   title="Add Video"
@@ -370,6 +421,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   size="small"
                   icon={<Icon name="videocam" size={18} color={themeColors.primary} />}
                   style={{ flex: 1 }}
+                  disabled={isUploading}
                 />
               </View>
               <ModernButton

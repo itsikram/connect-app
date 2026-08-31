@@ -1,5 +1,11 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../contexts/ThemeContext';
@@ -17,7 +23,8 @@ type RootStackParamList = {
 };
 
 const LoginScreen = () => {
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -47,17 +54,17 @@ const LoginScreen = () => {
     if (validate()) {
       setError('');
       const result = await login(email, password);
-      console.log('result',{email, password}, result);
+      console.log('result', { email, password }, result);
       if (result.success) {
         Toast.show({
           type: 'success',
-          text1: 'Login successful!'
+          text1: 'Login successful!',
         });
         // navigation.navigate('Home'); // Removed, handled by tab navigator
       } else {
         Toast.show({
           type: 'error',
-          text1: result.error || 'Login failed. Please try again.'
+          text1: result.error || 'Login failed. Please try again.',
         });
       }
     }
@@ -71,84 +78,151 @@ const LoginScreen = () => {
       if (result.success) {
         Toast.show({
           type: 'success',
-          text1: 'Google sign-in successful!'
+          text1: 'Google sign-in successful!',
         });
       } else {
         Toast.show({
           type: 'error',
-          text1: result.error || 'Google sign-in failed. Please try again.'
+          text1: result.error || 'Google sign-in failed. Please try again.',
         });
       }
     } catch (error) {
       console.error('Google sign-in error:', error);
       Toast.show({
         type: 'error',
-        text1: 'Google sign-in failed. Please try again.'
+        text1: 'Google sign-in failed. Please try again.',
       });
     }
   };
 
   return (
     <KeyboardSafeView nested>
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={[styles.container, { backgroundColor: themeColors.background.primary }]}
-    >
-      <Logo size="large" />
-      <Text style={[styles.title, { color: themeColors.primary }]}>Login</Text>
-      <PaperTextInput
-        mode="outlined"
-        label="Email"
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        keyboardType="email-address"
-        style={[styles.input, { backgroundColor: bottomBarBg }]}
-        textColor={themeColors.text.primary}
-        error={!!error && error.toLowerCase().includes('email')}
-        theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-      />
-      <PaperTextInput
-        mode="outlined"
-        label="Password"
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry={!showPassword}
-        style={[styles.input, { backgroundColor: bottomBarBg }]}
-        textColor={themeColors.text.primary}
-        error={!!error && error.toLowerCase().includes('password')}
-        theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-        right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
-      />
-      {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
-      <Button mode="contained" onPress={handleLogin} style={[styles.button, { backgroundColor: themeColors.primary }]} labelStyle={{ color: themeColors.text.inverse }}>
-        <Text style={{ color: themeColors.text.inverse }}>Login</Text>
-      </Button>
-      
-      {/* Divider */}
-      <View style={styles.divider}>
-        <View style={[styles.dividerLine, { backgroundColor: themeColors.text.secondary }]} />
-        <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text>
-        <View style={[styles.dividerLine, { backgroundColor: themeColors.text.secondary }]} />
-      </View>
-      
-      {/* Custom Google Sign-In Button - Fallback due to ViewManagerDelegate error */}
-      <TouchableOpacity
-        style={[styles.customGoogleButton, { backgroundColor: '#fff', borderColor: themeColors.text.secondary }]}
-        onPress={handleGoogleSignIn}
-        activeOpacity={0.8}
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={[
+          styles.container,
+          { backgroundColor: themeColors.background.primary },
+        ]}
       >
-        <Icon name="logo-google" size={20} color="#4285F4" style={styles.googleIcon} />
-        <Text style={[styles.googleButtonText, { color: '#000' }]}>Continue with Google</Text>
-      </TouchableOpacity>
-      
-      <Button mode="text" onPress={() => navigation.navigate('Register')} style={styles.link} labelStyle={{ color: themeColors.text.secondary }}>
-        <Text style={{ color: themeColors.text.secondary }}>Don't have an account? </Text>
-        <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>Signup</Text>
-      </Button>
-      <Toast />
-    </ScrollView>
+        <Logo size="large" />
+        <Text style={[styles.title, { color: themeColors.primary }]}>
+          Login
+        </Text>
+        <PaperTextInput
+          mode="outlined"
+          label="Email"
+          value={email}
+          onChangeText={setEmail}
+          autoCapitalize="none"
+          keyboardType="email-address"
+          style={[styles.input, { backgroundColor: bottomBarBg }]}
+          textColor={themeColors.text.primary}
+          error={!!error && error.toLowerCase().includes('email')}
+          theme={{
+            colors: {
+              primary: themeColors.primary,
+              text: themeColors.text.primary,
+              onSurface: themeColors.text.primary,
+            },
+          }}
+        />
+        <PaperTextInput
+          mode="outlined"
+          label="Password"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry={!showPassword}
+          style={[styles.input, { backgroundColor: bottomBarBg }]}
+          textColor={themeColors.text.primary}
+          error={!!error && error.toLowerCase().includes('password')}
+          theme={{
+            colors: {
+              primary: themeColors.primary,
+              text: themeColors.text.primary,
+              onSurface: themeColors.text.primary,
+            },
+          }}
+          right={
+            <PaperTextInput.Icon
+              icon={showPassword ? 'eye-off' : 'eye'}
+              onPress={() => setShowPassword(v => !v)}
+            />
+          }
+        />
+        {error ? (
+          <Text style={[styles.error, { color: themeColors.status.error }]}>
+            {error}
+          </Text>
+        ) : null}
+        <Button
+          mode="contained"
+          onPress={handleLogin}
+          style={[styles.button, { backgroundColor: themeColors.primary }]}
+          labelStyle={{ color: themeColors.text.inverse }}
+        >
+          <Text style={{ color: themeColors.text.inverse }}>Login</Text>
+        </Button>
+
+        {/* Divider */}
+        <View style={styles.divider}>
+          <View
+            style={[
+              styles.dividerLine,
+              { backgroundColor: themeColors.text.secondary },
+            ]}
+          />
+          <Text
+            style={[styles.dividerText, { color: themeColors.text.secondary }]}
+          >
+            OR
+          </Text>
+          <View
+            style={[
+              styles.dividerLine,
+              { backgroundColor: themeColors.text.secondary },
+            ]}
+          />
+        </View>
+
+        {/* Custom Google Sign-In Button - Fallback due to ViewManagerDelegate error */}
+        <TouchableOpacity
+          style={[
+            styles.customGoogleButton,
+            {
+              backgroundColor: '#fff',
+              borderColor: themeColors.text.secondary,
+            },
+          ]}
+          onPress={handleGoogleSignIn}
+          activeOpacity={0.8}
+        >
+          <Icon
+            name="logo-google"
+            size={20}
+            color="#4285F4"
+            style={styles.googleIcon}
+          />
+          <Text style={[styles.googleButtonText, { color: '#000' }]}>
+            Continue with Google
+          </Text>
+        </TouchableOpacity>
+
+        <Button
+          mode="text"
+          onPress={() => navigation.navigate('Register')}
+          style={styles.link}
+          labelStyle={{ color: themeColors.text.secondary }}
+        >
+          <Text style={{ color: themeColors.text.secondary }}>
+            Don't have an account?{' '}
+          </Text>
+          <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>
+            Signup
+          </Text>
+        </Button>
+        <Toast />
+      </ScrollView>
     </KeyboardSafeView>
   );
 };
@@ -168,8 +242,8 @@ const styles = StyleSheet.create({
   },
   input: {
     width: 280,
-    marginBottom: 16, 
-   },
+    marginBottom: 16,
+  },
   button: {
     width: 280,
     marginBottom: 12,
@@ -239,4 +313,3 @@ const styles = StyleSheet.create({
 });
 
 export default LoginScreen;
-

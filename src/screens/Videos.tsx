@@ -24,7 +24,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, NavigationProp } from '@react-navigation/native';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -44,6 +44,7 @@ import {
 import { RootState } from '../store';
 import { addPost } from '../reducers/postsReducer';
 import { updateProfileField } from '../reducers/profileReducer';
+import { useWatchPip } from '../contexts/WatchPipContext';
 
 type Video = {
   _id: string;
@@ -94,10 +95,12 @@ const VideoItem = ({
   post,
   isActive,
   containerHeight,
+  onOpenPip,
 }: {
   post: Video;
   isActive: boolean;
   containerHeight: number;
+  onOpenPip?: (post: Video) => void;
 }) => {
   const t = useWatchTokens();
   const navigation =
@@ -367,31 +370,44 @@ const VideoItem = ({
             )}
           </View>
 
-          <TouchableOpacity
-            onPress={() =>
-              navigation.navigate('SingleWatch', { watchId: post._id })
-            }
-            style={[
-              styles.detailsChip,
-              {
-                backgroundColor: t.btnBg,
-                borderColor: t.chipBorder,
-              },
-            ]}
-          >
-            <Icon name="open-outline" size={16} color={t.primary} />
-            <Text
-              style={{ color: t.chromeText, fontSize: 12, fontWeight: '600' }}
-            >
-              View Details
-            </Text>
-          </TouchableOpacity>
         </>
       ) : (
         <VideoPlaceholder text={t.text} muted={t.muted} />
       )}
 
       <View style={styles.sideActions}>
+        <TouchableOpacity
+          onPress={() => navigation.navigate('SingleWatch', { watchId: post._id })}
+          activeOpacity={0.8}
+          style={styles.sideAction}
+        >
+          <View
+            style={[
+              styles.sideBtn,
+              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+            ]}
+          >
+            <Icon name="open-outline" size={20} color={t.chromeText} />
+          </View>
+          <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Details</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => onOpenPip && onOpenPip(post)}
+          activeOpacity={0.8}
+          style={styles.sideAction}
+        >
+          <View
+            style={[
+              styles.sideBtn,
+              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+            ]}
+          >
+            <Icon name="tv-outline" size={20} color={t.chromeText} />
+          </View>
+          <Text style={[styles.sideCount, { color: t.chromeMuted }]}>PiP</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity
           onPress={handleReact}
           activeOpacity={0.8}
@@ -705,6 +721,34 @@ const Videos = () => {
   const [listHeight, setListHeight] = useState(SCREEN_HEIGHT);
   const [isAppBackgrounded, setIsAppBackgrounded] = useState(false);
 
+  // Use global WatchPipContext to open a floating Pip player that persists across screens
+  const { pip: currentPip, isPipActive, startPip } = useWatchPip();
+  const navigation = useNavigation<NavigationProp<Record<string, object | undefined>>>();
+
+  const openGlobalPip = (post: Video) => {
+    const uri = post?.videoUrl || post?.photos;
+    if (!uri) return;
+    // Start the global Watch PiP
+    startPip({
+      videoUrl: uri,
+      watchId: post._id,
+      title: post.caption || post?.author?.fullName || 'Watch',
+      playing: true,
+      source: 'watch',
+    });
+    // ensure in-feed playback stops
+    setActiveIndex(-1);
+    // navigate back to Home tab so pip floats above app like media players
+    navigation.navigate('Home');
+  };
+
+  const closeGlobalPip = () => {
+    // close via context
+    // useWatchPip provides closePip but we don't destructure it here; call startPip(null) is not valid
+    // better to call update via optional hook - instead, import useWatchPip and call closePip if needed
+    // Keep a no-op here; WatchPipPlayer will provide its own close control.
+  };
+
   const fetchFeed = useCallback(async (pageNum = 1, append = false) => {
     if (append) setLoadingMore(true);
     else setLoading(true);
@@ -750,6 +794,13 @@ const Videos = () => {
     }, []),
   );
 
+  // If the Videos screen loses focus and PiP is not open, ensure no video remains active
+  useEffect(() => {
+    if (!isScreenFocused && !isPipActive) {
+      setActiveIndex(-1);
+    }
+  }, [isScreenFocused, isPipActive]);
+
   useEffect(() => {
     const handleAppStateChange = (nextAppState: AppStateStatus) => {
       setIsAppBackgrounded(nextAppState !== 'active');
@@ -794,14 +845,20 @@ const Videos = () => {
 
   if (loading && videos.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor: t.pageBg }}>
+      <View style={{ flex: 1, backgroundColor: t.pageBg, paddingBottom: 70 }}>
         <WatchSkeleton />
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: t.pageBg, paddingBottom: 30 }}>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: t.pageBg,
+        paddingBottom: 30,
+      }}
+    >
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
       <FlatList
         data={videos}
@@ -813,6 +870,7 @@ const Videos = () => {
               index === activeIndex && (isScreenFocused || isAppBackgrounded)
             }
             containerHeight={listHeight}
+            onOpenPip={openGlobalPip}
           />
         )}
         pagingEnabled
@@ -855,6 +913,8 @@ const Videos = () => {
           </View>
         }
       />
+
+
     </View>
   );
 };
@@ -905,12 +965,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
+    marginTop: -115,
   },
   detailsChip: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    zIndex: 15,
     borderRadius: 20,
     paddingHorizontal: 12,
     paddingVertical: 6,
@@ -1032,6 +1089,32 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 20,
     alignItems: 'center',
+  },
+  // PiP window styles
+  pipWindow: {
+    width: Math.min(360, SCREEN_WIDTH - 32),
+    height: Math.round((Math.min(360, SCREEN_WIDTH - 32) * 9) / 16),
+    borderRadius: 12,
+    overflow: 'hidden',
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 6,
+  },
+  pipVideo: {
+    width: '100%',
+    height: '100%',
+  },
+  pipDragHandle: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 28,
+    backgroundColor: 'transparent',
+    zIndex: 20,
   },
 });
 

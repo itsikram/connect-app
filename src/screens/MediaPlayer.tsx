@@ -1300,7 +1300,8 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
-  scroll: { padding: 14, paddingBottom: 40, gap: 14 },
+  // reduced top padding to make the page content sit closer to the header
+  scroll: { paddingTop: 6, paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   statPill: {
     fontSize: 12,
