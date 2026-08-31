@@ -176,7 +176,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: -50,
+    bottom: TAB_BAR_BOTTOM_OFFSET - 50,
     left: 0,
     right: 0,
     borderTopWidth: StyleSheet.hairlineWidth,

@@ -8,17 +8,17 @@ import {
     ActivityIndicator,
     Alert,
     RefreshControl,
-    SafeAreaView,
     Dimensions,
     Modal,
     TextInput,
-    KeyboardAvoidingView,
-    Platform,
     StatusBar,
     StyleSheet,
     Pressable,
+    DeviceEventEmitter,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type RootStackParamList = {
@@ -28,7 +28,6 @@ type RootStackParamList = {
     FriendProfile: { friendId: string };
     EditPost: { postId: string };
 };
-import { useFocusEffect } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import { useSelector } from 'react-redux';
@@ -47,6 +46,11 @@ import {
     uniquePlacedReacts,
 } from '../components/post/ReactIcons';
 import SinglePostSkeleton from '../components/skeleton/SinglePostSkeleton';
+import EditAudienceModal from '../components/post/EditAudienceModal';
+import CacheManager from '../utils/cacheManager';
+import { POST_UPDATED_EVENT, emitPostUpdated } from '../utils/postEvents';
+import { getAudienceOption } from '../constants/audience';
+import { useModernToast } from '../contexts/ModernToastContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
@@ -107,6 +111,7 @@ interface Post {
     shares?: Array<{
         profile: string;
     }>;
+    audience?: number;
     createdAt: string;
     updatedAt: string;
 }
@@ -174,6 +179,7 @@ const SinglePost = () => {
     const feed = useFeedTokens();
     const { emit, on, off, isConnected } = useSocket();
     const myProfile = useSelector((state: RootState) => state.profile);
+    const { showToast } = useModernToast();
     const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
     const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
     
@@ -201,6 +207,9 @@ const SinglePost = () => {
     const [showFullContent, setShowFullContent] = useState(false);
     const [isPostOption, setIsPostOption] = useState(false);
     const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+    const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
+    const [selectedAudience, setSelectedAudience] = useState(3);
+    const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
     const [placedReacts, setPlacedReacts] = useState<string[]>([]);
     const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
 
@@ -817,6 +826,7 @@ const SinglePost = () => {
                 const postData = response.data.post || response.data;
                 const nextComments = normalizeComments(postData.comments);
                 setPost(postData);
+                setSelectedAudience(Number(postData.audience) || 3);
                 setComments(nextComments);
                 setTotalComments(Array.isArray(postData.comments) ? postData.comments.length : nextComments.length);
                 setTotalReacts(postData.reacts?.length || 0);
@@ -849,6 +859,17 @@ const SinglePost = () => {
     useEffect(() => {
         fetchPost();
     }, [fetchPost]);
+
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener(POST_UPDATED_EVENT, (updatedPost: any) => {
+            if (!updatedPost?._id || updatedPost._id !== postId) return;
+            setPost((prev) => (prev ? { ...prev, ...updatedPost } : updatedPost));
+            if (updatedPost.audience != null) {
+                setSelectedAudience(Number(updatedPost.audience) || 3);
+            }
+        });
+        return () => sub.remove();
+    }, [postId]);
 
     // Socket events for real-time updates
     useEffect(() => {
@@ -1078,6 +1099,56 @@ const SinglePost = () => {
     // Post option functions
     const postOptionClick = () => setIsPostOption(!isPostOption);
 
+    const openEditPost = () => {
+        setIsPostOption(false);
+        navigation.navigate('EditPost', { postId: post?._id || postId });
+    };
+
+    const openEditAudience = () => {
+        setSelectedAudience(Number(post?.audience) || 3);
+        setIsPostOption(false);
+        setIsEditAudienceModal(true);
+    };
+
+    const closeEditAudience = () => {
+        if (isUpdatingAudience) return;
+        setIsEditAudienceModal(false);
+        setSelectedAudience(Number(post?.audience) || 3);
+    };
+
+    const saveAudience = async () => {
+        if (!post || isUpdatingAudience) return;
+        setIsUpdatingAudience(true);
+        try {
+            const res = await api.post('/post/update', {
+                postId: post._id,
+                audience: selectedAudience,
+            });
+            if (res.status === 200) {
+                const updatedPost = res.data?.post || { ...post, audience: selectedAudience };
+                setPost((prev) => (prev ? { ...prev, ...updatedPost } : updatedPost));
+                setSelectedAudience(Number(updatedPost.audience) || selectedAudience);
+                CacheManager.updateCachedPost(updatedPost);
+                emitPostUpdated(updatedPost);
+                setIsEditAudienceModal(false);
+                showToast({
+                    type: 'success',
+                    title: 'Audience updated',
+                    message: `This post is now visible to ${getAudienceOption(selectedAudience).label.toLowerCase()}.`,
+                });
+            }
+        } catch (error: any) {
+            console.error('Error updating audience:', error);
+            showToast({
+                type: 'error',
+                title: 'Could not update audience',
+                message: error?.response?.data?.message || 'Please try again.',
+            });
+        } finally {
+            setIsUpdatingAudience(false);
+        }
+    };
+
     const showDeleteConfirm = () => {
         setIsPostOption(false);
         setShowDeleteConfirmation(true);
@@ -1265,11 +1336,7 @@ const SinglePost = () => {
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                 backgroundColor={themeColors.surface.header} 
             />
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={0}
-            >
+            <KeyboardSafeView nested>
             
             {/* Header */}
             <View style={styles.header}>
@@ -1320,9 +1387,17 @@ const SinglePost = () => {
                                     </Text>
                                 ) : null}
                             </Text>
-                            <Text style={styles.postTime}>
-                                {moment(post.createdAt).format('MMM DD, YYYY • hh:mm A')}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                                <Text style={styles.postTime}>
+                                    {moment(post.createdAt).format('MMM DD, YYYY • hh:mm A')}
+                                </Text>
+                                <Icon
+                                    name={getAudienceOption(post.audience).icon}
+                                    size={13}
+                                    color={themeColors.text.secondary}
+                                    style={{ marginLeft: 6 }}
+                                />
+                            </View>
                         </View>
                         <TouchableOpacity onPress={postOptionClick} style={styles.moreButton}>
                             <Icon name="more-vert" size={24} color={themeColors.text.secondary} />
@@ -1507,7 +1582,7 @@ const SinglePost = () => {
                     </View>
                 </View>
             )}
-            </KeyboardAvoidingView>
+            </KeyboardSafeView>
 
             {/* Image Modal */}
             <Modal
@@ -1550,10 +1625,7 @@ const SinglePost = () => {
                             <>
                                 <TouchableOpacity 
                                     style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
-                                    onPress={() => {
-                                        setIsPostOption(false);
-                                        navigation.navigate('EditPost', { postId: post._id });
-                                    }}
+                                    onPress={openEditPost}
                                 >
                                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
                                         <Icon name="edit" size={20} color={themeColors.primary} />
@@ -1567,9 +1639,7 @@ const SinglePost = () => {
                                 
                                 <TouchableOpacity 
                                     style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
-                                    onPress={() => {
-                                        setIsPostOption(false);
-                                    }}
+                                    onPress={openEditAudience}
                                 >
                                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
                                         <Icon name="people" size={20} color={themeColors.primary} />
@@ -1651,6 +1721,15 @@ const SinglePost = () => {
                     </View>
                 </TouchableOpacity>
             </Modal>
+
+            <EditAudienceModal
+                visible={isEditAudienceModal}
+                selected={selectedAudience}
+                saving={isUpdatingAudience}
+                onSelect={setSelectedAudience}
+                onClose={closeEditAudience}
+                onSave={saveAudience}
+            />
             
             {/* Delete Confirmation Modal */}
             <Modal visible={showDeleteConfirmation} transparent animationType="fade">

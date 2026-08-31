@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../contexts/ThemeContext';
@@ -9,6 +9,7 @@ import Toast from 'react-native-toast-message';
 import { AuthContext } from '../contexts/AuthContext';
 // import { GoogleSigninButton } from '@react-native-google-signin/google-signin'; // Temporarily disabled due to ViewManagerDelegate error
 import Icon from 'react-native-vector-icons/Ionicons';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 
 type RootStackParamList = {
   Login: undefined;
@@ -88,7 +89,12 @@ const LoginScreen = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+    <KeyboardSafeView nested>
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      contentContainerStyle={[styles.container, { backgroundColor: themeColors.background.primary }]}
+    >
       <Logo size="large" />
       <Text style={[styles.title, { color: themeColors.primary }]}>Login</Text>
       <PaperTextInput
@@ -142,13 +148,14 @@ const LoginScreen = () => {
         <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>Signup</Text>
       </Button>
       <Toast />
-    </View>
+    </ScrollView>
+    </KeyboardSafeView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

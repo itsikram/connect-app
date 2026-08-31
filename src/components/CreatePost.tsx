@@ -1,5 +1,5 @@
 import React, { useState, useContext, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, FlatList } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, FlatList, ScrollView } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -10,6 +10,7 @@ import { ModernButton } from './modern';
 import { useModernToast } from '../contexts/ModernToastContext';
 import ProfileImage from './ProfileImage';
 import { useFeedTokens } from '../theme/feedTokens';
+import KeyboardSafeView from './KeyboardSafeView';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -268,8 +269,10 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         transparent={true}
         onRequestClose={closeModal}
       >
+        <KeyboardSafeView force>
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
           <TouchableOpacity style={[styles.modalContent, { backgroundColor: modalBg }]} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+            <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
               <Text style={[styles.modalTitle, { color: textColor }]} numberOfLines={1}>Create a Post</Text>
               <TouchableOpacity
@@ -380,8 +383,10 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 style={{ marginTop: 16 }}
               />
             </View>
+            </ScrollView>
           </TouchableOpacity>
         </TouchableOpacity>
+        </KeyboardSafeView>
       </Modal>
 
       <Modal

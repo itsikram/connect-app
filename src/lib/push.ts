@@ -114,7 +114,7 @@ export async function getOrCreateFcmToken(): Promise<string | null> {
     let token;
     try {
       token = await Notifications.getExpoPushTokenAsync({
-        projectId: '76d83a3a-a10d-43fb-a110-e50066ce889f' // Replace with your actual Expo project ID
+        projectId: '76d83a3a-a10d-43fb-a110-e50066ce889f',
       });
     } catch (projectError: any) {
       // Fallback for when projectId is not configured
@@ -202,49 +202,15 @@ export async function configureNotificationsChannel() {
       return;
     }
 
-    // Create default notification channel - SOUND DISABLED
     await Notifee.createChannel({
       id: 'default',
       name: 'Default Notifications',
       description: 'General app notifications',
       importance: AndroidImportance.HIGH,
       visibility: AndroidVisibility.PUBLIC,
-        sound: 'default',
-        vibration: true,
-      vibrationPattern: undefined,
+      sound: 'default',
+      vibration: true,
     });
-    
-    // Create calls notification channel with maximum priority for incoming calls - SOUND DISABLED
-    await Notifee.createChannel({
-      id: 'calls',
-      name: 'Incoming Calls',
-      description: 'Incoming call notifications - full screen alerts',
-      importance: AndroidImportance.HIGH,
-      visibility: AndroidVisibility.PUBLIC,
-        sound: 'default',
-        vibration: true,
-      vibrationPattern: undefined,
-      lights: true,
-      lightColor: '#FF0000',
-      bypassDnd: true, // Bypass Do Not Disturb
-    });
-    
-    // Also create 'incoming_calls' channel (used by some parts of the code)
-    await Notifee.createChannel({
-      id: 'incoming_calls',
-      name: 'Incoming Calls',
-      description: 'Incoming call notifications - full screen alerts',
-      importance: AndroidImportance.HIGH,
-      visibility: AndroidVisibility.PUBLIC,
-        sound: 'default',
-        vibration: true,
-      vibrationPattern: undefined,
-      lights: true,
-      lightColor: '#FF0000',
-      bypassDnd: true, // Bypass Do Not Disturb
-    });
-    
-    console.log('✅ Notification channels configured successfully (sounds disabled)');
   } catch (error: any) {
     // Check if error is due to null context (React Native not ready)
     const errorMessage = error?.message || String(error || '');

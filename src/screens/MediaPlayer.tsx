@@ -15,10 +15,9 @@ import {
   StyleSheet,
   StatusBar,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -899,10 +898,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
   return (
     <SafeAreaView style={[styles.page, { backgroundColor: t.pageBg }]} edges={['top', 'left', 'right']}>
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView nested>
         <View style={styles.header}>
           <Pressable style={[styles.headerBtn, { backgroundColor: t.btnBg }]} onPress={() => navigation.goBack()}>
             <Icon name="arrow-back" size={20} color={t.text} />
@@ -1278,7 +1274,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
             </Pressable>
           </View>
         </ScrollView>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 };

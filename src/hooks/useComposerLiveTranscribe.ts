@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
 import * as FileSystem from 'expo-file-system/legacy';
-import RNFS from 'react-native-fs';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from '../lib/config';
 
@@ -162,8 +161,6 @@ const stripWavHeader = (bytes: Uint8Array) => {
   return bytes.subarray(44);
 };
 
-const toFsPath = (uri: string) => String(uri || '').replace(/^file:\/\//, '');
-
 const PCM_RECORDING_OPTIONS: Audio.RecordingOptions = {
   isMeteringEnabled: false,
   android: {
@@ -193,6 +190,12 @@ const PCM_RECORDING_OPTIONS: Audio.RecordingOptions = {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const normalizeSpeechText = (value: string) =>
+  String(value || '').replace(/\s+/g, ' ').trim();
+
+const isSameSpeechText = (a: string, b: string) =>
+  normalizeSpeechText(a).toLowerCase() === normalizeSpeechText(b).toLowerCase();
+
 const getFileSize = async (uri: string) => {
   try {
     const info = await FileSystem.getInfoAsync(uri);
@@ -202,28 +205,48 @@ const getFileSize = async (uri: string) => {
   } catch {
     /* ignore */
   }
-  try {
-    const stat = await RNFS.stat(toFsPath(uri));
-    return Number(stat.size) || 0;
-  } catch {
-    return 0;
-  }
+  return 0;
+};
+
+const sliceBytesToBase64 = (bytes: Uint8Array, position: number, length: number) => {
+  if (position >= bytes.length || length <= 0) return '';
+  return bytesToBase64(bytes.subarray(position, Math.min(bytes.length, position + length)));
 };
 
 const readFileSlice = async (uri: string, position: number, length: number) => {
   if (length <= 0) return '';
+
   try {
-    return await RNFS.read(toFsPath(uri), length, position, 'base64');
-  } catch {
-    try {
-      return await FileSystem.readAsStringAsync(uri, {
-        encoding: FileSystem.EncodingType.Base64,
-        position,
-        length,
-      });
-    } catch {
-      return '';
+    const ranged = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+      position,
+      length,
+    });
+    if (ranged) {
+      const decoded = base64ToBytes(ranged);
+      // Honored the byte range.
+      if (decoded.length > 0 && decoded.length <= length + 16) {
+        return ranged;
+      }
+      // Some platforms ignore position/length and return the whole file.
+      if (decoded.length >= position + Math.min(length, 1)) {
+        return sliceBytesToBase64(decoded, position, length);
+      }
+      if (decoded.length > length) {
+        return bytesToBase64(decoded.subarray(0, length));
+      }
     }
+  } catch {
+    /* fall through to a full read */
+  }
+
+  try {
+    const all = await FileSystem.readAsStringAsync(uri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    return sliceBytesToBase64(base64ToBytes(all), position, length);
+  } catch {
+    return '';
   }
 };
 
@@ -244,6 +267,8 @@ export default function useComposerLiveTranscribe({
   const ignoreResultsRef = useRef(false);
   const usedStreamRef = useRef(false);
   const languageRef = useRef('en-US');
+  const lastPartialRef = useRef('');
+  const lastFinalRef = useRef('');
 
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
@@ -347,14 +372,29 @@ export default function useComposerLiveTranscribe({
       return;
     }
     if (ignoreResultsRef.current) return;
+
+    const emitFinal = (text: string) => {
+      const finalText = normalizeSpeechText(text);
+      if (!finalText) return;
+      if (isSameSpeechText(finalText, lastFinalRef.current)) return;
+      lastFinalRef.current = finalText;
+      lastPartialRef.current = '';
+      onFinalRef.current?.(finalText);
+    };
+
     if (payload?.type === 'partial') {
-      const partial = String(payload.text || '').trim();
-      if (partial) onInterimRef.current?.(partial);
+      const partial = normalizeSpeechText(payload.text || '');
+      if (!partial) return;
+      lastPartialRef.current = partial;
+      if (payload.isFinal) {
+        emitFinal(partial);
+      } else {
+        onInterimRef.current?.(partial);
+      }
       return;
     }
-    if (payload?.type === 'final') {
-      const finalText = String(payload.text || '').trim();
-      if (finalText) onFinalRef.current?.(finalText);
+    if (payload?.type === 'final' || payload?.type === 'utterance-end') {
+      emitFinal(payload.text || lastPartialRef.current);
     }
   }, []);
 
@@ -557,6 +597,8 @@ export default function useComposerLiveTranscribe({
     async (langCode?: string) => {
       await stop();
       ignoreResultsRef.current = false;
+      lastPartialRef.current = '';
+      lastFinalRef.current = '';
       const granted = await requestChatMicPermission();
       if (!granted) return false;
 

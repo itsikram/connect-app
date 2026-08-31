@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl, Alert } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, ActivityIndicator, Platform, TouchableOpacity, Modal, RefreshControl, Alert, DeviceEventEmitter } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -15,6 +15,7 @@ import ProfileImage from '../components/ProfileImage'
 import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
 import PostSkeleton from '../components/skeleton/PostSkeleton'
 import CreateStoryModal from '../components/story/CreateStoryModal'
+import { POST_UPDATED_EVENT } from '../utils/postEvents'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -105,6 +106,18 @@ const MyProfile = () => {
     const handlePostDeleted = (postId: string) => {
         setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
     };
+
+    const handlePostUpdated = React.useCallback((updatedPost: any) => {
+        if (!updatedPost?._id) return;
+        setPosts((prev: any[]) =>
+            prev.map((post) => (post?._id === updatedPost._id ? { ...post, ...updatedPost } : post)),
+        );
+    }, []);
+
+    React.useEffect(() => {
+        const sub = DeviceEventEmitter.addListener(POST_UPDATED_EVENT, handlePostUpdated);
+        return () => sub.remove();
+    }, [handlePostUpdated]);
 
     React.useEffect(() => {
         fetchProfileData();
@@ -308,7 +321,7 @@ const MyProfile = () => {
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
                     )}
                     {!postsLoading && posts.map((p: any) => (
-                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} />
+                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated} />
                     ))}
                 </View>
             )

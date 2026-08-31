@@ -3,9 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -18,6 +16,7 @@ import {
   View,
 } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { ResizeMode, Video as ExpoVideo } from 'expo-av';
@@ -357,10 +356,7 @@ const SingleWatch = () => {
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: t.pageBg }]}>
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView nested>
         <View style={[styles.header, { borderBottomColor: t.border, backgroundColor: t.pageBg }]}>
           <TouchableOpacity onPress={() => navigation.goBack()} style={styles.headerBtn}>
             <Icon name="arrow-back" size={24} color={t.chromeText} />
@@ -573,7 +569,7 @@ const SingleWatch = () => {
             )}
           </TouchableOpacity>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
 
       <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
         <View style={styles.modalBackdrop}>

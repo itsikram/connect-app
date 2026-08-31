@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { TextInput as PaperTextInput, Button, RadioButton } from 'react-native-paper';
@@ -9,7 +9,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { authAPI } from '../lib/api';
 import Toast from 'react-native-toast-message';
 import { AuthContext } from '../contexts/AuthContext';
-import { GoogleSigninButton } from '@react-native-google-signin/google-signin';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 
 const TABS = [
   { key: 'personal', label: 'Personal' },
@@ -278,7 +278,12 @@ const RegisterScreen = () => {
   };
 
   return (
-    <View style={[styles.container, { backgroundColor: themeColors.surface.primary }]}>
+    <KeyboardSafeView nested>
+    <ScrollView
+      keyboardShouldPersistTaps="handled"
+      keyboardDismissMode="on-drag"
+      contentContainerStyle={[styles.container, { backgroundColor: themeColors.surface.primary }]}
+    >
       <Logo size="large" />
       <Text style={[styles.title, { color: themeColors.primary }]}>Register</Text>
       {/* Tab headers - fixed width, centered, pill/rounded style */}
@@ -569,13 +574,14 @@ const RegisterScreen = () => {
         <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>Signin</Text>
       </Button>
       <Toast />
-    </View>
+    </ScrollView>
+    </KeyboardSafeView>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

@@ -7,7 +7,12 @@ import {
   saveNotificationToken,
   configureNotificationsChannel,
 } from '../lib/pushExpo';
-import { configureIncomingCallChannels, parseIncomingCallNotificationData } from '../lib/incomingCallAlerts';
+import {
+  configureIncomingCallChannels,
+  parseIncomingCallNotificationData,
+  startIncomingCallAlert,
+  stopIncomingCallAlert,
+} from '../lib/incomingCallAlerts';
 import { emitIncomingCallFromPush, emitRejectCallFromPush } from '../lib/callEvents';
 import { notifyCallerRinging } from '../lib/callStatus';
 
@@ -17,19 +22,30 @@ interface UseNotificationsProps {
 
 function handleIncomingCallResponse(data: any, actionId?: string) {
   const parsed = parseIncomingCallNotificationData(data) || {
-    from: String(data?.callerId || ''),
+    from: String(data?.callerId || data?.from || ''),
     channelName: String(data?.channelName || ''),
     callerName: data?.callerName,
     callerProfilePic: data?.callerProfilePic,
     isAudio: data?.isAudio === true || data?.isAudio === 'true',
     autoAccept: false,
+    ringtoneId: data?.ringtoneId,
   };
   if (!parsed.from || !parsed.channelName) return;
 
   if (actionId === 'reject_call' || actionId === 'decline_call') {
+    stopIncomingCallAlert(parsed.channelName).catch(() => {});
     emitRejectCallFromPush(parsed);
     return;
   }
+
+  startIncomingCallAlert({
+    callerId: parsed.from,
+    callerName: parsed.callerName,
+    callerProfilePic: parsed.callerProfilePic,
+    channelName: parsed.channelName,
+    isAudio: parsed.isAudio,
+    ringtoneId: parsed.ringtoneId,
+  }).catch(() => {});
 
   notifyCallerRinging(parsed.from);
 

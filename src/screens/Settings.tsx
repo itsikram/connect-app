@@ -143,6 +143,7 @@ const Settings = () => {
           contentContainerStyle={styles.pageScrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
           <View
             style={[

@@ -13,6 +13,7 @@ import {
 import { COLORS, PLAYER_LETTERS, THEME } from './constants';
 import type { FriendUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
+import KeyboardSafeView from '../../components/KeyboardSafeView';
 
 interface PlayerSelectionModalProps {
   show: boolean;
@@ -76,6 +77,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
 
   return (
     <Modal visible={show} animationType="fade" transparent>
+      <KeyboardSafeView force>
       <View style={styles.backdrop}>
         <View style={styles.modal}>
           <TouchableOpacity style={styles.close} onPress={onCancel}>
@@ -85,7 +87,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
           <Text style={styles.title}>Start New Game</Text>
           <Text style={styles.subtitle}>Set up your players and game mode to begin</Text>
 
-          <ScrollView style={styles.body} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <Text style={styles.sectionTitle}>Number of Players</Text>
             <View style={styles.choiceGrid}>
               {[2, 3, 4].map((count) => {
@@ -272,6 +274,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
           </TouchableOpacity>
         </View>
       </View>
+      </KeyboardSafeView>
     </Modal>
   );
 };

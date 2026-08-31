@@ -116,25 +116,18 @@
         android:stopWithTask="false"
         android:process=":bg" />
 
-      <!-- FCM message service for production builds -->
+      <!-- Incoming-call FCM is handled by expo-notifications ExpoFirebaseMessagingService.
+           Do not register React Native Firebase messaging here — that package is not
+           installed and would steal MESSAGING_EVENT from Expo, dropping call pushes. -->
+
       <service
-        android:name="io.invertase.firebase.messaging.ReactNativeFirebaseMessagingService"
-        android:exported="false">
-        <intent-filter>
+        android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService"
+        android:exported="false"
+        tools:node="merge">
+        <intent-filter android:priority="999">
           <action android:name="com.google.firebase.MESSAGING_EVENT" />
         </intent-filter>
       </service>
-
-      <!-- FCM receiver for production builds -->
-      <receiver
-        android:name="io.invertase.firebase.messaging.ReactNativeFirebaseMessagingReceiver"
-        android:exported="true"
-        android:permission="com.google.android.c2dm.permission.SEND">
-        <intent-filter>
-          <action android:name="com.google.android.c2dm.intent.RECEIVE" />
-          <category android:name="com.connect.app" />
-        </intent-filter>
-      </receiver>
 
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"

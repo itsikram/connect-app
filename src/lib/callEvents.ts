@@ -22,6 +22,7 @@ export type IncomingCallPushDetail = {
   isAudio?: boolean;
   isVideo?: boolean;
   autoAccept?: boolean;
+  ringtoneId?: string;
 };
 
 export function emitStartAudioCall(detail: StartCallDetail): void {

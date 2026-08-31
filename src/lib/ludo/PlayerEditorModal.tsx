@@ -8,13 +8,12 @@ import {
   TextInput,
   ScrollView,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
 import type { FriendUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
+import KeyboardSafeView from '../../components/KeyboardSafeView';
 
 interface PlayerEditorModalProps {
   show: boolean;
@@ -84,10 +83,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView force style={styles.backdrop}>
         <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={onClose} />
         <View style={[styles.modal, { borderColor: accent }]}>
           <ScrollView
@@ -248,7 +244,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 };

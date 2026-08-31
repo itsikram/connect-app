@@ -31,7 +31,7 @@ export function getRingtoneSoundName(ringtoneId?: unknown): string {
 }
 
 export function getIncomingCallChannelId(ringtoneId?: unknown): string {
-  return `incoming_calls_r${normalizeRingtoneId(ringtoneId)}`;
+  return `incoming_calls_r${normalizeRingtoneId(ringtoneId)}_v5`;
 }
 
 export async function persistRingtonePreference(ringtoneId: unknown): Promise<string> {

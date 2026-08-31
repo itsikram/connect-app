@@ -54,6 +54,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.connect.app",
+      "softwareKeyboardLayoutMode": "resize",
       "permissions": [
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO",
@@ -74,7 +75,10 @@
         "android.permission.WAKE_LOCK",
         "android.permission.FOREGROUND_SERVICE",
         "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-        "android.permission.POST_NOTIFICATIONS"
+        "android.permission.FOREGROUND_SERVICE_PHONE_CALL",
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.USE_FULL_SCREEN_INTENT",
+        "android.permission.VIBRATE"
       ]
     },
     "web": {
@@ -88,6 +92,7 @@
       [
         "expo-notifications",
         {
+          "enableBackgroundRemoteNotifications": true,
           "sounds": [
             "./src/assets/audio/ringtone_1.mp3",
             "./src/assets/audio/ringtone_2.mp3",

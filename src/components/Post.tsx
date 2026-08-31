@@ -18,6 +18,11 @@ import {
   getReactLabel,
   uniquePlacedReacts,
 } from './post/ReactIcons';
+import EditAudienceModal from './post/EditAudienceModal';
+import CacheManager from '../utils/cacheManager';
+import { emitPostUpdated } from '../utils/postEvents';
+import { getAudienceOption } from '../constants/audience';
+import { useModernToast } from '../contexts/ModernToastContext';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const POST_IMAGE_MAX_HEIGHT = 620;
@@ -64,6 +69,7 @@ type RootStackParamList = {
   SinglePost: { postId: string };
   SingleVideo: { videoId: string };
   FriendProfile: { friendId: string };
+  EditPost: { postId: string };
 };
 
 const default_pp_src = config?.DEFAULT_PROFILE_URL;
@@ -71,9 +77,10 @@ const default_pp_src = config?.DEFAULT_PROFILE_URL;
 interface PostProps {
   data: any;
   onPostDeleted?: (postId: string) => void;
+  onPostUpdated?: (post: any) => void;
 }
 
-const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
+const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const post = data || {};
   const myProfile = useSelector((state: any) => state.profile);
   const myProfileId = myProfile?._id;
@@ -103,12 +110,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const [likingCommentId, setLikingCommentId] = useState<string | null>(null);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
   const [imageHeight, setImageHeight] = useState<number>(Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH));
+  const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
+  const [selectedAudience, setSelectedAudience] = useState<number>(Number(data?.audience) || 3);
+  const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
 
   const reactLockRef = useRef(false);
   const commentsFetchedRef = useRef<string | null>(null);
   const commentInputRef = useRef<TextInput>(null);
 
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { showToast } = useModernToast();
   const { colors: themeColors, isDarkMode } = useTheme();
   const feed = useFeedTokens();
   const cardBg = feed.postBg;
@@ -226,6 +237,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     setImageLoadError(false);
   }, [post._id, post.photos]);
 
+  useEffect(() => {
+    setSelectedAudience(Number(data?.audience) || 3);
+  }, [data?._id, data?.audience]);
+
   // Like, Love, Haha, Sad, Remove React, Place React logic
   const removeReact = async () => {
     if (reactLockRef.current) return;
@@ -341,6 +356,63 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Post option menu logic
   const postOptionClick = () => setIsPostOption(!isPostOption);
+
+  const applyPostUpdate = (updatedPost: any) => {
+    if (!updatedPost?._id) return;
+    if (updatedPost.audience != null) {
+      setSelectedAudience(Number(updatedPost.audience) || 3);
+    }
+    CacheManager.updateCachedPost(updatedPost);
+    emitPostUpdated(updatedPost);
+    onPostUpdated?.(updatedPost);
+  };
+
+  const openEditPost = () => {
+    setIsPostOption(false);
+    navigation.navigate('EditPost', { postId: post._id });
+  };
+
+  const openEditAudience = () => {
+    setSelectedAudience(Number(post.audience) || 3);
+    setIsPostOption(false);
+    setIsEditAudienceModal(true);
+  };
+
+  const closeEditAudience = () => {
+    if (isUpdatingAudience) return;
+    setIsEditAudienceModal(false);
+    setSelectedAudience(Number(post.audience) || 3);
+  };
+
+  const saveAudience = async () => {
+    if (isUpdatingAudience) return;
+    setIsUpdatingAudience(true);
+    try {
+      const res = await api.post('/post/update', {
+        postId: post._id,
+        audience: selectedAudience,
+      });
+      if (res.status === 200) {
+        const updatedPost = res.data?.post || { ...post, audience: selectedAudience };
+        applyPostUpdate(updatedPost);
+        setIsEditAudienceModal(false);
+        showToast({
+          type: 'success',
+          title: 'Audience updated',
+          message: `This post is now visible to ${getAudienceOption(selectedAudience).label.toLowerCase()}.`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error updating audience:', error);
+      showToast({
+        type: 'error',
+        title: 'Could not update audience',
+        message: error?.response?.data?.message || 'Please try again.',
+      });
+    } finally {
+      setIsUpdatingAudience(false);
+    }
+  };
 
   // Handle post deletion
   const handleDeletePost = async () => {
@@ -751,6 +823,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               <Text style={[styles.time, { color: subTextColor }]}>
                 {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
               </Text>
+              <Icon
+                name={getAudienceOption(post.audience).icon}
+                size={13}
+                color={subTextColor}
+                style={styles.audienceIcon}
+              />
             </TouchableOpacity>
           </View>
           <View style={styles.headerRight}>
@@ -777,9 +855,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                 <>
                   <TouchableOpacity
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
-                    onPress={() => {
-                      setIsPostOption(false);
-                    }}
+                    onPress={openEditPost}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
                       <Icon name="edit" size={20} color={themeColors.primary} />
@@ -793,9 +869,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
                   <TouchableOpacity
                     style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
-                    onPress={() => {
-                      setIsPostOption(false);
-                    }}
+                    onPress={openEditAudience}
                   >
                     <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
                       <Icon name="people" size={20} color={themeColors.primary} />
@@ -1081,6 +1155,14 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           </View>
         </View>
       </Modal>
+      <EditAudienceModal
+        visible={isEditAudienceModal}
+        selected={selectedAudience}
+        saving={isUpdatingAudience}
+        onSelect={setSelectedAudience}
+        onClose={closeEditAudience}
+        onSave={saveAudience}
+      />
     </View>
   );
 };
@@ -1172,6 +1254,12 @@ const styles = StyleSheet.create({
   },
   timeContainer: {
     marginTop: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  audienceIcon: {
+    marginTop: 1,
   },
   headerRight: {
     flexDirection: 'row',

@@ -3,9 +3,15 @@ import * as Notifications from 'expo-notifications';
 import { Platform, Linking, Alert, AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
-import { callNotificationService } from './callNotificationService';
+import Constants from 'expo-constants';
+import {
+  getIncomingCallChannelId,
+  getRingtoneSoundName,
+} from './ringtoneAssets';
 
 const STORAGE_KEY = 'fcmToken';
+const EXPO_PROJECT_ID =
+  Constants.expoConfig?.extra?.eas?.projectId || '76d83a3a-a10d-43fb-a110-e50066ce889f';
 
 // Initialize notifications
 export const initializeNotifications = async () => {
@@ -30,7 +36,7 @@ export const getNotificationToken = async () => {
     let token;
     try {
       token = await Notifications.getExpoPushTokenAsync({
-        projectId: '76d83a3a-a10d-43fb-a110-e50066ce889f' // Replace with your actual Expo project ID
+        projectId: EXPO_PROJECT_ID,
       });
     } catch (projectError: any) {
       // Fallback for when projectId is not configured
@@ -122,31 +128,29 @@ export const configureNotificationsChannel = async () => {
       sound: 'default',
       bypassDnd: true,
     });
-    await Notifications.setNotificationChannelAsync('incoming_calls', {
-      name: 'Incoming Calls',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 400, 200, 400],
-      sound: 'ringtone_1',
-      bypassDnd: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    });
-    await Notifications.setNotificationChannelAsync('incoming_calls_v3', {
-      name: 'Incoming Calls',
-      importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 400, 200, 400],
-      sound: 'ringtone_1',
-      bypassDnd: true,
-      lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    });
-    for (let i = 1; i <= 5; i += 1) {
-      await Notifications.setNotificationChannelAsync(`incoming_calls_r${i}`, {
+    const callAudioAttributes = {
+      usage: Notifications.AndroidAudioUsage.NOTIFICATION_RINGTONE,
+      contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+      flags: {
+        enforceAudibility: true,
+        requestHardwareAudioVideoSynchronization: false,
+      },
+    };
+    const callChannel = (id: string, sound: string) =>
+      Notifications.setNotificationChannelAsync(id, {
         name: 'Incoming Calls',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 400, 200, 400],
-        sound: `ringtone_${i}`,
+        vibrationPattern: [0, 400, 200, 400, 200, 400],
+        sound,
         bypassDnd: true,
+        enableVibrate: true,
         lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+        audioAttributes: callAudioAttributes,
       });
+    await callChannel('incoming_calls', 'ringtone_1');
+    await callChannel('incoming_calls_v3', 'ringtone_1');
+    for (let i = 1; i <= 5; i += 1) {
+      await callChannel(getIncomingCallChannelId(String(i)), getRingtoneSoundName(String(i)));
     }
   } catch (error) {
     console.error('❌ Failed to configure notification channels:', error);

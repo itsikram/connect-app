@@ -3,26 +3,7 @@
  * Made compatible with Expo Go by making Notifee optional
  */
 
-import { Platform, AppState } from 'react-native';
-// Notifee imports made optional for Expo Go compatibility
-let notifee: any = null;
-let AndroidImportance: any = null;
-let AndroidVisibility: any = null;
-let AndroidCategory: any = null;
-let EventType: any = null;
-
-try {
-  const notifeeModule = require('@notifee/react-native');
-  notifee = notifeeModule.default;
-  AndroidImportance = notifeeModule.AndroidImportance;
-  AndroidVisibility = notifeeModule.AndroidVisibility;
-  AndroidCategory = notifeeModule.AndroidCategory;
-  EventType = notifeeModule.EventType;
-} catch (error) {
-  console.log('Notifee not available in callNotificationService - using fallback');
-}
-
-import { openIncomingCallScreen, bringAppToForeground } from './CallNotificationBridge';
+import { Platform } from 'react-native';
 import {
   getIncomingCallChannelId,
   getRingtoneSoundName,
@@ -31,11 +12,28 @@ import {
   normalizeRingtoneId,
 } from './ringtoneAssets';
 
-// Service to handle incoming call notifications with better reliability
+let notifee: any = null;
+let AndroidImportance: any = null;
+let AndroidVisibility: any = null;
+let AndroidCategory: any = null;
+let AndroidForegroundServiceType: any = null;
+
+try {
+  const notifeeModule = require('@notifee/react-native');
+  notifee = notifeeModule.default;
+  AndroidImportance = notifeeModule.AndroidImportance;
+  AndroidVisibility = notifeeModule.AndroidVisibility;
+  AndroidCategory = notifeeModule.AndroidCategory;
+  AndroidForegroundServiceType = notifeeModule.AndroidForegroundServiceType;
+} catch (error) {
+  console.log('Notifee not available in callNotificationService - using fallback');
+}
+
 export class CallNotificationService {
   private static instance: CallNotificationService;
   private isServiceRunning = false;
   private notificationId: string | null = null;
+  private startedForegroundService = false;
 
   static getInstance(): CallNotificationService {
     if (!CallNotificationService.instance) {
@@ -44,7 +42,6 @@ export class CallNotificationService {
     return CallNotificationService.instance;
   }
 
-  // Display incoming call notification with enhanced settings
   async displayIncomingCallNotification(payload: {
     callerName: string;
     callerProfilePic?: string;
@@ -53,110 +50,96 @@ export class CallNotificationService {
     callerId: string;
     ringtoneId?: string;
   }): Promise<void> {
+    if (!notifee || Platform.OS !== 'android') {
+      return;
+    }
+
     try {
-      // Cancel any existing call notification
       await this.cancelIncomingCallNotification();
 
-      // Create notification ID
-      this.notificationId = `incoming_call_${payload.callerId}_${Date.now()}`;
+      this.notificationId = `incoming_call_${payload.channelName || payload.callerId}`;
 
-      const ringtoneId = normalizeRingtoneId(
-        (payload as any).ringtoneId || (await getStoredRingtoneId()),
-      );
+      const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
       const channelId = getIncomingCallChannelId(ringtoneId);
       const soundName = getRingtoneSoundName(ringtoneId);
 
-      // Configure notification channel for calls
-      if (notifee) {
-        await this.configureCallNotificationChannel(ringtoneId);
-      }
+      await this.configureCallNotificationChannel(ringtoneId);
 
-      // Request permissions
-      if (Platform.OS === 'android' && notifee) {
-        await notifee.requestPermission({
-          alert: true,
-          badge: true,
-          sound: true,
-        });
-      }
+      try {
+        await notifee.requestPermission();
+      } catch (_) {}
 
-      // Try to use native bridge first for better reliability
-      if (Platform.OS === 'android') {
-        try {
-          await openIncomingCallScreen({
-            callerId: payload.callerId,
-            callerName: payload.callerName,
-            callerProfilePic: payload.callerProfilePic,
-            channelName: payload.channelName,
-            isAudio: payload.isAudio,
-          });
-          console.log('✅ Successfully opened incoming call screen via native bridge');
-          this.isServiceRunning = true;
-          return;
-        } catch (error) {
-          console.warn('Native bridge failed, falling back to notification:', error);
-        }
-      }
+      const mediaPlaybackType =
+        AndroidForegroundServiceType?.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK;
+      const foregroundServiceTypes = mediaPlaybackType != null ? [mediaPlaybackType] : [];
 
-      // Fallback to notification-based approach
-      if (notifee) {
-        await notifee.displayNotification({
-          id: this.notificationId,
-          title: payload.isAudio ? '📞 Incoming Audio Call' : '📹 Incoming Video Call',
-          body: `Call from ${payload.callerName}`,
-          android: {
-            channelId,
-            importance: AndroidImportance.HIGH,
-            visibility: AndroidVisibility.PUBLIC,
-            category: AndroidCategory.CALL,
-            pressAction: {
-              id: 'accept_call',
+      await notifee.displayNotification({
+        id: this.notificationId,
+        title: payload.isAudio ? 'Incoming audio call' : 'Incoming video call',
+        body: `${payload.callerName || 'Someone'} is calling`,
+        android: {
+          channelId,
+          importance: AndroidImportance?.HIGH,
+          visibility: AndroidVisibility?.PUBLIC,
+          category: AndroidCategory?.CALL,
+          pressAction: {
+            id: 'default',
+            launchActivity: 'default',
+          },
+          fullScreenAction: {
+            id: 'incoming_call_fullscreen',
+            launchActivity: 'default',
+          },
+          actions: [
+            {
+              title: 'Accept',
+              pressAction: {
+                id: 'accept_call',
+                launchActivity: 'default',
+              },
             },
-            actions: [
-              {
-                title: 'Accept',
-                pressAction: {
-                  id: 'accept_call',
-                },
+            {
+              title: 'Decline',
+              pressAction: {
+                id: 'decline_call',
               },
-              {
-                title: 'Decline',
-                pressAction: {
-                  id: 'decline_call',
-                  launchActivity: 'default',
-                },
-              },
-            ],
-            sound: soundName,
-            autoCancel: false,
-            ongoing: true,
-          },
-          data: {
-            type: 'incoming_call',
-            callerId: payload.callerId,
-            callerName: payload.callerName,
-            channelName: payload.channelName,
-            isAudio: payload.isAudio,
-            ringtoneId,
-          },
-        });
-      } else {
-        const { presentIncomingCallNotification } = await import('./incomingCallAlerts');
-        await presentIncomingCallNotification(payload);
-      }
-      
+            },
+          ],
+          sound: soundName,
+          loopSound: true,
+          asForegroundService: true,
+          lightUpScreen: true,
+          autoCancel: false,
+          ongoing: true,
+          vibrationPattern: [0, 400, 200, 400, 200, 400],
+          ...(foregroundServiceTypes.length
+            ? { foregroundServiceTypes }
+            : {}),
+        },
+        data: {
+          type: 'incoming_call',
+          callerId: payload.callerId,
+          callerName: payload.callerName || '',
+          callerProfilePic: payload.callerProfilePic || '',
+          channelName: payload.channelName,
+          isAudio: payload.isAudio ? 'true' : 'false',
+          ringtoneId,
+        },
+      });
+
+      this.startedForegroundService = true;
       this.isServiceRunning = true;
-      console.log('✅ Call notification displayed successfully');
     } catch (error) {
       console.error('❌ Error displaying incoming call notification:', error);
       this.isServiceRunning = false;
+      this.startedForegroundService = false;
+      throw error;
     }
   }
 
-  // Configure dedicated notification channel for incoming calls
   private async configureCallNotificationChannel(ringtoneId?: string): Promise<void> {
     if (!notifee) return;
-    
+
     try {
       const selectedId = normalizeRingtoneId(ringtoneId || (await getStoredRingtoneId()));
       for (let i = 1; i <= MAX_RINGTONE_ID; i += 1) {
@@ -169,6 +152,10 @@ export class CallNotificationService {
           visibility: AndroidVisibility.PUBLIC,
           sound: getRingtoneSoundName(id),
           vibration: true,
+          vibrationPattern: [0, 400, 200, 400, 200, 400],
+          bypassDnd: true,
+          lights: true,
+          lightColor: '#E53935',
         });
       }
       await notifee.createChannel({
@@ -179,21 +166,30 @@ export class CallNotificationService {
         visibility: AndroidVisibility.PUBLIC,
         sound: getRingtoneSoundName(selectedId),
         vibration: true,
+        vibrationPattern: [0, 400, 200, 400, 200, 400],
+        bypassDnd: true,
+        lights: true,
+        lightColor: '#E53935',
       });
     } catch (error) {
       console.error('Error configuring call notification channel:', error);
     }
   }
 
-  // Cancel incoming call notification
   async cancelIncomingCallNotification(): Promise<void> {
     try {
+      if (this.startedForegroundService && notifee?.stopForegroundService) {
+        try {
+          await notifee.stopForegroundService();
+        } catch (_) {}
+        this.startedForegroundService = false;
+      }
+
       if (this.notificationId && notifee) {
         await notifee.cancelNotification(this.notificationId);
         this.notificationId = null;
       }
-      
-      // Also cancel any other incoming call notifications
+
       if (notifee) {
         const notifications = await notifee.getDisplayedNotifications();
         for (const notification of notifications) {
@@ -202,23 +198,21 @@ export class CallNotificationService {
           }
         }
       }
-      
+
       this.isServiceRunning = false;
-      console.log('✅ Call notification cancelled');
     } catch (error) {
       console.error('Error cancelling incoming call notification:', error);
     }
   }
 
-  // Check if service is currently running
   isNotificationServiceRunning(): boolean {
     return this.isServiceRunning;
   }
 
-  // Get current notification ID
   getCurrentNotificationId(): string | null {
     return this.notificationId;
   }
 }
 
+export const callNotificationService = CallNotificationService.getInstance();
 export default CallNotificationService;

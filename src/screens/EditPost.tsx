@@ -7,28 +7,34 @@ import {
     Image,
     TextInput,
     Alert,
-    SafeAreaView,
     StatusBar,
     StyleSheet,
     ActivityIndicator,
-    KeyboardAvoidingView,
-    Platform,
+    Modal,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';
 import * as ImagePicker from 'expo-image-picker';
 import api from '../lib/api';
 import { RootState } from '../store';
+import CacheManager from '../utils/cacheManager';
+import { emitPostUpdated } from '../utils/postEvents';
+import { AUDIENCE_OPTIONS, getAudienceOption } from '../constants/audience';
+import { useModernToast } from '../contexts/ModernToastContext';
 
 interface Post {
     _id: string;
-    content: string;
+    caption?: string;
+    content?: string;
     photos?: string | string[];
     type?: string;
     feelings?: string;
     location?: string;
+    audience?: number;
     author: {
         _id: string;
         fullName: string;
@@ -39,6 +45,11 @@ interface Post {
     updatedAt: string;
 }
 
+const resolvePhotoUrl = (photos?: string | string[]) => {
+    if (!photos) return '';
+    return Array.isArray(photos) ? photos[0] || '' : photos;
+};
+
 const EditPost = () => {
     const route = useRoute();
     const navigation = useNavigation();
@@ -46,6 +57,7 @@ const EditPost = () => {
     
     const { colors: themeColors, isDarkMode } = useTheme();
     const myProfile = useSelector((state: RootState) => state.profile);
+    const { showToast } = useModernToast();
     
     const [post, setPost] = useState<Post | null>(null);
     const [loading, setLoading] = useState(true);
@@ -56,6 +68,8 @@ const EditPost = () => {
     const [caption, setCaption] = useState('');
     const [feelings, setFeelings] = useState('');
     const [location, setLocation] = useState('');
+    const [audience, setAudience] = useState(3);
+    const [isAudiencePickerVisible, setIsAudiencePickerVisible] = useState(false);
     const [currentImage, setCurrentImage] = useState<string>('');
     
     // Image editing states
@@ -66,8 +80,8 @@ const EditPost = () => {
     // Feelings options
     const feelingsOptions = [
         'happy', 'sad', 'excited', 'grateful', 'blessed', 'loved', 'thankful',
-        'blessed', 'amazing', 'wonderful', 'fantastic', 'great', 'awesome',
-        'tired', 'stressed', 'worried', 'anxious', 'confused', 'frustrated'
+        'amazing', 'wonderful', 'fantastic', 'great', 'awesome',
+        'tired', 'stressed', 'worried', 'anxious', 'confused', 'frustrated',
     ];
 
     const styles = StyleSheet.create({
@@ -290,6 +304,51 @@ const EditPost = () => {
             marginTop: 8,
             fontStyle: 'italic',
         },
+        audienceButton: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            alignSelf: 'flex-start',
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 20,
+            backgroundColor: themeColors.surface.secondary,
+            borderWidth: 1,
+            borderColor: themeColors.border.primary,
+            marginTop: 8,
+        },
+        audienceButtonText: {
+            color: themeColors.text.primary,
+            fontSize: 14,
+            fontWeight: '600',
+            marginLeft: 6,
+            marginRight: 4,
+        },
+        modalOverlay: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            justifyContent: 'flex-end',
+        },
+        modalContent: {
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            paddingHorizontal: 20,
+            paddingTop: 16,
+            paddingBottom: 34,
+        },
+        modalTitle: {
+            fontSize: 18,
+            fontWeight: '700',
+            marginBottom: 12,
+        },
+        audienceOption: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 12,
+        },
+        audienceOptionCopy: {
+            flex: 1,
+            marginLeft: 12,
+        },
     });
 
     const fetchPost = async () => {
@@ -299,10 +358,11 @@ const EditPost = () => {
             if (response.status === 200) {
                 const postData = response.data.post || response.data;
                 setPost(postData);
-                setCaption(postData.content || postData.caption || '');
+                setCaption(postData.caption || postData.content || '');
                 setFeelings(postData.feelings || '');
                 setLocation(postData.location || '');
-                setCurrentImage(postData.photos || '');
+                setAudience(Number(postData.audience) || 3);
+                setCurrentImage(resolvePhotoUrl(postData.photos));
             }
         } catch (err: any) {
             console.error('Error fetching post:', err);
@@ -315,8 +375,9 @@ const EditPost = () => {
     const handleSave = async () => {
         if (!post || !myProfile?._id) return;
         
-        if (!caption.trim()) {
-            Alert.alert('Error', 'Please enter a caption for your post');
+        const hasPhoto = Boolean(newImageUri || (currentImage && !imageRemoved));
+        if (!caption.trim() && !hasPhoto) {
+            Alert.alert('Error', 'Please add a caption or photo before saving');
             return;
         }
 
@@ -337,8 +398,9 @@ const EditPost = () => {
             const updateData: any = {
                 postId: post._id,
                 caption: caption.trim(),
-                feelings: feelings.trim() || undefined,
-                location: location.trim() || undefined,
+                feelings: feelings.trim() || '',
+                location: location.trim() || '',
+                audience,
             };
             
             // Add image URL if it was changed
@@ -349,12 +411,22 @@ const EditPost = () => {
             const response = await api.post('/post/update', updateData);
 
             if (response.status === 200) {
-                Alert.alert('Success', 'Post updated successfully', [
-                    {
-                        text: 'OK',
-                        onPress: () => navigation.goBack(),
-                    },
-                ]);
+                const updatedPost = response.data?.post || {
+                    ...post,
+                    caption: caption.trim(),
+                    feelings: feelings.trim() || '',
+                    location: location.trim() || '',
+                    audience,
+                    photos: newImageUrl !== null ? newImageUrl : post.photos,
+                };
+                CacheManager.updateCachedPost(updatedPost);
+                emitPostUpdated(updatedPost);
+                showToast({
+                    type: 'success',
+                    title: 'Post updated',
+                    message: 'Your changes have been saved.',
+                });
+                navigation.goBack();
             }
         } catch (err: any) {
             console.error('Error updating post:', err);
@@ -517,11 +589,8 @@ const EditPost = () => {
                 </TouchableOpacity>
             </View>
 
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            >
-                <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+            <KeyboardSafeView nested>
+                <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
                     {/* Author Info */}
                     <View style={styles.authorSection}>
                         <View style={{
@@ -544,6 +613,14 @@ const EditPost = () => {
                             <Text style={styles.authorName}>
                                 {myProfile?.fullName || 'Unknown User'}
                             </Text>
+                            <TouchableOpacity
+                                style={styles.audienceButton}
+                                onPress={() => setIsAudiencePickerVisible(true)}
+                            >
+                                <Icon name={getAudienceOption(audience).icon} size={16} color={themeColors.primary} />
+                                <Text style={styles.audienceButtonText}>{getAudienceOption(audience).label}</Text>
+                                <Icon name="arrow-drop-down" size={18} color={themeColors.text.secondary} />
+                            </TouchableOpacity>
                         </View>
                     </View>
 
@@ -695,7 +772,48 @@ const EditPost = () => {
                         </View>
                     </View>
                 </ScrollView>
-            </KeyboardAvoidingView>
+            </KeyboardSafeView>
+
+            <Modal
+                visible={isAudiencePickerVisible}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setIsAudiencePickerVisible(false)}
+            >
+                <TouchableOpacity
+                    style={styles.modalOverlay}
+                    activeOpacity={1}
+                    onPress={() => setIsAudiencePickerVisible(false)}
+                >
+                    <View style={[styles.modalContent, { backgroundColor: themeColors.surface.primary }]}>
+                        <Text style={[styles.modalTitle, { color: themeColors.text.primary }]}>Select Audience</Text>
+                        {AUDIENCE_OPTIONS.map((option) => {
+                            const active = audience === option.value;
+                            return (
+                                <TouchableOpacity
+                                    key={option.value}
+                                    style={styles.audienceOption}
+                                    onPress={() => {
+                                        setAudience(option.value);
+                                        setIsAudiencePickerVisible(false);
+                                    }}
+                                >
+                                    <Icon name={option.icon} size={22} color={themeColors.primary} />
+                                    <View style={styles.audienceOptionCopy}>
+                                        <Text style={{ color: themeColors.text.primary, fontSize: 16, fontWeight: '600' }}>
+                                            {option.label}
+                                        </Text>
+                                        <Text style={{ color: themeColors.text.secondary, fontSize: 13 }}>
+                                            {option.desc}
+                                        </Text>
+                                    </View>
+                                    {active ? <Icon name="check" size={20} color={themeColors.primary} /> : null}
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </View>
+                </TouchableOpacity>
+            </Modal>
         </SafeAreaView>
     );
 };

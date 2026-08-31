@@ -18,6 +18,7 @@ import { setProfile } from '../reducers/profileReducer';
 import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { hideTabBarForChat } from '../lib/chatScreenChrome';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import { fetchChatList, updateUnreadMessageCount, markMessagesAsRead } from '../reducers/chatReducer';
@@ -318,6 +319,7 @@ const Message = React.memo(() => {
   const openChat = useCallback((friend: any) => {
     if (!friend) return;
     Keyboard.dismiss();
+    hideTabBarForChat(navigation);
     (navigation as any).navigate('SingleMessage', { friend });
   }, [navigation]);
 
@@ -736,6 +738,8 @@ const Message = React.memo(() => {
         ListEmptyComponent={chatListEmptyComponent}
         style={styles.list}
         contentContainerStyle={styles.listContent}
+        contentInsetAdjustmentBehavior="never"
+        automaticallyAdjustContentInsets={false}
         extraData={`${activeFriends.length}-${unreadMessageCount}-${normalizedQuery}`}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
@@ -817,7 +821,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 110,
+    paddingBottom: 0,
     flexGrow: 1,
   },
   peopleSection: {

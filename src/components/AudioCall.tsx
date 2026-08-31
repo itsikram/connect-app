@@ -212,7 +212,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     emit('update-call-status', { to: String(to), status: 'Call ignored' });
   }, [emit]);
 
-  const applyIncomingAudioCall = useCallback(({ from, channelName, callerName: name, callerProfilePic: pic }: any) => {
+  const applyIncomingAudioCall = useCallback(({ from, channelName, callerName: name, callerProfilePic: pic, ringtoneId }: any) => {
     if (!from || !channelName) return;
     if (isTerminating.current) return;
     if (receivingCallRef.current && currentChannelRef.current === channelName) return;
@@ -243,6 +243,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       callerProfilePic: pic,
       channelName,
       isAudio: true,
+      ringtoneId,
     }).catch(() => {});
     if (isAppFocused()) {
       markCallSeenIfNeeded();
@@ -313,6 +314,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         channelName: detail.channelName,
         callerName: detail.callerName,
         callerProfilePic: detail.callerProfilePic,
+        ringtoneId: detail.ringtoneId,
       });
     };
     const onPushReject = (detail: any) => {
@@ -387,13 +389,11 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     const onAppState = (state: AppStateStatus) => {
       if (state === 'active') {
         markCallSeenIfNeeded();
-      } else {
-        markCallIgnoredIfNeeded();
       }
     };
     const sub = AppState.addEventListener('change', onAppState);
     return () => sub.remove();
-  }, [markCallSeenIfNeeded, markCallIgnoredIfNeeded]);
+  }, [markCallSeenIfNeeded]);
 
   const toggleMute = useCallback(() => {
     const next = !isMuted;

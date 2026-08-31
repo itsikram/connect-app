@@ -9,11 +9,10 @@ import {
   Dimensions,
   StatusBar,
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Alert,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from './KeyboardSafeView';
 import { useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -305,10 +304,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
       }}
     >
       <StatusBar barStyle="light-content" backgroundColor="rgba(0,0,0,0.9)" />
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView force nested>
         <View style={[styles.container, { paddingTop: insets.top || StatusBar.currentHeight || 0 }]}>
           <View style={styles.header}>
             <View style={styles.progressContainer}>
@@ -469,7 +465,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
             </View>
           ) : null}
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 };

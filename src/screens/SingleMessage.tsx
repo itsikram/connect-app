@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import {
     View,
     Text,
@@ -20,6 +20,7 @@ import {
     Keyboard,
     Animated,
     Easing,
+    DeviceEventEmitter,
     type KeyboardEvent,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
@@ -56,7 +57,13 @@ import { useSettings } from '../contexts/SettingsContext';
 import { io, Socket } from 'socket.io-client';
 import config from '../lib/config';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
-import LiveVoiceModal from '../components/LiveVoiceModal';
+import {
+    emitStartLiveVoice,
+    emitStopLiveVoice,
+    liveVoiceChannelName,
+    LIVE_VOICE_EVENTS,
+    type LiveVoiceStatusDetail,
+} from '../lib/liveVoiceEvents';
 import useFriendChatSettings from '../hooks/useFriendChatSettings';
 import { isRomanticMessage, QUICK_REACTION_PRESETS } from '../utils/chatThemes';
 import ChatSettingsModal from '../components/ChatSettingsModal';
@@ -65,6 +72,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { upsertConfirmedMessage, mergeHistoryWithLive, isConversationMessage } from '../utils/optimisticMessage';
 import { playSpeakPayload, stopSpokenPlayback } from '../lib/speakMessagePlayback';
 import { createPlayableVoiceSound, isAudioAttachmentUrl } from '../lib/voiceMessageAudio';
+import { hideTabBarForChat, restoreTabBarAfterChat } from '../lib/chatScreenChrome';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 
@@ -113,6 +121,38 @@ const isValidImageUrl = (url: string): boolean => {
 };
 
 const isAudioUrl = (url: string): boolean => isAudioAttachmentUrl(url);
+
+const normalizeSpeechText = (value: string) =>
+    String(value || '').replace(/\s+/g, ' ').trim();
+
+const mergeCommittedTranscript = (previous = '', incoming = '') => {
+    const prev = normalizeSpeechText(previous);
+    const next = normalizeSpeechText(incoming);
+    if (!prev) return next;
+    if (!next) return prev;
+
+    const prevLower = prev.toLowerCase();
+    const nextLower = next.toLowerCase();
+    if (nextLower === prevLower) return prev;
+    if (prevLower.endsWith(nextLower)) return prev;
+    if (nextLower.startsWith(prevLower)) {
+        const rest = nextLower.slice(prevLower.length).trim();
+        if (!rest || rest === prevLower) return prev;
+        return next;
+    }
+    if (prevLower.includes(nextLower)) return prev;
+
+    const prevWords = prev.split(' ');
+    const nextWords = next.split(' ');
+    const maxOverlap = Math.min(prevWords.length, nextWords.length);
+    for (let size = maxOverlap; size > 0; size -= 1) {
+        if (prevWords.slice(-size).join(' ').toLowerCase() === nextWords.slice(0, size).join(' ').toLowerCase()) {
+            return `${prev} ${nextWords.slice(size).join(' ')}`.trim();
+        }
+    }
+
+    return `${prev} ${next}`.trim();
+};
 
 const VOICE_MESSAGE_RECORDING: Audio.RecordingOptions = {
     ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
@@ -331,21 +371,25 @@ const SingleMessage = () => {
     const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
     const isCameraReadyRef = useRef<boolean>(false);
     
-    // Live voice transfer state
+    // Live voice transfer state (engine lives in the global LiveVoice overlay)
     const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
     const [isLiveVoiceConnecting, setIsLiveVoiceConnecting] = useState(false);
-    const [isLiveVoiceModalOpen, setIsLiveVoiceModalOpen] = useState(false);
-    const [liveVoiceDuration, setLiveVoiceDuration] = useState(0);
-    const [liveVoiceRole, setLiveVoiceRole] = useState<'sender' | 'receiver'>('sender');
-    const liveVoiceEngineRef = useRef<any | null>(null); // Agora removed for Expo compatibility
     const isLiveVoiceActiveRef = useRef(false);
-    const liveVoiceDurationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     
     // Check if screen is focused and app is in foreground before using camera
     const isFocused = useIsFocused();
     const [appState, setAppState] = useState(AppState.currentState);
     const isAppActive = appState === 'active';
     const shouldUseCamera = isFocused && isAppActive;
+
+    useLayoutEffect(() => {
+        if (!isFocused) {
+            restoreTabBarAfterChat(navigation);
+            return undefined;
+        }
+        hideTabBarForChat(navigation);
+        return () => restoreTabBarAfterChat(navigation);
+    }, [isFocused, navigation]);
     
     // Monitor app state changes
     useEffect(() => {
@@ -728,7 +772,7 @@ const SingleMessage = () => {
 
     const handleTranscriptInterim = useCallback((text: string) => {
         if (!text) return;
-        const next = [transcribeBaseRef.current, text].filter(Boolean).join(' ');
+        const next = mergeCommittedTranscript(transcribeBaseRef.current, text);
         inputTextRef.current = next;
         setInputText(next);
         setTranscribeInterim(text);
@@ -737,7 +781,7 @@ const SingleMessage = () => {
 
     const handleTranscriptFinal = useCallback((text: string) => {
         if (!text) return;
-        const next = [transcribeBaseRef.current, text].filter(Boolean).join(' ');
+        const next = mergeCommittedTranscript(transcribeBaseRef.current, text);
         transcribeBaseRef.current = next;
         inputTextRef.current = next;
         setInputText(next);
@@ -1340,7 +1384,7 @@ const SingleMessage = () => {
                 incomingTypingTimeoutRef.current = null;
             }
         };
-    }, [isConnected, myProfile?._id, friend?._id, on, off, isLiveVoiceActive]);
+    }, [isConnected, myProfile?._id, friend?._id, on, off]);
 
     // Emotion detection integration with Python server
     useEffect(() => {
@@ -2850,138 +2894,57 @@ const SingleMessage = () => {
         startAudioCall(String(friend._id), channelName);
     };
 
-    // Handle live voice transfer
-    const handleLiveVoiceButtonClick = async () => {
-        try {
-            if (isLiveVoiceActiveRef.current) {
-                // Stop live voice
-                try {
-                    if (liveVoiceEngineRef.current) {
-                        await liveVoiceEngineRef.current.leaveChannel();
-                        await liveVoiceEngineRef.current.destroy();
-                        liveVoiceEngineRef.current = null;
-                    }
-                } catch (e) {
-                    console.warn('Error stopping live voice:', e);
-                }
-                isLiveVoiceActiveRef.current = false;
-                setIsLiveVoiceActive(false);
-                setIsLiveVoiceModalOpen(false);
-                setLiveVoiceDuration(0);
-                setLiveVoiceRole('sender');
-                if (liveVoiceDurationTimerRef.current) {
-                    clearInterval(liveVoiceDurationTimerRef.current);
-                    liveVoiceDurationTimerRef.current = null;
-                }
-                const channelName = room || [myProfile?._id, friend?._id].sort().join('_');
-                emit('live-voice-stop', { to: friend?._id, channelName });
-                return;
-            }
-
-            // Start live voice
-            setIsLiveVoiceConnecting(true);
-            
-            // Check microphone permission first
-            const hasMicPermission = await ensureMicPermission();
-            if (!hasMicPermission) {
-                setIsLiveVoiceConnecting(false);
-                return;
-            }
-            
-            const channelName = room || [myProfile?._id, friend?._id].sort().join('_');
-            
-            // Emit event to ensure receiver leaves subscriber connection if active
-            emit('live-voice-leave-subscriber', { channelName });
-            
-            // Small delay to ensure subscriber connection is closed
-            await new Promise<void>(resolve => setTimeout(() => resolve(), 300));
-            
-            // Generate consistent UID from userId hash
-            // Add 1 to publisher UID to avoid conflict with subscriber UID
-            const generateUid = (str: string) => {
-                let hash = 0;
-                for (let i = 0; i < str.length; i++) {
-                    hash = ((hash << 5) - hash) + str.charCodeAt(i);
-                    hash |= 0;
-                }
-                return Math.abs(hash);
-            };
-            const baseUid = generateUid(myProfile?._id || '0');
-            // Use baseUid + 1 for publisher to avoid conflict with subscriber (baseUid)
-            const uid = baseUid + 1;
-            
-            // Get token
-            const { data } = await api.post('/agora/token', { channelName, uid, role: 'publisher' });
-            
-            if (!data || !data.appId || !data.token) {
-                throw new Error('Invalid token response from server');
-            }
-
-            // Dispose previous if any
-            if (liveVoiceEngineRef.current) {
-                try {
-                    await liveVoiceEngineRef.current.leaveChannel();
-                    await liveVoiceEngineRef.current.destroy();
-                } catch (e) {
-                    console.warn('Error disposing previous engine:', e);
-                }
-                liveVoiceEngineRef.current = null;
-            }
-
-            // Initialize engine - Agora removed for Expo compatibility
-            const engine = null; // Simplified for Expo compatibility
-            // await engine.enableAudio();
-            
-            // Set channel profile to Communication mode (0) to match web RTC mode
-            await engine.setChannelProfile(0); // 0 = Communication (RTC mode)
-            
-            // Enable local audio (ensure microphone is enabled for publishing)
-            await engine.muteLocalAudioStream(false);
-            
-            // Join channel as publisher (no role needed in Communication mode)
-            await engine.joinChannel(data.token, channelName, null, uid);
-
-            liveVoiceEngineRef.current = engine;
-            isLiveVoiceActiveRef.current = true;
-            setIsLiveVoiceActive(true);
-            setLiveVoiceDuration(0);
-            setLiveVoiceRole('sender');
-            setIsLiveVoiceModalOpen(true);
-            
-            // Start duration timer
-            if (liveVoiceDurationTimerRef.current) {
-                clearInterval(liveVoiceDurationTimerRef.current);
-            }
-            liveVoiceDurationTimerRef.current = setInterval(() => {
-                setLiveVoiceDuration(prev => prev + 1);
-            }, 1000);
-            
-            emit('live-voice-start', { to: friend?._id, channelName });
-        } catch (err: any) {
-            console.error('Live voice error:', err);
-            setIsLiveVoiceActive(false);
-            isLiveVoiceActiveRef.current = false;
-            setIsLiveVoiceModalOpen(false);
-            setLiveVoiceDuration(0);
-            if (liveVoiceDurationTimerRef.current) {
-                clearInterval(liveVoiceDurationTimerRef.current);
-                liveVoiceDurationTimerRef.current = null;
-            }
-            // Cleanup on error
-            try {
-                if (liveVoiceEngineRef.current) {
-                    await liveVoiceEngineRef.current.leaveChannel().catch(() => {});
-                    await liveVoiceEngineRef.current.destroy().catch(() => {});
-                    liveVoiceEngineRef.current = null;
-                }
-            } catch (cleanupErr) {
-                console.error('Error during cleanup:', cleanupErr);
-            }
-            Alert.alert('Live Voice Error', err?.message || 'Failed to start live voice transfer');
-        } finally {
-            setIsLiveVoiceConnecting(false);
+    // Handle live voice transfer — same event protocol as web ChatFooter
+    const handleLiveVoiceButtonClick = useCallback(() => {
+        if (isLiveVoiceActiveRef.current) {
+            emitStopLiveVoice();
+            return;
         }
-    };
+        if (!friend?._id || !myProfile?._id) return;
+        if (isRecording || isUploadingAudio || isLiveVoiceConnecting) return;
+
+        const channelName = liveVoiceChannelName(myProfile._id, friend._id, room);
+        if (!channelName) return;
+
+        setIsLiveVoiceConnecting(true);
+        emitStartLiveVoice({
+            to: String(friend._id),
+            channelName,
+            friendName: friend?.fullName || friend?.user?.firstName || 'Friend',
+        });
+    }, [
+        friend?._id,
+        friend?.fullName,
+        friend?.user?.firstName,
+        isLiveVoiceConnecting,
+        isRecording,
+        isUploadingAudio,
+        myProfile?._id,
+        room,
+    ]);
+
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener(
+            LIVE_VOICE_EVENTS.STATUS,
+            (detail: LiveVoiceStatusDetail) => {
+                const peerId = detail?.peerId;
+                const isThisChat =
+                    !peerId || !friend?._id || String(peerId) === String(friend._id);
+                if (!isThisChat) {
+                    if (isLiveVoiceActiveRef.current) {
+                        isLiveVoiceActiveRef.current = false;
+                        setIsLiveVoiceActive(false);
+                        setIsLiveVoiceConnecting(false);
+                    }
+                    return;
+                }
+                isLiveVoiceActiveRef.current = !!detail?.active;
+                setIsLiveVoiceActive(!!detail?.active);
+                setIsLiveVoiceConnecting(!!detail?.connecting);
+            },
+        );
+        return () => sub.remove();
+    }, [friend?._id]);
 
     // Block/Unblock functionality
     const handleBlockUser = useCallback(async () => {
@@ -4161,6 +4124,8 @@ const SingleMessage = () => {
                             paddingTop: 8,
                             paddingBottom: 8,
                         }}
+                        contentInsetAdjustmentBehavior="never"
+                        automaticallyAdjustContentInsets={false}
                         showsVerticalScrollIndicator={false}
                         keyboardShouldPersistTaps="never"
                         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
@@ -5826,7 +5791,7 @@ const SingleMessage = () => {
                             {[
                                 { key: 'photo', label: 'Photo', icon: 'image', onPress: () => pickAndUploadImage(false) },
                                 { key: 'file', label: 'File', icon: 'attach-file', onPress: pickAndUploadFile },
-                                { key: 'live', label: isLiveVoiceActive ? 'Stop' : 'Live', icon: isLiveVoiceActive ? 'phone-disabled' : 'headset', onPress: () => { setShowAttachTray(false); stopTranscriptionRef.current?.(); handleLiveVoiceButtonClick(); } },
+                                { key: 'live', label: isLiveVoiceActive ? 'Stop' : (isLiveVoiceConnecting ? 'Wait' : 'Live'), icon: isLiveVoiceActive ? 'phone-disabled' : 'headset', onPress: () => { if (isLiveVoiceConnecting || isRecording || isUploadingAudio) return; setShowAttachTray(false); stopTranscriptionRef.current?.(); handleLiveVoiceButtonClick(); } },
                                 { key: 'react', label: 'React', icon: null, onPress: () => { setShowAttachTray(false); handleEmojiPress(); } },
                                 { key: 'edit', label: 'Edit', icon: 'edit', onPress: () => setEditReactionOpen((v) => !v) },
                             ].map((item) => (
@@ -5902,18 +5867,6 @@ const SingleMessage = () => {
                 onRequestClose={() => setIsChatSettingsOpen(false)}
                 friendId={friend?._id}
                 friendProfile={friend}
-            />
-
-            {/* Live Voice Modal */}
-            <LiveVoiceModal
-                isOpen={isLiveVoiceModalOpen}
-                onClose={() => setIsLiveVoiceModalOpen(false)}
-                isActive={isLiveVoiceActive}
-                duration={liveVoiceDuration}
-                isConnecting={isLiveVoiceConnecting}
-                role={liveVoiceRole}
-                friendName={friend?.fullName || friend?.user?.firstName || 'Friend'}
-                onStop={liveVoiceRole === 'sender' ? handleLiveVoiceButtonClick : undefined}
             />
 
             {/* Hidden camera for emotion detection - keep mounted and active while on page */}

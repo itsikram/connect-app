@@ -4,9 +4,7 @@ import {
   Dimensions,
   Image,
   Keyboard,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -17,6 +15,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import KeyboardSafeView from './KeyboardSafeView';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
@@ -482,10 +481,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
       statusBarTranslucent
       presentationStyle="overFullScreen"
     >
-      <KeyboardAvoidingView
-        style={styles.flex}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      >
+      <KeyboardSafeView force nested>
         <View style={styles.flex}>
           <Pressable style={styles.backdrop} onPress={handleClose} />
 
@@ -620,7 +616,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
             </View>
           </View>
         </View>
-      </KeyboardAvoidingView>
+      </KeyboardSafeView>
     </Modal>
   );
 };

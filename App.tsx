@@ -17,6 +17,7 @@ import * as MediaLibrary from 'expo-media-library';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
+import { hideTabBarForChat, restoreTabBarAfterChat, useChatScreenChrome } from './src/lib/chatScreenChrome';
 import { colors } from './src/theme/colors';
 import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
 import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
@@ -44,6 +45,7 @@ import SingleWatch from './src/screens/SingleWatch';
 import EditPost from './src/screens/EditPost';
 import AudioCall from './src/components/AudioCall';
 import VideoCall from './src/components/VideoCall';
+import LiveVoice from './src/components/LiveVoice';
 import CameraScreen from './src/screens/CameraScreen';
 import GalleryScreen from './src/screens/GalleryScreen';
 import GalleryPreview from './src/screens/GalleryPreview';
@@ -68,6 +70,7 @@ import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
 import ExpoGoFallback from './src/components/ExpoGoFallback';
+import KeyboardSafeView from './src/components/KeyboardSafeView';
 
 import * as Speech from 'expo-speech';
 import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
@@ -92,17 +95,33 @@ const Stack = createNativeStackNavigator();
 function MessageStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="MessageList" component={Message} />
+      <Stack.Screen
+        name="MessageList"
+        component={Message}
+        options={{
+          headerShown: false,
+          contentStyle: { flex: 1 },
+          safeAreaInsets: { bottom: 0, left: 0, right: 0 },
+        }}
+      />
       <Stack.Screen
         name="SingleMessage"
         component={SingleMessage}
         options={{
           headerShown: false,
           contentStyle: { flex: 1, height: '100%' },
-          safeAreaInsets: { top: 0, bottom: 0 },
+          safeAreaInsets: { top: 0, bottom: 0, left: 0, right: 0 },
         }}
+        listeners={({ navigation }) => ({
+          transitionStart: (e) => {
+            if (!e.data.closing) hideTabBarForChat(navigation);
+          },
+          beforeRemove: () => restoreTabBarAfterChat(navigation),
+        })}
       />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="SinglePost" component={SinglePost} />
+      <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       {/* Video calling screens removed for Expo compatibility */}
     </Stack.Navigator>
@@ -132,6 +151,8 @@ function VideosStack() {
       <Stack.Screen name="VideosMain" component={Videos} />
       <Stack.Screen name="SingleVideo" component={SingleWatch} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
+      <Stack.Screen name="SinglePost" component={SinglePost} />
+      <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
     </Stack.Navigator>
   );
@@ -143,6 +164,8 @@ function FriendsStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="FriendsMain" component={Friends} />
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="SinglePost" component={SinglePost} />
+      <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
     </Stack.Navigator>
   );
@@ -223,6 +246,9 @@ function MenuStack() {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MenuHome" component={Menu} />
       <Stack.Screen name="MyProfile" component={MyProfile} />
+      <Stack.Screen name="SinglePost" component={SinglePost} />
+      <Stack.Screen name="EditPost" component={EditPost} />
+      <Stack.Screen name="FriendProfile" component={FriendProfile} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="VideoLibrary">
@@ -269,6 +295,7 @@ function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
   const { isChessGameActive } = useChessGame();
   const unreadMessageCount = useSelector((state: RootState) => state.chat.unreadMessageCount);
+  const chatScreenActive = useChatScreenChrome();
   
   // Debug navigation state
   React.useEffect(() => {
@@ -284,7 +311,7 @@ function TabBarWithLudoCheck(props: any) {
   const routeName = getDeepestRouteName(props.state) || getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) || '';
   
   // Hide tab bar for specific screens
-  if (routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'SingleWatch' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
+  if (chatScreenActive || routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'SingleWatch' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
     return null;
   }
   
@@ -898,6 +925,7 @@ function AppContent() {
               <>
                 <VideoCall myId={myProfile._id} />
                 <AudioCall myId={myProfile._id} />
+                <LiveVoice myId={myProfile._id} />
               </>
             ) : null}
             {/* Global update modal */}
@@ -928,10 +956,17 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
   useProfileData(user?.profile || null);
 
   const deepestRoute = useNavigationState((state) => (state ? getDeepestRouteName(state) : ''));
-  const isChatPage = deepestRoute === 'SingleMessage';
-  const appSafeAreaEdges = isChatPage
+  const chatScreenActive = useChatScreenChrome();
+  const isChatThread = deepestRoute === 'SingleMessage' || chatScreenActive;
+  const isMessageInbox = deepestRoute === 'MessageList';
+  const isChatPage = isChatThread || isMessageInbox;
+  // Never pad the app shell at the bottom — the tab bar and chat composer
+  // handle that themselves. Inbox keeps top inset for the status bar only.
+  const appSafeAreaEdges = isChatThread
     ? []
-    : (Platform.OS === 'ios' ? (['top', 'right', 'bottom', 'left'] as const) : []);
+    : isMessageInbox
+      ? (Platform.OS === 'ios' ? (['top'] as const) : [])
+      : (Platform.OS === 'ios' ? (['top', 'right', 'left'] as const) : []);
 
   return (
     <ThemeContext.Consumer>
@@ -951,12 +986,14 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
               backgroundColor={themeColors.background.primary}
               translucent={false}
             />
+            <KeyboardSafeView nested enabled={!isChatThread}>
             {isLoading ? (
               <LoadingScreen message="Initializing app..." />
             ) : (
               <Tab.Navigator
                 initialRouteName={user ? 'Home' : 'Login'}
                 tabBar={(props) => <TabBarWithLudoCheck {...props} user={user} />}
+                safeAreaInsets={isChatPage ? { top: 0, right: 0, bottom: 0, left: 0 } : undefined}
                 screenOptions={({ route }) => ({
                   headerShown: route.name === 'Home',
                   header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
@@ -992,14 +1029,16 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                       component={MessageStack}
                       options={({ route }) => {
                         const nested = getFocusedRouteNameFromRoute(route) ?? 'MessageList';
-                        const hideTab = nested === 'SingleMessage';
+                        const hideTab = nested === 'SingleMessage' || (route.params as any)?.screen === 'SingleMessage';
                         return {
                           tabBarLabel: 'Message',
                           headerShown: false,
                           tabBarStyle: hideTab
                             ? { display: 'none', height: 0, position: 'absolute' }
-                            : undefined,
-                          safeAreaInsets: hideTab ? { bottom: 0 } : undefined,
+                            : { position: 'absolute' },
+                          safeAreaInsets: hideTab
+                            ? { bottom: 0, top: 0, left: 0, right: 0 }
+                            : { bottom: 0, left: 0, right: 0 },
                         };
                       }}
                     />
@@ -1043,6 +1082,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
             )}
             <MinimizedCallBar />
             <WatchPipPlayer />
+            </KeyboardSafeView>
         </SafeAreaView>
         );
       }}

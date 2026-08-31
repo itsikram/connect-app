@@ -6,11 +6,9 @@ import {
   AppStateStatus,
   Dimensions,
   FlatList,
-  KeyboardAvoidingView,
   Modal,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -21,6 +19,7 @@ import {
   View,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
 import { Video as ExpoVideo, ResizeMode } from 'expo-av';
@@ -415,7 +414,7 @@ const VideoItem = ({
       </View>
 
       <Modal visible={commentOpen} transparent animationType="fade" onRequestClose={() => setCommentOpen(false)}>
-        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardSafeView force style={styles.modalBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCommentOpen(false)} />
           <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.chipBorder }]}>
             <Text style={[styles.sheetTitle, { color: t.chromeText }]}>Comment</Text>
@@ -445,11 +444,11 @@ const VideoItem = ({
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       </Modal>
 
       <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
-        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardSafeView force style={styles.modalBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShareOpen(false)} />
           <View style={[styles.sheet, { backgroundColor: t.surface, borderColor: t.chipBorder }]}>
             <Text style={[styles.sheetTitle, { color: t.chromeText }]}>Share video</Text>
@@ -473,7 +472,7 @@ const VideoItem = ({
               )}
             </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
+        </KeyboardSafeView>
       </Modal>
     </View>
   );

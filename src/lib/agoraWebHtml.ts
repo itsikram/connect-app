@@ -114,6 +114,13 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         c.on('user-left', function (user) {
           post({ type: 'user-left', uid: user.uid });
         });
+        c.on('network-quality', function (stats) {
+          post({
+            type: 'network-quality',
+            uplink: (stats && stats.uplinkNetworkQuality) || 0,
+            downlink: (stats && stats.downlinkNetworkQuality) || 0,
+          });
+        });
       }
 
       async function join(payload) {
@@ -137,10 +144,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           bindClientEvents(client);
           await client.join(appId, channelName, token, uid);
 
-          if (!localTracks.length) {
-            await createLocalTracks(isAudio);
+          try {
+            if (!localTracks.length) {
+              await createLocalTracks(isAudio);
+            }
+            if (localTracks.length) {
+              await client.publish(localTracks);
+            }
+          } catch (micErr) {
+            post({ type: 'log', message: 'mic publish failed (receive-only): ' + (micErr && micErr.message) });
+            await stopTracks();
           }
-          await client.publish(localTracks);
 
           var remotes = client.remoteUsers || [];
           for (var i = 0; i < remotes.length; i++) {
@@ -155,6 +169,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             }
           }
 
+          joining = false;
           post({ type: 'joined' });
         } catch (e) {
           joining = false;

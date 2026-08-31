@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
-import { View, Text, FlatList, RefreshControl, TouchableOpacity } from 'react-native';
+import { View, Text, FlatList, RefreshControl, TouchableOpacity, DeviceEventEmitter } from 'react-native';
 import { useIsFocused } from '@react-navigation/native';
 import CreatePost from '../components/CreatePost';
 import api from '../lib/api';
@@ -13,8 +13,9 @@ import StorySlider from '../components/StorySlider';
 import PostSkeleton from '../components/skeleton/PostSkeleton';
 import FeedBoostCards from '../components/FeedBoostCards';
 import CacheManager from '../utils/cacheManager';
-import { TAB_BAR_HEIGHT } from '../components/tabBarLayout';
+import { TAB_BAR_BOTTOM_OFFSET, TAB_BAR_HEIGHT } from '../components/tabBarLayout';
 import { useFeedTokens } from '../theme/feedTokens';
+import { POST_UPDATED_EVENT, mergeUpdatedPost } from '../utils/postEvents';
 
 const INITIAL_POSTS_TO_RENDER = 5;
 const MAX_BATCH_SIZE = 5;
@@ -192,9 +193,22 @@ const Home = () => {
         CacheManager.removeCachedPost(postId);
     }, []);
 
+    const handlePostUpdated = useCallback((updatedPost: any) => {
+        if (!updatedPost?._id) return;
+        setPosts((prev: any[]) => mergeUpdatedPost(prev, updatedPost));
+        CacheManager.updateCachedPost(updatedPost);
+    }, []);
+
+    useEffect(() => {
+        const sub = DeviceEventEmitter.addListener(POST_UPDATED_EVENT, handlePostUpdated);
+        return () => sub.remove();
+    }, [handlePostUpdated]);
+
     const renderPost = useCallback(
-        ({ item }: { item: any }) => <Post data={item} onPostDeleted={handlePostDeleted} />,
-        [handlePostDeleted],
+        ({ item }: { item: any }) => (
+            <Post data={item} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated} />
+        ),
+        [handlePostDeleted, handlePostUpdated],
     );
 
     const keyExtractor = useCallback((item: any, idx: number) => item._id || idx.toString(), []);
@@ -340,7 +354,7 @@ const Home = () => {
                     />
                 }
                 style={{ backgroundColor }}
-                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: TAB_BAR_HEIGHT + 16, paddingHorizontal: 10 }}
+                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: 0  , paddingHorizontal: 10 }}
                 initialNumToRender={INITIAL_POSTS_TO_RENDER}
                 maxToRenderPerBatch={MAX_BATCH_SIZE}
                 windowSize={LIST_WINDOW_SIZE}

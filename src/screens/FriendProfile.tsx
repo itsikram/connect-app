@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -7,9 +7,11 @@ import { useTheme } from '../contexts/ThemeContext'
 import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
+import { hideTabBarForChat } from '../lib/chatScreenChrome'
 import ProfileImage from '../components/ProfileImage'
 import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
 import PostSkeleton from '../components/skeleton/PostSkeleton'
+import { POST_UPDATED_EVENT } from '../utils/postEvents'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -123,6 +125,18 @@ const FriendProfile = () => {
     const handlePostDeleted = (postId: string) => {
         setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
     };
+
+    const handlePostUpdated = React.useCallback((updatedPost: any) => {
+        if (!updatedPost?._id) return;
+        setPosts((prev: any[]) =>
+            prev.map((post) => (post?._id === updatedPost._id ? { ...post, ...updatedPost } : post)),
+        );
+    }, []);
+
+    React.useEffect(() => {
+        const sub = DeviceEventEmitter.addListener(POST_UPDATED_EVENT, handlePostUpdated);
+        return () => sub.remove();
+    }, [handlePostUpdated]);
 
     // Fetch friend profile data
     React.useEffect(() => {
@@ -340,7 +354,7 @@ const FriendProfile = () => {
                         <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
                     )}
                     {!postsLoading && posts.map((p: any) => (
-                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} />
+                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated} />
                     ))}
                 </View>
             )
@@ -559,7 +573,7 @@ const FriendProfile = () => {
                         <View style={styles.profileButtons}>
                             {getFriendButton()}
                             <Pressable style={[styles.button, styles.secondaryButton, { backgroundColor: themeColors.surface.secondary }]} onPress={() => {
-                                // Navigate to message screen
+                                hideTabBarForChat(navigation as any);
                                 (navigation as any).navigate('Message', { 
                                     screen: 'SingleMessage',
                                     params: { friend: friendData }

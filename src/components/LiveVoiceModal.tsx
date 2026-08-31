@@ -21,6 +21,7 @@ interface LiveVoiceModalProps {
     role: 'sender' | 'receiver';
     friendName: string;
     onStop?: () => void;
+    connectionQuality?: number | null;
 }
 
 const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
@@ -32,6 +33,7 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
     role,
     friendName,
     onStop,
+    connectionQuality = 4,
 }) => {
     const { colors: themeColors, isDarkMode } = useTheme();
     const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -63,6 +65,10 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
         const secs = seconds % 60;
         return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
     };
+
+    const quality = connectionQuality || 4;
+    const qualityLabel = quality >= 4 ? 'Excellent' : quality >= 3 ? 'Good' : quality >= 2 ? 'Fair' : 'Poor';
+    const qualityColor = quality >= 4 ? '#1DB954' : quality >= 3 ? '#FFA500' : quality >= 2 ? '#FF6B6B' : '#FF4444';
 
     return (
         <Modal
@@ -122,7 +128,7 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
 
                                 {friendName && (
                                     <Text style={[styles.participant, { color: themeColors.text.secondary }]}>
-                                        {role === 'sender' ? 'Transferring to: ' : 'Receiving from: '}
+                                        {'Connected with: '}
                                         <Text style={{ fontWeight: '600', color: themeColors.text.primary }}>
                                             {friendName}
                                         </Text>
@@ -138,14 +144,25 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                             </View>
                         </View>
 
+                        {isActive ? (
+                            <View style={[styles.qualityWrap, { backgroundColor: themeColors.surface.secondary || (isDarkMode ? '#252525' : '#F5F5F5') }]}>
+                                <View style={styles.qualityHeader}>
+                                    <Icon name="signal-cellular-alt" size={18} color={qualityColor} />
+                                    <Text style={[styles.qualityTitle, { color: themeColors.text.secondary }]}>Connection Quality</Text>
+                                </View>
+                                <View style={[styles.qualityBar, { backgroundColor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)' }]}>
+                                    <View style={[styles.qualityFill, { width: `${quality * 25}%`, backgroundColor: qualityColor }]} />
+                                </View>
+                                <Text style={[styles.qualityLabel, { color: qualityColor }]}>{qualityLabel}</Text>
+                            </View>
+                        ) : null}
+
                         {/* Details */}
                         <View style={[styles.details, { backgroundColor: themeColors.surface.secondary || (isDarkMode ? '#252525' : '#F5F5F5') }]}>
                             <View style={styles.detailItem}>
                                 <Icon name="info" size={20} color="#1DB954" />
                                 <Text style={[styles.detailText, { color: themeColors.text.secondary }]}>
-                                    {role === 'sender'
-                                        ? 'Your voice is being transmitted in real-time'
-                                        : 'You are receiving live audio'}
+                                    Two-way live voice
                                 </Text>
                             </View>
                             <View style={styles.detailItem}>
@@ -157,15 +174,17 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                         </View>
 
                         {/* Actions */}
-                        {role === 'sender' && isActive && onStop && (
+                        {(isActive || isConnecting) && onStop ? (
                             <TouchableOpacity
                                 style={styles.stopButton}
                                 onPress={onStop}
                             >
                                 <Icon name="stop" size={20} color="#FFFFFF" />
-                                <Text style={styles.stopButtonText}>Stop Live Voice</Text>
+                                <Text style={styles.stopButtonText}>
+                                    {role === 'sender' ? 'Stop Live Voice' : 'Leave Live Voice'}
+                                </Text>
                             </TouchableOpacity>
-                        )}
+                        ) : null}
                     </View>
                 </View>
             </View>
@@ -254,6 +273,33 @@ const styles = StyleSheet.create({
         padding: 15,
         borderRadius: 8,
         gap: 12,
+    },
+    qualityWrap: {
+        padding: 15,
+        borderRadius: 8,
+        gap: 8,
+    },
+    qualityHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    qualityTitle: {
+        fontSize: 13,
+        fontWeight: '600',
+    },
+    qualityBar: {
+        height: 6,
+        borderRadius: 3,
+        overflow: 'hidden',
+    },
+    qualityFill: {
+        height: '100%',
+        borderRadius: 3,
+    },
+    qualityLabel: {
+        fontSize: 12,
+        fontWeight: '600',
     },
     detailItem: {
         flexDirection: 'row',
