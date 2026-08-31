@@ -26,7 +26,7 @@ type Environment = 'development' | 'staging' | 'production';
 const getDevServerUrl = (): string => {
 
   // return "http://192.168.0.100:4000";
-  // return "https://connect-server-y1ku.onrender.com";
+  return "https://connect-server-7h7d.onrender.com";
 
   // return "http://192.168.67.1:4000";
   return "http://192.168.1.102:4000";
@@ -54,7 +54,7 @@ const devServerUrl = getDevServerUrl();
 const devMediapipeServerUrl = getDevMediapipeServerUrl();
 
 // Production server URLs
-const prodServerUrl = "https://connect-server-y1ku.onrender.com"
+const prodServerUrl = "https://connect-server-7h7d.onrender.com"
 const prodMediapipeServerUrl = "https://emotion-detection-z1b2.onrender.com" // Keep local for now, update if needed
 
 const ENV: Record<Environment, EnvironmentConfig> = {

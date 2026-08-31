@@ -1,4 +1,4 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { StyleSheet, View, ViewStyle } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { AGORA_WEB_HTML } from '../lib/agoraWebHtml';
@@ -47,7 +47,12 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
   const readyRef = useRef(false);
   const pendingRef = useRef<any[]>([]);
   const onEventRef = useRef(onEvent);
+  const [keptAlive, setKeptAlive] = useState(false);
   onEventRef.current = onEvent;
+
+  useEffect(() => {
+    if (visible) setKeptAlive(true);
+  }, [visible]);
 
   const inject = useCallback((cmd: Record<string, unknown>) => {
     const js = `window.__agoraHandle && window.__agoraHandle(${JSON.stringify(cmd)}); true;`;
@@ -89,31 +94,29 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
     }
   }, [flushPending]);
 
-  useEffect(() => {
-    if (!visible) {
-      readyRef.current = false;
-      pendingRef.current = [];
-    }
-  }, [visible]);
-
-  if (!visible) {
+  const mounted = visible || keptAlive;
+  if (!mounted) {
     return null;
   }
 
+  const hide = !visible || isAudio;
+
   return (
-    <View style={[styles.wrap, isAudio && styles.hiddenAudio, style]} pointerEvents={isAudio ? 'none' : 'auto'} collapsable={false}>
+    <View style={[styles.wrap, hide && styles.hiddenAudio, style]} pointerEvents={hide ? 'none' : 'auto'} collapsable={false}>
       <WebView
         ref={webViewRef}
-        source={{ html: AGORA_WEB_HTML, baseUrl: 'https://www.agora.io/' }}
+        source={{ html: AGORA_WEB_HTML, baseUrl: 'https://download.agora.io/' }}
         originWhitelist={['*']}
         javaScriptEnabled
         domStorageEnabled
+        cacheEnabled
+        cacheMode="LOAD_DEFAULT"
         allowsInlineMediaPlayback
         mediaPlaybackRequiresUserAction={false}
         mediaCapturePermissionGrantType="grant"
         allowsFullscreenVideo
         mixedContentMode="always"
-        androidLayerType="hardware"
+        androidLayerType={isAudio ? 'software' : 'hardware'}
         style={styles.webview}
         onMessage={onMessage}
         onError={(e) => onEventRef.current?.({ type: 'error', message: e.nativeEvent.description })}
@@ -130,9 +133,11 @@ const styles = StyleSheet.create({
   },
   hiddenAudio: {
     position: 'absolute',
-    width: 2,
-    height: 2,
-    opacity: 0.01,
+    width: 64,
+    height: 64,
+    left: -200,
+    top: 0,
+    opacity: 1,
     overflow: 'hidden',
   },
   webview: {

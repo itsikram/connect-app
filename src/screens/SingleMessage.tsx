@@ -54,9 +54,12 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // Background TTS service removed for Expo compatibility
 import { CameraView, Camera } from 'expo-camera';
 import { useSettings } from '../contexts/SettingsContext';
+import { useCallMinimize } from '../contexts/CallMinimizeContext';
+import { MINIMIZED_CALL_BAR_HEIGHT, MINIMIZED_CALL_BAR_TOP_GAP } from '../components/MinimizedCallBar';
 import { io, Socket } from 'socket.io-client';
 import config from '../lib/config';
-import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
+import { emitStartAudioCall, emitStartVideoCall, CALL_EVENTS } from '../lib/callEvents';
+import { isCallBusy } from '../lib/callSession';
 import {
     emitStartLiveVoice,
     emitStopLiveVoice,
@@ -272,6 +275,7 @@ const SingleMessage = () => {
     const [isCallActive, setIsCallActive] = useState<boolean>(false);
     const { colors: themeColors, isDarkMode } = useTheme();
     const settings = useSettings();
+    const { minimizedCalls } = useCallMinimize();
     const {
         settings: chatAppearance,
         theme: chatTheme,
@@ -878,26 +882,33 @@ const SingleMessage = () => {
     // Mark/suspend during call lifecycle
     useEffect(() => {
         const handleCallAccepted = ({ isAudio }: any) => setIsCallActive(true);
-        const handleVideoEnd = () => setIsCallActive(false);
-        const handleAudioEnd = () => setIsCallActive(false);
+        const handleCallEnded = () => setIsCallActive(false);
         on('call-accepted', handleCallAccepted);
-        on('video-call-ended', handleVideoEnd);
-        on('videoCallEnd', handleVideoEnd);
-        on('audio-call-ended', handleAudioEnd);
+        on('video-call-ended', handleCallEnded);
+        on('videoCallEnd', handleCallEnded);
+        on('video-call-cancelled', handleCallEnded);
+        on('video-call-rejected', handleCallEnded);
+        on('audio-call-ended', handleCallEnded);
+        on('audio-call-cancelled', handleCallEnded);
+        on('audio-call-rejected', handleCallEnded);
+        const localEnded = DeviceEventEmitter.addListener(CALL_EVENTS.LOCAL_ENDED, handleCallEnded);
         return () => {
             off('call-accepted', handleCallAccepted);
-            off('video-call-ended', handleVideoEnd);
-            off('videoCallEnd', handleVideoEnd);
-            off('audio-call-ended', handleAudioEnd);
+            off('video-call-ended', handleCallEnded);
+            off('videoCallEnd', handleCallEnded);
+            off('video-call-cancelled', handleCallEnded);
+            off('video-call-rejected', handleCallEnded);
+            off('audio-call-ended', handleCallEnded);
+            off('audio-call-cancelled', handleCallEnded);
+            off('audio-call-rejected', handleCallEnded);
+            localEnded.remove();
         };
     }, [on, off]);
 
     // Reset suppression when this screen regains focus after ending a call
-    // Ensure we re-render once this screen regains focus after a call
-    // Using navigation listener instead of useFocusEffect to avoid duplicate imports
     useEffect(() => {
         const unsubscribe = navigation.addListener('focus', () => {
-            setIsCallActive(false);
+            if (!isCallBusy()) setIsCallActive(false);
         });
         return unsubscribe;
     }, [navigation]);
@@ -1408,7 +1419,7 @@ const SingleMessage = () => {
         if (!settings.settings?.isShareEmotion) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - isShareEmotion setting is false');
             // Clean up if conditions not met
-            setIsCameraActive(false);
+            setIsCameraActive((prev) => (prev ? false : prev));
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -1431,7 +1442,7 @@ const SingleMessage = () => {
         if (!currentProfileId) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - no profileId');
             // Clean up if conditions not met
-            setIsCameraActive(false);
+            setIsCameraActive((prev) => (prev ? false : prev));
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -1454,7 +1465,7 @@ const SingleMessage = () => {
         if (!currentFriendId) {
             console.log('[SingleMessage] ⏸️ Emotion detection disabled - no friendId');
             // Clean up if conditions not met
-            setIsCameraActive(false);
+            setIsCameraActive((prev) => (prev ? false : prev));
             if (emotionDetectionIntervalRef.current) {
                 clearInterval(emotionDetectionIntervalRef.current);
                 emotionDetectionIntervalRef.current = null;
@@ -2067,13 +2078,13 @@ const SingleMessage = () => {
             const cameraOk = await ensureCameraPermission();
             if (!cameraOk) {
                 console.warn('[SingleMessage] ⚠️ Camera permission not granted');
-                setIsCameraActive(false);
+                setIsCameraActive((prev) => (prev ? false : prev));
                 return;
             }
 
             if (!cameraDevice) {
                 console.warn('[SingleMessage] ⚠️ Camera device not available');
-                setIsCameraActive(false);
+                setIsCameraActive((prev) => (prev ? false : prev));
                 return;
             }
 
@@ -2182,7 +2193,7 @@ const SingleMessage = () => {
             }
             
             // Deactivate camera when leaving the page
-            setIsCameraActive(false);
+            setIsCameraActive((prev) => (prev ? false : prev));
             
             // Reset rolling majority buffers
             labelHistoryRef.current = [];
@@ -2205,7 +2216,7 @@ const SingleMessage = () => {
                 emotionServerSocketRef.current = null;
             }
         };
-    }, [settings.settings?.isShareEmotion, myProfile?._id, friend?._id, isCallActive, cameraDevice, isConnected, emit, isCameraPermissionGranted]);
+    }, [settings.settings?.isShareEmotion, myProfile?._id, friend?._id, isCallActive, isConnected, isCameraPermissionGranted]);
 
     // Stable camera ref callback to prevent repeated attach/detach
     const handleCameraRef = React.useCallback((ref: CameraView | null) => {
@@ -3788,11 +3799,6 @@ const SingleMessage = () => {
         );
     };
 
-    // Short-circuit render when a call is active
-    if (isCallActive) {
-        return null;
-    }
-
     // Show full skeletons if no friend or profile data
     if (!friend?._id || !myProfile?._id) {
         return (
@@ -3818,7 +3824,9 @@ const SingleMessage = () => {
                 alignItems: 'center',
                 paddingHorizontal: 16,
                 paddingVertical: 8,
-                paddingTop: Math.max(insets.top, 8) + 10,
+                paddingTop: minimizedCalls.length > 0
+                    ? insets.top + MINIMIZED_CALL_BAR_TOP_GAP + MINIMIZED_CALL_BAR_HEIGHT + 8
+                    : Math.max(insets.top, 8) + 10,
                 backgroundColor: chatTheme.colors.headerBg,
                 borderBottomWidth: 1,
                 borderBottomColor: chatTheme.colors.sentBorder,

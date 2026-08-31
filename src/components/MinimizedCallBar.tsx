@@ -6,18 +6,20 @@ import {
   StyleSheet,
   Image,
   Animated,
-  Platform,
-  StatusBar,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useCallMinimize, MinimizedCall } from '../contexts/CallMinimizeContext';
+import { useCallMinimize } from '../contexts/CallMinimizeContext';
 import { useTheme } from '../contexts/ThemeContext';
 
-const MinimizedCallBar: React.FC = () => {
-  const { minimizedCalls } = useCallMinimize();
-  const { colors: themeColors } = useTheme();
+export const MINIMIZED_CALL_BAR_HEIGHT = 64;
+export const MINIMIZED_CALL_BAR_TOP_GAP = 10;
 
-  // Only show the first minimized call (we can enhance this to show multiple later)
+const MinimizedCallBar: React.FC = () => {
+  const { minimizedCalls, restoreCall } = useCallMinimize();
+  const { colors: themeColors } = useTheme();
+  const insets = useSafeAreaInsets();
+
   const currentCall = minimizedCalls[0];
 
   if (!currentCall) {
@@ -30,20 +32,28 @@ const MinimizedCallBar: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Get status bar height to position bar below it
-  const statusBarHeight = Platform.OS === 'android' ? StatusBar.currentHeight || 0 : 0;
+  const topOffset = insets.top + MINIMIZED_CALL_BAR_TOP_GAP;
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor: themeColors.primary, top: statusBarHeight }]}>
+    <Animated.View
+      pointerEvents="box-none"
+      style={[
+        styles.container,
+        {
+          backgroundColor: themeColors.primary,
+          top: topOffset,
+        },
+      ]}
+    >
       <TouchableOpacity
         style={styles.callInfo}
-        onPress={currentCall.onRestore}
+        onPress={() => restoreCall(currentCall.id)}
         activeOpacity={0.8}
       >
         <View style={styles.leftSection}>
           {currentCall.callerProfilePic ? (
-            <Image 
-              source={{ uri: currentCall.callerProfilePic }} 
+            <Image
+              source={{ uri: currentCall.callerProfilePic }}
               style={styles.avatar}
             />
           ) : (
@@ -51,7 +61,7 @@ const MinimizedCallBar: React.FC = () => {
               <Icon name="person" size={20} color="white" />
             </View>
           )}
-          
+
           <View style={styles.callDetails}>
             <Text style={styles.callerName} numberOfLines={1}>
               {currentCall.callerName}
@@ -62,36 +72,33 @@ const MinimizedCallBar: React.FC = () => {
           </View>
         </View>
 
-        <View style={styles.controls}>
-          {/* Mute button */}
+        <View style={styles.controls} onStartShouldSetResponder={() => true}>
           {currentCall.onToggleMute && (
             <TouchableOpacity
               style={[styles.controlButton, { backgroundColor: currentCall.isMuted ? themeColors.status.error : 'rgba(255,255,255,0.2)' }]}
               onPress={currentCall.onToggleMute}
             >
-              <Icon 
-                name={currentCall.isMuted ? 'mic-off' : 'mic'} 
-                size={16} 
-                color="white" 
+              <Icon
+                name={currentCall.isMuted ? 'mic-off' : 'mic'}
+                size={16}
+                color="white"
               />
             </TouchableOpacity>
           )}
 
-          {/* Camera button (for video calls only) */}
           {currentCall.type === 'video' && currentCall.onToggleCamera && (
             <TouchableOpacity
               style={[styles.controlButton, { backgroundColor: currentCall.isCameraOn ? 'rgba(255,255,255,0.2)' : themeColors.status.error }]}
               onPress={currentCall.onToggleCamera}
             >
-              <Icon 
-                name={currentCall.isCameraOn ? 'videocam' : 'videocam-off'} 
-                size={16} 
-                color="white" 
+              <Icon
+                name={currentCall.isCameraOn ? 'videocam' : 'videocam-off'}
+                size={16}
+                color="white"
               />
             </TouchableOpacity>
           )}
 
-          {/* End call button */}
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: themeColors.status.error }]}
             onPress={currentCall.onEnd}
@@ -107,10 +114,12 @@ const MinimizedCallBar: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 0,
-    right: 0,
-    zIndex: 1000,
-    elevation: 10,
+    left: 8,
+    right: 8,
+    zIndex: 10000,
+    elevation: 20,
+    borderRadius: 14,
+    overflow: 'hidden',
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
@@ -125,6 +134,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     justifyContent: 'space-between',
+    minHeight: MINIMIZED_CALL_BAR_HEIGHT,
   },
   leftSection: {
     flexDirection: 'row',
@@ -173,5 +183,3 @@ const styles = StyleSheet.create({
 });
 
 export default MinimizedCallBar;
-
-

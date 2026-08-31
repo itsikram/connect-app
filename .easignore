@@ -1,0 +1,48 @@
+# If this file exists, EAS uses it instead of .gitignore when packing the project.
+
+# Dependencies — EAS runs npm install on the builder
+node_modules
+
+# Git / IDE / OS
+.git
+.idea
+.vscode
+.DS_Store
+*.hprof
+.kotlin
+coverage
+.expo
+.yarn
+dist
+web-build
+
+# Env and credentials (EAS uses remote Android credentials)
+.env
+.env.*
+!.env.example
+credentials.json
+*.jks
+*.keystore
+!android/app/debug.keystore
+
+# Generated during EAS; do not upload a local copy
+android/app/eas-build.gradle
+
+# Native build outputs and local crash dumps
+android/build
+android/.gradle
+android/app/build
+android/.cxx
+android/app/.cxx
+android/local.properties
+android/build_output.txt
+**/hs_err_pid*.log
+**/replay_pid*.log
+
+# Stale JS bundle — EAS regenerates this during the Gradle release task
+android/app/src/main/assets/index.android.bundle
+
+# iOS build artifacts (not needed for Android EAS)
+ios/Pods
+ios/build
+**/DerivedData

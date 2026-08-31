@@ -3,16 +3,30 @@
  */
 
 import 'react-native-gesture-handler';
-import { AppRegistry, ErrorUtils } from 'react-native';
+import { AppRegistry, AppState, ErrorUtils, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import * as TaskManager from 'expo-task-manager';
+
+const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
 
 Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const data = notification?.request?.content?.data || {};
     const isCall = data?.type === 'incoming_call';
+    const inForeground = AppState.currentState === 'active';
+    if (isCall && inForeground) {
+      return {
+        shouldShowAlert: false,
+        shouldPlaySound: false,
+        shouldSetBadge: false,
+        shouldShowBanner: false,
+        shouldShowList: false,
+      };
+    }
+    const playOsSound = isCall && (Platform.OS === 'ios' || AppState.currentState !== 'active');
     return {
       shouldShowAlert: true,
-      shouldPlaySound: true,
+      shouldPlaySound: playOsSound || !isCall,
       shouldSetBadge: true,
       shouldShowBanner: true,
       shouldShowList: true,
@@ -21,6 +35,53 @@ Notifications.setNotificationHandler({
         : Notifications.AndroidNotificationPriority.HIGH,
     };
   },
+});
+
+TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+  if (error) {
+    console.warn('Background notification task error', error);
+    return;
+  }
+
+  const payload =
+    data?.notification?.request?.content?.data ||
+    data?.notification?.data ||
+    data?.data ||
+    data ||
+    {};
+  if (payload?.type !== 'incoming_call') return;
+
+  try {
+    const { startIncomingCallAlert } = require('./src/lib/incomingCallAlerts');
+    const { emitIncomingCallFromPush } = require('./src/lib/callEvents');
+    const callerId = String(payload.callerId || payload.from || '');
+    const channelName = String(payload.channelName || '');
+    if (!callerId && !channelName) return;
+
+    const callPayload = {
+      callerId,
+      callerName: payload.callerName || 'Someone',
+      callerProfilePic: payload.callerProfilePic || '',
+      channelName,
+      isAudio: payload.isAudio === true || payload.isAudio === 'true',
+      ringtoneId: payload.ringtoneId,
+    };
+    await startIncomingCallAlert(callPayload);
+    emitIncomingCallFromPush({
+      from: callerId,
+      channelName,
+      callerName: callPayload.callerName,
+      callerProfilePic: callPayload.callerProfilePic,
+      isAudio: callPayload.isAudio,
+      ringtoneId: callPayload.ringtoneId,
+    });
+  } catch (taskError) {
+    console.warn('Background incoming-call task failed', taskError);
+  }
+});
+
+Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((error) => {
+  console.warn('Failed to register background notification task', error);
 });
 // react-native-reanimated removed for Expo compatibility
 
@@ -135,8 +196,44 @@ import { registerRootComponent } from 'expo';
 try {
   const notifeeModule = require('@notifee/react-native');
   const notifee = notifeeModule.default;
+  const EventType = notifeeModule.EventType;
+
+  const handleNotifeeCallEvent = async ({ type, detail }) => {
+    const data = detail?.notification?.data || {};
+    if (data.type !== 'incoming_call') return false;
+    const { handleIncomingCallNotificationAction } = require('./src/lib/callNotificationActions');
+    const actionId = detail?.pressAction?.id;
+    if (type === EventType.ACTION_PRESS || type === EventType.PRESS || type === EventType.DISMISSED) {
+      const resolvedAction =
+        type === EventType.DISMISSED && !actionId ? 'decline_call' : actionId;
+      await handleIncomingCallNotificationAction(data, resolvedAction);
+      if (actionId === 'decline_call' || actionId === 'accept_call' || type === EventType.DISMISSED) {
+        try {
+          await notifee.stopForegroundService();
+        } catch (_) {}
+      }
+      return true;
+    }
+    return false;
+  };
+
   if (notifee?.registerForegroundService) {
-    notifee.registerForegroundService(() => new Promise(() => {}));
+    notifee.registerForegroundService(() => {
+      return new Promise(() => {
+        notifee.onForegroundEvent(async (event) => {
+          try {
+            await handleNotifeeCallEvent(event);
+          } catch (_) {}
+        });
+      });
+    });
+  }
+  if (notifee?.onBackgroundEvent) {
+    notifee.onBackgroundEvent(async (event) => {
+      try {
+        await handleNotifeeCallEvent(event);
+      } catch (_) {}
+    });
   }
 } catch (_) {}
 

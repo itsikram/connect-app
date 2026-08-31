@@ -17,10 +17,10 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
-import api from '../lib/api';
+import { prefetchAgoraJoin, clearAgoraJoinPrefetch } from '../lib/agoraJoin';
 import { hashProfileUid } from '../lib/agoraUid';
 import ProfileImage from './ProfileImage';
-import { CALL_EVENTS } from '../lib/callEvents';
+import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
@@ -50,6 +50,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
   const [mediaActive, setMediaActive] = useState(false);
+  const [engineWarm, setEngineWarm] = useState(false);
 
   const engineRef = useRef<AgoraWebEngineHandle>(null);
   const isTerminating = useRef(false);
@@ -58,6 +59,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const callAcceptedRef = useRef(false);
   const currentChannelRef = useRef<string | null>(null);
   const callerRef = useRef('');
+  const isMinimizedRef = useRef(false);
+  const isMutedRef = useRef(false);
   const incomingCallRef = useRef(incomingCall);
   const callStartTime = useRef<number | null>(null);
   const callSeenStatusSentRef = useRef(false);
@@ -73,6 +76,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   useEffect(() => { callAcceptedRef.current = callAccepted; }, [callAccepted]);
   useEffect(() => { currentChannelRef.current = currentChannel; }, [currentChannel]);
   useEffect(() => { callerRef.current = caller; }, [caller]);
+  useEffect(() => { isMinimizedRef.current = isMinimized; }, [isMinimized]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
   const formatDuration = (seconds: number) => {
@@ -87,11 +92,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
     pendingJoinRef.current = null;
+    clearAgoraJoinPrefetch(currentChannelRef.current || undefined);
     isJoiningOrJoined.current = false;
     setActiveCallKind(null);
     if (currentChannelRef.current) {
       try { endMinimizedCall(`audio-${currentChannelRef.current}`); } catch (_) {}
     }
+    emitLocalCallEnded();
     setIsAudioCall(false);
     setReceivingCall(false);
     setCallAccepted(false);
@@ -111,11 +118,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setTimeout(() => { isTerminating.current = false; }, 400);
   }, [endMinimizedCall]);
 
-  const getToken = async (channelName: string) => {
-    const { data } = await api.post('/agora/token', { channelName, uid: numericUid });
-    return data;
-  };
-
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
@@ -125,13 +127,15 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (isJoiningOrJoined.current) return;
       isJoiningOrJoined.current = true;
       setActiveCallKind('audio');
-
-      await Audio.requestPermissionsAsync();
-      await configureInCallAudio(true);
-      const { appId, token } = await getToken(channelName);
-      pendingJoinRef.current = { appId, token, channelName, uid: numericUid };
       setMediaActive(true);
-      engineRef.current?.join({ appId, token, channelName, uid: numericUid, isAudio: true });
+      setEngineWarm(true);
+
+      configureInCallAudio(true).catch(() => {});
+      Audio.requestPermissionsAsync().catch(() => {});
+      const creds = await prefetchAgoraJoin(channelName, numericUid);
+      if (isTerminating.current) return;
+      pendingJoinRef.current = creds;
+      engineRef.current?.join({ ...creds, isAudio: true });
     } catch (error: any) {
       console.error('AudioCall: failed to start', error);
       Alert.alert('Call failed', error?.message || 'Could not start the audio call.');
@@ -147,13 +151,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const answerCall = useCallback(async () => {
     const incoming = incomingCallRef.current;
     if (!incoming) return;
-    await stopIncomingCallAlert();
+    stopIncomingCallAlert().catch(() => {});
     emit('answer-call', {
       to: String(incoming.from),
       channelName: incoming.channelName,
       isAudio: true,
     });
-    await startCall(incoming.channelName);
+    startCall(incoming.channelName);
   }, [emit, startCall]);
 
   useEffect(() => { answerCallRef.current = answerCall; }, [answerCall]);
@@ -237,6 +241,11 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setCallerName(name || 'Unknown Caller');
     setCallerProfilePic(pic || '');
     setCurrentChannel(channelName);
+    setEngineWarm(true);
+    prefetchAgoraJoin(channelName, numericUid).catch(() => {});
+    Audio.requestPermissionsAsync().catch(() => {});
+    configureInCallAudio(true).catch(() => {});
+    engineRef.current?.preview(true);
     startIncomingCallAlert({
       callerId,
       callerName: name,
@@ -248,7 +257,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (isAppFocused()) {
       markCallSeenIfNeeded();
     }
-  }, [emit, markCallSeenIfNeeded]);
+  }, [emit, markCallSeenIfNeeded, numericUid]);
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
@@ -305,6 +314,10 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         profilePic: detail.callerProfilePic,
       });
       setOutgoingCallStatus('Calling...');
+      setEngineWarm(true);
+      prefetchAgoraJoin(detail.channelName, numericUid).catch(() => {});
+      Audio.requestPermissionsAsync().catch(() => {});
+      configureInCallAudio(true).catch(() => {});
     };
     const onPushIncoming = (detail: any) => {
       if (detail?.isAudio === false) return;
@@ -351,12 +364,33 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       subPush.remove();
       subReject.remove();
     };
-  }, [applyIncomingAudioCall, cleanupAudioCall, emit, myId, off, on]);
+  }, [applyIncomingAudioCall, cleanupAudioCall, emit, myId, numericUid, off, on]);
+
+  useEffect(() => {
+    const replayIncoming = takeLastIncomingCallFromPush();
+    if (replayIncoming && replayIncoming.isAudio !== false) {
+      if (replayIncoming.autoAccept) pendingAutoAcceptRef.current = true;
+      applyIncomingAudioCall({
+        from: replayIncoming.from,
+        channelName: replayIncoming.channelName,
+        callerName: replayIncoming.callerName,
+        callerProfilePic: replayIncoming.callerProfilePic,
+        ringtoneId: replayIncoming.ringtoneId,
+      });
+    }
+    const replayReject = takeLastRejectCallFromPush();
+    if (replayReject && replayReject.isAudio !== false) {
+      stopIncomingCallAlert();
+      cleanupAudioCall();
+    }
+    // Replay a notification tap that arrived before this overlay mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (pendingAutoAcceptRef.current && receivingCall && incomingCall && !callAccepted) {
       pendingAutoAcceptRef.current = false;
-      const t = setTimeout(() => answerCallRef.current?.(), 250);
+      const t = setTimeout(() => answerCallRef.current?.(), 0);
       return () => clearTimeout(t);
     }
   }, [receivingCall, incomingCall, callAccepted]);
@@ -367,7 +401,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     const tick = () => {
       const elapsed = Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000);
       setCallDuration(elapsed);
-      if (isMinimized && currentChannelRef.current) {
+      if (isMinimizedRef.current && currentChannelRef.current) {
         updateMinimizedCall(`audio-${currentChannelRef.current}`, {
           duration: elapsed,
           status: 'connected',
@@ -377,7 +411,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [callAccepted, isMinimized, updateMinimizedCall]);
+  }, [callAccepted, updateMinimizedCall]);
 
   useEffect(() => {
     if (receivingCall && !callAccepted && isAppFocused()) {
@@ -396,10 +430,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   }, [markCallSeenIfNeeded]);
 
   const toggleMute = useCallback(() => {
-    const next = !isMuted;
+    const next = !isMutedRef.current;
     setIsMuted(next);
     engineRef.current?.muteAudio(next);
-  }, [isMuted]);
+    if (isMinimizedRef.current && currentChannelRef.current) {
+      updateMinimizedCall(`audio-${currentChannelRef.current}`, { isMuted: next });
+    }
+  }, [updateMinimizedCall]);
 
   const toggleSpeaker = useCallback(async () => {
     const next = !isSpeakerOn;
@@ -429,8 +466,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   }, [callAccepted, currentChannel, callerName, callerProfilePic, caller, callDuration, isMuted, minimizeCall, endCall, toggleMute]);
 
   const handleEngineEvent = useCallback((event: any) => {
-    if (event.type === 'ready' && pendingJoinRef.current) {
-      engineRef.current?.join({ ...pendingJoinRef.current, isAudio: true });
+    if (event.type === 'ready') {
+      if (receivingCallRef.current && !callAcceptedRef.current) {
+        engineRef.current?.preview(true);
+      }
+      if (pendingJoinRef.current) {
+        engineRef.current?.join({ ...pendingJoinRef.current, isAudio: true });
+      }
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
       cleanupAudioCall();
@@ -446,7 +488,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       ? `${callerName || 'Someone'} is calling you`
       : `Calling ${callerName || 'Friend'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
 
-  if (!isAudioCall && !mediaActive) {
+  if (!isAudioCall && !mediaActive && !engineWarm) {
     return null;
   }
 
@@ -454,7 +496,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     <>
       <AgoraWebEngine
         ref={engineRef}
-        visible={mediaActive}
+        visible={Boolean(isAudioCall || mediaActive || engineWarm)}
         isAudio
         onEvent={handleEngineEvent}
       />

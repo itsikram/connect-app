@@ -6,7 +6,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { RootState } from '../store';
 import api from '../lib/api';
 import { hashProfileUid } from '../lib/agoraUid';
-import { configureInCallAudio } from '../lib/callRingtone';
+import { configureLiveVoiceAudio } from '../lib/callRingtone';
 import { isCallBusy } from '../lib/callSession';
 import {
   LIVE_VOICE_EVENTS,
@@ -32,12 +32,22 @@ const peerFromChannel = (channelName: string | null, myId?: string | null) => {
   return parts.find((id) => String(id) !== String(myId)) || null;
 };
 
+const normalizeLiveVoicePayload = (payload: any) => {
+  const data = Array.isArray(payload) ? payload[0] : payload;
+  if (!data || typeof data !== 'object') return { from: undefined, channelName: undefined, callerName: undefined };
+  return {
+    from: data.from || data.senderId || data.callerId,
+    channelName: data.channelName || data.channel || data.room,
+    callerName: data.callerName || data.friendName || data.name,
+  };
+};
+
 interface LiveVoiceProps {
   myId: string;
 }
 
 const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
-  const { on, off, emit, isConnected } = useSocket();
+  const { on, off, emit } = useSocket();
   const chats = useSelector((state: RootState) => state.chat.chats);
 
   const [isOpen, setIsOpen] = useState(false);
@@ -59,8 +69,16 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roleRef = useRef<'sender' | 'receiver'>('sender');
   const stopSessionRef = useRef<(notifyPeer?: boolean) => Promise<void>>(async () => {});
+  const startSessionRef = useRef<(args: {
+    to: string;
+    channelName: string;
+    friendName?: string;
+    sessionRole?: 'sender' | 'receiver';
+    notifyPeer?: boolean;
+  }) => Promise<void>>(async () => {});
   const recentlyStoppedRef = useRef<Map<string, number>>(new Map());
   const notifyPeerOnJoinRef = useRef(false);
+  const userLeftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const numericUid = useMemo(() => hashProfileUid(myId), [myId]);
 
@@ -68,6 +86,13 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     if (durationTimerRef.current) {
       clearInterval(durationTimerRef.current);
       durationTimerRef.current = null;
+    }
+  }, []);
+
+  const clearUserLeftTimer = useCallback(() => {
+    if (userLeftTimerRef.current) {
+      clearTimeout(userLeftTimerRef.current);
+      userLeftTimerRef.current = null;
     }
   }, []);
 
@@ -118,6 +143,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
 
     sessionIdRef.current += 1;
     notifyPeerOnJoinRef.current = false;
+    clearUserLeftTimer();
 
     if (notifyPeer && hadSession && (peerId || channelName)) {
       emit('live-voice-stop', {
@@ -147,7 +173,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       peerId: null,
       channelName: null,
     });
-  }, [broadcastStatus, clearDurationTimer, emit, ensureLeave, myId]);
+  }, [broadcastStatus, clearDurationTimer, clearUserLeftTimer, emit, ensureLeave, myId]);
 
   const startSession = useCallback(async ({
     to,
@@ -196,6 +222,9 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     setIsActive(false);
     setDuration(0);
     setConnectionQuality(4);
+    // Start loading the Agora WebView immediately so incoming (web → app)
+    // does not wait on mic permission / token before the engine can join.
+    setMediaActive(true);
     broadcastStatus({
       active: false,
       connecting: true,
@@ -205,12 +234,19 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       role: sessionRole,
     });
 
+    if (notifyPeer) {
+      emit('live-voice-start', {
+        to: String(to),
+        channelName,
+      });
+    }
+
     try {
       const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted) {
+      if (!permission.granted && sessionRole === 'sender') {
         throw new Error('Microphone permission is required for live voice.');
       }
-      await configureInCallAudio(true);
+      await configureLiveVoiceAudio();
 
       const { data } = await api.post('/agora/token', {
         channelName,
@@ -228,7 +264,6 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         channelName,
         uid: numericUid,
       };
-      setMediaActive(true);
       engineRef.current?.join({
         appId: data.appId,
         token: data.token,
@@ -241,7 +276,10 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       await stopSession(false);
       Alert.alert('Live Voice Error', error?.message || 'Failed to start live voice transfer');
     }
-  }, [broadcastStatus, myId, numericUid, resolveFriendName, stopSession]);
+  }, [broadcastStatus, emit, myId, numericUid, resolveFriendName, stopSession]);
+
+  startSessionRef.current = startSession;
+  stopSessionRef.current = stopSession;
 
   const markJoined = useCallback(() => {
     if (!isJoiningRef.current && !channelRef.current) return;
@@ -299,46 +337,57 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       markJoined();
       return;
     }
+    if (event.type === 'user-published') {
+      clearUserLeftTimer();
+      return;
+    }
     if (event.type === 'network-quality') {
       setConnectionQuality(mapAgoraQuality(event.uplink, event.downlink));
       return;
     }
     if (event.type === 'user-left') {
-      if (!isActiveRef.current && !isJoiningRef.current) return;
-      stopSessionRef.current(false);
+      // Ignore leaves while we are still joining — the peer WebView can
+      // briefly disconnect/reconnect. Only end an already-active session,
+      // and debounce so a leave+rejoin from the web client does not hang up.
+      if (!isActiveRef.current) return;
+      clearUserLeftTimer();
+      userLeftTimerRef.current = setTimeout(() => {
+        userLeftTimerRef.current = null;
+        if (isActiveRef.current) {
+          stopSessionRef.current(false);
+        }
+      }, 2500);
       return;
     }
     if (event.type === 'error') {
       console.warn('Live voice engine error:', event.message);
-      if (isJoiningRef.current) {
+      if (isJoiningRef.current && !isActiveRef.current) {
         stopSessionRef.current(false);
         Alert.alert('Live Voice Error', event.message || 'Failed to join live voice');
       }
     }
-  }, [markJoined]);
+  }, [clearUserLeftTimer, markJoined]);
 
   useEffect(() => {
-    stopSessionRef.current = stopSession;
-  }, [stopSession]);
+    if (!myId) return;
 
-  useEffect(() => {
-    if (!isConnected || !myId) return;
-
-    const onIncoming = ({ from, channelName, callerName }: { from?: string; channelName?: string; callerName?: string }) => {
+    const onIncoming = (payload: any) => {
+      const { from, channelName, callerName } = normalizeLiveVoicePayload(payload);
       if (!from || !channelName) return;
       if (String(from) === String(myId)) return;
       const stoppedAt = recentlyStoppedRef.current.get(String(channelName));
-      if (stoppedAt && Date.now() - stoppedAt < 8000) return;
-      startSession({
-        to: from,
-        channelName,
+      if (stoppedAt && Date.now() - stoppedAt < 1500) return;
+      void startSessionRef.current({
+        to: String(from),
+        channelName: String(channelName),
         friendName: callerName,
         sessionRole: 'receiver',
         notifyPeer: false,
       });
     };
 
-    const onPeerStop = ({ from, channelName }: { from?: string; channelName?: string }) => {
+    const onPeerStop = (payload: any) => {
+      const { from, channelName } = normalizeLiveVoicePayload(payload);
       if (from && String(from) === String(myId)) return;
       if (channelName) {
         recentlyStoppedRef.current.set(String(channelName), Date.now());
@@ -361,7 +410,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       if (!isActiveRef.current && !isJoiningRef.current && !channelRef.current) {
         return;
       }
-      stopSession(false);
+      void stopSessionRef.current(false);
     };
 
     on('live-voice-start', onIncoming);
@@ -371,13 +420,13 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       off('live-voice-start', onIncoming);
       off('live-voice-stop', onPeerStop);
     };
-  }, [isConnected, myId, on, off, startSession, stopSession]);
+  }, [myId, on, off]);
 
   useEffect(() => {
     const onOutgoing = (detail: LiveVoiceStartDetail) => {
       const { to, channelName, friendName: name } = detail || {};
       if (!to || !channelName) return;
-      startSession({
+      void startSessionRef.current({
         to,
         channelName,
         friendName: name,
@@ -386,7 +435,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       });
     };
     const onStopRequest = () => {
-      stopSession(true);
+      void stopSessionRef.current(true);
     };
 
     const startSub = DeviceEventEmitter.addListener(LIVE_VOICE_EVENTS.START, onOutgoing);
@@ -395,7 +444,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       startSub.remove();
       stopSub.remove();
     };
-  }, [startSession, stopSession]);
+  }, []);
 
   useEffect(() => {
     return () => {

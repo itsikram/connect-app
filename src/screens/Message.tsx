@@ -17,7 +17,7 @@ import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
 import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { hideTabBarForChat } from '../lib/chatScreenChrome';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
@@ -294,8 +294,7 @@ const Message = React.memo(() => {
     error: string | null;
   });
 
-  const { on, off, isConnected, checkUserActive } = useSocket();
-  const [isCallActive, setIsCallActive] = React.useState(false);
+  const { isConnected, checkUserActive } = useSocket();
   const searchInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
 
@@ -322,29 +321,6 @@ const Message = React.memo(() => {
     hideTabBarForChat(navigation);
     (navigation as any).navigate('SingleMessage', { friend });
   }, [navigation]);
-
-  useEffect(() => {
-    const handleCallAccepted = () => setIsCallActive(true);
-    const handleVideoEnd = () => setIsCallActive(false);
-    const handleAudioEnd = () => setIsCallActive(false);
-
-    on('call-accepted', handleCallAccepted);
-    on('videoCallEnd', handleVideoEnd);
-    on('audio-call-ended', handleAudioEnd);
-
-    return () => {
-      off('call-accepted', handleCallAccepted);
-      off('videoCallEnd', handleVideoEnd);
-      off('audio-call-ended', handleAudioEnd);
-    };
-  }, [on, off]);
-
-  useFocusEffect(
-    React.useCallback(() => {
-      setIsCallActive(false);
-      return () => {};
-    }, [])
-  );
 
   useEffect(() => {
     const loadStoredChatList = async () => {
@@ -647,10 +623,6 @@ const Message = React.memo(() => {
     themeColors,
     navigation,
   ]);
-
-  if (isCallActive) {
-    return null;
-  }
 
   return (
     <View style={[styles.screen, { backgroundColor: themeColors.background.primary }]}>

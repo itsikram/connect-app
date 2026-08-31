@@ -1,10 +1,12 @@
 // Firebase and Notifee removed for Expo compatibility
 import * as Notifications from 'expo-notifications';
-import { Platform, Linking, Alert, AppState } from 'react-native';
+import { Platform, Linking, Alert, AppState, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
 import { callNotificationService } from './callNotificationService';
 import { emitIncomingCallFromPush, emitRejectCallFromPush } from './callEvents';
+import { getNativeOrExpoPushToken, PUSH_TOKEN_STORAGE_KEY } from './pushToken';
+import config from './config';
 // Background TTS service removed for Expo compatibility
 
 // Import Notifee types and functions - made optional for Expo Go compatibility
@@ -12,6 +14,23 @@ let Notifee: any = null;
 let AndroidImportance: any = null;
 let AndroidVisibility: any = null;
 let EventType: any = null;
+
+function persistNativeCallPushConfig(authToken?: string | null) {
+  if (Platform.OS !== 'android') return;
+  try {
+    NativeModules.CallNotificationModule?.savePushConfig?.(
+      config.API_BASE_URL,
+      authToken || '',
+    );
+  } catch (_) {}
+}
+
+function clearNativeCallPushConfig() {
+  if (Platform.OS !== 'android') return;
+  try {
+    NativeModules.CallNotificationModule?.clearPushConfig?.();
+  } catch (_) {}
+}
 
 function openIncomingCallFromNotification(data: any, autoAccept = false) {
   const isAudio = data?.isAudio === 'true' || data?.isAudio === true;
@@ -55,7 +74,7 @@ console.warn = (...args) => {
   originalWarn.apply(console, args);
 };
 
-const STORAGE_KEY = 'fcmToken';
+const STORAGE_KEY = PUSH_TOKEN_STORAGE_KEY;
 
 // Notification deduplication
 let notificationCache = new Map<string, number>(); // Cache to prevent duplicate notifications
@@ -91,6 +110,7 @@ export async function requestPushPermission(): Promise<boolean> {
         allowAlert: true,
         allowBadge: true,
         allowSound: true,
+        allowTimeSensitive: true,
       },
     });
 
@@ -103,37 +123,13 @@ export async function requestPushPermission(): Promise<boolean> {
 
 export async function getOrCreateFcmToken(): Promise<string | null> {
   try {
-    // Check if we have a cached token first
-    const existing = await AsyncStorage.getItem(STORAGE_KEY);
-    if (existing) {
-      console.log('✅ Using cached push token');
-      return existing;
+    const result = await getNativeOrExpoPushToken();
+    if (!result?.token) {
+      console.warn('⚠️ Push token is empty');
+      return null;
     }
-
-    // Get expo push token with fallback
-    let token;
-    try {
-      token = await Notifications.getExpoPushTokenAsync({
-        projectId: '76d83a3a-a10d-43fb-a110-e50066ce889f',
-      });
-    } catch (projectError: any) {
-      // Fallback for when projectId is not configured
-      console.warn('⚠️ Project ID not configured, trying without projectId:', projectError?.message);
-      try {
-        token = await Notifications.getExpoPushTokenAsync();
-      } catch (fallbackError: any) {
-        console.error('❌ Failed to get Expo push token even with fallback:', fallbackError?.message);
-        return null;
-      }
-    }
-    if (token.data) {
-      await AsyncStorage.setItem(STORAGE_KEY, token.data);
-      console.log('✅ Expo push token retrieved successfully');
-      return token.data;
-    }
-    
-    console.warn('⚠️ Expo push token is empty');
-    return null;
+    console.log('✅ Push token retrieved successfully');
+    return result.token;
   } catch (e: any) {
     console.error('❌ Unexpected error in getOrCreateFcmToken:', e?.message || String(e || ''));
     return null;
@@ -148,7 +144,8 @@ export async function registerTokenWithServer(): Promise<string | null> {
       return null;
     }
     
-    const token = await getOrCreateFcmToken();
+    const result = await getNativeOrExpoPushToken();
+    const token = result?.token;
     if (!token) {
       console.warn('⚠️ Failed to get FCM token in registerTokenWithServer');
       return null;
@@ -160,6 +157,12 @@ export async function registerTokenWithServer(): Promise<string | null> {
         console.log('ℹ️ No auth token available, skipping server registration (token retrieved successfully)');
         return token;
       }
+      if (result.previousToken && result.previousToken !== token) {
+        try {
+          await pushAPI.unregisterToken(result.previousToken, authToken);
+        } catch (_) {}
+      }
+      persistNativeCallPushConfig(authToken);
       await pushAPI.registerToken(token, authToken);
       console.log('✅ FCM token registered with server');
     } catch (e: any) {
@@ -180,6 +183,7 @@ export async function unregisterTokenWithServer(): Promise<void> {
     if (token && authToken) {
       await pushAPI.unregisterToken(token, authToken);
     }
+    clearNativeCallPushConfig();
   } catch (e) {}
 }
 
@@ -284,7 +288,6 @@ export async function displayIncomingCallNotification(payload: {
   try {
     const { startIncomingCallAlert } = await import('./incomingCallAlerts');
     await startIncomingCallAlert(payload);
-    await callNotificationService.displayIncomingCallNotification(payload);
   } catch (error) {
     console.error('❌ Error displaying incoming call notification:', error);
   }
@@ -455,6 +458,25 @@ export async function initializeNotifications(): Promise<boolean> {
         console.error('   4. Permission issues');
         return false;
       }
+
+      try {
+        Notifications.addPushTokenListener(async (devicePushToken) => {
+          const nextToken =
+            typeof devicePushToken === 'string'
+              ? devicePushToken
+              : (devicePushToken as { data?: string })?.data;
+          if (!nextToken) return;
+          try {
+            await AsyncStorage.setItem(STORAGE_KEY, nextToken);
+            const authToken = await AsyncStorage.getItem('authToken');
+            if (authToken) {
+              await pushAPI.registerToken(nextToken, authToken);
+            }
+          } catch (tokenError) {
+            console.warn('Failed to refresh push token', tokenError);
+          }
+        });
+      } catch (_) {}
       
       isInitialized = true;
       console.log('Notifications initialized successfully');

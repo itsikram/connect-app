@@ -73,3 +73,19 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# Expo / EAS
+.expo/
+dist/
+web-build/
+credentials.json
+.env
+.env.*
+!.env.example
+android/app/eas-build.gradle
+android/app/src/main/assets/index.android.bundle
+
+# Native crash / local build noise
+**/hs_err_pid*.log
+**/replay_pid*.log
+android/build_output.txt

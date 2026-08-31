@@ -146,8 +146,11 @@ const IncomingCall: React.FC = () => {
     };
   }, [isDarkMode, themeColors.background.primary]);
 
+  const startedAlertRef = useRef(false);
+
   useEffect(() => {
-    if (!playRingtone || !callerId || !channelName) return;
+    if (!playRingtone || !callerId || !channelName || startedAlertRef.current) return;
+    startedAlertRef.current = true;
 
     startIncomingCallAlert({
       callerId,
@@ -162,6 +165,7 @@ const IncomingCall: React.FC = () => {
 
   useEffect(() => {
     if (playRingtone) return;
+    startedAlertRef.current = false;
     stopIncomingCallAlert(channelName).catch(() => {});
   }, [playRingtone, channelName]);
 

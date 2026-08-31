@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import WebView from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useToast } from '../contexts/ToastContext';
@@ -116,6 +117,7 @@ const ytPageInfoJS = `
 const YouTubeScreen = () => {
   // Downloads run in the background; there is no blocking progressState modal.
   const { colors: themeColors, isDarkMode } = useTheme();
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { showSuccess, showError, showInfo } = useToast();
   const webViewRef = useRef<WebView>(null);
@@ -257,19 +259,15 @@ const YouTubeScreen = () => {
           flex: 1,
         },
         navigationBar: {
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 20,
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 8,
-          paddingTop: 8,
+          paddingTop: Math.max(insets.top, 2),
           paddingBottom: 8,
           backgroundColor: surface,
           borderBottomWidth: 1,
           borderBottomColor: border,
+          zIndex: 20,
         },
         navButton: {
           paddingHorizontal: 10,
@@ -461,7 +459,7 @@ const YouTubeScreen = () => {
           paddingVertical: 6,
         },
       }),
-    [background, border, isDarkMode, primary, surface, textPrimary, textSecondary, themeColors],
+    [background, border, insets.top, isDarkMode, primary, surface, textPrimary, textSecondary, themeColors],
   );
 
   return (

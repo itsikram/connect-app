@@ -3,7 +3,7 @@
  * Made compatible with Expo Go by making Notifee optional
  */
 
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import {
   getIncomingCallChannelId,
   getRingtoneSoundName,
@@ -55,13 +55,19 @@ export class CallNotificationService {
     }
 
     try {
+      const nextId = `incoming_call_${payload.channelName || payload.callerId}`;
+      if (this.notificationId === nextId && this.isServiceRunning) {
+        return;
+      }
+
       await this.cancelIncomingCallNotification();
 
-      this.notificationId = `incoming_call_${payload.channelName || payload.callerId}`;
+      this.notificationId = nextId;
 
       const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
       const channelId = getIncomingCallChannelId(ringtoneId);
       const soundName = getRingtoneSoundName(ringtoneId);
+      const inForeground = AppState.currentState === 'active';
 
       await this.configureCallNotificationChannel(ringtoneId);
 
@@ -79,7 +85,7 @@ export class CallNotificationService {
         body: `${payload.callerName || 'Someone'} is calling`,
         android: {
           channelId,
-          importance: AndroidImportance?.HIGH,
+          importance: AndroidImportance?.MAX ?? AndroidImportance?.HIGH,
           visibility: AndroidVisibility?.PUBLIC,
           category: AndroidCategory?.CALL,
           pressAction: {
@@ -100,14 +106,14 @@ export class CallNotificationService {
             },
             {
               title: 'Decline',
-              pressAction: {
-                id: 'decline_call',
-              },
+          pressAction: {
+            id: 'decline_call',
+          },
             },
           ],
-          sound: soundName,
-          loopSound: true,
-          asForegroundService: true,
+          sound: inForeground ? undefined : soundName,
+          loopSound: !inForeground,
+          asForegroundService: !inForeground,
           lightUpScreen: true,
           autoCancel: false,
           ongoing: true,
@@ -127,7 +133,7 @@ export class CallNotificationService {
         },
       });
 
-      this.startedForegroundService = true;
+      this.startedForegroundService = !inForeground;
       this.isServiceRunning = true;
     } catch (error) {
       console.error('❌ Error displaying incoming call notification:', error);
@@ -148,7 +154,7 @@ export class CallNotificationService {
           id: getIncomingCallChannelId(id),
           name: 'Incoming Calls',
           description: 'Full-screen incoming call notifications',
-          importance: AndroidImportance.HIGH,
+          importance: AndroidImportance.MAX ?? AndroidImportance.HIGH,
           visibility: AndroidVisibility.PUBLIC,
           sound: getRingtoneSoundName(id),
           vibration: true,
@@ -162,7 +168,7 @@ export class CallNotificationService {
         id: 'incoming_calls',
         name: 'Incoming Calls',
         description: 'Full-screen incoming call notifications',
-        importance: AndroidImportance.HIGH,
+          importance: AndroidImportance.MAX ?? AndroidImportance.HIGH,
         visibility: AndroidVisibility.PUBLIC,
         sound: getRingtoneSoundName(selectedId),
         vibration: true,

@@ -107,3 +107,19 @@
 # Keep VisionCamera classes (only if needed, but filtered in background process)
 -keep class com.mrousavy.camera.react.** { *; }
 -dontwarn com.mrousavy.camera.react.**
+
+# Expo modules
+-keep class expo.modules.** { *; }
+-dontwarn expo.modules.**
+
+# Agora
+-keep class io.agora.** { *; }
+-dontwarn io.agora.**
+
+# Google Sign-In
+-keep class com.google.android.gms.auth.** { *; }
+-keep class com.reactnativegooglesignin.** { *; }
+
+# App native modules
+-keep class com.connect.app.** { *; }
+-keep class com.connect.app.overlay.** { *; }

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useMemo, useRef, useState, ReactNode } from 'react';
 
 export interface MinimizedCall {
   id: string;
@@ -43,51 +43,64 @@ interface CallMinimizeProviderProps {
 
 export const CallMinimizeProvider: React.FC<CallMinimizeProviderProps> = ({ children }) => {
   const [minimizedCalls, setMinimizedCalls] = useState<MinimizedCall[]>([]);
+  const minimizedCallsRef = useRef(minimizedCalls);
+  minimizedCallsRef.current = minimizedCalls;
 
-  const minimizeCall = (call: MinimizedCall) => {
+  const minimizeCall = useCallback((call: MinimizedCall) => {
     setMinimizedCalls(prev => {
-      // Remove existing call with same ID and add new one
-      const filtered = prev.filter(c => c.id !== call.id);
-      return [...filtered, call];
+      const existing = prev.find(c => c.id === call.id);
+      if (
+        existing &&
+        existing.callerName === call.callerName &&
+        existing.callerProfilePic === call.callerProfilePic &&
+        existing.status === call.status &&
+        existing.duration === call.duration &&
+        existing.isMuted === call.isMuted &&
+        existing.isCameraOn === call.isCameraOn
+      ) {
+        return prev;
+      }
+      return [...prev.filter(c => c.id !== call.id), call];
     });
-  };
+  }, []);
 
-  const restoreCall = (callId: string) => {
-    const call = minimizedCalls.find(c => c.id === callId);
-    if (call && call.onRestore) {
-      call.onRestore();
-    }
-    // Remove from minimized calls
+  const restoreCall = useCallback((callId: string) => {
+    const call = minimizedCallsRef.current.find(c => c.id === callId);
     setMinimizedCalls(prev => prev.filter(c => c.id !== callId));
-  };
+    call?.onRestore?.();
+  }, []);
 
-  const endMinimizedCall = (callId: string) => {
-    const call = minimizedCalls.find(c => c.id === callId);
-    if (call && call.onEnd) {
-      call.onEnd();
-    }
-    // Remove from minimized calls
+  // Only remove from the bar. Hang-up is the caller's job — calling onEnd here
+  // re-enters endCall → cleanup → endMinimizedCall and blows the render limit.
+  const endMinimizedCall = useCallback((callId: string) => {
     setMinimizedCalls(prev => prev.filter(c => c.id !== callId));
-  };
+  }, []);
 
-  const updateMinimizedCall = (callId: string, updates: Partial<MinimizedCall>) => {
-    setMinimizedCalls(prev => prev.map(call => 
-      call.id === callId ? { ...call, ...updates } : call
-    ));
-  };
+  const updateMinimizedCall = useCallback((callId: string, updates: Partial<MinimizedCall>) => {
+    setMinimizedCalls(prev => {
+      const idx = prev.findIndex(c => c.id === callId);
+      if (idx < 0) return prev;
+      const current = prev[idx];
+      const keys = Object.keys(updates) as (keyof MinimizedCall)[];
+      if (keys.every((key) => current[key] === updates[key])) return prev;
+      const next = prev.slice();
+      next[idx] = { ...current, ...updates };
+      return next;
+    });
+  }, []);
 
-  const getMinimizedCall = (callId: string): MinimizedCall | undefined => {
-    return minimizedCalls.find(c => c.id === callId);
-  };
+  const getMinimizedCall = useCallback((callId: string): MinimizedCall | undefined => {
+    return minimizedCallsRef.current.find(c => c.id === callId);
+  }, []);
 
-  const value: CallMinimizeContextType = {
+  const value = useMemo<CallMinimizeContextType>(() => ({
     minimizedCalls,
     minimizeCall,
     restoreCall,
     endMinimizedCall,
     updateMinimizedCall,
     getMinimizedCall,
-  };
+  }), [minimizedCalls, minimizeCall, restoreCall, endMinimizedCall, updateMinimizedCall, getMinimizedCall]);
 
   return (
     <CallMinimizeContext.Provider value={value}>

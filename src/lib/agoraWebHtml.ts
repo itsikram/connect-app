@@ -35,6 +35,30 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       var localTracks = [];
       var joining = false;
       var facingMode = 'user';
+      var joinedChannel = '';
+      var joinedUid = null;
+
+      function playAllRemoteAudio() {
+        if (!client) return;
+        var remotes = client.remoteUsers || [];
+        for (var i = 0; i < remotes.length; i++) {
+          var user = remotes[i];
+          try {
+            if (user.audioTrack) user.audioTrack.play();
+          } catch (e) {}
+        }
+      }
+
+      function tryResumeAudio() {
+        try {
+          if (typeof AgoraRTC !== 'undefined') {
+            AgoraRTC.onAudioAutoplayFailed = function () {
+              post({ type: 'log', message: 'audio autoplay failed, retrying remote play' });
+              playAllRemoteAudio();
+            };
+          }
+        } catch (e) {}
+      }
 
       function setAudioOnlyUi(isAudio) {
         var remote = document.getElementById('remote');
@@ -62,30 +86,34 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           if (client) {
             try { await client.unpublish(localTracks); } catch (e) {}
             try { await client.leave(); } catch (e) {}
-            try { client.removeAllListeners(); } catch (e) {}
           }
         } catch (e) {}
         await stopTracks();
-        client = null;
+        joinedChannel = '';
+        joinedUid = null;
         var remote = document.getElementById('remote');
         if (remote) remote.innerHTML = '';
         post({ type: 'left' });
       }
 
       async function createLocalTracks(isAudio) {
+        var hasAudio = localTracks.some(function (t) { return t.trackMediaType === 'audio'; });
+        var hasVideo = localTracks.some(function (t) { return t.trackMediaType === 'video'; });
+        if (isAudio && hasAudio) return;
+        if (!isAudio && hasAudio && hasVideo) return;
         await stopTracks();
         if (isAudio) {
-          localTracks = [await AgoraRTC.createMicrophoneAudioTrack()];
+          localTracks = [await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true })];
           return;
         }
         try {
           localTracks = await AgoraRTC.createMicrophoneAndCameraTracks(
-            {},
-            { facingMode: facingMode, encoderConfig: '720p_1' }
+            { AEC: true, ANS: true },
+            { facingMode: facingMode, encoderConfig: '480p_1' }
           );
         } catch (e) {
           post({ type: 'log', message: 'camera failed, mic only: ' + (e && e.message) });
-          localTracks = [await AgoraRTC.createMicrophoneAudioTrack()];
+          localTracks = [await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true })];
         }
         var videoTrack = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
         if (videoTrack) {
@@ -124,8 +152,6 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       async function join(payload) {
-        if (joining) return;
-        joining = true;
         var appId = payload.appId;
         var token = payload.token;
         var channelName = payload.channelName;
@@ -133,21 +159,38 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         var isAudio = !!payload.isAudio;
         setAudioOnlyUi(isAudio);
 
+        if (client && joinedChannel === channelName && joinedUid === uid) {
+          try {
+            if (localTracks.length) await client.publish(localTracks);
+          } catch (e) {}
+          post({ type: 'joined' });
+          return;
+        }
+
+        if (joining) return;
+        joining = true;
+
         try {
-          if (client) {
+          if (client && joinedChannel) {
+            try { await client.unpublish(localTracks); } catch (e) {}
             try { await client.leave(); } catch (e) {}
-            try { client.removeAllListeners(); } catch (e) {}
-            client = null;
+            joinedChannel = '';
+            joinedUid = null;
           }
 
-          client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-          bindClientEvents(client);
+          if (!client) {
+            client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+            bindClientEvents(client);
+          }
+          var tracksPromise = localTracks.length ? Promise.resolve() : createLocalTracks(isAudio);
           await client.join(appId, channelName, token, uid);
+          joinedChannel = channelName;
+          joinedUid = uid;
+          tryResumeAudio();
+          post({ type: 'joined' });
 
           try {
-            if (!localTracks.length) {
-              await createLocalTracks(isAudio);
-            }
+            await tracksPromise;
             if (localTracks.length) {
               await client.publish(localTracks);
             }
@@ -159,18 +202,21 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           var remotes = client.remoteUsers || [];
           for (var i = 0; i < remotes.length; i++) {
             var user = remotes[i];
-            if (user.hasAudio) {
-              await client.subscribe(user, 'audio');
-              if (user.audioTrack) user.audioTrack.play();
-            }
-            if (!isAudio && user.hasVideo) {
-              await client.subscribe(user, 'video');
-              if (user.videoTrack) user.videoTrack.play('remote', { fit: 'cover' });
+            try {
+              if (user.hasAudio) {
+                await client.subscribe(user, 'audio');
+                if (user.audioTrack) user.audioTrack.play();
+              }
+              if (!isAudio && user.hasVideo) {
+                await client.subscribe(user, 'video');
+                if (user.videoTrack) user.videoTrack.play('remote', { fit: 'cover' });
+              }
+            } catch (subErr) {
+              post({ type: 'log', message: 'existing remote subscribe failed: ' + (subErr && subErr.message) });
             }
           }
-
+          playAllRemoteAudio();
           joining = false;
-          post({ type: 'joined' });
         } catch (e) {
           joining = false;
           post({ type: 'error', message: 'join failed: ' + (e && e.message) });
@@ -205,7 +251,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         facingMode = facingMode === 'user' ? 'environment' : 'user';
         var oldVideo = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
         try {
-          var next = await AgoraRTC.createCameraVideoTrack({ facingMode: facingMode, encoderConfig: '720p_1' });
+          var next = await AgoraRTC.createCameraVideoTrack({ facingMode: facingMode, encoderConfig: '480p_1' });
           if (client && oldVideo) {
             await client.unpublish(oldVideo);
           }
@@ -248,10 +294,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
       function waitForSdk() {
         if (window.AgoraRTC) {
+          try { AgoraRTC.setLogLevel(4); } catch (e) {}
+          if (!client) {
+            try {
+              client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+              bindClientEvents(client);
+            } catch (e) {}
+          }
           post({ type: 'ready' });
           return;
         }
-        setTimeout(waitForSdk, 80);
+        setTimeout(waitForSdk, 16);
       }
       waitForSdk();
     })();

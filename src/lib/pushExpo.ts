@@ -1,17 +1,16 @@
 // Push notifications service - simplified for Expo compatibility
 import * as Notifications from 'expo-notifications';
-import { Platform, Linking, Alert, AppState } from 'react-native';
+import { Platform, Linking, Alert, AppState, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pushAPI } from './api';
-import Constants from 'expo-constants';
 import {
   getIncomingCallChannelId,
   getRingtoneSoundName,
 } from './ringtoneAssets';
+import { getNativeOrExpoPushToken, PUSH_TOKEN_STORAGE_KEY } from './pushToken';
+import config from './config';
 
-const STORAGE_KEY = 'fcmToken';
-const EXPO_PROJECT_ID =
-  Constants.expoConfig?.extra?.eas?.projectId || '76d83a3a-a10d-43fb-a110-e50066ce889f';
+const STORAGE_KEY = PUSH_TOKEN_STORAGE_KEY;
 
 // Initialize notifications
 export const initializeNotifications = async () => {
@@ -21,6 +20,7 @@ export const initializeNotifications = async () => {
         allowAlert: true,
         allowBadge: true,
         allowSound: true,
+        allowTimeSensitive: true,
       },
     });
     console.log('✅ Notifications initialized');
@@ -32,37 +32,35 @@ export const initializeNotifications = async () => {
 // Get notification token (Expo equivalent)
 export const getNotificationToken = async () => {
   try {
-    // Get expo push token with fallback
-    let token;
-    try {
-      token = await Notifications.getExpoPushTokenAsync({
-        projectId: EXPO_PROJECT_ID,
-      });
-    } catch (projectError: any) {
-      // Fallback for when projectId is not configured
-      console.warn('⚠️ Project ID not configured, trying without projectId:', projectError?.message);
-      try {
-        token = await Notifications.getExpoPushTokenAsync();
-      } catch (fallbackError: any) {
-        console.error('❌ Failed to get Expo push token even with fallback:', fallbackError?.message);
-        return null;
-      }
-    }
-    console.log('✅ Expo push token:', token.data);
-    return token.data;
+    const result = await getNativeOrExpoPushToken();
+    if (!result?.token) return null;
+    console.log('✅ Push token retrieved');
+    return result;
   } catch (error) {
-    console.error('❌ Failed to get Expo push token:', error);
+    console.error('❌ Failed to get push token:', error);
     return null;
   }
 };
 
-// Save token to storage and server
-export const saveNotificationToken = async (token: string) => {
+export const saveNotificationToken = async (token: string, previousToken?: string | null) => {
   try {
     await AsyncStorage.setItem(STORAGE_KEY, token);
-    
-    // Send token to server (using registerToken instead)
+
+    if (previousToken && previousToken !== token) {
+      try {
+        await pushAPI.unregisterToken(previousToken);
+      } catch (_) {}
+    }
     await pushAPI.registerToken(token);
+    if (Platform.OS === 'android') {
+      const authToken = await AsyncStorage.getItem('authToken');
+      try {
+        NativeModules.CallNotificationModule?.savePushConfig?.(
+          config.API_BASE_URL,
+          authToken || '',
+        );
+      } catch (_) {}
+    }
     console.log('✅ Notification token saved');
   } catch (error) {
     console.error('❌ Failed to save notification token:', error);

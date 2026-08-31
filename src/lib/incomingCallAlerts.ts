@@ -1,7 +1,11 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { ANDROID_INCOMING_CALL_CHANNEL_ID } from './notificationChannelIds';
-import { playIncomingRingtone, stopIncomingRingtone } from './callRingtone';
+import {
+  isIncomingRingtonePlaying,
+  playIncomingRingtone,
+  stopIncomingRingtone,
+} from './callRingtone';
 import {
   getIncomingCallChannelId,
   getRingtoneSoundName,
@@ -9,6 +13,7 @@ import {
   MAX_RINGTONE_ID,
   normalizeRingtoneId,
 } from './ringtoneAssets';
+import { getIncomingCallOsSound } from './expoGo';
 
 export const INCOMING_CALL_CATEGORY = 'incoming_call';
 const LEGACY_CALL_CHANNELS = ['incoming_calls', 'incoming_calls_v3', ANDROID_INCOMING_CALL_CHANNEL_ID];
@@ -22,18 +27,19 @@ const CALL_AUDIO_ATTRIBUTES: Notifications.AudioAttributesInput = {
   },
 };
 
-let presentedNotificationId: string | null = null;
-let lastPresentedChannel: string | null = null;
-let lastPresentedAt = 0;
-let ringingPayload: {
+type RingingPayload = {
   callerId: string;
   callerName?: string;
   callerProfilePic?: string;
   channelName: string;
   isAudio: boolean;
   ringtoneId?: string;
-} | null = null;
+};
+
+let presentedNotificationId: string | null = null;
+let ringingPayload: RingingPayload | null = null;
 let appStateSub: { remove: () => void } | null = null;
+let appStateTimer: ReturnType<typeof setTimeout> | null = null;
 
 function callNotificationId(channelName?: string) {
   return `incoming_call_${channelName || 'active'}`;
@@ -46,14 +52,12 @@ function allCallChannelIds() {
   return [...new Set([...LEGACY_CALL_CHANNELS, ...ringtoneChannels])];
 }
 
-async function displayAndroidCallForegroundNotification(payload: {
-  callerId: string;
-  callerName?: string;
-  callerProfilePic?: string;
-  channelName: string;
-  isAudio: boolean;
-  ringtoneId?: string;
-}): Promise<boolean> {
+function sameCall(a: RingingPayload | null, b: RingingPayload): boolean {
+  if (!a) return false;
+  return a.channelName === b.channelName && a.callerId === b.callerId;
+}
+
+async function displayAndroidCallForegroundNotification(payload: RingingPayload): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
   try {
     const mod = await import('./callNotificationService');
@@ -85,12 +89,22 @@ async function cancelAndroidCallForegroundNotification(): Promise<void> {
 function ensureAppStateWatch() {
   if (appStateSub) return;
   appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
-    if (state === 'active' || !ringingPayload) return;
-    // Android pauses in-app audio unless a foreground service is running.
-    // Re-post the sticky call notification and restart the ringtone.
-    presentIncomingCallNotification(ringingPayload, { force: true }).catch(() => {});
-    playIncomingRingtone(ringingPayload.ringtoneId).catch(() => {});
-    displayAndroidCallForegroundNotification(ringingPayload).catch(() => {});
+    if (appStateTimer) clearTimeout(appStateTimer);
+    appStateTimer = setTimeout(() => {
+      if (!ringingPayload) return;
+      if (state === 'active') {
+        cancelAndroidCallForegroundNotification().catch(() => {});
+        playIncomingRingtone(ringingPayload.ringtoneId).catch(() => {});
+        return;
+      }
+      if (Platform.OS === 'ios') {
+        playIncomingRingtone(ringingPayload.ringtoneId).catch(() => {});
+        presentIncomingCallNotification(ringingPayload).catch(() => {});
+        return;
+      }
+      stopIncomingRingtone().catch(() => {});
+      displayAndroidCallForegroundNotification(ringingPayload).catch(() => {});
+    }, 250);
   });
 }
 
@@ -151,32 +165,17 @@ export async function configureIncomingCallChannels(): Promise<void> {
   }
 }
 
-export async function presentIncomingCallNotification(
-  payload: {
-    callerId: string;
-    callerName?: string;
-    callerProfilePic?: string;
-    channelName: string;
-    isAudio: boolean;
-    ringtoneId?: string;
-  },
-  options?: { force?: boolean },
-): Promise<void> {
+export async function presentIncomingCallNotification(payload: RingingPayload): Promise<void> {
   const channelName = payload.channelName || '';
-  const now = Date.now();
-  if (!options?.force && lastPresentedChannel === channelName && now - lastPresentedAt < 4000) {
-    return;
-  }
-  lastPresentedChannel = channelName;
-  lastPresentedAt = now;
-
   const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
   const identifier = callNotificationId(channelName);
   presentedNotificationId = identifier;
 
   const title = payload.isAudio ? 'Incoming audio call' : 'Incoming video call';
   const body = `${payload.callerName || 'Someone'} is calling`;
-  const soundName = getRingtoneSoundName(ringtoneId);
+  const osSound = getIncomingCallOsSound(ringtoneId);
+  const inForeground = AppState.currentState === 'active';
+  const ringtoneAlreadyPlaying = isIncomingRingtonePlaying();
 
   try {
     await Notifications.dismissNotificationAsync(identifier).catch(() => {});
@@ -185,7 +184,7 @@ export async function presentIncomingCallNotification(
       content: {
         title,
         body,
-        sound: Platform.OS === 'ios' ? `${soundName}.mp3` : soundName,
+        sound: inForeground || ringtoneAlreadyPlaying ? undefined : osSound,
         interruptionLevel: 'timeSensitive',
         categoryIdentifier: INCOMING_CALL_CATEGORY,
         sticky: true,
@@ -229,44 +228,66 @@ export async function cancelIncomingCallNotifications(channelName?: string): Pro
 }
 
 /**
- * Ring the device for an incoming call:
- * - Loop the user's selected ringtone in-app (iOS background audio + Android FGS).
- * - Always post a high-priority OS notification so the call still alerts when
- *   the app is backgrounded or the screen is locked.
+ * Ring for an incoming call:
+ * - Foreground: one looping in-app ringtone (no OS notification sound).
+ * - iOS / Expo Go background: keep expo-av looping (works in Expo Go) + banner.
+ * - Android background: high-priority OS / Notifee call notification with channel ringtone.
  */
-export async function startIncomingCallAlert(payload: {
-  callerId: string;
-  callerName?: string;
-  callerProfilePic?: string;
-  channelName: string;
-  isAudio: boolean;
-  ringtoneId?: string;
-}): Promise<void> {
+export async function startIncomingCallAlert(payload: RingingPayload): Promise<void> {
   const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
-  ringingPayload = { ...payload, ringtoneId };
-  ensureAppStateWatch();
-  playIncomingRingtone(ringtoneId).catch(() => {});
+  const next = { ...payload, ringtoneId };
+  const inForeground = AppState.currentState === 'active';
 
-  const usedAndroidForeground = await displayAndroidCallForegroundNotification(ringingPayload);
+  if (sameCall(ringingPayload, next)) {
+    if (!isIncomingRingtonePlaying() && (inForeground || Platform.OS === 'ios')) {
+      playIncomingRingtone(ringtoneId).catch(() => {});
+    }
+    return;
+  }
+
+  ringingPayload = next;
+  ensureAppStateWatch();
+
+  if (Platform.OS === 'ios') {
+    await playIncomingRingtone(ringtoneId);
+    if (!inForeground) {
+      await presentIncomingCallNotification(next);
+    }
+    return;
+  }
+
+  if (inForeground) {
+    playIncomingRingtone(ringtoneId).catch(() => {});
+    return;
+  }
+
+  const usedAndroidForeground = await displayAndroidCallForegroundNotification(next);
   if (!usedAndroidForeground) {
-    await presentIncomingCallNotification(ringingPayload, { force: true });
+    await presentIncomingCallNotification(next);
   }
 }
 
 export async function stopIncomingCallAlert(channelName?: string): Promise<void> {
   ringingPayload = null;
-  lastPresentedChannel = null;
-  lastPresentedAt = 0;
+  if (appStateTimer) {
+    clearTimeout(appStateTimer);
+    appStateTimer = null;
+  }
   await stopIncomingRingtone();
   await cancelAndroidCallForegroundNotification();
   await cancelIncomingCallNotifications(channelName);
 }
 
 export function parseIncomingCallNotificationData(data: any) {
-  if (!data || data.type !== 'incoming_call') return null;
+  if (!data) return null;
+  const type = data.type || data.event;
+  if (type && type !== 'incoming_call') return null;
+  const from = String(data.callerId || data.from || '');
+  const channelName = String(data.channelName || '');
+  if (!from && !channelName) return null;
   return {
-    from: String(data.callerId || data.from || ''),
-    channelName: String(data.channelName || ''),
+    from,
+    channelName,
     callerName: data.callerName || 'Someone',
     callerProfilePic: data.callerProfilePic || '',
     isAudio: data.isAudio === true || data.isAudio === 'true',

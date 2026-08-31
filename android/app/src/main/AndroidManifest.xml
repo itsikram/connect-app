@@ -116,18 +116,28 @@
         android:stopWithTask="false"
         android:process=":bg" />
 
-      <!-- Incoming-call FCM is handled by expo-notifications ExpoFirebaseMessagingService.
-           Do not register React Native Firebase messaging here — that package is not
-           installed and would steal MESSAGING_EVENT from Expo, dropping call pushes. -->
-
+      <!-- Incoming-call FCM: native ringing + Accept/Decline when the app process is dead.
+           Other FCM is forwarded to Expo via ConnectFirebaseMessagingService. -->
       <service
-        android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService"
-        android:exported="false"
-        tools:node="merge">
-        <intent-filter android:priority="999">
+        android:name="com.connect.app.ConnectFirebaseMessagingService"
+        android:exported="false">
+        <intent-filter android:priority="1000">
           <action android:name="com.google.firebase.MESSAGING_EVENT" />
         </intent-filter>
       </service>
+
+      <service
+        android:name="com.connect.app.IncomingCallRingService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback" />
+
+      <receiver
+        android:name="com.connect.app.CallActionReceiver"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="com.connect.app.DECLINE_INCOMING_CALL" />
+        </intent-filter>
+      </receiver>
 
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"

@@ -10,6 +10,29 @@ import {
 let ringtoneSound: Audio.Sound | null = null;
 let vibrationTimer: ReturnType<typeof setInterval> | null = null;
 let playToken = 0;
+let playingRingtoneId: string | null = null;
+
+async function unloadCurrentSound(): Promise<void> {
+  if (vibrationTimer) {
+    clearInterval(vibrationTimer);
+    vibrationTimer = null;
+  }
+  try {
+    Vibration.cancel();
+  } catch (_) {}
+
+  const sound = ringtoneSound;
+  ringtoneSound = null;
+  playingRingtoneId = null;
+  if (!sound) return;
+
+  try {
+    await sound.stopAsync();
+  } catch (_) {}
+  try {
+    await sound.unloadAsync();
+  } catch (_) {}
+}
 
 async function configurePlayback(): Promise<void> {
   try {
@@ -43,13 +66,43 @@ export async function configureInCallAudio(speakerOn: boolean): Promise<void> {
   }
 }
 
+/** Two-way live voice needs mic capture and loudspeaker playback at the same time. */
+export async function configureLiveVoiceAudio(): Promise<void> {
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: true,
+      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
+      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+  } catch (error) {
+    console.warn('callRingtone: failed to set live voice audio mode', error);
+  }
+}
+
+export function isIncomingRingtonePlaying(): boolean {
+  return ringtoneSound != null;
+}
+
 export async function playIncomingRingtone(ringtoneId?: string): Promise<void> {
+  const id = ringtoneId ? normalizeRingtoneId(ringtoneId) : await getStoredRingtoneId();
+  if (ringtoneSound && playingRingtoneId === id) {
+    try {
+      const status = await ringtoneSound.getStatusAsync();
+      if (status.isLoaded && status.isPlaying) {
+        return;
+      }
+    } catch (_) {}
+  }
+
   const token = ++playToken;
-  await stopIncomingRingtone();
+  await unloadCurrentSound();
   await stopRingtonePreview();
   await configurePlayback();
 
-  const id = ringtoneId ? normalizeRingtoneId(ringtoneId) : await getStoredRingtoneId();
   const source = RINGTONE_SOURCES[id] || RINGTONE_SOURCES['1'];
 
   try {
@@ -68,6 +121,7 @@ export async function playIncomingRingtone(ringtoneId?: string): Promise<void> {
       return;
     }
     ringtoneSound = sound;
+    playingRingtoneId = id;
   } catch (error) {
     console.warn('callRingtone: audio playback failed, using vibration', error);
   }
@@ -84,22 +138,5 @@ export async function playIncomingRingtone(ringtoneId?: string): Promise<void> {
 
 export async function stopIncomingRingtone(): Promise<void> {
   playToken += 1;
-  if (vibrationTimer) {
-    clearInterval(vibrationTimer);
-    vibrationTimer = null;
-  }
-  try {
-    Vibration.cancel();
-  } catch (_) {}
-
-  const sound = ringtoneSound;
-  ringtoneSound = null;
-  if (!sound) return;
-
-  try {
-    await sound.stopAsync();
-  } catch (_) {}
-  try {
-    await sound.unloadAsync();
-  } catch (_) {}
+  await unloadCurrentSound();
 }

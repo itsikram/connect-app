@@ -5,19 +5,29 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.util.Log;
 
+import com.facebook.react.bridge.Arguments;
+import com.facebook.react.bridge.LifecycleEventListener;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
 import com.facebook.react.bridge.ReadableMap;
 import com.facebook.react.bridge.Promise;
+import com.facebook.react.bridge.WritableMap;
+import com.facebook.react.modules.core.DeviceEventManagerModule;
 
-public class CallNotificationModule extends ReactContextBaseJavaModule {
+import org.json.JSONObject;
+
+public class CallNotificationModule extends ReactContextBaseJavaModule implements LifecycleEventListener {
     private static final String TAG = "CallNotificationModule";
+    private static ReactApplicationContext staticContext;
     private ReactApplicationContext reactContext;
 
     public CallNotificationModule(ReactApplicationContext reactContext) {
         super(reactContext);
         this.reactContext = reactContext;
+        staticContext = reactContext;
+        IncomingCallStore.INSTANCE.setReactRunning(true);
+        reactContext.addLifecycleEventListener(this);
     }
 
     @Override
@@ -26,9 +36,79 @@ public class CallNotificationModule extends ReactContextBaseJavaModule {
     }
 
     @ReactMethod
+    public void savePushConfig(String apiBaseUrl, String authToken, Promise promise) {
+        try {
+            IncomingCallStore.INSTANCE.savePushConfig(getReactApplicationContext(), apiBaseUrl, authToken);
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void clearPushConfig(Promise promise) {
+        try {
+            IncomingCallStore.INSTANCE.clearPushConfig(getReactApplicationContext());
+            IncomingCallStore.INSTANCE.consumePendingJson(getReactApplicationContext());
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void getPendingCallAction(Promise promise) {
+        try {
+            String json = IncomingCallStore.INSTANCE.consumePendingJson(getReactApplicationContext());
+            promise.resolve(jsonToMap(json));
+        } catch (Exception e) {
+            promise.reject("ERROR", e.getMessage());
+        }
+    }
+
+    @ReactMethod
+    public void addListener(String eventName) {}
+
+    @ReactMethod
+    public void removeListeners(Integer count) {}
+
+    public static void emitIncomingCallAction(WritableMap payload) {
+        try {
+            if (staticContext != null && staticContext.hasActiveReactInstance()) {
+                staticContext
+                    .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                    .emit("nativeIncomingCallAction", payload);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to emit incoming call action", e);
+        }
+    }
+
+    public static WritableMap jsonToMap(String json) {
+        if (json == null || json.isEmpty()) return null;
+        try {
+            JSONObject obj = new JSONObject(json);
+            WritableMap map = Arguments.createMap();
+            map.putString("action", obj.optString("action"));
+            map.putString("callerId", obj.optString("callerId"));
+            map.putString("from", obj.optString("callerId"));
+            map.putString("callerName", obj.optString("callerName"));
+            map.putString("callerProfilePic", obj.optString("callerProfilePic"));
+            map.putString("channelName", obj.optString("channelName"));
+            map.putString("ringtoneId", obj.optString("ringtoneId", "1"));
+            boolean isAudio = obj.optBoolean("isAudio", !"false".equals(obj.optString("isAudioText")));
+            map.putBoolean("isAudio", isAudio);
+            map.putBoolean("autoAccept", obj.optBoolean("autoAccept", "accept_call".equals(obj.optString("action"))));
+            map.putBoolean("declined", "decline_call".equals(obj.optString("action")));
+            return map;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    @ReactMethod
     public void openIncomingCallScreen(ReadableMap params, Promise promise) {
         try {
-            // Create intent to open the app with incoming call screen
             Intent intent = new Intent(reactContext, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             intent.putExtra("action", "incoming_call");
@@ -39,7 +119,6 @@ public class CallNotificationModule extends ReactContextBaseJavaModule {
             intent.putExtra("isAudio", params.getBoolean("isAudio"));
             intent.putExtra("autoAccept", params.getBoolean("autoAccept"));
 
-            // Start the activity
             reactContext.startActivity(intent);
             promise.resolve(true);
             
@@ -53,7 +132,6 @@ public class CallNotificationModule extends ReactContextBaseJavaModule {
     @ReactMethod
     public void bringAppToForeground(Promise promise) {
         try {
-            // Create intent to bring app to foreground
             Intent intent = new Intent(reactContext, MainActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_SINGLE_TOP);
             
@@ -65,5 +143,20 @@ public class CallNotificationModule extends ReactContextBaseJavaModule {
             Log.e(TAG, "Error bringing app to foreground", e);
             promise.reject("ERROR", e.getMessage());
         }
+    }
+
+    @Override
+    public void onHostResume() {
+        IncomingCallStore.INSTANCE.setReactRunning(true);
+    }
+
+    @Override
+    public void onHostPause() {
+        IncomingCallStore.INSTANCE.setReactRunning(true);
+    }
+
+    @Override
+    public void onHostDestroy() {
+        IncomingCallStore.INSTANCE.setReactRunning(false);
     }
 }

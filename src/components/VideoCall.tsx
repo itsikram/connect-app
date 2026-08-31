@@ -15,10 +15,10 @@ import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
-import api from '../lib/api';
+import { prefetchAgoraJoin, clearAgoraJoinPrefetch } from '../lib/agoraJoin';
 import { hashProfileUid } from '../lib/agoraUid';
 import ProfileImage from './ProfileImage';
-import { CALL_EVENTS } from '../lib/callEvents';
+import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
@@ -47,6 +47,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [mediaActive, setMediaActive] = useState(false);
+  const [engineWarm, setEngineWarm] = useState(false);
 
   const engineRef = useRef<AgoraWebEngineHandle>(null);
   const isTerminating = useRef(false);
@@ -55,6 +56,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const callAcceptedRef = useRef(false);
   const currentChannelRef = useRef<string | null>(null);
   const callerRef = useRef('');
+  const isMinimizedRef = useRef(false);
+  const isMutedRef = useRef(false);
+  const isCameraOnRef = useRef(true);
   const incomingCallRef = useRef(incomingCall);
   const callStartTime = useRef<number | null>(null);
   const callSeenStatusSentRef = useRef(false);
@@ -70,6 +74,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   useEffect(() => { callAcceptedRef.current = callAccepted; }, [callAccepted]);
   useEffect(() => { currentChannelRef.current = currentChannel; }, [currentChannel]);
   useEffect(() => { callerRef.current = caller; }, [caller]);
+  useEffect(() => { isMinimizedRef.current = isMinimized; }, [isMinimized]);
+  useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
+  useEffect(() => { isCameraOnRef.current = isCameraOn; }, [isCameraOn]);
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
   const formatDuration = (seconds: number) => {
@@ -84,11 +91,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
     pendingJoinRef.current = null;
+    clearAgoraJoinPrefetch(currentChannelRef.current || undefined);
     isJoiningOrJoined.current = false;
     setActiveCallKind(null);
     if (currentChannelRef.current) {
       try { endMinimizedCall(`video-${currentChannelRef.current}`); } catch (_) {}
     }
+    emitLocalCallEnded();
     setIsVideoCall(false);
     setReceivingCall(false);
     setCallAccepted(false);
@@ -109,11 +118,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     setTimeout(() => { isTerminating.current = false; }, 400);
   }, [endMinimizedCall]);
 
-  const getToken = async (channelName: string) => {
-    const { data } = await api.post('/agora/token', { channelName, uid: numericUid });
-    return data;
-  };
-
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
@@ -123,14 +127,16 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       if (isJoiningOrJoined.current) return;
       isJoiningOrJoined.current = true;
       setActiveCallKind('video');
-
-      await Audio.requestPermissionsAsync();
-      await Camera.requestCameraPermissionsAsync();
-      await configureInCallAudio(true);
-      const { appId, token } = await getToken(channelName);
-      pendingJoinRef.current = { appId, token, channelName, uid: numericUid };
       setMediaActive(true);
-      engineRef.current?.join({ appId, token, channelName, uid: numericUid, isAudio: false });
+      setEngineWarm(true);
+
+      configureInCallAudio(true).catch(() => {});
+      Audio.requestPermissionsAsync().catch(() => {});
+      Camera.requestCameraPermissionsAsync().catch(() => {});
+      const creds = await prefetchAgoraJoin(channelName, numericUid);
+      if (isTerminating.current) return;
+      pendingJoinRef.current = creds;
+      engineRef.current?.join({ ...creds, isAudio: false });
     } catch (error: any) {
       console.error('VideoCall: failed to start', error);
       Alert.alert('Call failed', error?.message || 'Could not start the video call.');
@@ -146,13 +152,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const answerCall = useCallback(async () => {
     const incoming = incomingCallRef.current;
     if (!incoming) return;
-    await stopIncomingCallAlert();
+    stopIncomingCallAlert().catch(() => {});
     emit('answer-call', {
       to: String(incoming.from),
       channelName: incoming.channelName,
       isAudio: false,
     });
-    await startCall(incoming.channelName);
+    startCall(incoming.channelName);
   }, [emit, startCall]);
 
   useEffect(() => { answerCallRef.current = answerCall; }, [answerCall]);
@@ -236,6 +242,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     setCallerName(name || 'Unknown Caller');
     setCallerProfilePic(pic || '');
     setCurrentChannel(channelName);
+    setEngineWarm(true);
+    prefetchAgoraJoin(channelName, numericUid).catch(() => {});
+    Audio.requestPermissionsAsync().catch(() => {});
+    Camera.requestCameraPermissionsAsync().catch(() => {});
+    engineRef.current?.preview(false);
     startIncomingCallAlert({
       callerId,
       callerName: name,
@@ -247,7 +258,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (isAppFocused()) {
       markCallSeenIfNeeded();
     }
-  }, [emit, markCallSeenIfNeeded]);
+  }, [emit, markCallSeenIfNeeded, numericUid]);
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
@@ -304,6 +315,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         profilePic: detail.callerProfilePic,
       });
       setOutgoingCallStatus('Calling...');
+      setEngineWarm(true);
+      prefetchAgoraJoin(detail.channelName, numericUid).catch(() => {});
+      Audio.requestPermissionsAsync().catch(() => {});
       setMediaActive(true);
       Camera.requestCameraPermissionsAsync().then(() => {
         engineRef.current?.preview(false);
@@ -354,12 +368,33 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       subPush.remove();
       subReject.remove();
     };
-  }, [applyIncomingVideoCall, cleanupVideoCall, emit, myId, off, on]);
+  }, [applyIncomingVideoCall, cleanupVideoCall, emit, myId, numericUid, off, on]);
+
+  useEffect(() => {
+    const replayIncoming = takeLastIncomingCallFromPush();
+    if (replayIncoming && replayIncoming.isAudio === false) {
+      if (replayIncoming.autoAccept) pendingAutoAcceptRef.current = true;
+      applyIncomingVideoCall({
+        from: replayIncoming.from,
+        channelName: replayIncoming.channelName,
+        callerName: replayIncoming.callerName,
+        callerProfilePic: replayIncoming.callerProfilePic,
+        ringtoneId: replayIncoming.ringtoneId,
+      });
+    }
+    const replayReject = takeLastRejectCallFromPush();
+    if (replayReject && replayReject.isAudio === false) {
+      stopIncomingCallAlert();
+      cleanupVideoCall();
+    }
+    // Replay a notification tap that arrived before this overlay mounted.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (pendingAutoAcceptRef.current && receivingCall && incomingCall && !callAccepted) {
       pendingAutoAcceptRef.current = false;
-      const t = setTimeout(() => answerCallRef.current?.(), 250);
+      const t = setTimeout(() => answerCallRef.current?.(), 0);
       return () => clearTimeout(t);
     }
   }, [receivingCall, incomingCall, callAccepted]);
@@ -370,7 +405,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const tick = () => {
       const elapsed = Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000);
       setCallDuration(elapsed);
-      if (isMinimized && currentChannelRef.current) {
+      if (isMinimizedRef.current && currentChannelRef.current) {
         updateMinimizedCall(`video-${currentChannelRef.current}`, {
           duration: elapsed,
           status: 'connected',
@@ -380,7 +415,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [callAccepted, isMinimized, updateMinimizedCall]);
+  }, [callAccepted, updateMinimizedCall]);
 
   useEffect(() => {
     if (receivingCall && !callAccepted && isAppFocused()) {
@@ -399,16 +434,22 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   }, [markCallSeenIfNeeded]);
 
   const toggleMute = useCallback(() => {
-    const next = !isMuted;
+    const next = !isMutedRef.current;
     setIsMuted(next);
     engineRef.current?.muteAudio(next);
-  }, [isMuted]);
+    if (isMinimizedRef.current && currentChannelRef.current) {
+      updateMinimizedCall(`video-${currentChannelRef.current}`, { isMuted: next });
+    }
+  }, [updateMinimizedCall]);
 
   const toggleCamera = useCallback(() => {
-    const next = !isCameraOn;
+    const next = !isCameraOnRef.current;
     setIsCameraOn(next);
     engineRef.current?.muteVideo(!next);
-  }, [isCameraOn]);
+    if (isMinimizedRef.current && currentChannelRef.current) {
+      updateMinimizedCall(`video-${currentChannelRef.current}`, { isCameraOn: next });
+    }
+  }, [updateMinimizedCall]);
 
   const switchCamera = useCallback(() => {
     engineRef.current?.switchCamera();
@@ -437,8 +478,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   }, [callAccepted, currentChannel, callerName, callerProfilePic, caller, callDuration, isMuted, isCameraOn, minimizeCall, endCall, toggleMute, toggleCamera]);
 
   const handleEngineEvent = useCallback((event: any) => {
-    if (event.type === 'ready' && pendingJoinRef.current) {
-      engineRef.current?.join({ ...pendingJoinRef.current, isAudio: false });
+    if (event.type === 'ready') {
+      if (receivingCallRef.current && !callAcceptedRef.current) {
+        engineRef.current?.preview(false);
+      }
+      if (pendingJoinRef.current) {
+        engineRef.current?.join({ ...pendingJoinRef.current, isAudio: false });
+      }
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
       cleanupVideoCall();
@@ -454,7 +500,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       ? `${callerName || 'Someone'} is calling you`
       : `Calling ${callerName || 'Friend'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
 
-  if (!isVideoCall && !mediaActive) {
+  if (!isVideoCall && !mediaActive && !engineWarm) {
     return null;
   }
 
@@ -467,7 +513,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         style={[showUi ? styles.engineFill : styles.hiddenEngine, { zIndex: showUi ? 9998 : 0 }]}
         pointerEvents="none"
       >
-        <AgoraWebEngine ref={engineRef} visible={mediaActive} isAudio={false} onEvent={handleEngineEvent} />
+        <AgoraWebEngine
+          ref={engineRef}
+          visible={Boolean(isVideoCall || mediaActive || engineWarm)}
+          isAudio={false}
+          onEvent={handleEngineEvent}
+        />
       </View>
       {showUi ? (
         <View style={styles.overlay}>

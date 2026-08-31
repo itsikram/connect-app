@@ -101,7 +101,6 @@ function MessageStack() {
         options={{
           headerShown: false,
           contentStyle: { flex: 1 },
-          safeAreaInsets: { bottom: 0, left: 0, right: 0 },
         }}
       />
       <Stack.Screen
@@ -110,7 +109,6 @@ function MessageStack() {
         options={{
           headerShown: false,
           contentStyle: { flex: 1, height: '100%' },
-          safeAreaInsets: { top: 0, bottom: 0, left: 0, right: 0 },
         }}
         listeners={({ navigation }) => ({
           transitionStart: (e) => {
@@ -974,6 +972,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
         if (!themeContext) return null;
         const { colors: themeColors, isDarkMode: themeIsDarkMode } = themeContext;
         return (
+        <>
         <SafeAreaView
           edges={appSafeAreaEdges}
           style={{
@@ -1080,10 +1079,11 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                 )}
               </Tab.Navigator>
             )}
-            <MinimizedCallBar />
             <WatchPipPlayer />
             </KeyboardSafeView>
         </SafeAreaView>
+        <MinimizedCallBar />
+        </>
         );
       }}
     </ThemeContext.Consumer>
