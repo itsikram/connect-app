@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { Modal, View, Text, TextInput, TouchableOpacity, FlatList, StyleSheet, useColorScheme, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from '../theme/colors';
 import api from '../lib/api';
@@ -19,6 +20,7 @@ type SearchResult = {
 const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
   const colorScheme = useColorScheme();
   const isDarkMode = colorScheme === 'dark';
+  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult>({});
@@ -119,7 +121,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
-      <View style={[styles.container, { backgroundColor }]}>        
+      <View style={[styles.container, { backgroundColor, paddingTop: insets.top }]}>        
         <View style={styles.searchBar}>
           <Icon name="search" size={22} color={colors.gray[600]} />
           <TextInput

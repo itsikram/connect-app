@@ -7,7 +7,6 @@ import {
   Animated,
   Dimensions,
   Platform,
-  Vibration,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
@@ -67,11 +66,6 @@ const UltraModernTabBar: React.FC<UltraModernTabBarProps> = ({
   }, [state.index]);
 
   const handleTabPress = (tab: TabItem, index: number) => {
-    // Haptic feedback
-    if (tab.haptic !== false && Platform.OS === 'ios') {
-      Vibration.vibrate(10);
-    }
-
     // Ripple animation
     Animated.sequence([
       Animated.timing(rippleAnimations[index], {

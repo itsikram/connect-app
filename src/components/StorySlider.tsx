@@ -207,25 +207,30 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
           })}
         </ScrollView>
 
-        {canScrollLeft && (
-          <TouchableOpacity
-            style={[styles.arrow, styles.arrowLeft, { backgroundColor: themeColors.surface.secondary }]}
-            onPress={scrollLeft}
-            activeOpacity={0.8}
-          >
-            <Icon name="chevron-left" size={30} color={themeColors.text.primary} />
-          </TouchableOpacity>
-        )}
-
-        {canScrollRight && (
-          <TouchableOpacity
-            style={[styles.arrow, styles.arrowRight, { backgroundColor: themeColors.surface.secondary }]}
-            onPress={scrollRight}
-            activeOpacity={0.8}
-          >
-            <Icon name="chevron-right" size={30} color={themeColors.text.primary} />
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity
+          style={[
+            styles.arrow,
+            styles.arrowLeft,
+            { backgroundColor: themeColors.surface.secondary, opacity: canScrollLeft ? 1 : 0.45 },
+          ]}
+          onPress={scrollLeft}
+          activeOpacity={0.8}
+          disabled={!canScrollLeft}
+        >
+          <Icon name="chevron-left" size={30} color={themeColors.text.primary} />
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.arrow,
+            styles.arrowRight,
+            { backgroundColor: themeColors.surface.secondary, opacity: canScrollRight ? 1 : 0.45 },
+          ]}
+          onPress={scrollRight}
+          activeOpacity={0.8}
+          disabled={!canScrollRight}
+        >
+          <Icon name="chevron-right" size={30} color={themeColors.text.primary} />
+        </TouchableOpacity>
       </View>
 
       <StoryModal
@@ -243,7 +248,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 4,
+    marginTop: 10,
     marginBottom: 10,
   },
   storyContainer: {
@@ -254,7 +259,7 @@ const styles = StyleSheet.create({
     minHeight: STORY_HEIGHT,
   },
   scrollContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 0,
     paddingVertical: 0,
   },
   storyItem: {

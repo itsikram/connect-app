@@ -9,3 +9,4 @@ export { GameHeader } from './GameHeader';
 export { GameEndedScreen, IncomingInviteModal, PlayerDock, WinnerModal } from './GameOverlays';
 export { PlayerEditorModal } from './PlayerEditorModal';
 export { PlayerSelectionModal } from './PlayerSelectionModal';
+export { useLudoAudio } from './useLudoAudio';

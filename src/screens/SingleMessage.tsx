@@ -3710,7 +3710,7 @@ const SingleMessage = () => {
                 alignItems: 'center',
                 paddingHorizontal: 16,
                 paddingVertical: 8,
-                paddingTop: Math.max(insets.top, 8),
+                paddingTop: Math.max(insets.top, 8) + 10,
                 backgroundColor: chatTheme.colors.headerBg,
                 borderBottomWidth: 1,
                 borderBottomColor: chatTheme.colors.sentBorder,

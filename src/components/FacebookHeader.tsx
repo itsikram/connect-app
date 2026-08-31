@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, Animated, Dimensions, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
@@ -194,9 +195,11 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
   }, [unreadMessageCount]);
 
   const { translateY } = useHeaderVisibility();
+  const insets = useSafeAreaInsets();
+  const topInset = Platform.OS === 'ios' ? 0 : insets.top;
 
   return (
-    <Animated.View style={[styles.container, { backgroundColor, borderBottomColor: themeColors.border.primary, transform: [{ translateY }] }]}> 
+    <Animated.View style={[styles.container, { backgroundColor, borderBottomColor: themeColors.border.primary, paddingTop: topInset, height: 56 + topInset, transform: [{ translateY }] }]}> 
       <TouchableOpacity style={styles.leftSection} onPress={handleLogoPress} accessibilityRole="button" accessibilityLabel="Go to Home">
         <Logo size="small" />
         <Text style={{ color: themeColors.primary, fontWeight: '700', fontSize: 28, marginLeft: 3, marginTop: 0 }}>Connect</Text>
@@ -257,6 +260,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({ title = 'Connect' }) =>
             { 
               backgroundColor: themeColors.surface.elevated, 
               borderColor: themeColors.border.primary,
+              top: 60 + topInset,
               transform: [
                 {
                   scale: dropdownAnimation.interpolate({

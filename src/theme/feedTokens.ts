@@ -1,0 +1,17 @@
+export const FEED = {
+  postBg: 'rgba(22, 24, 28, 0.96)',
+  postBorder: 'rgba(255, 255, 255, 0.08)',
+  postText: '#f2f4f7',
+  postTextMuted: '#a8b0bb',
+  postAccent: '#00d4ff',
+  postAccentSoft: 'rgba(0, 212, 255, 0.14)',
+  postDivider: 'rgba(255, 255, 255, 0.07)',
+  postHover: 'rgba(255, 255, 255, 0.06)',
+  postRadius: 12,
+  postPadX: 12,
+  headerPadX: 5,
+  headerPadY: 10,
+  composerBg: 'rgba(36, 37, 38, 0.98)',
+  composerField: '#393a3a',
+  cardBorder: 'rgba(255, 255, 255, 0.08)',
+};

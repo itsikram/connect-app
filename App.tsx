@@ -11,7 +11,7 @@ import { navigationRef, markNavigationReady } from './src/lib/navigationService'
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar, useColorScheme, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import * as MediaLibrary from 'expo-media-library';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -281,15 +281,15 @@ function TabBarWithLudoCheck(props: any) {
   
   const tabs = props.user ? [
     // Order to match web header: Home, Friends, Videos, Message, Downloads/Menu
-    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: true, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Friends', icon: 'user-friends', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: true, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: true, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: true, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
-    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true, iconSet: 'fa5', faStyle: 'solid' },
+    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Friends', icon: 'user-friends', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
+    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
   ] : [
     { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50' },
     { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3' },
-    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: true, iconSet: 'fa5', faStyle: 'solid' },
+    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
   ];
   return <ProfessionalTabBar {...props} tabs={tabs} />;
 }
@@ -1102,6 +1102,7 @@ function App() {
   return (
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
+        <SafeAreaProvider>
         <Provider store={store}>
           <PaperProvider>
             <ThemeProvider>
@@ -1129,6 +1130,7 @@ function App() {
             </ThemeProvider>
           </PaperProvider>
         </Provider>
+        </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>
   );

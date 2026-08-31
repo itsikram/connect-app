@@ -39,12 +39,12 @@ const StorySliderSkeleton: React.FC<StorySliderSkeletonProps> = ({ count = 7 }) 
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 4,
+    marginTop: 10,
     marginBottom: 10,
     minHeight: STORY_HEIGHT,
   },
   scrollContent: {
-    paddingHorizontal: 10,
+    paddingHorizontal: 0,
   },
   storyItem: {
     width: STORY_WIDTH,

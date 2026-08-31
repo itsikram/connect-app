@@ -28,7 +28,7 @@ const getDevServerUrl = (): string => {
   // return "http://192.168.0.100:4000";
   // return "https://connect-server-y1ku.onrender.com";
 
-  return "http://192.168.67.1:4000";
+  // return "http://192.168.67.1:4000";
   return "http://192.168.1.102:4000";
 
   if (Platform.OS === 'android') {

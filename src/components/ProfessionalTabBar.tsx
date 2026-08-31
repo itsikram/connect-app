@@ -1,38 +1,27 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
-  TouchableOpacity,
+  Pressable,
   StyleSheet,
   Animated,
-  Dimensions,
-  Platform,
-  Vibration,
 } from 'react-native';
-import { useSafeAreaInsets, SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import { TAB_BAR_BOTTOM_OFFSET } from './tabBarLayout';
 import { useTheme } from '../contexts/ThemeContext';
-import AnimatedTabIcon from './AnimatedIcons/AnimatedTabIcon';
-import HomeIconComponent from './AnimatedIcons/HomeIconComponent';
-import FriendsIconComponent from './AnimatedIcons/FriendsIconComponent';
-import VideosIconComponent from './AnimatedIcons/VideosIconComponent';
-import MessageIconComponent from './AnimatedIcons/MessageIconComponent';
-import MenuIconComponent from './AnimatedIcons/MenuIconComponent';
-
-const { width } = Dimensions.get('window');
 
 interface TabItem {
   name: string;
-  icon: string; // Material icon name by default
+  icon: string;
   label: string;
   component: any;
   badge?: number;
   haptic?: boolean;
   color?: string;
-  iconSet?: 'material' | 'fa5'; // choose icon set
-  faStyle?: 'solid' | 'regular'; // for FontAwesome5 (fas/fal-like)
+  iconSet?: 'material' | 'fa5';
+  faStyle?: 'solid' | 'regular';
 }
 
 interface ProfessionalTabBarProps {
@@ -42,454 +31,212 @@ interface ProfessionalTabBarProps {
   tabs: TabItem[];
 }
 
+const ICON_SIZE = 22;
+
 const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   state,
   descriptors,
   navigation,
   tabs,
 }) => {
-  const { colors: themeColors, isDarkMode } = useTheme();
+  const { colors: themeColors } = useTheme();
   const insets = useSafeAreaInsets();
-  const [isAnimating, setIsAnimating] = useState(false);
-  const UNIFORM_TAB_SCALE = 1.25;
-  const UNIFORM_TRANSLATE_Y = -10;
-  const UNIFORM_ICON_SCALE = 1.15;
-  
-  const animatedValues = useRef(
-    tabs.map(() => new Animated.Value(0))
-  ).current;
-  const indicatorPosition = useRef(new Animated.Value(0)).current;
-  const rippleAnimations = useRef(
-    tabs.map(() => new Animated.Value(0))
-  ).current;
-  const glowAnimations = useRef(
-    tabs.map(() => new Animated.Value(0))
-  ).current;
-
-  // Icon mapping for animated SVG icons
-  const getAnimatedIcon = (tabName: string) => {
-    switch (tabName) {
-      case 'Home':
-        return HomeIconComponent;
-      case 'Friends':
-        return FriendsIconComponent;
-      case 'Videos':
-        return VideosIconComponent;
-      case 'Message':
-        return MessageIconComponent;
-      case 'Menu':
-        return MenuIconComponent;
-      default:
-        return null;
-    }
-  };
+  const activeAnims = useRef(tabs.map(() => new Animated.Value(0))).current;
 
   useEffect(() => {
-    // Animate the active tab
     tabs.forEach((_, index) => {
-      const isActive = state.index === index;
-      Animated.spring(animatedValues[index], {
-        toValue: isActive ? 1 : 0,
+      Animated.timing(activeAnims[index], {
+        toValue: state.index === index ? 1 : 0,
+        duration: 180,
         useNativeDriver: true,
-        tension: 300,
-        friction: 20,
       }).start();
-
-      // Glow animation for active tab
-      if (isActive) {
-        Animated.loop(
-          Animated.sequence([
-            Animated.timing(glowAnimations[index], {
-              toValue: 1,
-              duration: 2000,
-              useNativeDriver: true,
-            }),
-            Animated.timing(glowAnimations[index], {
-              toValue: 0,
-              duration: 2000,
-              useNativeDriver: true,
-            }),
-          ])
-        ).start();
-      } else {
-        glowAnimations[index].setValue(0);
-      }
     });
-
-    // Animate indicator position
-    Animated.spring(indicatorPosition, {
-      toValue: state.index * (width / tabs.length),
-      useNativeDriver: true,
-      tension: 300,
-      friction: 20,
-    }).start();
-  }, [state.index]);
+  }, [state.index, tabs, activeAnims]);
 
   const handleTabPress = (tab: TabItem, index: number) => {
-    if (isAnimating) return;
-    
-    setIsAnimating(true);
-    
-    // Haptic feedback
-    if (tab.haptic !== false && Platform.OS === 'ios') {
-      Vibration.vibrate(0.5);
-    }
-
-    // Ripple animation
-    Animated.sequence([
-      Animated.timing(rippleAnimations[index], {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(rippleAnimations[index], {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
     const event = navigation.emit({
       type: 'tabPress',
       target: state.routes[index].key,
       canPreventDefault: true,
     });
 
-    if (!event.defaultPrevented) {
-      // Map of tab names to their main screens
-      const mainScreens: { [key: string]: string } = {
-        'Home': 'HomeMain',
-        'Friends': 'FriendsMain',
-        'Videos': 'VideosMain',
-        'Message': 'MessageList',
-        'Menu': 'MenuHome',
-      };
+    if (event.defaultPrevented) return;
 
-      const mainScreen = mainScreens[tab.name];
-      if (mainScreen) {
-        // Always navigate to the main screen of the tab
-        navigation.navigate(tab.name, { screen: mainScreen });
-      } else if (state.index !== index) {
-        // Fallback to default navigation for tabs without main screen mapping
-        navigation.navigate(state.routes[index].name);
-      }
+    const mainScreens: { [key: string]: string } = {
+      Home: 'HomeMain',
+      Friends: 'FriendsMain',
+      Videos: 'VideosMain',
+      Message: 'MessageList',
+      Menu: 'MenuHome',
+    };
+
+    const mainScreen = mainScreens[tab.name];
+    if (mainScreen) {
+      navigation.navigate(tab.name, { screen: mainScreen });
+    } else if (state.index !== index) {
+      navigation.navigate(state.routes[index].name);
     }
-
-    // Reset animation flag
-    setTimeout(() => setIsAnimating(false), 400);
   };
 
   const renderTab = (tab: TabItem, index: number) => {
     const isActive = state.index === index;
-    const { options } = descriptors[state.routes[index].key];
-    const label = options.tabBarLabel !== undefined
-      ? options.tabBarLabel
-      : options.title !== undefined
-      ? options.title
-      : tab.label;
+    const { options } = descriptors[state.routes[index].key] || {};
+    const label =
+      options?.tabBarLabel !== undefined
+        ? options.tabBarLabel
+        : options?.title !== undefined
+          ? options.title
+          : tab.label;
 
-    const scale = UNIFORM_TAB_SCALE;
+    const iconColor = isActive ? themeColors.primary : themeColors.text.tertiary;
+    const useSolid = isActive || tab.faStyle === 'solid';
+    const badgeCount = Number(tab.badge) || 0;
 
-    const translateY = UNIFORM_TRANSLATE_Y;
-
-    const iconScale = UNIFORM_ICON_SCALE;
-
-    const labelOpacity = animatedValues[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 1],
-    });
-
-    const backgroundColor = animatedValues[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: ['transparent', themeColors.primary + '18'],
-    });
-
-    const rippleScale = rippleAnimations[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 2],
-    });
-
-    const rippleOpacity = rippleAnimations[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [0.4, 0],
-    });
-
-    const glowOpacity = glowAnimations[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [0, 0.3],
-    });
-
-    const glowScale = glowAnimations[index].interpolate({
-      inputRange: [0, 1],
-      outputRange: [1, 1.2],
-    });
+    const pillOpacity = activeAnims[index];
 
     return (
-      <TouchableOpacity
+      <Pressable
         key={tab.name}
         style={styles.tabItem}
         onPress={() => handleTabPress(tab, index)}
-        activeOpacity={0.95}
+        android_ripple={{ color: themeColors.primary + '22', borderless: true, radius: 36 }}
+        accessibilityRole="tab"
+        accessibilityState={{ selected: isActive }}
+        accessibilityLabel={String(label)}
       >
-        <Animated.View
-          style={[
-            styles.tabContent,
-            {
-              transform: [{ scale }, { translateY }],
-              backgroundColor,
-            },
-          ]}
-        >
-          {/* Icon container - rendered above background effects */}
-          <View style={styles.iconContainer}>
-            {getAnimatedIcon(tab.name) ? (
-              <AnimatedTabIcon
-                iconSource={getAnimatedIcon(tab.name)}
-                size={24}
-                isActive={isActive}
-                animatedValue={animatedValues[index]}
-              />
-            ) : (
-              <Animated.View
-                style={[
-                  styles.iconWrapper,
-                  {
-                    backgroundColor: isActive ? themeColors.primary + '30' : 'transparent',
-                    transform: [{ scale: iconScale }],
-                  },
-                ]}
-              >
-                {tab.iconSet === 'fa5' ? (
-                  <FAIcon
-                    name={tab.icon}
-                    size={20}
-                    color={isActive ? themeColors.primary : themeColors.text.secondary}
-                    solid={tab.faStyle === 'solid'}
-                  />
-                ) : (
-                  <MaterialIcon
-                    name={tab.icon}
-                    size={24}
-                    color={isActive ? themeColors.primary : themeColors.text.secondary}
-                  />
-                )}
-              </Animated.View>
-            )}
-          </View>
-
-          {/* Glow effect for active tab - rendered behind icon */}
-          {isActive && (
+        <View style={styles.tabInner}>
+          <View style={styles.iconHit}>
             <Animated.View
+              pointerEvents="none"
               style={[
-                styles.glow,
+                styles.activePill,
                 {
-                  opacity: glowOpacity,
-                  transform: [{ scale: glowScale }],
-                  backgroundColor: themeColors.primary,
+                  backgroundColor: themeColors.primary + '22',
+                  opacity: pillOpacity,
                 },
               ]}
             />
-          )}
-
-          {/* Ripple effect - rendered behind icon */}
-          <Animated.View
+            {tab.iconSet === 'fa5' ? (
+              <FAIcon
+                name={tab.icon}
+                size={ICON_SIZE}
+                color={iconColor}
+                solid={useSolid}
+              />
+            ) : (
+              <MaterialIcon
+                name={tab.icon}
+                size={ICON_SIZE + 2}
+                color={iconColor}
+              />
+            )}
+            {badgeCount > 0 && (
+              <View style={[styles.badge, { backgroundColor: themeColors.status.error }]}>
+                <Text style={styles.badgeText}>
+                  {badgeCount > 99 ? '99+' : badgeCount}
+                </Text>
+              </View>
+            )}
+          </View>
+          <Text
+            numberOfLines={1}
             style={[
-              styles.ripple,
+              styles.tabLabel,
               {
-                transform: [{ scale: rippleScale }],
-                opacity: rippleOpacity,
-                backgroundColor: themeColors.primary,
+                color: iconColor,
+                fontWeight: isActive ? '700' : '500',
               },
             ]}
-          />
-        </Animated.View>
-      </TouchableOpacity>
+          >
+            {label}
+          </Text>
+        </View>
+      </Pressable>
     );
   };
 
   return (
-    <SafeAreaView 
-      style={[styles.container, { backgroundColor: themeColors.surface.header }]}
-      edges={[ 'left', 'right']}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: themeColors.surface.header,
+          borderTopColor: themeColors.border.primary,
+          paddingBottom: Math.max(insets.bottom, 8),
+        },
+      ]}
     >
-      {/* Top gradient border - Removed for cleaner look */}
-      {/* <View style={styles.topGradientContainer}>
-        <View
-          style={[
-            styles.topGradient,
-            {
-              backgroundColor: themeColors.primary,
-              opacity: 0.3,
-            },
-          ]}
-        />
-      </View> */}
-
-      {/* Animated indicator with glow effect - Removed for cleaner look */}
-      {/* <Animated.View
-        style={[
-          styles.indicator,
-          {
-            backgroundColor: themeColors.primary,
-            transform: [
-              {
-                translateX: indicatorPosition,
-              },
-            ],
-            shadowColor: themeColors.primary,
-          },
-        ]}
-      /> */}
-
-      {/* Tabs container */}
       <View style={styles.tabsContainer}>
         {tabs.map((tab, index) => renderTab(tab, index))}
       </View>
-    </SafeAreaView>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    bottom: TAB_BAR_BOTTOM_OFFSET,
+    bottom: -50,
     left: 0,
     right: 0,
-    borderTopLeftRadius: 0,
-    borderTopRightRadius: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: -8,
-    },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 25,
-  },
-  topGradientContainer: {
-    height: 3,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    overflow: 'hidden',
-  },
-  topGradient: {
-    flex: 1,
-    borderRadius: 2,
-  },
-  indicator: {
-    position: 'absolute',
-    top: 0,
-    width: width / 5, // Assuming 5 tabs
-    height: 5,
-    borderRadius: 2.5,
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
-    shadowOpacity: 0.5,
-    shadowRadius: 12,
-    elevation: 12,
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 16,
   },
   tabsContainer: {
     flexDirection: 'row',
-    paddingHorizontal: 16,
-    paddingTop: 9,
-    paddingBottom: 0,
-    justifyContent: 'center',
-
+    alignItems: 'stretch',
+    paddingHorizontal: 4,
+    paddingTop: 6,
   },
   tabItem: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 10,
-    paddingBottom: 5,
-    position: 'relative',
-    minHeight: 55,
+    minHeight: 52,
   },
-  tabContent: {
+  tabInner: {
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 20,
-    borderRadius: 18,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    paddingBottom: 0,
-    marginVertical: 6,
-    position: 'relative',
-    overflow: 'hidden',
+    gap: 4,
   },
-  glow: {
-    position: 'absolute',
-    top: -6,
-    left: -6,
-    right: -6,
-    bottom: -6,
-    borderRadius: 24,
-    shadowOffset: {
-      width: 0,
-      height: 0,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+  iconHit: {
+    width: 44,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  ripple: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    borderRadius: 24,
-  },
-  iconContainer: {
-    position: 'relative',
-    marginBottom: 0,
-  },
-  iconWrapper: {
-    width: 30,
-    height: 30,
+  activePill: {
+    ...StyleSheet.absoluteFillObject,
     borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  iconInner: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
   },
   badge: {
     position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    top: -2,
+    right: 2,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 6,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 6,
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    borderColor: '#1E1F20',
   },
   badgeText: {
-    fontSize: 10,
+    color: '#FFFFFF',
+    fontSize: 9,
     fontWeight: '800',
     textAlign: 'center',
+    lineHeight: 12,
   },
   tabLabel: {
     fontSize: 11,
+    letterSpacing: 0.2,
     textAlign: 'center',
-    marginTop: 2,
-    letterSpacing: 0.3,
   },
 });
 

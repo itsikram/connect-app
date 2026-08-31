@@ -1,4 +1,4 @@
-import React, { useState, useContext, useCallback } from 'react';
+import React, { useState, useContext, useCallback, useEffect } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, FlatList } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -6,13 +6,15 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
 import { useNavigation } from '@react-navigation/native';
 import api from '../lib/api';
-// Modern components
-import { ModernCard, ModernButton, ModernInput } from './modern';
+import { ModernButton } from './modern';
 import { useModernToast } from '../contexts/ModernToastContext';
 import ProfileImage from './ProfileImage';
+import { FEED } from '../theme/feedTokens';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
+  seedCaption?: string;
+  seedNonce?: number;
 };
 type PostData = {
   caption: string;
@@ -23,7 +25,7 @@ type PostData = {
   audience: number;
 };
 
-const CreatePost = ({ onPostCreated }: CreatePostProps) => {
+const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) => {
   const { user } = useContext(AuthContext);
   const { colors: themeColors, isDarkMode } = useTheme();
   const { showToast } = useModernToast();
@@ -61,7 +63,12 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
     { label: 'Only Me', value: 3, icon: 'lock' },
   ];
 
-  const openModal = () => setModalVisible(true);
+  const openModal = (prefill?: string) => {
+    if (typeof prefill === 'string') {
+      setPostData((prev) => ({ ...prev, caption: prefill }));
+    }
+    setModalVisible(true);
+  };
   const closeModal = () => {
     setModalVisible(false);
     setPostData({ caption: '', urls: null, type: null, location: '', feelings: '', audience: 3 });
@@ -83,6 +90,11 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
     handleAudienceChange(value);
     closeAudiencePicker();
   };
+
+  useEffect(() => {
+    if (!seedNonce) return;
+    openModal(seedCaption || '');
+  }, [seedNonce]);
 
   const pickMedia = async (mediaType: 'image' | 'video') => {
     try {
@@ -213,7 +225,7 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
   const borderColor = themeColors.border.primary;
 
   return (
-    <ModernCard variant="elevated" padding="medium" margin="small">
+    <View style={styles.composerCard}>
       <View style={styles.topRow}>
         <View style={styles.profilePicWrapper}>
           {user?.profile?.profilePic ? (
@@ -222,32 +234,31 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
             <Image source={require('../assets/images/logo.png')} style={styles.profilePic} />
           )}
         </View>
-        <TouchableOpacity 
-          style={[styles.inputWrapper, { backgroundColor: inputBg, borderColor: borderColor }]} 
-          onPress={openModal}
+        <TouchableOpacity
+          style={styles.inputWrapper}
+          onPress={() => openModal()}
           activeOpacity={0.7}
         >
-          <Text style={[styles.inputPlaceholder, { color: textColor }]}>{textInputPlaceholder}</Text>
+          <Text style={styles.inputPlaceholder} numberOfLines={1}>{textInputPlaceholder}</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.bottomRow}>
-        <ModernButton
-          title="Photo/Video"
+        <TouchableOpacity
+          style={styles.composerAction}
           onPress={() => { openModal(); pickMedia('image'); }}
-          variant="modern"
-          size="small"
-          icon={<Icon name="photo-camera" size={20} color={themeColors.primary} />}
-          style={{ flex: 1, marginRight: 8 }}
-        />
-
-        <ModernButton
-          title="Live Video"
+          activeOpacity={0.75}
+        >
+          <Icon name="photo-library" size={22} color="#45bd62" />
+          <Text style={styles.composerActionText}>Photo/video</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.composerAction}
           onPress={() => { openModal(); pickMedia('video'); }}
-          variant="modern"
-          size="small"
-          icon={<Icon name="videocam" size={20} color={themeColors.primary} />}
-          style={{ flex: 1 }}
-        />
+          activeOpacity={0.75}
+        >
+          <Icon name="videocam" size={22} color="#f3425f" />
+          <Text style={styles.composerActionText}>Live Video</Text>
+        </TouchableOpacity>
       </View>
 
       <Modal
@@ -427,11 +438,20 @@ const CreatePost = ({ onPostCreated }: CreatePostProps) => {
           </View>
         </TouchableOpacity>
       </Modal>
-    </ModernCard>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
+  composerCard: {
+    backgroundColor: FEED.composerBg,
+    padding: 10,
+    borderRadius: 12,
+    marginTop: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: FEED.cardBorder,
+  },
   container: {
     backgroundColor: '#fff',
     padding: 16,
@@ -446,45 +466,54 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 2,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: FEED.postDivider,
   },
   profilePicWrapper: {
     marginRight: 12,
   },
   profilePic: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#E5E5EA',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: FEED.composerField,
   },
   inputWrapper: {
     flex: 1,
-    backgroundColor: '#F8F9FA',
-    borderRadius: 24,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
+    backgroundColor: FEED.composerField,
+    borderRadius: 25,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: '#F1F3F4',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
+    borderColor: FEED.postBorder,
+    minHeight: 40,
   },
   inputPlaceholder: {
-    color: '#6C757D',
-    fontSize: 15,
+    color: FEED.postTextMuted,
+    fontSize: 14,
     fontWeight: '400',
   },
   bottomRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 16,
-    gap: 12,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#F8F9FA',
+    justifyContent: 'center',
+    marginTop: 10,
+    gap: 8,
+  },
+  composerAction: {
+    width: '48%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  composerActionText: {
+    marginTop: 4,
+    color: FEED.postText,
+    fontWeight: '600',
+    fontSize: 12,
   },
   button: {
     flexDirection: 'row',

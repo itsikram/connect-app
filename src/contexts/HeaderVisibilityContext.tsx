@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useMemo, useRef } from 'react';
-import { Animated, Easing } from 'react-native';
+import { Animated, Easing, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type HeaderVisibilityContextType = {
   translateY: Animated.Value;
@@ -9,9 +10,14 @@ type HeaderVisibilityContextType = {
   handleScroll: (offsetY: number) => void;
 };
 
+const HEADER_BODY_HEIGHT = 56;
+
 const HeaderVisibilityContext = createContext<HeaderVisibilityContextType | undefined>(undefined);
 
 export const HeaderVisibilityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const insets = useSafeAreaInsets();
+  const topInset = Platform.OS === 'ios' ? 0 : insets.top;
+  const headerHeight = HEADER_BODY_HEIGHT + topInset;
   const translateY = useRef(new Animated.Value(0)).current;
   const lastOffsetRef = useRef(0);
 
@@ -24,12 +30,12 @@ export const HeaderVisibilityProvider: React.FC<{ children: React.ReactNode }> =
     }).start();
   };
 
-  const hide = () => animateTo(-56);
+  const hide = () => animateTo(-headerHeight);
   const show = () => animateTo(0);
 
   const spacerHeight = translateY.interpolate({
-    inputRange: [-56, 0],
-    outputRange: [0, 56],
+    inputRange: [-headerHeight, 0],
+    outputRange: [0, headerHeight],
     extrapolate: 'clamp',
   });
 

@@ -11,7 +11,10 @@ import DebugInfo from '../components/DebugInfo';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import StorySlider from '../components/StorySlider';
 import PostSkeleton from '../components/skeleton/PostSkeleton';
+import FeedBoostCards from '../components/FeedBoostCards';
 import CacheManager from '../utils/cacheManager';
+import { TAB_BAR_HEIGHT } from '../components/tabBarLayout';
+import { FEED } from '../theme/feedTokens';
 
 const INITIAL_POSTS_TO_RENDER = 5;
 const MAX_BATCH_SIZE = 5;
@@ -41,6 +44,7 @@ const Home = () => {
     const [showNewPostsNotification, setShowNewPostsNotification] = useState(false);
     const [newPostsCount, setNewPostsCount] = useState(0);
     const [storiesRefreshKey, setStoriesRefreshKey] = useState(0);
+    const [composerSeed, setComposerSeed] = useState({ caption: '', nonce: 0 });
 
     const isFocused = useIsFocused();
     const { colors: themeColors, isDarkMode } = useTheme();
@@ -178,6 +182,10 @@ const Home = () => {
         CacheManager.prependCachedPost(post);
     }, []);
 
+    const handleOpenComposer = useCallback((caption: string) => {
+        setComposerSeed({ caption, nonce: Date.now() });
+    }, []);
+
     const handlePostDeleted = useCallback((postId: string) => {
         setPosts((prev: any[]) => prev.filter((post) => post._id !== postId));
         CacheManager.removeCachedPost(postId);
@@ -198,41 +206,52 @@ const Home = () => {
     const listHeaderComponent = useMemo(
         () => (
             <View>
-                <CreatePost onPostCreated={handlePostCreated} />
-                <StorySlider refreshKey={storiesRefreshKey} />
+                <CreatePost
+                    onPostCreated={handlePostCreated}
+                    seedCaption={composerSeed.caption}
+                    seedNonce={composerSeed.nonce}
+                />
                 {showNewPostsNotification && (
                     <View
                         style={{
-                            marginHorizontal: 10,
+                            marginHorizontal: 0,
                             marginBottom: 10,
                             paddingHorizontal: 14,
                             paddingVertical: 12,
                             borderRadius: 12,
-                            backgroundColor: themeColors.primary + '18',
+                            backgroundColor: 'rgba(0, 212, 255, 0.14)',
                             borderWidth: 1,
-                            borderColor: themeColors.primary + '55',
+                            borderColor: 'rgba(0, 212, 255, 0.35)',
                             flexDirection: 'row',
                             alignItems: 'center',
                         }}
                     >
-                        <Text style={{ flex: 1, color: textColor, fontSize: 14, fontWeight: '600' }}>
+                        <Text style={{ flex: 1, color: FEED.postText, fontSize: 14, fontWeight: '600' }}>
                             🆕 New Posts! {newPostsCount} new {newPostsCount === 1 ? 'post' : 'posts'} available
                         </Text>
                         <TouchableOpacity onPress={() => setShowNewPostsNotification(false)} hitSlop={8}>
-                            <Icon name="close" size={18} color={mutedText} />
+                            <Icon name="close" size={18} color={FEED.postTextMuted} />
                         </TouchableOpacity>
                     </View>
                 )}
+                <StorySlider refreshKey={storiesRefreshKey} />
+                <FeedBoostCards
+                    feedLoaded={feedLoaded}
+                    postCount={uniquePosts.length}
+                    onPostPrompt={handleOpenComposer}
+                />
             </View>
         ),
         [
             handlePostCreated,
+            composerSeed.caption,
+            composerSeed.nonce,
             storiesRefreshKey,
             showNewPostsNotification,
             newPostsCount,
-            themeColors.primary,
-            textColor,
-            mutedText,
+            feedLoaded,
+            uniquePosts.length,
+            handleOpenComposer,
         ],
     );
 
@@ -318,7 +337,7 @@ const Home = () => {
                     />
                 }
                 style={{ backgroundColor }}
-                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: 80 }}
+                contentContainerStyle={{ backgroundColor, flexGrow: 1, paddingBottom: TAB_BAR_HEIGHT + 16 }}
                 initialNumToRender={INITIAL_POSTS_TO_RENDER}
                 maxToRenderPerBatch={MAX_BATCH_SIZE}
                 windowSize={LIST_WINDOW_SIZE}

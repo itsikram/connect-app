@@ -1,5 +1,5 @@
 import React, { useState, useEffect, memo } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Modal, TextInput, KeyboardAvoidingView, Platform, ActivityIndicator, Dimensions } from 'react-native';
 import Svg, { Circle as SvgCircle, Path as SvgPath, SvgXml } from 'react-native-svg';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
@@ -12,6 +12,10 @@ import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
 import ProfileImage from './ProfileImage';
 import config from '../lib/config';
+import { FEED } from '../theme/feedTokens';
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+const POST_IMAGE_MAX_HEIGHT = 620;
 // Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
@@ -55,17 +59,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
   const [isPostingComment, setIsPostingComment] = useState<boolean>(false);
   const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
+  const [imageHeight, setImageHeight] = useState<number>(Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH));
 
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-  const { colors: themeColors, isDarkMode } = useTheme();
-  const cardBg = themeColors.surface.primary;
-
-  // Theme colors
-  const textColor = themeColors.text.primary;
-  const subTextColor = themeColors.text.secondary;
-  const borderColor = themeColors.border.primary;
-  const inputBg = themeColors.surface.secondary;
-  const inputText = themeColors.text.primary;
+  const { colors: themeColors } = useTheme();
+  const cardBg = FEED.postBg;
+  const textColor = FEED.postText;
+  const subTextColor = FEED.postTextMuted;
+  const borderColor = FEED.postBorder;
+  const inputBg = 'rgba(255, 255, 255, 0.05)';
+  const inputText = FEED.postText;
+  const accentColor = FEED.postAccent;
 
   const isAuth = post.author?._id === myProfileId;
   const postType = post.type || type || 'post';
@@ -81,7 +85,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
   // Use vector icons for consistent alignment across footer buttons
   const reactionIconMap: Record<string, { name: string; color: string }> = {
-    like: { name: 'thumb-up', color: themeColors.primary },
+    like: { name: 'thumb-up', color: accentColor },
     love: { name: 'favorite', color: '#FF3B5C' },
     haha: { name: 'emoji-emotions', color: '#F5C84B' },
     sad: { name: 'sentiment-dissatisfied', color: '#6A3318' },
@@ -155,8 +159,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       <SvgPath fill="#2A3755" d="M6.213 4.144c.263.188.502.455.41.788-.071.254-.194.369-.422.371-.78.011-1.708.255-2.506.612-.065.029-.197.088-.332.085-.124-.003-.251-.058-.327-.237-.067-.157-.073-.388.276-.598.545-.33 1.257-.48 1.909-.604a7.077 7.077 0 00-1.315-.768c-.427-.194-.38-.457-.323-.6.127-.317.609-.196 1.078.026a9 9 0 011.552.925zm3.577 0a8.953 8.953 0 011.55-.925c.47-.222.95-.343 1.078-.026.057.143.104.406-.323.6a7.029 7.029 0 00-1.313.768c.65.123 1.363.274 1.907.604.349.21.342.44.276.598-.077.18-.203.234-.327.237-.135.003-.267-.056-.332-.085-.797-.357-1.725-.6-2.504-.612-.228-.002-.351-.117-.422-.37-.091-.333.147-.6.41-.788z" />
     </Svg>
   );
-
-  const capitalize = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
   // Safety check for required post data
   if (!post._id || !post.author) {
@@ -322,6 +324,15 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
     setShowCommentBox((prev) => !prev);
   };
 
+  const handlePostImageLoad = (event: any) => {
+    const source = event?.nativeEvent?.source;
+    const width = source?.width;
+    const height = source?.height;
+    if (!width || !height) return;
+    const scaled = (SCREEN_WIDTH / width) * height;
+    setImageHeight(Math.min(POST_IMAGE_MAX_HEIGHT, Math.max(180, scaled)));
+  };
+
   // Handle posting a comment
   const handlePostComment = async () => {
     if (!commentText.trim() || isPostingComment) return;
@@ -426,8 +437,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
       <View style={styles.header}>
         {postType === 'profilePic' && (
           <View style={styles.reasonRow}>
-            <View style={[styles.reasonBadge, { backgroundColor: themeColors.primary + '24' }]}>
-              <Icon name="photo-camera" size={12} color={themeColors.primary} />
+            <View style={[styles.reasonBadge, { backgroundColor: FEED.postAccentSoft }]}>
+              <Icon name="photo-camera" size={12} color={accentColor} />
               <Text style={[styles.reasonBadgeText, { color: textColor }]}>Updated profile picture</Text>
             </View>
           </View>
@@ -440,7 +451,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               }
             }}
           >
-            <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={42} />
+            <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={40} />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <TouchableOpacity
@@ -655,17 +666,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           >
             <Image
               source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
-              style={postType === 'profilePic' ? styles.postProfilePic : styles.postImage}
+              style={postType === 'profilePic' ? styles.postProfilePic : [styles.postImage, { height: imageHeight }]}
+              resizeMode="cover"
               onError={() => {
                 setImageLoadError(true);
               }}
+              onLoad={handlePostImageLoad}
               onLoadStart={() => setImageLoadError(false)}
             />
           </TouchableOpacity>
         )}
       </View>
       <View style={styles.footer}>
-        <View style={[styles.countsRow, { borderBottomColor: borderColor }]}>
+        <View style={[styles.countsRow, { borderBottomColor: FEED.postDivider }]}>
           <TouchableOpacity style={styles.reactsCountLeft} onPress={openSinglePost} activeOpacity={0.7}>
             <View style={styles.reactionIconsStack}>
               {placedReacts.slice(0, 3).map((t, idx) => (
@@ -691,7 +704,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             </TouchableOpacity>
           </View>
         </View>
-        <View style={[styles.actionBar, { borderBottomColor: borderColor }]}>
+        <View style={[styles.actionBar, { borderBottomColor: FEED.postDivider }]}>
           <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1, position: 'relative' }}>
             <TouchableOpacity
               onPress={handleLikePress}
@@ -700,19 +713,13 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
               style={[styles.actionButton, styles.actionBarItem]}
             >
               {reactType ? (
-                <>
-                  <Icon
-                    name={(reactionIconMap[reactType] && reactionIconMap[reactType].name) || 'thumb-up'}
-                    size={18}
-                    color={(reactionIconMap[reactType] && reactionIconMap[reactType].color) || themeColors.primary}
-                  />
-                  <Text style={[styles.actionLabel, { color: themeColors.primary }]}>{capitalize(reactType)}</Text>
-                </>
+                <Icon
+                  name={(reactionIconMap[reactType] && reactionIconMap[reactType].name) || 'thumb-up'}
+                  size={18}
+                  color={(reactionIconMap[reactType] && reactionIconMap[reactType].color) || accentColor}
+                />
               ) : (
-                <>
-                  <Icon name="thumb-up-off-alt" size={18} color={subTextColor} />
-                  <Text style={[styles.actionLabel, { color: subTextColor }]}>Like</Text>
-                </>
+                <Icon name="thumb-up-off-alt" size={18} color={subTextColor} />
               )}
             </TouchableOpacity>
             {showReactions && (
@@ -734,46 +741,48 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
           </View>
           <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem]}>
             <Icon name="chat-bubble-outline" size={18} color={subTextColor} />
-            <Text style={[styles.actionLabel, { color: subTextColor }]}>Comment</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
             <Icon name="share" size={18} color={subTextColor} />
-            <Text style={[styles.actionLabel, { color: subTextColor }]}>Share</Text>
           </TouchableOpacity>
+        </View>
+        <View style={styles.commentBoxContainer}>
+          <View style={styles.commentInputRow}>
+            <UserPP image={myProfile?.profilePic || default_pp_src} isActive={false} size={34} />
+            <TextInput
+              style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingComment ? { opacity: 0.6 } : null]}
+              placeholder="Write a comment..."
+              placeholderTextColor={subTextColor}
+              value={commentText}
+              onChangeText={setCommentText}
+              editable={!isPostingComment}
+              onFocus={() => setShowCommentBox(true)}
+              returnKeyType="send"
+              onSubmitEditing={handlePostComment}
+            />
+            <TouchableOpacity
+              style={[styles.commentPostBtn, { backgroundColor: accentColor }, isPostingComment ? { opacity: 0.7 } : null]}
+              onPress={handlePostComment}
+              disabled={isPostingComment}
+            >
+              {isPostingComment ? (
+                <ActivityIndicator size="small" color="#04222a" />
+              ) : (
+                <Icon name="send" size={16} color="#04222a" />
+              )}
+            </TouchableOpacity>
+          </View>
+          {isPostingComment && (
+            <View style={styles.inlineStatusRow}>
+              <ActivityIndicator size="small" color={accentColor} style={{ marginRight: 8 }} />
+              <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Posting comment…</Text>
+            </View>
+          )}
         </View>
         {showCommentBox && (
           <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-            style={[styles.commentBoxContainer, { borderTopColor: borderColor }]}
           >
-            <View style={styles.commentInputRow}>
-              <UserPP image={myProfile?.profilePic || default_pp_src} isActive={false} size={34} />
-              <TextInput
-                style={[styles.commentInput, { backgroundColor: inputBg, color: inputText, borderColor }, isPostingComment ? { opacity: 0.6 } : null]}
-                placeholder="Write a comment..."
-                placeholderTextColor={subTextColor}
-                value={commentText}
-                onChangeText={setCommentText}
-                editable={!isPostingComment}
-              />
-              <TouchableOpacity
-                style={[styles.commentPostBtn, { backgroundColor: themeColors.primary }, isPostingComment ? { opacity: 0.7 } : null]}
-                onPress={handlePostComment}
-                disabled={isPostingComment}
-              >
-                {isPostingComment ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Icon name="send" size={16} color="#fff" />
-                )}
-              </TouchableOpacity>
-            </View>
-            {isPostingComment && (
-              <View style={styles.inlineStatusRow}>
-                <ActivityIndicator size="small" color={themeColors.primary} style={{ marginRight: 8 }} />
-                <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Posting comment…</Text>
-              </View>
-            )}
             <View style={styles.commentsList}>
               {comments.length === 0 ? (
                 <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet.</Text>
@@ -815,14 +824,14 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                             {c.createdAt ? moment(c.createdAt).fromNow() : 'Unknown time'}
                           </Text>
                         </View>
-                        <TouchableOpacity onPress={() => handleReplyPress(c)} style={[styles.replyButton, { backgroundColor: themeColors.primary + '1A', borderColor: themeColors.primary + '4D' }]}>
-                          <Text style={[styles.replyButtonText, { color: themeColors.primary }]}>Reply</Text>
+                        <TouchableOpacity onPress={() => handleReplyPress(c)} style={[styles.replyButton, { backgroundColor: FEED.postAccentSoft, borderColor: accentColor + '4D' }]}>
+                          <Text style={[styles.replyButtonText, { color: accentColor }]}>Reply</Text>
                         </TouchableOpacity>
                       </View>
                     </View>
 
                     {c.replies && c.replies.length > 0 && (
-                      <View style={[styles.repliesContainer, { borderLeftColor: themeColors.primary + '33' }]}>
+                      <View style={[styles.repliesContainer, { borderLeftColor: FEED.postAccentSoft }]}>
                         {c.replies.map((reply: any) => (
                           <View key={reply._id || Math.random()} style={styles.replyItem}>
                             <ProfileImage
@@ -863,7 +872,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             {showReplyBox && replyingTo && (
               <View style={[styles.replyInputContainer, { backgroundColor: inputBg, borderTopColor: borderColor }]}>
                 <View style={styles.replyInputHeader}>
-                  <Text style={[styles.replyingToText, { color: subTextColor, backgroundColor: themeColors.primary + '1A', borderColor: themeColors.primary + '33' }]}>
+                  <Text style={[styles.replyingToText, { color: subTextColor, backgroundColor: FEED.postAccentSoft, borderColor: accentColor + '33' }]}>
                     Replying to {replyingTo.author?.fullName || replyingTo.author?.firstName || 'Unknown'}
                   </Text>
                   <TouchableOpacity onPress={cancelReply} style={[styles.cancelReplyBtn, { backgroundColor: inputBg, borderColor }]}>
@@ -874,12 +883,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                   <TextInput
                     style={[styles.replyInput, { backgroundColor: cardBg, color: inputText, borderColor }, isPostingReply ? { opacity: 0.6 } : null]}
                     placeholder="Write a reply..."
-                    placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
+                    placeholderTextColor={subTextColor}
                     value={replyText}
                     onChangeText={setReplyText}
                     editable={!isPostingReply}
                   />
-                  <TouchableOpacity style={[styles.replyPostBtn, { backgroundColor: themeColors.primary, shadowColor: themeColors.primary }, isPostingReply ? { opacity: 0.7 } : null]} onPress={handlePostReply} disabled={isPostingReply}>
+                  <TouchableOpacity style={[styles.replyPostBtn, { backgroundColor: accentColor, shadowColor: accentColor }, isPostingReply ? { opacity: 0.7 } : null]} onPress={handlePostReply} disabled={isPostingReply}>
                     {isPostingReply ? (
                       <View style={styles.btnContentRow}>
                         <ActivityIndicator size="small" color="#fff" style={{ marginRight: 8 }} />
@@ -892,7 +901,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
                 </View>
                 {isPostingReply && (
                   <View style={styles.inlineStatusRow}>
-                    <ActivityIndicator size="small" color={themeColors.primary} style={{ marginRight: 8 }} />
+                    <ActivityIndicator size="small" color={accentColor} style={{ marginRight: 8 }} />
                     <Text style={[styles.inlineStatusText, { color: subTextColor }]}>Sending reply…</Text>
                   </View>
                 )}
@@ -908,7 +917,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
             <TextInput
               style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
               placeholder="What's on your mind?"
-              placeholderTextColor={isDarkMode ? subTextColor : subTextColor}
+              placeholderTextColor={subTextColor}
               value={shareCap}
               onChangeText={setShareCap}
             />
@@ -927,8 +936,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted }) => {
 
 const styles = StyleSheet.create({
   postContainer: {
-    backgroundColor: 'rgba(22, 24, 28, 0.96)',
-    marginHorizontal: 10,
+    backgroundColor: FEED.postBg,
+    marginHorizontal: 0,
     marginBottom: 10,
     borderRadius: 12,
     padding: 0,
@@ -941,9 +950,9 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   header: {
-    paddingTop: 12,
-    paddingHorizontal: 14,
-    paddingBottom: 8,
+    paddingTop: 10,
+    paddingHorizontal: 5,
+    paddingBottom: 10,
   },
   reasonRow: {
     marginBottom: 10,
@@ -986,8 +995,8 @@ const styles = StyleSheet.create({
   },
   authorName: {
     fontWeight: '600',
-    fontSize: 15,
-    lineHeight: 20,
+    fontSize: 14.4,
+    lineHeight: 19,
   },
   officialBadge: {
     marginLeft: 6,
@@ -1011,7 +1020,7 @@ const styles = StyleSheet.create({
     fontWeight: '400',
   },
   time: {
-    color: '#888',
+    color: FEED.postTextMuted,
     fontSize: 12,
   },
   timeContainer: {
@@ -1033,11 +1042,11 @@ const styles = StyleSheet.create({
     paddingTop: 0,
   },
   caption: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingTop: 2,
     paddingBottom: 12,
-    fontSize: 15.5,
-    lineHeight: 22,
+    fontSize: 15,
+    lineHeight: 21.5,
   },
   attachmentContainer: {
     backgroundColor: 'rgba(0,0,0,0.2)',
@@ -1046,28 +1055,25 @@ const styles = StyleSheet.create({
   attachmentProfilePic: {
     backgroundColor: 'transparent',
     alignItems: 'center',
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingBottom: 14,
   },
   postImage: {
     width: '100%',
-    maxHeight: 520,
-    minHeight: 220,
-    height: 360,
+    maxHeight: POST_IMAGE_MAX_HEIGHT,
     backgroundColor: '#111',
-    resizeMode: 'cover',
   },
   postProfilePic: {
-    width: 280,
-    height: 280,
+    width: Math.min(280, SCREEN_WIDTH - 24),
+    height: Math.min(280, SCREEN_WIDTH - 24),
     maxWidth: '100%',
-    borderRadius: 140,
+    borderRadius: Math.min(140, (SCREEN_WIDTH - 24) / 2),
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.1)',
     marginVertical: 4,
   },
   footer: {
-    paddingHorizontal: 14,
+    paddingHorizontal: 12,
     paddingBottom: 12,
   },
 
@@ -1093,9 +1099,11 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderBottomWidth: 1,
     overflow: 'visible',
+    gap: 4,
   },
   actionBarItem: {
     flex: 1,
+    width: '33%',
     justifyContent: 'center',
     paddingVertical: 9,
     paddingHorizontal: 8,
@@ -1275,6 +1283,9 @@ const styles = StyleSheet.create({
   commentBoxContainer: {
     paddingTop: 10,
   },
+  commentsList: {
+    marginTop: 4,
+  },
   commentInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1305,9 +1316,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  commentsList: {
-    marginTop: 4,
   },
   commentItem: {
     flexDirection: 'row',

@@ -16,7 +16,6 @@ import {
   Animated,
   Easing,
   Image,
-  Vibration,
   ScrollView,
   Share,
 } from 'react-native';
@@ -72,6 +71,7 @@ import {
 } from '../lib/ludo/gameLogic';
 import { PlayerSelectionModal } from '../lib/ludo/PlayerSelectionModal';
 import { PlayerEditorModal } from '../lib/ludo/PlayerEditorModal';
+import { useLudoAudio } from '../lib/ludo/useLudoAudio';
 import type { FriendUser, GameSnapshot, LudoInvite, Player } from '../lib/ludo/types';
 
 const CONNECT_LOGO = require('../assets/images/logo.png');
@@ -122,8 +122,8 @@ const LudoGameSVG = () => {
   const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState<Record<string, string>>({});
   const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState<Record<string, number>>({});
   const [incomingInviteRequest, setIncomingInviteRequest] = useState<LudoInvite | null>(null);
-  const [soundsEnabled, setSoundsEnabled] = useState(true);
   const [diceSpin, setDiceSpin] = useState(0);
+  const { soundsEnabled, playSound, toggleSounds } = useLudoAudio();
   const [showPlayerEditor, setShowPlayerEditor] = useState(false);
   const [editingPlayerIndex, setEditingPlayerIndex] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
@@ -171,16 +171,6 @@ const LudoGameSVG = () => {
   useEffect(() => { playWithComputerRef.current = playWithComputer; }, [playWithComputer]);
   useEffect(() => { gameIdRef.current = gameId; }, [gameId]);
   useEffect(() => { onlineModeRef.current = onlineMode; }, [onlineMode]);
-
-  const playSound = useCallback((type: string) => {
-    if (!soundsEnabled) return;
-    try {
-      if (type === 'capture' || type === 'win') Vibration.vibrate(type === 'win' ? 400 : 80);
-      else Vibration.vibrate(20);
-    } catch {
-      // ignore
-    }
-  }, [soundsEnabled]);
 
   const setDiceValueImmediate = useCallback((value: number) => {
     setDiceValue(value);
@@ -1185,6 +1175,7 @@ const LudoGameSVG = () => {
   };
 
   const confirmPlayerCount = () => {
+    playSound('buttonClick');
     const newOnlineGameId = onlineMode ? newGameDraftIdRef.current || generateGameId() : null;
     if (onlineMode) {
       gameIdRef.current = newOnlineGameId;
@@ -1721,7 +1712,7 @@ const LudoGameSVG = () => {
               players={players}
               currentPlayerIndex={effectiveCurrentPlayer}
               soundsEnabled={soundsEnabled}
-              onToggleSounds={() => setSoundsEnabled((v) => !v)}
+              onToggleSounds={toggleSounds}
               onOpenPlayerEditor={openPlayerEditor}
             />
           </View>
