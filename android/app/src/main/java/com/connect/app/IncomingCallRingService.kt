@@ -62,18 +62,48 @@ class IncomingCallRingService : Service() {
     if (resId == 0) return
     try {
       player = MediaPlayer().apply {
-        setAudioAttributes(
-          AudioAttributes.Builder()
-            .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
-            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
-            .build()
-        )
-        setDataSource(this@IncomingCallRingService, Uri.parse("android.resource://$packageName/$resId"))
+        try {
+          setAudioAttributes(
+            AudioAttributes.Builder()
+              .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+              .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+              .build()
+          )
+        } catch (aaEx: Exception) {
+          // Ignore audio attributes failures on old devices
+        }
+
+        try {
+          setDataSource(this@IncomingCallRingService, Uri.parse("android.resource://$packageName/$resId"))
+        } catch (dsEx: Exception) {
+          // Failed to set data source - abort
+          android.util.Log.e("IncomingCallRingService", "Failed to set data source for ringtone: $resName", dsEx)
+          return
+        }
+
         isLooping = true
-        prepare()
-        start()
+
+        try {
+          setOnPreparedListener { mp ->
+            try {
+              mp.start()
+            } catch (startEx: Exception) {
+              android.util.Log.e("IncomingCallRingService", "Failed to start ringtone playback", startEx)
+            }
+          }
+          prepareAsync()
+        } catch (prepEx: Exception) {
+          // Fallback to synchronous prepare/start on devices where async fails
+          try {
+            prepare()
+            start()
+          } catch (syncEx: Exception) {
+            android.util.Log.e("IncomingCallRingService", "Ringtone prepare/start failed", syncEx)
+          }
+        }
       }
-    } catch (_: Exception) {
+    } catch (outer: Exception) {
+      android.util.Log.e("IncomingCallRingService", "Unexpected error starting ringtone", outer)
     }
   }
 
@@ -92,6 +122,8 @@ class IncomingCallRingService : Service() {
     } catch (_: Exception) {
     }
     try {
+      // Remove listeners to avoid callbacks after release
+      try { player?.setOnPreparedListener(null) } catch (_: Exception) {}
       player?.release()
     } catch (_: Exception) {
     }

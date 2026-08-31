@@ -437,6 +437,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const next = !isMutedRef.current;
     setIsMuted(next);
     engineRef.current?.muteAudio(next);
+
+    // If in a video call ensure video stays enabled and preview remains active.
+    try {
+      if (isCameraOnRef.current) {
+        // small timeout to let audio toggle process in the webview
+        setTimeout(() => {
+          // Re-enable video track (defensive)
+          engineRef.current?.muteVideo(false);
+          // Force a preview to ensure the webview's local track is replayed/published
+          engineRef.current?.preview(false);
+        }, 150);
+      }
+    } catch (e) {}
+
     if (isMinimizedRef.current && currentChannelRef.current) {
       updateMinimizedCall(`video-${currentChannelRef.current}`, { isMuted: next });
     }
@@ -577,16 +591,31 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 };
 
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999, elevation: 9999, backgroundColor: 'transparent' },
+  overlay: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 9999,
+    elevation: 9999,
+    backgroundColor: 'transparent',
+    paddingTop: 50,
+  },
   engineFill: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b0f17' },
   hiddenEngine: { position: 'absolute', width: 2, height: 2, opacity: 0.01, overflow: 'hidden' },
   container: { flex: 1, backgroundColor: '#0b0f17' },
-  placeholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0b0f17' },
+  placeholder: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0b0f17',
+  },
   avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#29B1A9' },
   avatarPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#222' },
   name: { marginTop: 20, fontSize: 24, fontWeight: '700', color: '#fff' },
   status: { marginTop: 8, fontSize: 16, color: '#ccc', textAlign: 'center' },
-  topBar: { position: 'absolute', top: 16, left: 0, right: 0, alignItems: 'center' },
+  topBar: { position: 'absolute', top: 66, left: 0, right: 0, alignItems: 'center' },
   topTitle: { color: '#fff', fontSize: 18, fontWeight: '600' },
   topStatus: { color: '#ddd', marginTop: 4 },
   controls: {

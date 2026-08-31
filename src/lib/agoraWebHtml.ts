@@ -280,6 +280,15 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           else if (cmd.type === 'muteAudio') await muteAudio(!!cmd.muted);
           else if (cmd.type === 'muteVideo') await muteVideo(!!cmd.muted);
           else if (cmd.type === 'switchCamera') await switchCamera();
+        else if (cmd.type === 'republish') {
+          // Attempt to republish existing localTracks if any — defensive recovery
+          try {
+            if (client && localTracks.length) {
+              await client.unpublish(localTracks).catch(function(){});
+              try { await client.publish(localTracks); } catch(e) { post({ type: 'log', message: 'republish failed: ' + (e && e.message) }); }
+            }
+          } catch(e) { post({ type: 'log', message: 'republish err: ' + (e && e.message) }); }
+        }
         } catch (e) {
           post({ type: 'error', message: String(e && e.message || e) });
         }

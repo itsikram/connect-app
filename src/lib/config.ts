@@ -24,17 +24,16 @@ type Environment = 'development' | 'staging' | 'production';
 // IMPORTANT: Android emulator uses 10.0.2.2 to access host machine's localhost
 // For physical Android devices, change the Android URL below to your local network IP (e.g., 192.168.0.101)
 const getDevServerUrl = (): string => {
-
   // return "http://192.168.0.100:4000";
-  return "https://connect-server-7h7d.onrender.com";
+  // return "https://connect-server-7h7d.onrender.com";
 
   // return "http://192.168.67.1:4000";
-  return "http://192.168.1.102:4000";
+  return 'http://192.168.1.102:4000';
 
   if (Platform.OS === 'android') {
     // For Android emulator: use 10.0.2.2 (maps to host machine's localhost)
     // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:4000")
-    return "http://10.0.2.2:4000";
+    return 'http://10.0.2.2:4000';
   }
   // For iOS simulator and other platforms, use local network IP
   // Alternative: use production server for development
@@ -44,9 +43,9 @@ const getDevMediapipeServerUrl = (): string => {
   if (Platform.OS === 'android') {
     // For Android emulator: use 10.0.2.2
     // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:5000")
-    return "https://emotion-detection-z1b2.onrender.com";
+    return 'https://emotion-detection-z1b2.onrender.com';
   }
-  return "https://emotion-detection-z1b2.onrender.com";
+  return 'https://emotion-detection-z1b2.onrender.com';
 };
 
 // Development server URLs (local network)
@@ -54,8 +53,8 @@ const devServerUrl = getDevServerUrl();
 const devMediapipeServerUrl = getDevMediapipeServerUrl();
 
 // Production server URLs
-const prodServerUrl = "https://connect-server-7h7d.onrender.com"
-const prodMediapipeServerUrl = "https://emotion-detection-z1b2.onrender.com" // Keep local for now, update if needed
+const prodServerUrl = 'https://connect-server-7h7d.onrender.com';
+const prodMediapipeServerUrl = 'https://emotion-detection-z1b2.onrender.com'; // Keep local for now, update if needed
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
@@ -136,4 +135,4 @@ export const API_ENDPOINTS = {
   // Add more endpoint categories as needed
 } as const;
 
-export default config; 
+export default config;

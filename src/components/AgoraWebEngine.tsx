@@ -30,6 +30,7 @@ export type AgoraWebEngineHandle = {
   muteAudio: (muted: boolean) => void;
   muteVideo: (muted: boolean) => void;
   switchCamera: () => void;
+  republish?: () => void;
 };
 
 type Props = {
@@ -79,6 +80,7 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
     muteAudio: (muted) => inject({ type: 'muteAudio', muted }),
     muteVideo: (muted) => inject({ type: 'muteVideo', muted }),
     switchCamera: () => inject({ type: 'switchCamera' }),
+    republish: () => inject({ type: 'republish' }),
   }), [inject]);
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {
