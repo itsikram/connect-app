@@ -239,6 +239,23 @@ const StoryModal: React.FC<StoryModalProps> = ({
     [myId, navigation, onClose]
   );
 
+  // Stable callbacks passed to child to avoid accidental state updates during child render
+  const handleTabChange = useCallback((tab: 'comments' | 'reacts') => {
+    setPanel(tab);
+  }, []);
+
+  const handleCommentsChange = useCallback((c: any[]) => {
+    setComments(c);
+  }, []);
+
+  const handleClosePanel = useCallback(() => {
+    setPanel(null);
+  }, []);
+
+  const handleInputFocus = useCallback(() => setInputFocused(true), []);
+  const handleInputBlur = useCallback(() => setInputFocused(false), []);
+
+
   const handleDeleteStory = () => {
     if (!activeStory?._id) return;
     Alert.alert('Delete story', 'Are you sure you want to delete this story?', [
@@ -455,12 +472,12 @@ const StoryModal: React.FC<StoryModalProps> = ({
                 myProfile={myProfile}
                 activeTab={panel}
                 loading={detailsLoading && populatedComments.length === 0 && panel === 'comments'}
-                onTabChange={setPanel}
-                onCommentsChange={setComments}
-                onClose={() => setPanel(null)}
+                onTabChange={handleTabChange}
+                onCommentsChange={handleCommentsChange}
+                onClose={handleClosePanel}
                 onOpenProfile={openProfile}
-                onInputFocus={() => setInputFocused(true)}
-                onInputBlur={() => setInputFocused(false)}
+                onInputFocus={handleInputFocus}
+                onInputBlur={handleInputBlur}
               />
             </View>
           ) : null}

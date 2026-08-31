@@ -12,10 +12,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#29B1A9"
     },
-    "assetBundlePatterns": [
-      "assets/**",
-      "src/assets/**"
-    ],
+    "assetBundlePatterns": ["assets/**", "src/assets/**"],
     "ios": {
       "icon": "./assets/icon.png",
       "supportsTablet": true,
@@ -127,11 +124,7 @@
           "photosPermission": "Allow Connect to access your photos and videos so downloaded files can be saved and played.",
           "savePhotosPermission": "Allow Connect to save downloaded videos to Photos and Gallery.",
           "isAccessMediaLocationEnabled": true,
-          "granularPermissions": [
-            "video",
-            "audio",
-            "photo"
-          ]
+          "granularPermissions": ["video", "audio", "photo"]
         }
       ],
       "expo-task-manager",
@@ -144,10 +137,6 @@
       "@react-native-google-signin/google-signin"
     ],
     "sdkVersion": "54.0.0",
-    "extra": {
-      "eas": {
-        "projectId": "76d83a3a-a10d-43fb-a110-e50066ce889f"
-      }
-    }
+    "extra": {}
   }
 }
