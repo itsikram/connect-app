@@ -161,6 +161,7 @@ export async function handleFcmMessage(remoteMessage: any): Promise<void> {
     }
     
     const data = remoteMessage?.data || {};
+    await ensureAndroidForegroundPrereqs();
     
     // Ensure notification channels exist
     try {
