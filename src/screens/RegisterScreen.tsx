@@ -42,6 +42,7 @@ const RegisterScreen = () => {
   const [isLoading, setIsLoading] = useState(false);
   const { colors: themeColors } = useTheme();
   const bottomBarBg = themeColors.surface.secondary;
+  const panelBg = themeColors.surface.elevated || themeColors.surface.primary;
   const { googleSignIn } = useContext(AuthContext);
 
   // Individual field validation
@@ -148,15 +149,29 @@ const RegisterScreen = () => {
   };
 
   const handleNext = () => {
-    const errors = validateTab();
-    const firstError = getFirstError(errors);
-    
-    if (firstError) { 
+    const currentTabErrors = validateTab();
+    const firstError = getFirstError(currentTabErrors);
+
+    if (firstError) {
       setError(firstError);
-      setFieldErrors(errors);
-      return; 
+      setFieldErrors(currentTabErrors);
+      return;
     }
-    
+
+    if (tab === 0 && (!formData.firstName.trim() || !formData.surname.trim())) {
+      const forcedErrors = {
+        firstName: formData.firstName.trim() ? '' : 'First Name is required',
+        surname: formData.surname.trim() ? '' : 'Surname is required',
+      };
+      const nextError = getFirstError(Object.fromEntries(Object.entries(forcedErrors).filter(([, value]) => value)));
+      setError(nextError || 'Please complete the first step before continuing.');
+      setFieldErrors({
+        ...(formData.firstName.trim() ? {} : { firstName: 'First Name is required' }),
+        ...(formData.surname.trim() ? {} : { surname: 'Surname is required' }),
+      });
+      return;
+    }
+
     setError('');
     setFieldErrors({});
     setTab(tab + 1);
@@ -279,302 +294,260 @@ const RegisterScreen = () => {
 
   return (
     <KeyboardSafeView nested>
-    <ScrollView
-      keyboardShouldPersistTaps="handled"
-      keyboardDismissMode="on-drag"
-      contentContainerStyle={[styles.container, { backgroundColor: themeColors.surface.primary }]}
-    >
-      <Logo size="large" />
-      <Text style={[styles.title, { color: themeColors.primary }]}>Register</Text>
-      {/* Tab headers - fixed width, centered, pill/rounded style */}
-      <View style={styles.tabHeaderContainerOuter}>
-        <View style={[styles.tabHeaderContainer, { backgroundColor: bottomBarBg }]}>
-          {TABS.map((t, idx) => {
-            const isActive = tab === idx;
-            const isCompleted = isTabCompleted(idx);
-            const pillStyle = [
-              styles.tabHeaderPill,
-              isActive && [styles.tabHeaderPillActive, { backgroundColor: themeColors.primary }],
-              !isActive && isCompleted && [styles.tabHeaderPillCompleted, { backgroundColor: '#4CAF50' }]
-            ];
-            const textStyle = [
-              styles.tabHeaderText, 
-              { color: themeColors.primary }, 
-              (isActive || isCompleted) && styles.tabHeaderTextActive, 
-              (isActive || isCompleted) && { color: '#fff' }
-            ];
-            
-            return (
-              <TouchableOpacity
-                key={t.key}
-                style={pillStyle}
-                onPress={() => handleTabPress(idx)}
-                activeOpacity={0.8}
-              >
-                <Text style={textStyle}>
-                  {isCompleted && !isActive ? '✓ ' : ''}{t.label}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-      </View>
-      {error ? <Text style={styles.error}>{error}</Text> : null}
-      {/* Tab contents */}
-      {tab === 0 && (
-        <View style={styles.tabContent}>
-          <PaperTextInput
-            mode="outlined"
-            label="First Name"
-            value={formData.firstName}
-            onChangeText={v => handleFieldChange('firstName', v)}
-            style={[styles.input, { backgroundColor: bottomBarBg }]}
-            textColor={themeColors.text.primary}
-            error={!!fieldErrors.firstName}
-            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-            autoCapitalize="words"
-          />
-          {fieldErrors.firstName && (
-            <Text style={styles.fieldError}>{fieldErrors.firstName}</Text>
-          )}
-          
-          <PaperTextInput
-            mode="outlined"
-            label="Surname"
-            value={formData.surname}
-            onChangeText={v => handleFieldChange('surname', v)}
-            style={[styles.input, { backgroundColor: bottomBarBg }]}
-            textColor={themeColors.text.primary}
-            error={!!fieldErrors.surname}
-            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-            autoCapitalize="words"
-          />
-          {fieldErrors.surname && (
-            <Text style={styles.fieldError}>{fieldErrors.surname}</Text>
-          )}
-          
-          <Button 
-            mode="contained" 
-            onPress={handleNext} 
-            style={[styles.button, { backgroundColor: themeColors.primary }]} 
-            labelStyle={{ color: '#fff' }}
-          >
-            <Text style={{ color: '#fff' }}>Next</Text>
-          </Button>
-        </View>
-      )}
-      {tab === 1 && (
-        <View style={styles.tabContent}>
-          <PaperTextInput
-            mode="outlined"
-            label="Email Address"
-            value={formData.email}
-            onChangeText={v => handleFieldChange('email', v)}
-            autoCapitalize="none"
-            keyboardType="email-address"
-            style={[styles.input, { backgroundColor: bottomBarBg }]}
-            textColor={themeColors.text.primary}
-            error={!!fieldErrors.email}
-            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-          />
-          {fieldErrors.email && (
-            <Text style={styles.fieldError}>{fieldErrors.email}</Text>
-          )}
-          
-          <TouchableOpacity
-            onPress={() => setShowDatePicker(true)}
-            style={[
-              styles.datePickerButton, 
-              { 
-                backgroundColor: bottomBarBg, 
-                borderColor: fieldErrors.DOB ? themeColors.status.error : themeColors.border.primary,
-                borderWidth: fieldErrors.DOB ? 2 : 1
-              }
-            ]}
-          >
-            <Text style={[
-              styles.datePickerText, 
-              { color: formData.DOB ? themeColors.text.primary : themeColors.text.secondary }
-            ]}>
-              {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
-            </Text>
-          </TouchableOpacity>
-          {fieldErrors.DOB && (
-            <Text style={styles.fieldError}>{fieldErrors.DOB}</Text>
-          )}
-          
-          {showDatePicker && (
-            <DateTimePicker
-              value={formData.DOB || new Date(2000, 0, 1)}
-              mode="date"
-              display="default"
-              onChange={(_, date) => {
-                setShowDatePicker(false);
-                if (date) handleFieldChange('DOB', date);
-              }}
-              maximumDate={new Date()}
-            />
-          )}
-          
-          <View style={[styles.radioGroup, fieldErrors.gender && styles.radioGroupError]}>
-            <Text style={[styles.radioLabel, { color: themeColors.text.primary }]}>Gender:</Text>
-            <RadioButton.Group
-              onValueChange={v => handleFieldChange('gender', v)}
-              value={formData.gender}
-            >
-              <View style={styles.radioRow}>
-                <View style={styles.radioOption}>
-                  <RadioButton value="male" />
-                  <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Male</Text>
-                </View>
-                <View style={styles.radioOption}>
-                  <RadioButton value="female" />
-                  <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Female</Text>
-                </View>
-                <View style={styles.radioOption}>
-                  <RadioButton value="other" />
-                  <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Other</Text>
-                </View>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
+        contentContainerStyle={[styles.container, { backgroundColor: themeColors.background.primary }]}
+      >
+        <View style={[styles.shell, { backgroundColor: themeColors.background.primary }]}>
+          <View style={[styles.glow, { backgroundColor: `${themeColors.primary}26` }]} />
+          <View style={[styles.glowSecondary, { backgroundColor: `${themeColors.secondary}22` }]} />
+
+          <View style={[styles.card, { backgroundColor: panelBg, borderColor: themeColors.border.primary }]}>
+            <View style={styles.topSection}>
+              <View style={[styles.brandWrap, { backgroundColor: `${themeColors.primary}18`, borderColor: `${themeColors.primary}44` }]}>
+                <Logo size="large" />
               </View>
-            </RadioButton.Group>
-          </View>
-          {fieldErrors.gender && (
-            <Text style={styles.fieldError}>{fieldErrors.gender}</Text>
-          )}
-          
-          <Button 
-            mode="contained" 
-            onPress={handleNext} 
-            style={[styles.button, { backgroundColor: themeColors.primary }]} 
-            labelStyle={{ color: '#fff' }}
-          >
-            <Text style={{ color: '#fff' }}>Next</Text>
-          </Button>
-          <Button 
-            mode="text" 
-            onPress={handleBack} 
-            style={[styles.button, { backgroundColor: 'transparent' }]} 
-            labelStyle={{ color: themeColors.primary }}
-          >
-            <Text style={{ color: themeColors.primary }}>Back</Text>
-          </Button>
-        </View>
-      )}
-      {tab === 2 && (
-        <View style={styles.tabContent}>
-          <PaperTextInput
-            mode="outlined"
-            label="Password"
-            value={formData.password}
-            onChangeText={v => handleFieldChange('password', v)}
-            secureTextEntry={!showPassword}
-            style={[styles.input, { backgroundColor: bottomBarBg }]}
-            textColor={themeColors.text.primary}
-            error={!!fieldErrors.password}
-            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-            right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword(v => !v)} />}
-          />
-          {fieldErrors.password && (
-            <Text style={styles.fieldError}>{fieldErrors.password}</Text>
-          )}
-          
-          <PaperTextInput
-            mode="outlined"
-            label="Confirm Password"
-            value={formData.confirmPassword}
-            onChangeText={v => handleFieldChange('confirmPassword', v)}
-            secureTextEntry={!showConfirmPassword}
-            style={[styles.input, { backgroundColor: bottomBarBg }]}
-            textColor={themeColors.text.primary}
-            error={!!fieldErrors.confirmPassword}
-            theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-            right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword(v => !v)} />}
-          />
-          {fieldErrors.confirmPassword && (
-            <Text style={styles.fieldError}>{fieldErrors.confirmPassword}</Text>
-          )}
-          
-          {/* Password strength indicator */}
-          {formData.password && (
-            <View style={styles.passwordStrength}>
-              <Text style={[styles.passwordStrengthTitle, { color: themeColors.text.secondary }]}>
-                Password Requirements:
+              <Text style={[styles.eyebrow, { color: themeColors.primary }]}>Welcome aboard</Text>
+              <Text style={[styles.title, { color: themeColors.text.primary }]}>Create your account</Text>
+              <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
+                Join in a few steps and get started with your profile.
               </Text>
-              <View style={styles.passwordRequirements}>
-                <Text style={[
-                  styles.passwordRequirement, 
-                  { color: formData.password.length >= 8 ? '#4CAF50' : themeColors.text.secondary }
-                ]}>
-                  ✓ At least 8 characters
-                </Text>
-                <Text style={[
-                  styles.passwordRequirement, 
-                  { color: /[A-Za-z]/.test(formData.password) ? '#4CAF50' : themeColors.text.secondary }
-                ]}>
-                  ✓ Contains letters
-                </Text>
-                <Text style={[
-                  styles.passwordRequirement, 
-                  { color: /[0-9]/.test(formData.password) ? '#4CAF50' : themeColors.text.secondary }
-                ]}>
-                  ✓ Contains numbers
-                </Text>
-                <Text style={[
-                  styles.passwordRequirement, 
-                  { color: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? '#4CAF50' : themeColors.text.secondary }
-                ]}>
-                  ✓ Contains special characters
-                </Text>
+            </View>
+
+            <View style={[styles.tabHeaderContainerOuter]}>
+              <View style={[styles.tabHeaderContainer, { backgroundColor: bottomBarBg, borderColor: themeColors.border.primary }]}>
+                {TABS.map((t, idx) => {
+                  const isActive = tab === idx;
+                  const isCompleted = isTabCompleted(idx);
+                  const pillStyle = [
+                    styles.tabHeaderPill,
+                    isActive && [styles.tabHeaderPillActive, { backgroundColor: themeColors.primary }],
+                    !isActive && isCompleted && [styles.tabHeaderPillCompleted, { backgroundColor: themeColors.status.success }],
+                  ];
+                  const textStyle = [
+                    styles.tabHeaderText,
+                    { color: isActive ? '#fff' : themeColors.text.secondary },
+                    (isActive || isCompleted) && styles.tabHeaderTextActive,
+                  ];
+
+                  return (
+                    <TouchableOpacity
+                      key={t.key}
+                      style={pillStyle}
+                      onPress={() => handleTabPress(idx)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={textStyle}>
+                        {isCompleted && !isActive ? '✓ ' : ''}
+                        {t.label}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
             </View>
-          )}
-          
-          {/* Divider */}
-          <View style={styles.divider}>
-            <View style={[styles.dividerLine, { backgroundColor: themeColors.text.secondary }]} />
-            <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text>
-            <View style={[styles.dividerLine, { backgroundColor: themeColors.text.secondary }]} />
+
+            {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
+
+            {tab === 0 && (
+              <View style={styles.tabContent}>
+                <PaperTextInput
+                  mode="outlined"
+                  label="First Name"
+                  value={formData.firstName}
+                  onChangeText={(v) => handleFieldChange('firstName', v)}
+                  style={[styles.input, { backgroundColor: bottomBarBg }]}
+                  textColor={themeColors.text.primary}
+                  error={!!fieldErrors.firstName}
+                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
+                  autoCapitalize="words"
+                />
+                {fieldErrors.firstName && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.firstName}</Text>}
+
+                <PaperTextInput
+                  mode="outlined"
+                  label="Surname"
+                  value={formData.surname}
+                  onChangeText={(v) => handleFieldChange('surname', v)}
+                  style={[styles.input, { backgroundColor: bottomBarBg }]}
+                  textColor={themeColors.text.primary}
+                  error={!!fieldErrors.surname}
+                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
+                  autoCapitalize="words"
+                />
+                {fieldErrors.surname && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.surname}</Text>}
+
+                <Button
+                  mode="contained"
+                  onPress={handleNext}
+                  style={[styles.button, { backgroundColor: themeColors.primary }]}
+                  labelStyle={{ color: '#fff' }}
+                >
+                  <Text style={styles.buttonText}>Next</Text>
+                </Button>
+              </View>
+            )}
+
+            {tab === 1 && (
+              <View style={styles.tabContent}>
+                <PaperTextInput
+                  mode="outlined"
+                  label="Email Address"
+                  value={formData.email}
+                  onChangeText={(v) => handleFieldChange('email', v)}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  style={[styles.input, { backgroundColor: bottomBarBg }]}
+                  textColor={themeColors.text.primary}
+                  error={!!fieldErrors.email}
+                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
+                />
+                {fieldErrors.email && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.email}</Text>}
+
+                <TouchableOpacity
+                  onPress={() => setShowDatePicker(true)}
+                  style={[
+                    styles.datePickerButton,
+                    {
+                      backgroundColor: bottomBarBg,
+                      borderColor: fieldErrors.DOB ? themeColors.status.error : themeColors.border.primary,
+                      borderWidth: fieldErrors.DOB ? 2 : 1,
+                    },
+                  ]}
+                >
+                  <Text style={[styles.datePickerText, { color: formData.DOB ? themeColors.text.primary : themeColors.text.secondary }]}>
+                    {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
+                  </Text>
+                </TouchableOpacity>
+                {fieldErrors.DOB && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.DOB}</Text>}
+
+                {showDatePicker && (
+                  <DateTimePicker
+                    value={formData.DOB || new Date(2000, 0, 1)}
+                    mode="date"
+                    display="default"
+                    onChange={(_, date) => {
+                      setShowDatePicker(false);
+                      if (date) handleFieldChange('DOB', date);
+                    }}
+                    maximumDate={new Date()}
+                  />
+                )}
+
+                <View style={[styles.radioGroup, fieldErrors.gender && styles.radioGroupError]}>
+                  <Text style={[styles.radioLabel, { color: themeColors.text.primary }]}>Gender</Text>
+                  <RadioButton.Group onValueChange={(v) => handleFieldChange('gender', v)} value={formData.gender}>
+                    <View style={styles.radioRow}>
+                      <View style={styles.radioOption}>
+                        <RadioButton value="male" color={themeColors.primary} uncheckedColor={themeColors.border.primary} />
+                        <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Male</Text>
+                      </View>
+                      <View style={styles.radioOption}>
+                        <RadioButton value="female" color={themeColors.primary} uncheckedColor={themeColors.border.primary} />
+                        <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Female</Text>
+                      </View>
+                      <View style={styles.radioOption}>
+                        <RadioButton value="other" color={themeColors.primary} uncheckedColor={themeColors.border.primary} />
+                        <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Other</Text>
+                      </View>
+                    </View>
+                  </RadioButton.Group>
+                </View>
+                {fieldErrors.gender && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.gender}</Text>}
+
+                <View style={styles.actionRow}>
+                  <Button mode="text" onPress={handleBack} style={[styles.secondaryButton, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
+                    <Text style={{ color: themeColors.primary }}>Back</Text>
+                  </Button>
+                  <Button mode="contained" onPress={handleNext} style={[styles.primaryButton, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
+                    <Text style={styles.buttonText}>Next</Text>
+                  </Button>
+                </View>
+              </View>
+            )}
+
+            {tab === 2 && (
+              <View style={styles.tabContent}>
+                <PaperTextInput
+                  mode="outlined"
+                  label="Password"
+                  value={formData.password}
+                  onChangeText={(v) => handleFieldChange('password', v)}
+                  secureTextEntry={!showPassword}
+                  style={[styles.input, { backgroundColor: bottomBarBg }]}
+                  textColor={themeColors.text.primary}
+                  error={!!fieldErrors.password}
+                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
+                  right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword((v) => !v)} />}
+                />
+                {fieldErrors.password && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.password}</Text>}
+
+                <PaperTextInput
+                  mode="outlined"
+                  label="Confirm Password"
+                  value={formData.confirmPassword}
+                  onChangeText={(v) => handleFieldChange('confirmPassword', v)}
+                  secureTextEntry={!showConfirmPassword}
+                  style={[styles.input, { backgroundColor: bottomBarBg }]}
+                  textColor={themeColors.text.primary}
+                  error={!!fieldErrors.confirmPassword}
+                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
+                  right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword((v) => !v)} />}
+                />
+                {fieldErrors.confirmPassword && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.confirmPassword}</Text>}
+
+                {formData.password && (
+                  <View style={[styles.passwordStrength, { backgroundColor: `${themeColors.primary}08`, borderColor: `${themeColors.primary}22` }]}>
+                    <Text style={[styles.passwordStrengthTitle, { color: themeColors.text.primary }]}>Password Requirements</Text>
+                    <View style={styles.passwordRequirements}>
+                      <Text style={[styles.passwordRequirement, { color: formData.password.length >= 8 ? themeColors.status.success : themeColors.text.secondary }]}>
+                        ✓ At least 8 characters
+                      </Text>
+                      <Text style={[styles.passwordRequirement, { color: /[A-Za-z]/.test(formData.password) ? themeColors.status.success : themeColors.text.secondary }]}>
+                        ✓ Contains letters
+                      </Text>
+                      <Text style={[styles.passwordRequirement, { color: /[0-9]/.test(formData.password) ? themeColors.status.success : themeColors.text.secondary }]}>
+                        ✓ Contains numbers
+                      </Text>
+                      <Text style={[styles.passwordRequirement, { color: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? themeColors.status.success : themeColors.text.secondary }]}>
+                        ✓ Contains special characters
+                      </Text>
+                    </View>
+                  </View>
+                )}
+
+                <View style={[styles.divider, !formData.password && styles.dividerCompact]}>
+                 <View style={[styles.dividerLine, { backgroundColor: themeColors.border.primary }]} />
+                 <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text>
+                 <View style={[styles.dividerLine, { backgroundColor: themeColors.border.primary }]} />
+                </View>
+
+                <Button
+                  mode="contained"
+                  onPress={handleRegister}
+                  loading={isLoading}
+                  disabled={isLoading}
+                  style={[styles.button, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]}
+                  labelStyle={{ color: '#fff' }}
+                >
+                  <Text style={styles.buttonText}>{isLoading ? 'Creating Account...' : 'Create account'}</Text>
+                </Button>
+
+                <Button mode="text" onPress={handleBack} disabled={isLoading} style={[styles.secondaryButton, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
+                  <Text style={{ color: themeColors.primary }}>Back</Text>
+                </Button>
+              </View>
+            )}
+
+            <Button mode="text" onPress={() => navigation.navigate('Login')} style={styles.link} labelStyle={{ color: themeColors.text.secondary }}>
+              <Text style={{ color: themeColors.text.secondary }}>Already have an account? </Text>
+              <Text style={{ color: themeColors.primary, fontWeight: '700' }}>Sign in</Text>
+            </Button>
+            <Toast />
           </View>
-          
-          {/* Google Sign-In Button - Temporarily disabled for debugging */}
-          
-          {/* <GoogleSigninButton
-            style={styles.googleButton}
-            size={GoogleSigninButton.Size.Wide}
-            color={GoogleSigninButton.Color.Dark}
-            onPress={handleGoogleSignIn}
-          /> */}
-         
-          
-          <Button 
-            mode="contained" 
-            onPress={handleRegister} 
-            loading={isLoading}
-            disabled={isLoading}
-            style={[styles.button, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]} 
-            labelStyle={{ color: '#fff' }}
-          >
-            <Text style={{ color: '#fff' }}>
-              {isLoading ? 'Creating Account...' : 'Register'}
-            </Text>
-          </Button>
-          <Button 
-            mode="text" 
-            onPress={handleBack} 
-            disabled={isLoading}
-            style={[styles.button, { backgroundColor: 'transparent' }]} 
-            labelStyle={{ color: themeColors.primary }}
-          >
-            <Text style={{ color: themeColors.primary }}>Back</Text>
-          </Button>
         </View>
-      )}
-      <Button mode="text" onPress={() => navigation.navigate('Login')} style={styles.link} labelStyle={{ color: themeColors.text.secondary }}>
-        <Text style={{ color: themeColors.text.secondary }}>Already have an account? </Text>
-        <Text style={{ color: themeColors.primary, fontWeight: 'bold' }}>Signin</Text>
-      </Button>
-      <Toast />
-    </ScrollView>
+      </ScrollView>
     </KeyboardSafeView>
   );
 };
@@ -582,51 +555,126 @@ const RegisterScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
+    paddingTop: 12,
+    paddingBottom: 10,
+    paddingHorizontal: 18,
     justifyContent: 'center',
+  },
+  shell: {
+    width: '100%',
     alignItems: 'center',
-    padding: 20,
+    justifyContent: 'flex-start',
+    position: 'relative',
+    minHeight: '100%',
+    paddingTop: 4,
+  },
+  glow: {
+    position: 'absolute',
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    top: '12%',
+    left: '-8%',
+    opacity: 0.9,
+  },
+  glowSecondary: {
+    position: 'absolute',
+    width: 180,
+    height: 180,
+    borderRadius: 90,
+    right: '-8%',
+    bottom: '18%',
+    opacity: 0.9,
+  },
+  card: {
+    width: '100%',
+    maxWidth: 440,
+    borderRadius: 24,
+    borderWidth: 1,
+    paddingTop: 10,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    elevation: 8,
+    zIndex: 1,
+  },
+  topSection: {
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  brandWrap: {
+    width: 80,
+    height: 80,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    marginBottom: 8,
+  },
+  eyebrow: {
+    fontSize: 11,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    marginBottom: 4,
   },
   title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    marginBottom: 32,
+    fontSize: 24,
+    fontWeight: '800',
     textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    fontSize: 13,
+    textAlign: 'center',
+    lineHeight: 18,
+    maxWidth: 280,
   },
   tabHeaderContainerOuter: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 32,
+    marginBottom: 12,
   },
   tabHeaderContainer: {
+    width: '100%',
     flexDirection: 'row',
     backgroundColor: '#f0f0f0',
-    borderRadius: 32,
+    borderRadius: 18,
     padding: 4,
+    borderWidth: 1,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
     elevation: 2,
   },
   tabHeaderPill: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 28,
-    minWidth: 100,
+    flex: 1,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+    borderRadius: 14,
+    minHeight: 38,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tabHeaderPillActive: {
-    backgroundColor: '#29b1a9',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 8,
+    elevation: 2,
   },
   tabHeaderPillCompleted: {
-    backgroundColor: '#4CAF50',
+    opacity: 0.9,
   },
   tabHeaderText: {
-    color: '#29b1a9',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: 11,
+    fontWeight: '700',
     textAlign: 'center',
+    letterSpacing: 0.1,
   },
   tabHeaderTextActive: {
     color: '#fff',
@@ -634,119 +682,153 @@ const styles = StyleSheet.create({
   tabContent: {
     width: '100%',
     alignItems: 'center',
+    justifyContent: 'center',
   },
   input: {
-    width: 280,
+    width: '100%',
     marginBottom: 8,
+    backgroundColor: 'transparent',
   },
   button: {
-    width: 280,
-    marginBottom: 12,
+    width: '100%',
+    marginTop: 8,
+    borderRadius: 14,
+    minHeight: 46,
+    justifyContent: 'center',
     alignSelf: 'center',
-    backgroundColor: '#29b1a9',
+  },
+  primaryButton: {
+    flex: 1,
+    minHeight: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+  },
+  secondaryButton: {
+    minWidth: 84,
+    minHeight: 46,
+    borderRadius: 14,
+    justifyContent: 'center',
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
   },
   link: {
-    color: '#29b1a9',
-    fontSize: 14,
-    marginTop: 16,
+    marginTop: 18,
     alignSelf: 'center',
   },
   error: {
-    color: '#ff0000',
     marginBottom: 12,
     fontSize: 14,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   fieldError: {
-    color: '#ff0000',
     fontSize: 12,
-    marginBottom: 16,
-    marginTop: -4,
-    width: 280,
+    marginBottom: 10,
+    marginTop: -2,
+    width: '100%',
     textAlign: 'left',
+    fontWeight: '500',
   },
   datePickerButton: {
-    width: 280,
+    width: '100%',
     minHeight: 56,
-    borderRadius: 4,
+    borderRadius: 14,
     borderWidth: 1,
     justifyContent: 'center',
-    paddingHorizontal: 12,
+    paddingHorizontal: 14,
     marginBottom: 8,
   },
   datePickerText: {
     fontSize: 16,
+    fontWeight: '500',
   },
   radioGroup: {
-    width: 280,
+    width: '100%',
     marginBottom: 8,
+    paddingVertical: 8,
   },
   radioGroupError: {
     borderColor: '#FF3B30',
     borderWidth: 1,
-    borderRadius: 4,
-    padding: 8,
+    borderRadius: 12,
+    paddingHorizontal: 8,
   },
   radioRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginTop: 8,
+    gap: 8,
   },
   radioOption: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+    minHeight: 28,
   },
   radioLabel: {
-    fontSize: 16,
+    fontSize: 15,
     marginBottom: 4,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   radioText: {
     fontSize: 14,
-    marginLeft: 4,
+    marginLeft: 2,
+  },
+  actionRow: {
+    width: '100%',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 12,
   },
   passwordStrength: {
-    width: 280,
-    marginBottom: 16,
-    padding: 12,
-    backgroundColor: '#f8f9fa',
-    borderRadius: 8,
+    width: '100%',
+    marginBottom: 10,
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#F1F3F4',
   },
   passwordStrengthTitle: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 6,
   },
   passwordRequirements: {
-    gap: 4,
+    gap: 3,
   },
   passwordRequirement: {
-    fontSize: 12,
-    fontWeight: '500',
+    fontSize: 11,
+    fontWeight: '600',
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 20,
-    width: 280,
+    marginVertical: 12,
+    width: '100%',
+  },
+  dividerCompact: {
+    marginTop: 6,
+    marginBottom: 10,
   },
   dividerLine: {
     flex: 1,
     height: 1,
-    opacity: 0.3,
+    opacity: 0.5,
   },
   dividerText: {
-    marginHorizontal: 16,
-    fontSize: 14,
-    fontWeight: '500',
+    marginHorizontal: 12,
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.2,
   },
   googleButton: {
-    width: 280,
+    width: '100%',
     height: 48,
     marginBottom: 12,
   },

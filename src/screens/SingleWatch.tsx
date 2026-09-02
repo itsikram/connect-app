@@ -32,6 +32,7 @@ import WatchSkeleton from '../components/skeleton/WatchSkeleton';
 import { useToast } from '../contexts/ToastContext';
 import { addPost } from '../reducers/postsReducer';
 import { updateProfileField } from '../reducers/profileReducer';
+import { useWatchPip } from '../contexts/WatchPipContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const PLAYER_MAX_H = Math.min(420, Math.round(SCREEN_WIDTH * 0.72));
@@ -93,6 +94,7 @@ const SingleWatch = () => {
   const dispatch = useDispatch();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { showInfo, showSuccess, showError } = useToast();
+  const { startPip } = useWatchPip();
   const scrollRef = useRef<ScrollView>(null);
   const commentInputRef = useRef<TextInput>(null);
 
@@ -307,6 +309,21 @@ const SingleWatch = () => {
     setTimeout(() => commentInputRef.current?.focus(), 280);
   };
 
+  const handleOpenPip = useCallback(() => {
+    if (!sourceUri || !watch?._id) return;
+    setPaused(true);
+    startPip({
+      videoUrl: sourceUri,
+      watchId: watch._id,
+      title: watch.caption || displayName(watch.author) || 'Watch',
+      thumbnail: watch.thumbnail || '',
+      playing: true,
+      source: 'watch',
+      currentTime: 0,
+      muted: false,
+    });
+  }, [sourceUri, startPip, watch]);
+
   const chromeBtn = useMemo(
     () => ({
       width: 48,
@@ -404,7 +421,7 @@ const SingleWatch = () => {
               </TouchableOpacity>
               {!isOwn ? (
                 <TouchableOpacity
-                  onPress={handleFollow}
+                onPress={handleFollow}
                   style={[
                     styles.follow,
                     {
@@ -439,7 +456,7 @@ const SingleWatch = () => {
                     shouldPlay={focused && !paused}
                     isLooping
                     isMuted={false}
-                    useNativeControls={false}
+                    useNativeControls={true}
                     onReadyForDisplay={(event) => {
                       const size = event?.naturalSize;
                       if (size?.width && size?.height) {
@@ -448,16 +465,22 @@ const SingleWatch = () => {
                     }}
                   />
                   <TouchableOpacity
-                    style={styles.playerHit}
+                    style={[
+                      styles.playerToggle,
+                      { backgroundColor: t.playBadgeBg, borderColor: t.chipBorder },
+                    ]}
                     onPress={() => setPaused((p) => !p)}
-                    activeOpacity={1}
+                    activeOpacity={0.8}
                   >
-                    {paused ? (
+                    <Icon name={paused ? 'play' : 'pause'} size={18} color={t.mediaIcon} />
+                  </TouchableOpacity>
+                  {paused ? (
+                    <View pointerEvents="none" style={styles.playOverlay}>
                       <View style={[styles.playBadge, { backgroundColor: t.playBadgeBg, borderColor: t.chipBorder }]}>
                         <Icon name="play" size={32} color={t.mediaIcon} />
                       </View>
-                    ) : null}
-                  </TouchableOpacity>
+                    </View>
+                  ) : null}
                 </>
               ) : (
                 <Text style={{ color: t.chromeMuted }}>Video not available</Text>
@@ -507,6 +530,12 @@ const SingleWatch = () => {
                 <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>
                   {downloadJob?.status === 'downloading' ? `${Math.round(downloadJob.percent)}%` : 'Save'}
                 </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={handleOpenPip} style={styles.action}>
+                <View style={chromeBtn}>
+                  <Icon name="tv-outline" size={20} color={t.chromeText} />
+                </View>
+                <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>PiP</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -670,7 +699,19 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  playerHit: {
+  playerToggle: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    zIndex: 1,
+  },
+  playOverlay: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',

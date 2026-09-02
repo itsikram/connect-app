@@ -29,7 +29,7 @@ const MODE_OPTIONS = [
 ] as const;
 
 const FILTER_OPTIONS = [
-  { id: 'original', label: 'Original', overlay: '#000000', opacity: 0 },
+  { id: 'original', label: 'Original', overlay: '#1d1d21', opacity: 0.04 },
   { id: 'vivid', label: 'Vivid', overlay: '#2f7bff', opacity: 0.26 },
   { id: 'vividWarm', label: 'Vivid Warm', overlay: '#ffb14a', opacity: 0.28 },
   { id: 'vividCool', label: 'Vivid Cool', overlay: '#61c1ff', opacity: 0.24 },
@@ -227,7 +227,7 @@ const CameraScreen = () => {
   const activeZoom = zoom === 2 ? 0.42 : 0;
   const filterPreviewOpacity =
     filterId === 'original'
-      ? 0
+      ? Math.min(0.14, 0.04 + (intensity / 100) * 0.1)
       : Math.min(0.86, Math.max(currentFilter.opacity, 0.12 + (intensity / 100) * 0.72));
   const filterOverlayStyle = {
     backgroundColor: currentFilter.overlay,

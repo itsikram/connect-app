@@ -139,6 +139,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [queueIndex, setQueueIndex] = useState(0);
   const [playPass, setPlayPass] = useState(1);
   const [mediaReady, setMediaReady] = useState(false);
+  const [videoPosition, setVideoPosition] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
+  const [scrubWidth, setScrubWidth] = useState(0);
 
   const videoRef = useRef<ExpoVideo | null>(null);
   const playUrlHandledRef = useRef('');
@@ -323,6 +326,8 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   useEffect(() => {
     setMediaReady(false);
+    setVideoPosition(0);
+    setVideoDuration(0);
     setIsPlaying(!isThisPip);
     endedKeyRef.current = '';
   }, [currentTrackKey, isThisPip]);
@@ -835,6 +840,22 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   const playerIsPlaying = isThisPip ? watchPip?.pip?.playing !== false : isPlaying;
 
+  const formatTime = useCallback((seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  }, []);
+
+  const handleSeekTo = useCallback(async (value: number) => {
+    if (!videoRef.current || !Number.isFinite(value)) return;
+    const safeValue = Math.max(0, Math.min(value, videoDuration || value));
+    await videoRef.current.setPositionAsync(Math.max(0, safeValue * 1000));
+    setVideoPosition(safeValue);
+  }, [videoDuration]);
+
+  const videoProgressPercent = videoDuration > 0 ? Math.min(100, (videoPosition / videoDuration) * 100) : 0;
+
   const stats = useMemo(
     () => ({
       watches: watchVideos.length,
@@ -856,7 +877,11 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const onPlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
     setMediaReady(true);
-    currentTimeRef.current = (status.positionMillis || 0) / 1000;
+    const nextPos = (status.positionMillis || 0) / 1000;
+    const nextDuration = (status.durationMillis || 0) / 1000;
+    currentTimeRef.current = nextPos;
+    setVideoPosition(nextPos);
+    if (nextDuration > 0) setVideoDuration(nextDuration);
     if (status.didJustFinish && endedKeyRef.current !== currentTrackKey) {
       endedKeyRef.current = currentTrackKey;
       handleVideoEndRef.current();
@@ -933,7 +958,15 @@ const MediaPlayer = ({ route, navigation }: any) => {
                       : ''}
                   </Text>
                 </View>
-                <Text style={[styles.badge, { color: t.ctaText, backgroundColor: t.primarySoft }]}>{getTypeLabel(currentVideo.type)}</Text>
+                <View style={styles.stageActions}>
+                  <Text style={[styles.badge, { color: t.ctaText, backgroundColor: t.primarySoft }]}>{getTypeLabel(currentVideo.type)}</Text>
+                  {watchPip && !isThisPip ? (
+                    <Pressable style={[styles.popupBadge, { backgroundColor: t.primarySoft }]} onPress={minimizeToPip}>
+                      <Icon name="picture-in-picture-alt" size={13} color={t.primary} />
+                      <Text style={[styles.popupBadgeText, { color: t.primary }]}>Popup</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </View>
 
               <View style={styles.stageFrame}>
@@ -971,6 +1004,26 @@ const MediaPlayer = ({ route, navigation }: any) => {
                         )}
                       </View>
                     ) : null}
+
+                    <View style={[styles.videoController, { backgroundColor: 'rgba(0,0,0,0.38)' }]}>
+                      <View style={styles.timeRow}>
+                        <Text style={[styles.timeText, { color: '#fff' }]}>{formatTime(videoPosition)}</Text>
+                        <Text style={[styles.timeText, { color: '#fff' }]}>{formatTime(videoDuration)}</Text>
+                      </View>
+                      <Pressable
+                        style={styles.scrubBar}
+                        onLayout={(event) => setScrubWidth(event.nativeEvent.layout.width)}
+                        onPress={({ nativeEvent }) => {
+                          const width = scrubWidth || 300;
+                          const percent = Math.max(0, Math.min(1, (nativeEvent.locationX || 0) / Math.max(width, 1)));
+                          handleSeekTo(videoDuration * percent);
+                        }}
+                      >
+                        <View style={[styles.scrubTrack, { backgroundColor: 'rgba(255,255,255,0.28)' }]}>
+                          <View style={[styles.scrubFill, { width: `${videoProgressPercent}%`, backgroundColor: t.primary }]} />
+                        </View>
+                      </Pressable>
+                    </View>
                   </>
                 )}
               </View>
@@ -1324,6 +1377,7 @@ const styles = StyleSheet.create({
   },
   stageTitle: { fontSize: 16, fontWeight: '700' },
   stageMeta: { fontSize: 12, marginTop: 4 },
+  stageActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   badge: {
     fontSize: 11,
     paddingHorizontal: 8,
@@ -1331,8 +1385,31 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     overflow: 'hidden',
   },
-  stageFrame: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000' },
+  popupBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+  },
+  popupBadgeText: { fontSize: 11, fontWeight: '700' },
+  stageFrame: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000', position: 'relative' },
   video: { width: '100%', height: '100%', backgroundColor: '#000' },
+  videoController: {
+    position: 'absolute',
+    left: 8,
+    right: 8,
+    bottom: 8,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  timeText: { fontSize: 11, fontWeight: '600' },
+  scrubBar: { width: '100%' },
+  scrubTrack: { width: '100%', height: 8, borderRadius: 999, overflow: 'hidden' },
+  scrubFill: { height: '100%', borderRadius: 999 },
   cover: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',

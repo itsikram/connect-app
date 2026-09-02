@@ -8,8 +8,6 @@ import React, {
 import {
   ActivityIndicator,
   Alert,
-  AppState,
-  AppStateStatus,
   Dimensions,
   FlatList,
   Modal,
@@ -155,6 +153,7 @@ const VideoItem = ({
   );
   const [followBusy, setFollowBusy] = useState(false);
   const isOwnWatch = sameId(post?.author?._id, myId);
+  const { pip: currentPip, isPipActive } = useWatchPip();
 
   const [isManuallyPaused, setIsManuallyPaused] = useState(false);
   const [naturalSize, setNaturalSize] = useState({ width: 0, height: 0 });
@@ -315,6 +314,8 @@ const VideoItem = ({
     }
   }, [isActive]);
 
+  const shouldPlayVideo = isActive && !isManuallyPaused && !isPipActive;
+
   return (
     <View
       style={[
@@ -338,10 +339,10 @@ const VideoItem = ({
                 { backgroundColor: t.pageBg, marginBottom: 120 },
               ]}
               resizeMode={ResizeMode.CONTAIN}
-              shouldPlay={isActive && !isManuallyPaused}
+              shouldPlay={shouldPlayVideo}
               isLooping
-              isMuted={false}
-              useNativeControls={false}
+              isMuted={!!currentPip?.muted}
+              useNativeControls={true}
               onReadyForDisplay={event => {
                 const size = event?.naturalSize;
                 if (size?.width && size?.height) {
@@ -349,10 +350,23 @@ const VideoItem = ({
                 }
               }}
             />
-            <Pressable
+            <TouchableOpacity
               onPress={() => setIsManuallyPaused(p => !p)}
-              style={styles.videoHit}
-            />
+              style={[
+                styles.pauseToggle,
+                {
+                  backgroundColor: t.playBadgeBg,
+                  borderColor: t.chipBorder,
+                },
+              ]}
+              activeOpacity={0.8}
+            >
+              <Icon
+                name={isManuallyPaused ? 'play' : 'pause'}
+                size={18}
+                color={t.mediaIcon}
+              />
+            </TouchableOpacity>
             {isManuallyPaused && (
               <View pointerEvents="none" style={styles.playOverlay}>
                 <View
@@ -719,7 +733,6 @@ const Videos = () => {
   const [activeIndex, setActiveIndex] = useState(0);
   const [isScreenFocused, setIsScreenFocused] = useState(true);
   const [listHeight, setListHeight] = useState(SCREEN_HEIGHT);
-  const [isAppBackgrounded, setIsAppBackgrounded] = useState(false);
 
   // Use global WatchPipContext to open a floating Pip player that persists across screens
   const { pip: currentPip, isPipActive, startPip } = useWatchPip();
@@ -801,20 +814,6 @@ const Videos = () => {
     }
   }, [isScreenFocused, isPipActive]);
 
-  useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      setIsAppBackgrounded(nextAppState !== 'active');
-    };
-    const subscription = AppState.addEventListener(
-      'change',
-      handleAppStateChange,
-    );
-    handleAppStateChange(AppState.currentState);
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
   const onEndReached = () => {
     if (!loadingMore && hasMore) {
       const next = page + 1;
@@ -866,9 +865,7 @@ const Videos = () => {
         renderItem={({ item, index }) => (
           <VideoItem
             post={item}
-            isActive={
-              index === activeIndex && (isScreenFocused || isAppBackgrounded)
-            }
+            isActive={index === activeIndex && isScreenFocused && !isPipActive}
             containerHeight={listHeight}
             onOpenPip={openGlobalPip}
           />
@@ -957,6 +954,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 11,
+  },
+  pauseToggle: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    zIndex: 12,
   },
   playBadge: {
     width: 72,
