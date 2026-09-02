@@ -24,17 +24,16 @@ type Environment = 'development' | 'staging' | 'production';
 // IMPORTANT: Android emulator uses 10.0.2.2 to access host machine's localhost
 // For physical Android devices, change the Android URL below to your local network IP (e.g., 192.168.0.101)
 const getDevServerUrl = (): string => {
-  // return "http://192.168.0.100:4000";
-  return 'https://connect-server-7h7d.onrender.com';
-
-  // return "http://192.168.67.1:4000";
-  return 'http://192.168.1.102:4000';
-
+  // Set EXPO_PUBLIC_API_URL for a local Express server when testing face
+  // auth. The Python service is reached by Express, never by the app.
+  const configuredUrl = process.env.EXPO_PUBLIC_API_URL;
+  if (configuredUrl) return configuredUrl.replace(/\/$/, '');
   if (Platform.OS === 'android') {
     // For Android emulator: use 10.0.2.2 (maps to host machine's localhost)
     // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:4000")
     return 'http://10.0.2.2:4000';
   }
+  return 'http://192.168.1.102:4000';
   // For iOS simulator and other platforms, use local network IP
   // Alternative: use production server for development
 };

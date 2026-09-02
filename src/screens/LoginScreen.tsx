@@ -16,6 +16,7 @@ import { AuthContext } from '../contexts/AuthContext';
 // import { GoogleSigninButton } from '@react-native-google-signin/google-signin'; // Temporarily disabled due to ViewManagerDelegate error
 import Icon from 'react-native-vector-icons/Ionicons';
 import KeyboardSafeView from '../components/KeyboardSafeView';
+import FaceCapture from '../components/FaceCapture';
 
 type RootStackParamList = {
   Login: undefined;
@@ -29,9 +30,22 @@ const LoginScreen = () => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
+  const [faceLoginMode, setFaceLoginMode] = useState(false);
   const { colors: themeColors } = useTheme();
   const bottomBarBg = themeColors.surface.secondary;
-  const { login, googleSignIn } = useContext(AuthContext);
+  const { login, faceLogin, googleSignIn, isLoading } = useContext(AuthContext);
+
+  const handleFaceLogin = async (frames: string[]) => {
+    setError('');
+    const result = await faceLogin(frames);
+    if (result.success) {
+      Toast.show({ type: 'success', text1: 'Face login successful!' });
+      setFaceLoginMode(false);
+    } else {
+      setError(result.error || 'Could not verify your face. Please try again.');
+      Toast.show({ type: 'error', text1: result.error || 'Face login failed.' });
+    }
+  };
 
   const validate = () => {
     if (!email) {
@@ -53,8 +67,7 @@ const LoginScreen = () => {
   const handleLogin = async () => {
     if (validate()) {
       setError('');
-      const result = await login(email, password);
-      console.log('result', { email, password }, result);
+      const result = await login(email.trim(), password);
       if (result.success) {
         Toast.show({
           type: 'success',
@@ -109,60 +122,80 @@ const LoginScreen = () => {
         <Text style={[styles.title, { color: themeColors.primary }]}>
           Login
         </Text>
-        <PaperTextInput
-          mode="outlined"
-          label="Email"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          style={[styles.input, { backgroundColor: bottomBarBg }]}
-          textColor={themeColors.text.primary}
-          error={!!error && error.toLowerCase().includes('email')}
-          theme={{
-            colors: {
-              primary: themeColors.primary,
-              text: themeColors.text.primary,
-              onSurface: themeColors.text.primary,
-            },
-          }}
-        />
-        <PaperTextInput
-          mode="outlined"
-          label="Password"
-          value={password}
-          onChangeText={setPassword}
-          secureTextEntry={!showPassword}
-          style={[styles.input, { backgroundColor: bottomBarBg }]}
-          textColor={themeColors.text.primary}
-          error={!!error && error.toLowerCase().includes('password')}
-          theme={{
-            colors: {
-              primary: themeColors.primary,
-              text: themeColors.text.primary,
-              onSurface: themeColors.text.primary,
-            },
-          }}
-          right={
-            <PaperTextInput.Icon
-              icon={showPassword ? 'eye-off' : 'eye'}
-              onPress={() => setShowPassword(v => !v)}
+        {!faceLoginMode ? (
+          <>
+            <PaperTextInput
+              mode="outlined"
+              label="Email"
+              value={email}
+              onChangeText={setEmail}
+              autoCapitalize="none"
+              keyboardType="email-address"
+              style={[styles.input, { backgroundColor: bottomBarBg }]}
+              textColor={themeColors.text.primary}
+              error={!!error && error.toLowerCase().includes('email')}
+              theme={{
+                colors: {
+                  primary: themeColors.primary,
+                  text: themeColors.text.primary,
+                  onSurface: themeColors.text.primary,
+                },
+              }}
             />
-          }
-        />
+            <PaperTextInput
+              mode="outlined"
+              label="Password"
+              value={password}
+              onChangeText={setPassword}
+              secureTextEntry={!showPassword}
+              style={[styles.input, { backgroundColor: bottomBarBg }]}
+              textColor={themeColors.text.primary}
+              error={!!error && error.toLowerCase().includes('password')}
+              theme={{
+                colors: {
+                  primary: themeColors.primary,
+                  text: themeColors.text.primary,
+                  onSurface: themeColors.text.primary,
+                },
+              }}
+              right={
+                <PaperTextInput.Icon
+                  icon={showPassword ? 'eye-off' : 'eye'}
+                  onPress={() => setShowPassword(v => !v)}
+                />
+              }
+            />
+          </>
+        ) : null}
         {error ? (
           <Text style={[styles.error, { color: themeColors.status.error }]}>
             {error}
           </Text>
         ) : null}
+        {!faceLoginMode ? (
+          <Button
+            mode="contained"
+            onPress={handleLogin}
+            loading={isLoading}
+            disabled={isLoading}
+            style={[styles.button, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]}
+            labelStyle={{ color: themeColors.text.inverse }}
+          >
+            <Text style={{ color: themeColors.text.inverse }}>Login</Text>
+          </Button>
+        ) : null}
         <Button
-          mode="contained"
-          onPress={handleLogin}
-          style={[styles.button, { backgroundColor: themeColors.primary }]}
-          labelStyle={{ color: themeColors.text.inverse }}
+          mode="outlined"
+          onPress={() => {
+            setError('');
+            setFaceLoginMode((value) => !value);
+          }}
+          disabled={isLoading}
+          style={styles.button}
         >
-          <Text style={{ color: themeColors.text.inverse }}>Login</Text>
+          {faceLoginMode ? 'Use password login' : 'Log in with Face'}
         </Button>
+        {faceLoginMode ? <FaceCapture onCapture={handleFaceLogin} disabled={isLoading} /> : null}
 
         {/* Divider */}
         <View style={styles.divider}>
@@ -195,6 +228,7 @@ const LoginScreen = () => {
             },
           ]}
           onPress={handleGoogleSignIn}
+          disabled={isLoading || faceLoginMode}
           activeOpacity={0.8}
         >
           <Icon

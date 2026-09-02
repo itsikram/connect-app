@@ -10,6 +10,23 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const persistAuthResponse = async (responseData) => {
+    const token = responseData?.accessToken;
+    if (!token) {
+      throw new Error('Invalid login response: no access token received.');
+    }
+
+    const userData = { ...responseData };
+    await AsyncStorage.multiSet([
+      ['user', JSON.stringify(userData)],
+      ['authToken', token],
+    ]);
+    clearTokenCache();
+    setUser(userData);
+
+    return userData;
+  };
+
   const fetchProfileData = async (profileId) => {
     try {
       console.log('Fetching profile data for profileId:', profileId);
@@ -44,34 +61,8 @@ export const AuthProvider = ({ children }) => {
       console.log('✅ Login response received');
       console.log('📊 Login response data:', response.data);
       
-      const { accessToken: token, firstName, surname, user_id, profile } = response.data;
-
-      // Defensive: check all required fields
-      if (!firstName || !surname || !user_id || !profile) {
-        console.error('❌ Missing required fields:', { firstName, surname, user_id, profile });
-        throw new Error('Invalid user data received from server.');
-      }
-      
-      console.log('👤 User data extracted:', { firstName, surname, user_id, profile });
-      console.log('🔑 Token received:', token ? `${token.substring(0, 20)}...` : 'NO TOKEN');
-      
-      const userData = { firstName, surname, user_id, profile };
-
-      await AsyncStorage.multiSet([
-        ['user', JSON.stringify(userData)],
-        ['authToken', token]
-      ]);
-      
-      // Clear token cache to force refresh on next API call
-      clearTokenCache();
-      
-      console.log('💾 Data stored in AsyncStorage successfully');
-      
-      // Verify token was stored
-      const storedToken = await AsyncStorage.getItem('authToken');
-      console.log('🔍 Stored token verification:', storedToken ? `${storedToken.substring(0, 20)}...` : 'NO TOKEN FOUND');
-
-      setUser(userData);
+      const userData = await persistAuthResponse(response.data);
+      const { profile, user_id } = userData;
       
       // Register push token after login
       try {
@@ -79,7 +70,7 @@ export const AuthProvider = ({ children }) => {
       } catch (e) { }
 
       // Fetch fresh profile data after login (ensure it is an ID)
-      const profileId = typeof profile === 'string' ? profile : profile?._id;
+      const profileId = typeof profile === 'string' ? profile : profile?._id || user_id;
       if (profileId) {
         console.log('📥 Fetching profile data for profile ID:', profileId);
         await fetchProfileData(profileId);
@@ -91,6 +82,33 @@ export const AuthProvider = ({ children }) => {
       console.error('📡 Error response:', error.response);
       const errorMessage = error.response?.data?.message || error.message || 'Login failed. Please try again.';
       return { success: false, error: errorMessage };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const faceLogin = async (frames) => {
+    try {
+      setIsLoading(true);
+      const response = await authAPI.faceLogin({ frames });
+      const userData = await persistAuthResponse(response.data);
+      const { profile, user_id } = userData;
+
+      try {
+        await registerTokenWithServer();
+      } catch (error) {
+        console.warn('Push token registration after face login failed:', error.message);
+      }
+
+      const profileId = typeof profile === 'string' ? profile : profile?._id || user_id;
+      if (profileId) await fetchProfileData(profileId);
+      return { success: true, user: userData };
+    } catch (error) {
+      console.error('Face login failed:', error);
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message || 'Face login failed. Please try again.',
+      };
     } finally {
       setIsLoading(false);
     }
@@ -280,6 +298,7 @@ export const AuthProvider = ({ children }) => {
     user,
     isLoading,
     login,
+    faceLogin,
     register,
     googleSignIn,
     logout,

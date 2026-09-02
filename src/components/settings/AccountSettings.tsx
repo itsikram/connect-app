@@ -14,7 +14,7 @@ import { updateProfileField } from '../../reducers/profileReducer';
 import { AuthContext } from '../../contexts/AuthContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
-import api, { clearTokenCache, userAPI } from '../../lib/api';
+import api, { authAPI, clearTokenCache, userAPI } from '../../lib/api';
 import {
   SettingsSectionHeader,
   SettingsField,
@@ -23,6 +23,7 @@ import {
   SettingsDangerButton,
   SettingsSecondaryButton,
 } from './settingsUi';
+import FaceCapture from '../FaceCapture';
 
 const getProfileEmail = (profile: any) => {
   const user = profile?.user;
@@ -53,6 +54,7 @@ const AccountSettings = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingBangla, setIsSavingBangla] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isRegisteringFace, setIsRegisteringFace] = useState(false);
 
   useEffect(() => {
     setBanglaName(currentProfile?.banglaName || '');
@@ -108,6 +110,21 @@ const AccountSettings = () => {
       showError(error?.response?.data?.message || 'Failed to update Bengali name');
     } finally {
       setIsSavingBangla(false);
+    }
+  };
+
+  const handleFaceCapture = async (frames: string[]) => {
+    setIsRegisteringFace(true);
+    try {
+      await authAPI.faceRegister({ frames });
+      showSuccess('Face login registered successfully');
+    } catch (error: any) {
+      showError(
+        error?.response?.data?.message ||
+          'Could not register your face. Please blink naturally and try again.'
+      );
+    } finally {
+      setIsRegisteringFace(false);
     }
   };
 
@@ -255,6 +272,14 @@ const AccountSettings = () => {
         title="Account Settings"
         description="Manage your email, password, and Bengali name."
       />
+
+      <View style={[styles.banglaBlock, { borderBottomColor: themeColors.border.primary }]}>
+        <Text style={[styles.subTitle, { color: themeColors.text.primary }]}>Face Login</Text>
+        <Text style={[styles.muted, { color: themeColors.text.secondary }]}>
+          Register your face to sign in without a password. Blink naturally during capture.
+        </Text>
+        <FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace} />
+      </View>
 
       <View style={[styles.banglaBlock, { borderBottomColor: themeColors.border.primary }]}>
         <Text style={[styles.subTitle, { color: themeColors.text.primary }]}>Bengali Name (বাংলা নাম)</Text>

@@ -36,6 +36,12 @@ interface AuthResponse {
   message?: string;
 }
 
+interface FaceFrames {
+  frames: string[];
+}
+
+export type AuthRequestConfig = AxiosRequestConfig & { skipAuthRefresh?: boolean; _retry?: boolean };
+
 interface DebugAuthResult {
   user: string | null;
   token: string | null;
@@ -138,10 +144,10 @@ api.interceptors.response.use(
     return response;
   },
   async (error: AxiosError) => {
-    const originalRequest = error.config as AxiosRequestConfig & { _retry?: boolean };
+    const originalRequest = error.config as AuthRequestConfig;
 
     // Handle 401 Unauthorized errors
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest.skipAuthRefresh && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
@@ -205,6 +211,10 @@ export const authAPI = {
   logout: (): Promise<AxiosResponse> => api.post('/auth/logout'),
 
   refreshToken: (): Promise<AxiosResponse<AuthResponse>> => api.post('/auth/refresh'),
+  faceLogin: (data: FaceFrames): Promise<AxiosResponse<AuthResponse>> =>
+    api.post('/auth/face/login', data, { skipAuthRefresh: true } as AuthRequestConfig),
+  faceRegister: (data: FaceFrames): Promise<AxiosResponse> =>
+    api.post('/auth/face/register', data, { skipAuthRefresh: true } as AuthRequestConfig),
 };
 
 export const userAPI = {
