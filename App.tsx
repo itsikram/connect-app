@@ -59,6 +59,7 @@ import { ChessGameProvider, useChessGame } from './src/contexts/ChessGameContext
 import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
+import AIAgentModal from './src/components/AIAgentModal';
 import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext';
 import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
@@ -956,6 +957,7 @@ function AppContent() {
 
 // Inner component that can use hooks
 function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading: boolean, isDarkMode: boolean }) {
+  const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
   // Debug user state changes
   React.useEffect(() => {
     console.log('🔄 AppContentInner - User state changed:', user ? 'User logged in' : 'No user');
@@ -1007,7 +1009,9 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                 safeAreaInsets={isChatPage ? { top: 0, right: 0, bottom: 0, left: 0 } : undefined}
                 screenOptions={({ route }) => ({
                   headerShown: route.name === 'Home',
-                  header: route.name === 'Home' ? () => <FacebookHeader /> : undefined,
+                  header: route.name === 'Home'
+                    ? () => <FacebookHeader onOpenAIAgent={() => setAiAgentVisible(true)} />
+                    : undefined,
                 })}
               >
                 {user ? (
@@ -1094,6 +1098,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
             <WatchPipPlayer />
         </SafeAreaView>
         <MinimizedCallBar />
+        <AIAgentModal visible={aiAgentVisible} onClose={() => setAiAgentVisible(false)} />
         </>
         );
       }}

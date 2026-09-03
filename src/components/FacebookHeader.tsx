@@ -15,9 +15,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import { useNavigation } from '@react-navigation/native';
-import { useSelector, useDispatch } from 'react-redux';
-import { RootState, AppDispatch } from '../store';
-import { updateUnreadMessageCount } from '../reducers/chatReducer';
+import { useSelector } from 'react-redux';
+import { RootState } from '../store';
 import { useSocket } from '../contexts/SocketContext';
 import { useHeaderVisibility } from '../contexts/HeaderVisibilityContext';
 import SearchModal from './SearchModal';
@@ -25,20 +24,18 @@ import moment from 'moment';
 
 interface FacebookHeaderProps {
   title?: string;
+  onOpenAIAgent?: () => void;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
 
 const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   title = 'Connect',
+  onOpenAIAgent,
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const navigation = useNavigation();
-  const dispatch = useDispatch<AppDispatch>();
   const myProfile = useSelector((state: RootState) => state.profile);
-  const unreadMessageCount = useSelector(
-    (state: RootState) => state.chat.unreadMessageCount,
-  );
   const { isConnected, emit, on, off } = useSocket();
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [notifOpen, setNotifOpen] = React.useState(false);
@@ -46,7 +43,6 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   const [unreadCount, setUnreadCount] = React.useState(0);
   const dropdownAnimation = React.useRef(new Animated.Value(0)).current;
   const badgeAnimation = React.useRef(new Animated.Value(1)).current;
-  const messageBadgeAnimation = React.useRef(new Animated.Value(1)).current;
 
   const backgroundColor = themeColors.surface.primary;
   const iconColor = themeColors.text.primary;
@@ -54,10 +50,6 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
 
   const handleSearchPress = () => {
     setSearchOpen(true);
-  };
-
-  const handleMessagePress = () => {
-    (navigation as any).navigate('Message', { screen: 'MessageList' });
   };
 
   const handleNotificationsPress = () => {
@@ -250,31 +242,6 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
     };
   }, [myProfile?._id, isConnected, emit, on, off]);
 
-  // Update message count when profile changes
-  React.useEffect(() => {
-    if (myProfile?._id) {
-      dispatch(updateUnreadMessageCount(myProfile._id));
-    }
-  }, [myProfile?._id, dispatch]);
-
-  // Animate message badge when count changes
-  React.useEffect(() => {
-    if (unreadMessageCount > 0) {
-      Animated.sequence([
-        Animated.timing(messageBadgeAnimation, {
-          toValue: 1.3,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-        Animated.timing(messageBadgeAnimation, {
-          toValue: 1,
-          duration: 150,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [unreadMessageCount]);
-
   const { translateY } = useHeaderVisibility();
   const insets = useSafeAreaInsets();
   const topInset = Platform.OS === 'ios' ? 0 : insets.top;
@@ -346,30 +313,15 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
           )}
         </Pressable>
         <TouchableOpacity
-          onPress={handleMessagePress}
+          onPress={onOpenAIAgent}
+          accessibilityRole="button"
+          accessibilityLabel="Open AI Agent"
           style={[
             styles.actionButton,
             { backgroundColor: themeColors.surface.secondary },
           ]}
         >
-          <View style={styles.messageButtonContainer}>
-            <Icon name="chat" size={20} color={iconColor} />
-            {unreadMessageCount > 0 && (
-              <Animated.View
-                style={[
-                  styles.messageBadge,
-                  {
-                    backgroundColor: themeColors.status.error,
-                    transform: [{ scale: messageBadgeAnimation }],
-                  },
-                ]}
-              >
-                <Text style={styles.badgeText}>
-                  {unreadMessageCount > 99 ? '99+' : unreadMessageCount}
-                </Text>
-              </Animated.View>
-            )}
-          </View>
+          <Icon name="psychology" size={22} color={iconColor} />
         </TouchableOpacity>
         <TouchableOpacity
           onPress={handleNotificationsPress}
@@ -615,31 +567,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  messageButtonContainer: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   notificationBadge: {
-    position: 'absolute',
-    top: -6,
-    right: -6,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 4,
-    shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 6,
-  },
-  messageBadge: {
     position: 'absolute',
     top: -6,
     right: -6,

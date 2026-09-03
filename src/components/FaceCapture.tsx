@@ -1,10 +1,15 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as FaceDetector from 'expo-face-detector';
 import { Button } from 'react-native-paper';
 
-const FRAME_COUNT = 20;
+const FRAME_COUNT = 60;
 const FRAME_INTERVAL_MS = 100;
+const MIN_FRAMES_TO_SEND = 20;
+const OPEN_CALIBRATION_FRAMES = 8;
+const CLOSED_RATIO = 0.72;
+const OPEN_RATIO = 0.86;
 
 type FaceCaptureProps = {
   onCapture: (frames: string[]) => Promise<void> | void;
@@ -40,21 +45,63 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
 
     try {
       const frames: string[] = [];
+      let openBaseline = 0;
+      let closedFrames = 0;
+      let blinkDetected = false;
       for (let index = 0; index < FRAME_COUNT; index += 1) {
         const photo = await cameraRef.current.takePictureAsync({
           base64: true,
           quality: 0.7,
           skipProcessing: true,
         });
-        if (photo?.base64) frames.push(photo.base64);
-        setProgress(Math.round(((index + 1) / FRAME_COUNT) * 100));
+        if (!photo?.base64 || !photo.uri) continue;
+
+        const detection = await FaceDetector.detectFacesAsync(photo.uri, {
+          mode: FaceDetector.FaceDetectorMode.accurate,
+          detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
+          runClassifications: FaceDetector.FaceDetectorClassifications.all,
+          minDetectionInterval: FRAME_INTERVAL_MS,
+        });
+        const face = detection.faces.length === 1 ? detection.faces[0] : null;
+        const leftOpen = face?.leftEyeOpenProbability;
+        const rightOpen = face?.rightEyeOpenProbability;
+        if (!face || leftOpen === undefined || rightOpen === undefined) {
+          setStatus('Keep exactly one face centered in the live camera.');
+          await new Promise(resolve => setTimeout(resolve, FRAME_INTERVAL_MS));
+          continue;
+        }
+
+        const eyeOpen = (leftOpen + rightOpen) / 2;
+        if (index < OPEN_CALIBRATION_FRAMES) {
+          openBaseline = Math.max(openBaseline, eyeOpen);
+          setStatus(`Hold still, calibrating eyes… ${index + 1}/${OPEN_CALIBRATION_FRAMES}`);
+        } else if (openBaseline > 0) {
+          if (eyeOpen < openBaseline * CLOSED_RATIO) {
+            closedFrames += 1;
+            setStatus('Eyes closed detected — open your eyes.');
+          } else if (closedFrames >= 1 && eyeOpen >= openBaseline * OPEN_RATIO) {
+            blinkDetected = true;
+            setStatus('Blink detected. Preparing verification…');
+          } else {
+            closedFrames = 0;
+            setStatus('Blink once naturally while keeping your face centered.');
+          }
+        }
+
+        frames.push(photo.base64);
+        setProgress(Math.min(100, Math.round((frames.length / MIN_FRAMES_TO_SEND) * 100)));
+        if (blinkDetected && frames.length >= MIN_FRAMES_TO_SEND) break;
         await new Promise(resolve => setTimeout(resolve, FRAME_INTERVAL_MS));
       }
 
-      if (frames.length < FRAME_COUNT) {
+      if (frames.length < MIN_FRAMES_TO_SEND) {
         setStatus(
           `Could not capture enough camera frames (received ${frames.length}).`,
         );
+        return;
+      }
+      if (!blinkDetected) {
+        setStatus('No blink detected. Please blink once while the camera is capturing.');
         return;
       }
 

@@ -16,6 +16,8 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  AppState,
+  AppStateStatus,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';
@@ -29,6 +31,12 @@ import { useWatchPipOptional } from '../contexts/WatchPipContext';
 import { buildLibraryPipPayloadFromVideo } from '../utils/watchPipHelpers';
 import { useWatchTokens } from '../theme/watchTokens';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
+import {
+  configurePipAudioMode,
+  createPipBackgroundSound,
+  unloadPipBackgroundSound,
+  isAppBackgrounded,
+} from '../lib/pipBackgroundPlayback';
 import api from '../lib/api';
 import {
   pollYoutubeDownloadProgress,
@@ -202,16 +210,15 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const currentTimeRef = useRef(0);
   const isPlayingRef = useRef(false);
   const endedKeyRef = useRef('');
+  const handleVideoEndRef = useRef<() => void>(() => {});
+  const bgSoundRef = useRef<Audio.Sound | null>(null);
+  const bgActiveRef = useRef(false);
+  const handingOffRef = useRef(false);
+  const wantPlayingRef = useRef(false);
   const libraryRefreshRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({
-      playsInSilentModeIOS: true,
-      allowsRecordingIOS: false,
-      staysActiveInBackground: true,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    }).catch(() => {});
+    configurePipAudioMode().catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -596,14 +603,24 @@ const MediaPlayer = ({ route, navigation }: any) => {
   );
 
   const replayCurrent = useCallback(async () => {
+    wantPlayingRef.current = true;
     try {
+      if (bgActiveRef.current && bgSoundRef.current) {
+        currentTimeRef.current = 0;
+        await bgSoundRef.current.setPositionAsync(0);
+        await bgSoundRef.current.playAsync();
+        setIsPlaying(true);
+        return;
+      }
       await videoRef.current?.setPositionAsync(0);
       setIsPlaying(true);
     } catch (_) {}
   }, []);
 
   const stopPlayback = useCallback(() => {
+    wantPlayingRef.current = false;
     videoRef.current?.pauseAsync().catch(() => {});
+    bgSoundRef.current?.pauseAsync().catch(() => {});
     setIsPlaying(false);
   }, []);
 
@@ -644,6 +661,89 @@ const MediaPlayer = ({ route, navigation }: any) => {
     stopPlayback,
     setPlaybackIndex,
   ]);
+
+  handleVideoEndRef.current = handleVideoEnd;
+
+  const stopBackgroundSound = useCallback(async () => {
+    const sound = bgSoundRef.current;
+    bgSoundRef.current = null;
+    bgActiveRef.current = false;
+    return unloadPipBackgroundSound(sound);
+  }, []);
+
+  const startBackgroundSound = useCallback(async () => {
+    const video = currentVideoRef.current;
+    if (!video?.url || handingOffRef.current || !wantPlayingRef.current) return;
+    handingOffRef.current = true;
+    try {
+      let positionMillis = Math.max(0, currentTimeRef.current * 1000);
+      if (videoRef.current) {
+        const status = await videoRef.current.getStatusAsync();
+        if (status.isLoaded) {
+          positionMillis = status.positionMillis || positionMillis;
+          currentTimeRef.current = positionMillis / 1000;
+        }
+        await videoRef.current.pauseAsync();
+        await videoRef.current.setIsMutedAsync(true);
+      }
+      if (bgSoundRef.current) {
+        await unloadPipBackgroundSound(bgSoundRef.current);
+        bgSoundRef.current = null;
+      }
+      const sound = await createPipBackgroundSound({
+        uri: video.url,
+        positionMillis,
+        title: video.title,
+        onEnded: () => handleVideoEndRef.current(),
+      });
+      bgSoundRef.current = sound;
+      bgActiveRef.current = true;
+    } catch (err) {
+      console.warn('Media player background handoff failed', err);
+      bgActiveRef.current = false;
+      try {
+        await videoRef.current?.setIsMutedAsync(false);
+        if (wantPlayingRef.current) await videoRef.current?.playAsync();
+      } catch (_) {}
+    } finally {
+      handingOffRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    wantPlayingRef.current = isPlaying;
+  }, [isPlaying]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', async (next: AppStateStatus) => {
+      if (isAppBackgrounded(next) && wantPlayingRef.current) {
+        await startBackgroundSound();
+        return;
+      }
+      if (next === 'active' && bgActiveRef.current) {
+        const positionMillis = await stopBackgroundSound();
+        currentTimeRef.current = positionMillis / 1000;
+        try {
+          if (positionMillis > 0) await videoRef.current?.setPositionAsync(positionMillis);
+          await videoRef.current?.setIsMutedAsync(false);
+          if (wantPlayingRef.current) await videoRef.current?.playAsync();
+        } catch (_) {}
+      }
+    });
+    return () => {
+      subscription.remove();
+      stopBackgroundSound();
+    };
+  }, [startBackgroundSound, stopBackgroundSound]);
+
+  useEffect(() => {
+    if (!bgActiveRef.current || !wantPlayingRef.current) return;
+    const restartForTrack = async () => {
+      await stopBackgroundSound();
+      await startBackgroundSound();
+    };
+    restartForTrack();
+  }, [currentTrackKey, startBackgroundSound, stopBackgroundSound]);
 
   const switchLibraryPipByOffset = useCallback(
     (offset: number) => {
@@ -1041,9 +1141,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
     [watchVideos.length, savedVideos.length, customVideos.length, allVideos.length],
   );
 
-  const handleVideoEndRef = useRef(handleVideoEnd);
-  handleVideoEndRef.current = handleVideoEnd;
-
   const videoSource = useMemo(
     () => (currentVideo?.url ? { uri: currentVideo.url } : undefined),
     [currentVideo?.url],
@@ -1160,7 +1257,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
                       source={videoSource}
                       style={styles.video}
                       resizeMode={ResizeMode.CONTAIN}
-                      shouldPlay={isPlaying}
+                      shouldPlay={isPlaying && !bgActiveRef.current}
                       isLooping={false}
                       useNativeControls={false}
                       progressUpdateIntervalMillis={500}
