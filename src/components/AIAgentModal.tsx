@@ -84,7 +84,13 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   );
   const { setLudoGameActive } = useLudoGame();
   const { setChessGameActive } = useChessGame();
-  const { startAudioCall, startVideoCall, sendMessage: socketSendMessage } = useSocket();
+  const {
+    startAudioCall,
+    startVideoCall,
+    sendMessage: socketSendMessage,
+    on: socketOn,
+    off: socketOff,
+  } = useSocket();
   const [messages, setMessages] = React.useState<AgentMessage[]>([welcome()]);
   const [input, setInput] = React.useState('');
   const [interimInput, setInterimInput] = React.useState('');
@@ -100,6 +106,9 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
+  const autoReplyRulesRef = React.useRef<
+    Array<{ userId: string; userName: string; replyText: string }>
+  >([]);
   const miniPosition = React.useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
   const miniOffset = React.useRef({ x: 0, y: 0 });
   const miniPanResponder = React.useMemo(
@@ -183,6 +192,23 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     };
   }, [profile]);
 
+  React.useEffect(() => {
+    const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+    if (!ownId) return;
+    const key = `@connect/ai-auto-replies/${ownId}`;
+    AsyncStorage.getItem(key).then(value => {
+      if (!value) return;
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) autoReplyRulesRef.current = parsed;
+      } catch (error) {
+        if (__DEV__) console.warn('[AI] Invalid automatic reply rules:', error);
+      }
+    }).catch(error => {
+      if (__DEV__) console.warn('[AI] Failed to load automatic reply rules:', error);
+    });
+  }, [profile]);
+
   const callAdapter = React.useMemo(() => ({
     resolveUser: async (query: string) => {
       const normalized = query.trim().toLowerCase();
@@ -251,7 +277,42 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       const response = await api.put(`/tasks/${encodeURIComponent(taskId)}`, values);
       if (!response.data?.success) throw new Error('I could not update that task.');
     },
+    createAutoReplyRule: async (triggerUserName: string, replyText: string) => {
+      const resolved = await resolveUser(triggerUserName);
+      if (!resolved) throw new Error('I could not uniquely resolve that friend.');
+      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      if (!ownId) throw new Error('You must be signed in to save an automatic reply.');
+      const rules = autoReplyRulesRef.current.filter(rule => rule.userId !== resolved.id);
+      rules.push({ userId: resolved.id, userName: resolved.name || triggerUserName, replyText });
+      autoReplyRulesRef.current = rules;
+      await AsyncStorage.setItem(`@connect/ai-auto-replies/${ownId}`, JSON.stringify(rules));
+    },
   }), [profile, resolveUser, startAudioCall, startVideoCall, socketSendMessage]);
+
+  React.useEffect(() => {
+    const handleIncomingMessage = (payload: unknown) => {
+      const data = payload && typeof payload === 'object'
+        ? payload as Record<string, unknown>
+        : {};
+      const message = data.updatedMessage && typeof data.updatedMessage === 'object'
+        ? data.updatedMessage as Record<string, unknown>
+        : data;
+      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      const senderId = String(message.senderId || message.sender || '');
+      const text = String(message.message || '').trim();
+      if (!ownId || !senderId || senderId === ownId || !text) return;
+      const rule = autoReplyRulesRef.current.find(item => item.userId === senderId);
+      if (!rule) return;
+      const room = [ownId, senderId].sort().join('_');
+      socketSendMessage(room, ownId, senderId, rule.replyText);
+    };
+    socketOn('newMessageToUser', handleIncomingMessage);
+    socketOn('newMessage', handleIncomingMessage);
+    return () => {
+      socketOff('newMessageToUser', handleIncomingMessage);
+      socketOff('newMessage', handleIncomingMessage);
+    };
+  }, [profile, socketOff, socketOn, socketSendMessage]);
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
       setInput(text);

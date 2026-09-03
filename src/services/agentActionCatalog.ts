@@ -20,6 +20,7 @@ export type AgentActionName =
   | 'CREATE_TASK'
   | 'VIEW_TASKS'
   | 'UPDATE_TASK'
+  | 'CREATE_AUTO_REPLY_RULE'
   | 'OPEN_LUDO'
   | 'INVITE_LUDO_PLAYER'
   | 'navigate_home'
@@ -103,6 +104,7 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['CREATE_TASK', 'Create task', true],
   ['VIEW_TASKS', 'View tasks'],
   ['UPDATE_TASK', 'Edit task', true],
+  ['CREATE_AUTO_REPLY_RULE', 'Set automatic reply', true],
   ['OPEN_LUDO', 'Open Ludo'],
   ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true],
   ['navigate_home', 'Open Home'],
@@ -167,6 +169,7 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   SHOW_TASKS: 'VIEW_TASKS',
   EDIT_TASK: 'UPDATE_TASK',
   COMPLETE_TASK: 'UPDATE_TASK',
+  AUTO_REPLY: 'CREATE_AUTO_REPLY_RULE',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -186,6 +189,8 @@ const allowedActionKeys = new Set([
   'taskId',
   'taskQuery',
   'taskText',
+  'triggerUserName',
+  'replyText',
   'id',
   'type',
   'status',
@@ -369,6 +374,7 @@ export type MobileAgentActionAdapter = {
   createTask?: (text: string) => void | Promise<void>;
   updateTask?: (taskId: string, values: { text?: string; completed?: boolean }) => void | Promise<void>;
   resolveTask?: (query: string) => Promise<{ id: string } | null>;
+  createAutoReplyRule?: (triggerUserName: string, replyText: string) => void | Promise<void>;
 };
 
 export type AgentActionResult = {
@@ -584,6 +590,18 @@ export async function executeAgentActions(
           throw new Error('Tell me what to change in the task.');
         if (!adapter.updateTask) throw new Error('Task editing is unavailable.');
         await adapter.updateTask(taskId, { text, completed });
+      } else if (action.action === 'CREATE_AUTO_REPLY_RULE') {
+        const trigger = String(
+          parameters.triggerUserName || parameters.userName || action.targetName || '',
+        ).trim();
+        const reply = String(
+          parameters.replyText || parameters.messageText || parameters.message || '',
+        ).trim();
+        if (!trigger || !reply)
+          throw new Error('Tell me who to reply to and what to say.');
+        if (!adapter.createAutoReplyRule)
+          throw new Error('Automatic replies are unavailable.');
+        await adapter.createAutoReplyRule(trigger, reply);
       } else if (target) {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
         const params = action.action === 'NAVIGATE'

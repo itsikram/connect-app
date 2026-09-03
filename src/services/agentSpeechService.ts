@@ -18,19 +18,23 @@ const normalize = (text: string) =>
 const chooseVoice = (voices: Speech.Voice[], language: string) => {
   const wanted = language.toLowerCase().replace('_', '-');
   const prefix = wanted.split('-')[0];
-  return (
-    voices.find(
-      voice =>
-        String(voice.language || '')
-          .toLowerCase()
-          .replace('_', '-') === wanted,
-    ) ||
-    voices.find(voice =>
-      String(voice.language || '')
-        .toLowerCase()
-        .startsWith(prefix),
-    )
-  );
+  const candidates = voices.filter(voice => {
+    const voiceLanguage = String(voice.language || '').toLowerCase().replace('_', '-');
+    return voiceLanguage === wanted || voiceLanguage.startsWith(prefix);
+  });
+  return candidates.sort((left, right) => {
+    const score = (voice: Speech.Voice) => {
+      const details = voice as Speech.Voice & { quality?: string };
+      const voiceLanguage = String(voice.language || '').toLowerCase().replace('_', '-');
+      const name = `${voice.name || ''} ${voice.identifier || ''}`.toLowerCase();
+      return (
+        (voiceLanguage === wanted ? 100 : 0) +
+        (details.quality?.toLowerCase() === 'enhanced' ? 30 : 0) +
+        (name.includes('neural') || name.includes('natural') || name.includes('premium') ? 20 : 0)
+      );
+    };
+    return score(right) - score(left);
+  })[0];
 };
 
 const speak = (
@@ -51,8 +55,8 @@ const speak = (
     Speech.speak(text, {
       language,
       voice,
-      pitch: 1,
-      rate: Platform.OS === 'ios' ? 0.65 : 1.05,
+      pitch: 0.96,
+      rate: Platform.OS === 'ios' ? 0.58 : 0.9,
       onDone: finish,
       onStopped: finish,
       onError: finish,
@@ -72,6 +76,7 @@ export function createAgentSpeechController(
   let language = initialLanguage;
   let draining = false;
   let flushRequested = false;
+  let availableVoices: Speech.Voice[] | null = null;
 
   const currentGeneration = () => generation;
 
@@ -102,9 +107,12 @@ export function createAgentSpeechController(
         if (!chunk) continue;
         const resolvedLanguage =
           language === 'auto' ? detectAgentSpeechLanguage(chunk) : language;
-        const voices = await Speech.getAvailableVoicesAsync().catch(
-          () => [] as Speech.Voice[],
-        );
+        if (!availableVoices) {
+          availableVoices = await Speech.getAvailableVoicesAsync().catch(
+            () => [] as Speech.Voice[],
+          );
+        }
+        const voices = availableVoices;
         const voice = chooseVoice(voices, resolvedLanguage);
         await speak(
           chunk,

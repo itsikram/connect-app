@@ -17,7 +17,9 @@ const SYSTEM_PROMPT =
   'Use an empty actions array for questions and normal responses. Use SEARCH_USERS before actions that need a person; never invent IDs. ' +
   'Never use markdown or add unknown fields. Only request actions that are available in the mobile app. ' +
   'Understand Bangla, Banglish, English, and mixed language. Resolve pronouns such as him/her/ওকে from the active context. ' +
-  'For social actions, include targetName or userId and messageText/parameters.message when needed.';
+  'For social actions, include targetName or userId and messageText/parameters.message when needed. ' +
+  'You can also have a supportive, natural conversation about the user’s personal matters without calling an action. ' +
+  'Listen empathetically, answer in the user’s language, do not judge, do not invent personal facts, and suggest professional or emergency help when the situation calls for it.';
 const DEFAULT_PROVIDER: AIProvider = 'gemini';
 const DEFAULT_MODELS: Record<AIProvider, string> = {
   gemini: 'gemini-2.0-flash',

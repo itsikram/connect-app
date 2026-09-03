@@ -92,6 +92,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     await stopIncomingCallAlert();
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
+    setEngineWarm(false);
     pendingJoinRef.current = null;
     clearAgoraJoinPrefetch(currentChannelRef.current || undefined);
     isJoiningOrJoined.current = false;
@@ -156,6 +157,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     const incoming = incomingCallRef.current;
     if (!incoming) return;
     stopIncomingCallAlert().catch(() => {});
+    receivingCallRef.current = false;
+    setReceivingCall(false);
     emit('answer-call', {
       to: String(incoming.from),
       channelName: incoming.channelName,
@@ -269,7 +272,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     };
     const onCallAccepted = ({ channelName, isAudio }: any) => {
       if (!isAudio) return;
-      if (!receivingCallRef.current) {
+      if (!receivingCallRef.current && incomingCallRef.current?.from === myId) {
         stopIncomingCallAlert();
         setOutgoingCallStatus('');
         startCallRef.current(channelName);

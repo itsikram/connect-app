@@ -1377,6 +1377,13 @@ const SingleMessage = () => {
         on('deleteMessage', handleDeleteMessage);
 
         const handleSpeakMessage = (payload: any) => {
+            const targetProfileId = payload?.targetProfileId;
+            if (
+                targetProfileId &&
+                String(targetProfileId) !== String(myProfile?._id || '')
+            ) {
+                return;
+            }
             playSpeakPayload(payload).catch((error) => {
                 console.error('speak_message playback failed:', error);
             });
@@ -2750,6 +2757,7 @@ const SingleMessage = () => {
         emit('speak_message', {
             msgId: String(msgId),
             friendId: String(friendId),
+            senderId: String(myProfile?._id || ''),
             message: msg.message || '',
             attachment: typeof msg.attachment === 'string' ? msg.attachment : '',
             messageType: msg.messageType || '',
@@ -3577,10 +3585,10 @@ const SingleMessage = () => {
                                                 marginRight: 10 
                                             }}
                                         >
-                                            <Icon 
-                                                name={playingId === item._id ? 'pause' : 'play-arrow'} 
-                                                size={22} 
-                                                color={isMyMessage ? '#fff' : themeColors.primary} 
+                                            <Icon
+                                                name={playingId === item._id ? 'pause' : 'play-arrow'}
+                                                size={22}
+                                                color={isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.recvText}
                                             />
                                         </TouchableOpacity>
                                         <Slider
@@ -3588,17 +3596,19 @@ const SingleMessage = () => {
                                             minimumValue={0}
                                             maximumValue={Math.max(1, Math.floor((playingProgress[item._id]?.duration || 0)))}
                                             value={Math.floor(playingProgress[item._id]?.current || 0)}
-                                            minimumTrackTintColor={isMyMessage ? '#fff' : themeColors.primary}
-                                            maximumTrackTintColor={isMyMessage ? 'rgba(255,255,255,0.35)' : themeColors.gray[400]}
-                                            thumbTintColor={isMyMessage ? '#fff' : themeColors.primary}
+                                            minimumTrackTintColor={isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.accent}
+                                            maximumTrackTintColor={isMyMessage ? `${chatTheme.colors.sentText}59` : `${chatTheme.colors.recvText}59`}
+                                            thumbTintColor={isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.accent}
                                             onSlidingComplete={(val) => seekTo(item, Number(val))}
                                         />
                                         <Text style={{ 
-                                            color: isMyMessage ? themeColors.text.inverse : themeColors.text.primary, 
-                                            fontSize: 12, 
-                                            marginLeft: 8,
-                                            fontWeight: '500',
-                                            minWidth: 75,
+                                            color: isMyMessage ? chatTheme.colors.sentText : chatTheme.colors.recvText,
+                                            fontSize: 11,
+                                            marginLeft: 6,
+                                            fontWeight: '600',
+                                            fontVariant: ['tabular-nums'],
+                                            minWidth: 78,
+                                            textAlign: 'right',
                                         }}>
                                             {formatSecs(playingProgress[item._id]?.current || 0)} / {formatSecs(playingProgress[item._id]?.duration || 0)}
                                         </Text>
