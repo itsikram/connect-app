@@ -173,20 +173,43 @@ export const Audio = {
 };
 
 export const ResizeMode = { CONTAIN: 'contain', COVER: 'cover', STRETCH: 'fill' } as const;
+export const supportsNativeVideoBackgroundPlayback = true;
 
 export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
-  const { source, resizeMode, useNativeControls, isMuted, isLooping, shouldPlay, onPlaybackStatusUpdate, ...viewProps } = props;
+  const {
+    source,
+    resizeMode,
+    useNativeControls,
+    isMuted,
+    isLooping,
+    shouldPlay,
+    staysActiveInBackground = true,
+    showNowPlayingNotification = true,
+    onPlaybackStatusUpdate,
+    ...viewProps
+  } = props;
   const player = useVideoPlayer(source, (created: any) => {
     created.loop = Boolean(isLooping);
     created.muted = Boolean(isMuted);
+    created.staysActiveInBackground = staysActiveInBackground;
+    created.showNowPlayingNotification = showNowPlayingNotification;
     if (shouldPlay) created.play();
   });
 
   useEffect(() => {
     player.loop = Boolean(isLooping);
     player.muted = Boolean(isMuted);
+    player.staysActiveInBackground = staysActiveInBackground;
+    player.showNowPlayingNotification = showNowPlayingNotification;
     if (shouldPlay) player.play(); else player.pause();
-  }, [player, isLooping, isMuted, shouldPlay]);
+  }, [
+    player,
+    isLooping,
+    isMuted,
+    shouldPlay,
+    staysActiveInBackground,
+    showNowPlayingNotification,
+  ]);
 
   useEffect(() => {
     if (!onPlaybackStatusUpdate) return undefined;

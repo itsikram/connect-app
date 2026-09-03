@@ -143,7 +143,12 @@
       ],
       "@react-native-google-signin/google-signin",
       "expo-audio",
-      "expo-video",
+      [
+        "expo-video",
+        {
+          "supportsBackgroundPlayback": true
+        }
+      ],
       "expo-asset"
     ],
     "sdkVersion": "57.0.0",

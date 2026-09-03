@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
@@ -34,6 +35,7 @@ import {
   createAgentSpeechController,
 } from '../services/agentSpeechService';
 import { AgentMessage } from '../types/aiAgent';
+import { RootState } from '../store';
 
 interface Props {
   visible: boolean;
@@ -50,7 +52,17 @@ const welcome = (): AgentMessage => ({
 
 const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const { colors } = useTheme();
-  const { logout } = React.useContext(AuthContext);
+  const { logout, user } = React.useContext(AuthContext);
+  const profile = useSelector((state: RootState) => state.profile);
+  const profileContext = React.useMemo(
+    () => ({
+      ...(user?.profile && typeof user.profile === 'object'
+        ? user.profile
+        : {}),
+      ...(profile && typeof profile === 'object' ? profile : {}),
+    }),
+    [profile, user?.profile],
+  );
   const { setLudoGameActive } = useLudoGame();
   const { setChessGameActive } = useChessGame();
   const [messages, setMessages] = React.useState<AgentMessage[]>([welcome()]);
@@ -166,6 +178,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             speechController.update(next, language);
         },
         controller.signal,
+        profileContext,
       );
       if (generation !== generationRef.current) return;
 

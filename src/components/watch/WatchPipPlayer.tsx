@@ -12,7 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Audio, Video as ExpoVideo, ResizeMode, AVPlaybackStatus } from '../../lib/avCompat';
+import {
+  Audio,
+  Video as ExpoVideo,
+  ResizeMode,
+  AVPlaybackStatus,
+  supportsNativeVideoBackgroundPlayback,
+} from '../../lib/avCompat';
 import { useWatchPip } from '../../contexts/WatchPipContext';
 import { clampPlayCount } from '../../utils/videoPlayerLibrary';
 import { getPipPlaylistIndex } from '../../utils/watchPipHelpers';
@@ -368,6 +374,7 @@ const WatchPipPlayer = () => {
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next: AppStateStatus) => {
+      if (supportsNativeVideoBackgroundPlayback) return;
       if (!pip?.videoUrl) return;
       if (isAppBackgrounded(next) && wantPlayingRef.current) {
         await startBackgroundSound();

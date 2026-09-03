@@ -157,6 +157,14 @@
         android:exported="false"
         android:foregroundServiceType="mediaPlayback" />
       <service
+        android:name="expo.modules.video.playbackService.ExpoVideoPlaybackService"
+        android:exported="false"
+        android:foregroundServiceType="mediaPlayback">
+        <intent-filter>
+          <action android:name="androidx.media3.session.MediaSessionService" />
+        </intent-filter>
+      </service>
+      <service
         android:name="com.connect.app.BackgroundTtsService"
         android:exported="false"
         android:enabled="true"

@@ -5,17 +5,31 @@ export type AgentSpeechLanguage = 'auto' | 'bn-BD' | 'en-US';
 
 const BENGALI_CHAR = /[\u0980-\u09FF]/;
 
-export const detectAgentSpeechLanguage = (text: string): Exclude<AgentSpeechLanguage, 'auto'> =>
+export const detectAgentSpeechLanguage = (
+  text: string,
+): Exclude<AgentSpeechLanguage, 'auto'> =>
   BENGALI_CHAR.test(text) ? 'bn-BD' : 'en-US';
 
-const normalize = (text: string) => String(text || '').replace(/\s+/g, ' ').trim();
+const normalize = (text: string) =>
+  String(text || '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 const chooseVoice = (voices: Speech.Voice[], language: string) => {
   const wanted = language.toLowerCase().replace('_', '-');
   const prefix = wanted.split('-')[0];
   return (
-    voices.find((voice) => String(voice.language || '').toLowerCase().replace('_', '-') === wanted) ||
-    voices.find((voice) => String(voice.language || '').toLowerCase().startsWith(prefix))
+    voices.find(
+      voice =>
+        String(voice.language || '')
+          .toLowerCase()
+          .replace('_', '-') === wanted,
+    ) ||
+    voices.find(voice =>
+      String(voice.language || '')
+        .toLowerCase()
+        .startsWith(prefix),
+    )
   );
 };
 
@@ -26,7 +40,7 @@ const speak = (
   current: () => number,
   voice?: string,
 ) =>
-  new Promise<void>((resolve) => {
+  new Promise<void>(resolve => {
     if (generation !== current()) return resolve();
     let settled = false;
     const finish = () => {
@@ -38,7 +52,7 @@ const speak = (
       language,
       voice,
       pitch: 1,
-      rate: Platform.OS === 'ios' ? 0.5 : 0.9,
+      rate: Platform.OS === 'ios' ? 0.65 : 1.05,
       onDone: finish,
       onStopped: finish,
       onError: finish,
@@ -49,7 +63,9 @@ const speak = (
  * Expo Speech does not expose a PCM stream, but it safely queues sentence-sized
  * chunks. This gives the agent low-latency playback while allowing cancellation.
  */
-export function createAgentSpeechController(initialLanguage: AgentSpeechLanguage = 'auto') {
+export function createAgentSpeechController(
+  initialLanguage: AgentSpeechLanguage = 'auto',
+) {
   let generation = 0;
   let lastText = '';
   let pending = '';
@@ -84,10 +100,19 @@ export function createAgentSpeechController(initialLanguage: AgentSpeechLanguage
         const chunk = normalize(rawChunk);
         pending = pending.slice(rawChunk.length).trimStart();
         if (!chunk) continue;
-        const resolvedLanguage = language === 'auto' ? detectAgentSpeechLanguage(chunk) : language;
-        const voices = await Speech.getAvailableVoicesAsync().catch(() => [] as Speech.Voice[]);
+        const resolvedLanguage =
+          language === 'auto' ? detectAgentSpeechLanguage(chunk) : language;
+        const voices = await Speech.getAvailableVoicesAsync().catch(
+          () => [] as Speech.Voice[],
+        );
         const voice = chooseVoice(voices, resolvedLanguage);
-        await speak(chunk, resolvedLanguage, drainGeneration, currentGeneration, voice?.identifier);
+        await speak(
+          chunk,
+          resolvedLanguage,
+          drainGeneration,
+          currentGeneration,
+          voice?.identifier,
+        );
       }
     } finally {
       draining = false;
@@ -99,7 +124,9 @@ export function createAgentSpeechController(initialLanguage: AgentSpeechLanguage
     if (nextLanguage) language = nextLanguage;
     if (!text || text === lastText) return;
     flushRequested = false;
-    const suffix = text.startsWith(lastText) ? text.slice(lastText.length) : text;
+    const suffix = text.startsWith(lastText)
+      ? text.slice(lastText.length)
+      : text;
     lastText = text;
     pending += suffix;
     void drain(generation);

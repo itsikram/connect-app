@@ -9,6 +9,29 @@ const SYSTEM_PROMPT =
   'Never use markdown or add unknown fields. Only request actions that are available in the mobile app.';
 let providerConfig: { provider: string; model: string } | null = null;
 
+const PRIVATE_PROFILE_KEYS = new Set([
+  'password',
+  'passwordhash',
+  'accesstoken',
+  'refreshtoken',
+  'token',
+  'authtoken',
+  'secret',
+]);
+
+const sanitizeProfile = (value: unknown): unknown => {
+  if (Array.isArray(value)) return value.map(sanitizeProfile);
+  if (!value || typeof value !== 'object') return value;
+  return Object.entries(value as Record<string, unknown>).reduce<
+    Record<string, unknown>
+  >((result, [key, entry]) => {
+    if (!PRIVATE_PROFILE_KEYS.has(key.toLowerCase())) {
+      result[key] = sanitizeProfile(entry);
+    }
+    return result;
+  }, {});
+};
+
 const toPayloadMessages = (messages: AgentMessage[]) =>
   messages.slice(-8).map(message => ({
     role: message.type === 'user' ? 'user' : 'assistant',
@@ -30,22 +53,34 @@ export async function streamAgentReply(
   history: AgentMessage[],
   onDelta: (text: string) => void,
   signal?: AbortSignal,
+  profile?: unknown,
 ): Promise<string> {
   if (!providerConfig) {
     const providers = (await api.get('/ai-chat/providers')).data;
     const provider = providers.defaultProvider || 'gemini';
-    const model = providers.models?.[provider] || providers.models?.gemini || 'gemini-2.0-flash';
+    const model =
+      providers.models?.[provider] ||
+      providers.models?.gemini ||
+      'gemini-2.0-flash';
     providerConfig = { provider, model };
   }
+  const profileContext = profile
+    ? `\n\nThe following is the authenticated user's own Connect profile. Treat it as the source of truth for questions about the user. Never reveal private credentials or claim fields that are not present:\n${JSON.stringify(
+        sanitizeProfile(profile),
+      )}`
+    : '';
   const payload = {
-      provider: providerConfig.provider,
-      model: providerConfig.model,
-      system: SYSTEM_PROMPT,
-      messages: [...toPayloadMessages(history), { role: 'user', content: message }],
-      temperature: 0.25,
-      maxTokens: 220,
-      json: false,
-    };
+    provider: providerConfig.provider,
+    model: providerConfig.model,
+    system: SYSTEM_PROMPT + profileContext,
+    messages: [
+      ...toPayloadMessages(history),
+      { role: 'user', content: message },
+    ],
+    temperature: 0.25,
+    maxTokens: 220,
+    json: false,
+  };
   const token = await getAuthToken();
   const baseUrl = String(config.API_BASE_URL).replace(/\/+$/, '');
   let accumulated = '';
@@ -65,9 +100,14 @@ export async function streamAgentReply(
       buffer = events.pop() || '';
       for (const chunk of events) {
         const event = parseEvent(chunk);
-        if (event?.error) { reject(new Error(event.error)); return; }
+        if (event?.error) {
+          reject(new Error(event.error));
+          return;
+        }
         if (typeof event?.text === 'string') {
-          accumulated = event.text.startsWith(accumulated) ? event.text : accumulated + event.text;
+          accumulated = event.text.startsWith(accumulated)
+            ? event.text
+            : accumulated + event.text;
           onDelta(accumulated);
         }
       }
@@ -77,25 +117,42 @@ export async function streamAgentReply(
       consume(xhr.responseText);
       if (buffer.trim()) {
         const event = parseEvent(buffer);
-        if (event?.error) { reject(new Error(event.error)); return; }
+        if (event?.error) {
+          reject(new Error(event.error));
+          return;
+        }
         if (typeof event?.text === 'string') {
-          accumulated = event.text.startsWith(accumulated) ? event.text : accumulated + event.text;
+          accumulated = event.text.startsWith(accumulated)
+            ? event.text
+            : accumulated + event.text;
           onDelta(accumulated);
         }
       }
       signal?.removeEventListener('abort', abort);
-      if (xhr.status >= 400) reject(new Error(`AI Agent request failed (${xhr.status})`));
+      if (xhr.status >= 400)
+        reject(new Error(`AI Agent request failed (${xhr.status})`));
       else resolve();
     };
     xhr.onerror = () => reject(new Error('Unable to connect to the AI Agent.'));
-    xhr.onabort = () => reject(Object.assign(new Error('Request cancelled'), { name: 'AbortError' }));
+    xhr.onabort = () =>
+      reject(
+        Object.assign(new Error('Request cancelled'), { name: 'AbortError' }),
+      );
     xhr.send(JSON.stringify(payload));
   });
-  if (!accumulated.trim()) throw new Error('The AI Agent returned an empty response.');
+  if (!accumulated.trim())
+    throw new Error('The AI Agent returned an empty response.');
   return accumulated;
 }
 
-export const fetchLatestAgentChat = async () => (await api.get('/ai-chat/latest')).data;
+export const fetchLatestAgentChat = async () =>
+  (await api.get('/ai-chat/latest')).data;
 export const saveAgentChat = async (messages: AgentMessage[]) =>
-  (await api.post('/ai-chat/save', { messages, timestamp: new Date().toISOString() })).data;
-export const clearAgentChat = async () => (await api.delete('/ai-chat/delete')).data;
+  (
+    await api.post('/ai-chat/save', {
+      messages,
+      timestamp: new Date().toISOString(),
+    })
+  ).data;
+export const clearAgentChat = async () =>
+  (await api.delete('/ai-chat/delete')).data;

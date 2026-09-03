@@ -24,7 +24,13 @@ import KeyboardSafeView from '../components/KeyboardSafeView';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Audio, Video as ExpoVideo, ResizeMode, AVPlaybackStatus } from '../lib/avCompat';
+import {
+  Audio,
+  Video as ExpoVideo,
+  ResizeMode,
+  AVPlaybackStatus,
+  supportsNativeVideoBackgroundPlayback,
+} from '../lib/avCompat';
 import * as ImagePicker from 'expo-image-picker';
 import { RootState } from '../store';
 import { useWatchPipOptional } from '../contexts/WatchPipContext';
@@ -717,6 +723,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', async (next: AppStateStatus) => {
+      if (supportsNativeVideoBackgroundPlayback) return;
       if (isAppBackgrounded(next) && wantPlayingRef.current) {
         await startBackgroundSound();
         return;
