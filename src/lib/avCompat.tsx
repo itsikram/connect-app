@@ -11,6 +11,7 @@ import {
 } from 'expo-audio';
 import AudioModuleNative from 'expo-audio/build/AudioModule';
 import { useVideoPlayer, VideoView } from 'expo-video';
+import { isExpoGo } from './expoGo';
 
 const toLegacyStatus = (status: any) => ({
   ...status,
@@ -206,6 +207,10 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
   ]);
 
   useEffect(() => {
+    // Expo Go cannot apply this app's expo-video config plugin, so its shared
+    // client does not include the playback service binder.
+    if (isExpoGo()) return undefined;
+
     // Configure the playback service after the native player is attached to the
     // React context; configuring it during player construction can bind too early.
     const timer = setTimeout(() => {
