@@ -122,6 +122,10 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted) {
+        throw new Error('Microphone permission is required for audio calls.');
+      }
       setCallAccepted(true);
       setCurrentChannel(channelName);
       if (!callStartTime.current) callStartTime.current = Date.now();
@@ -131,8 +135,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       setMediaActive(true);
       setEngineWarm(true);
 
-      configureInCallAudio(true).catch(() => {});
-      Audio.requestPermissionsAsync().catch(() => {});
+      await configureInCallAudio(true);
       const creds = await prefetchAgoraJoin(channelName, numericUid);
       if (isTerminating.current) return;
       pendingJoinRef.current = creds;
@@ -244,7 +247,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setCurrentChannel(channelName);
     setEngineWarm(true);
     prefetchAgoraJoin(channelName, numericUid).catch(() => {});
-    Audio.requestPermissionsAsync().catch(() => {});
     configureInCallAudio(true).catch(() => {});
     engineRef.current?.preview(true);
     startIncomingCallAlert({

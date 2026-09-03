@@ -5769,26 +5769,9 @@ const SingleMessage = () => {
                                 color={emojiPanelOpen ? chatTheme.colors.accent : chatTheme.colors.meta}
                             />
                         </TouchableOpacity>
-                        {(inputText.trim() || pendingAttachment) ? (
-                            <TouchableOpacity
-                                onPress={() => sendMessage()}
-                                disabled={isUploading}
-                                style={{
-                                    width: 34,
-                                    height: 34,
-                                    borderRadius: 17,
-                                    backgroundColor: isUploading ? chatTheme.colors.recvBg : chatTheme.colors.accent,
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    marginLeft: 4,
-                                }}
-                            >
-                                <Icon name="send" style={{ marginRight: -2 }} size={17} color={isUploading ? chatTheme.colors.meta : '#041018'} />
-                            </TouchableOpacity>
-                        ) : null}
                     </View>
 
-                    {!inputText.trim() && !pendingAttachment ? (
+                    {(inputText.trim() || pendingAttachment) ? (
                         <TouchableOpacity
                             onPress={() => sendMessage()}
                             disabled={isUploading}

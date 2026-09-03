@@ -4,8 +4,9 @@ import { AgentMessage, AgentStreamEvent } from '../types/aiAgent';
 
 const SYSTEM_PROMPT =
   "You are Connect's mobile AI Agent. Reply in the user's language, be concise, never invent app data, and ask one clarification when needed. " +
-  'When the user requests an app action, return ONLY strict JSON with this shape: ' +
-  '{"reply":"optional text","actions":[{"action":"one allowlisted action","messageText":"optional"}],"ask":{"question":"optional"}}. ' +
+  'Always return ONLY strict JSON with this shape: ' +
+  '{"type":"action|question|response|mixed","message":"human-readable response","speak":true,"requires_confirmation":false,"actions":[{"id":"unique_id","type":"registered action","status":"pending","parameters":{}}]}. ' +
+  'Use an empty actions array for questions and normal responses. Use SEARCH_USERS before actions that need a person; never invent IDs. ' +
   'Never use markdown or add unknown fields. Only request actions that are available in the mobile app.';
 let providerConfig: { provider: string; model: string } | null = null;
 
@@ -79,7 +80,7 @@ export async function streamAgentReply(
     ],
     temperature: 0.25,
     maxTokens: 220,
-    json: false,
+    json: true,
   };
   const token = await getAuthToken();
   const baseUrl = String(config.API_BASE_URL).replace(/\/+$/, '');

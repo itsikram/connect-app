@@ -27,6 +27,15 @@ export const AuthProvider = ({ children }) => {
     return userData;
   };
 
+  const updateUser = async (updates) => {
+    const stored = await AsyncStorage.getItem('user');
+    const currentUser = stored ? JSON.parse(stored) : user || {};
+    const nextUser = { ...currentUser, ...updates };
+    await AsyncStorage.setItem('user', JSON.stringify(nextUser));
+    setUser(nextUser);
+    return nextUser;
+  };
+
   const fetchProfileData = async (profileId) => {
     try {
       console.log('Fetching profile data for profileId:', profileId);
@@ -302,6 +311,7 @@ export const AuthProvider = ({ children }) => {
     register,
     googleSignIn,
     logout,
+    updateUser,
     fetchProfileData,
   };
 

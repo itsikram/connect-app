@@ -35,6 +35,7 @@ import {
   createAgentSpeechController,
 } from '../services/agentSpeechService';
 import { AgentMessage } from '../types/aiAgent';
+import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
 
 interface Props {
@@ -70,6 +71,12 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [interimInput, setInterimInput] = React.useState('');
   const [language, setLanguage] = React.useState<AgentSpeechLanguage>('auto');
   const [loading, setLoading] = React.useState(false);
+  const [autoMode, setAutoMode] = React.useState(true);
+  const [pendingActions, setPendingActions] = React.useState<
+    AgentActionIntent[]
+  >([]);
+  const [voiceConversation, setVoiceConversation] = React.useState(false);
+  const sendRef = React.useRef<() => void>(() => {});
   const speechControllerRef = React.useRef<ReturnType<
     typeof createAgentSpeechController
   > | null>(null);
@@ -84,6 +91,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     onFinal: text => {
       setInput(text);
       setInterimInput('');
+      if (voiceConversation) setTimeout(() => sendRef.current(), 0);
     },
     onInterim: setInterimInput,
   });
@@ -217,6 +225,24 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           logout,
           clearAgentChat: clearChat,
         });
+        if (!autoMode && intent.actions?.length) {
+          setPendingActions(intent.actions);
+          speechController.finish();
+          setMessages(previous =>
+            previous.map(item =>
+              item.id === stream.id
+                ? {
+                    ...item,
+                    content: `${visibleReply}${
+                      visibleReply ? '\n' : ''
+                    }Review the suggested actions below.`,
+                    streaming: false,
+                  }
+                : item,
+            ),
+          );
+          return;
+        }
         const results = await executeAgentActions(intent.actions, adapter, {
           confirm: definition =>
             new Promise<boolean>(resolve => {
@@ -292,8 +318,15 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       }
     } finally {
       if (generation === generationRef.current) setLoading(false);
+      if (voiceConversation && generation === generationRef.current) {
+        const started = await transcribe.start(
+          language === 'auto' ? undefined : language,
+        );
+        if (!started) setVoiceConversation(false);
+      }
     }
   };
+  sendRef.current = send;
 
   const clear = () =>
     Alert.alert('Clear AI chat?', 'Saved AI chat history will be deleted.', [
@@ -312,13 +345,16 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     ]);
   const toggleVoice = async () => {
     if (transcribe.listening) {
+      setVoiceConversation(false);
       await transcribe.stop();
       return;
     }
+    setVoiceConversation(true);
     const started = await transcribe.start(
       language === 'auto' ? undefined : language,
     );
     if (!started) {
+      setVoiceConversation(false);
       Alert.alert(
         'Microphone unavailable',
         'Allow microphone access and try again.',
@@ -410,6 +446,47 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       </View>
     );
   };
+  const runPendingAction = async (action: AgentActionIntent) => {
+    const adapter = createMobileAgentActionAdapter({
+      startLudo: () => setLudoGameActive(true),
+      startChess: () => setChessGameActive(true),
+      logout,
+      clearAgentChat: clearChat,
+    });
+    const results = await executeAgentActions([action], adapter, {
+      confirm: definition =>
+        new Promise<boolean>(resolve => {
+          Alert.alert(
+            'Confirm action',
+            `Allow the agent to ${definition.label.toLowerCase()}?`,
+            [
+              {
+                text: 'Cancel',
+                style: 'cancel',
+                onPress: () => resolve(false),
+              },
+              {
+                text: 'Allow',
+                style: 'destructive',
+                onPress: () => resolve(true),
+              },
+            ],
+          );
+        }),
+    });
+    const result = results[0];
+    setPendingActions(previous => previous.filter(item => item !== action));
+    setMessages(previous => [
+      ...previous,
+      {
+        id: id(),
+        type: 'action-result',
+        content: result?.message || 'Action completed.',
+        timestamp: new Date().toISOString(),
+        success: result?.ok,
+      },
+    ]);
+  };
 
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={close}>
@@ -495,6 +572,32 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               />
             </Pressable>
             <Pressable
+              style={[
+                styles.modeButton,
+                {
+                  backgroundColor: autoMode
+                    ? `${colors.primary}18`
+                    : colors.surface.secondary,
+                },
+              ]}
+              onPress={() => setAutoMode(value => !value)}
+              accessibilityLabel={`Auto mode ${autoMode ? 'on' : 'off'}`}
+            >
+              <Icon
+                name={autoMode ? 'bolt' : 'touch-app'}
+                size={15}
+                color={autoMode ? colors.primary : colors.text.secondary}
+              />
+              <Text
+                style={[
+                  styles.modeText,
+                  { color: autoMode ? colors.primary : colors.text.secondary },
+                ]}
+              >
+                {autoMode ? 'Auto' : 'Manual'}
+              </Text>
+            </Pressable>
+            <Pressable
               style={styles.headerButton}
               onPress={close}
               accessibilityLabel="Close AI Agent"
@@ -554,6 +657,66 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               </Text>
             }
           />
+          {pendingActions.length > 0 && (
+            <View
+              style={[
+                styles.actionTray,
+                {
+                  backgroundColor: colors.surface.primary,
+                  borderTopColor: colors.border.primary,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.actionTrayTitle,
+                  { color: colors.text.secondary },
+                ]}
+              >
+                Suggested actions
+              </Text>
+              {pendingActions.map(action => (
+                <Pressable
+                  key={`${action.id || action.action}-${
+                    action.targetName || ''
+                  }`}
+                  onPress={() => runPendingAction(action)}
+                  style={[
+                    styles.actionCard,
+                    {
+                      backgroundColor: colors.surface.secondary,
+                      borderColor: colors.border.primary,
+                    },
+                  ]}
+                >
+                  <Icon name="play-arrow" size={18} color={colors.primary} />
+                  <View style={styles.actionCardBody}>
+                    <Text
+                      style={[
+                        styles.actionCardTitle,
+                        { color: colors.text.primary },
+                      ]}
+                    >
+                      {action.type || action.action}
+                    </Text>
+                    <Text
+                      style={[
+                        styles.actionCardSubtitle,
+                        { color: colors.text.secondary },
+                      ]}
+                    >
+                      {action.targetName ||
+                        action.messageText ||
+                        'Run this action'}
+                    </Text>
+                  </View>
+                  <Text style={[styles.runText, { color: colors.primary }]}>
+                    Run
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
           {interimInput ? (
             <Text style={[styles.interim, { color: colors.text.secondary }]}>
               {interimInput}
@@ -665,6 +828,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  modeButton: {
+    height: 30,
+    borderRadius: 15,
+    paddingHorizontal: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  modeText: { fontSize: 11, fontWeight: '700' },
   language: { fontSize: 11, fontWeight: '700' },
   messages: { padding: 16, paddingBottom: 20, gap: 14 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
@@ -705,6 +877,27 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
   },
   quickPromptText: { fontSize: 13 },
+  actionTray: {
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  actionTrayTitle: { fontSize: 12, fontWeight: '600', marginBottom: 7 },
+  actionCard: {
+    minHeight: 52,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    marginBottom: 7,
+  },
+  actionCardBody: { flex: 1 },
+  actionCardTitle: { fontSize: 13, fontWeight: '700' },
+  actionCardSubtitle: { fontSize: 11, marginTop: 2 },
+  runText: { fontSize: 12, fontWeight: '700' },
   interim: {
     paddingHorizontal: 18,
     paddingBottom: 6,

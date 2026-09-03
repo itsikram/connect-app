@@ -1,6 +1,20 @@
 import { navigate as navigateWithQueue } from '../lib/navigationService';
 
 export type AgentActionName =
+  | 'NAVIGATE'
+  | 'SEARCH_USERS'
+  | 'VIEW_PROFILE'
+  | 'OPEN_CHAT'
+  | 'SEND_MESSAGE'
+  | 'START_AUDIO_CALL'
+  | 'START_VIDEO_CALL'
+  | 'END_CALL'
+  | 'SEARCH_VIDEO'
+  | 'PLAY_VIDEO'
+  | 'OPEN_SETTINGS'
+  | 'CHANGE_SETTING'
+  | 'OPEN_LUDO'
+  | 'INVITE_LUDO_PLAYER'
   | 'navigate_home'
   | 'navigate_friends'
   | 'navigate_videos'
@@ -31,6 +45,10 @@ export type AgentActionName =
 
 export type AgentActionIntent = {
   action: AgentActionName;
+  id?: string;
+  type?: string;
+  status?: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  parameters?: Record<string, unknown>;
   targetName?: string;
   targetRoute?: string;
   searchQuery?: string;
@@ -38,6 +56,10 @@ export type AgentActionIntent = {
 };
 
 export type ParsedAgentIntent = {
+  type?: 'action' | 'question' | 'response' | 'mixed';
+  message?: string;
+  speak?: boolean;
+  requires_confirmation?: boolean;
   reply?: string;
   actions?: AgentActionIntent[];
   ask?: { field?: string; question?: string };
@@ -55,6 +77,20 @@ export type AgentActionDefinition = {
 
 // Keep this list in sync with the routes and controls exposed by App.tsx/Menu.tsx.
 const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
+  ['NAVIGATE', 'Navigate'],
+  ['SEARCH_USERS', 'Find users'],
+  ['VIEW_PROFILE', 'View profile'],
+  ['OPEN_CHAT', 'Open chat'],
+  ['SEND_MESSAGE', 'Send message', true],
+  ['START_AUDIO_CALL', 'Start audio call', true],
+  ['START_VIDEO_CALL', 'Start video call', true],
+  ['END_CALL', 'End call', true],
+  ['SEARCH_VIDEO', 'Search videos'],
+  ['PLAY_VIDEO', 'Play video'],
+  ['OPEN_SETTINGS', 'Open settings'],
+  ['CHANGE_SETTING', 'Change setting', true],
+  ['OPEN_LUDO', 'Open Ludo'],
+  ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true],
   ['navigate_home', 'Open Home'],
   ['navigate_friends', 'Open Friends'],
   ['navigate_videos', 'Open Videos'],
@@ -84,24 +120,49 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['clear_agent_chat', 'Clear agent chat', true],
 ];
 
-export const AGENT_ACTION_CATALOG: readonly AgentActionDefinition[] = ACTIONS.map(([name, label, sensitive]) => ({
-  name,
-  label,
-  sensitive,
-}));
+export const AGENT_ACTION_CATALOG: readonly AgentActionDefinition[] =
+  ACTIONS.map(([name, label, sensitive]) => ({
+    name,
+    label,
+    sensitive,
+  }));
 
-const definitionByName = new Map(AGENT_ACTION_CATALOG.map((definition) => [definition.name, definition]));
-const allowedIntentKeys = new Set(['reply', 'actions', 'ask']);
-const allowedActionKeys = new Set(['action', 'targetName', 'targetRoute', 'searchQuery', 'messageText']);
+const definitionByName = new Map(
+  AGENT_ACTION_CATALOG.map(definition => [definition.name, definition]),
+);
+const allowedIntentKeys = new Set([
+  'reply',
+  'actions',
+  'ask',
+  'type',
+  'message',
+  'speak',
+  'requires_confirmation',
+]);
+const allowedActionKeys = new Set([
+  'action',
+  'targetName',
+  'targetRoute',
+  'searchQuery',
+  'messageText',
+  'id',
+  'type',
+  'status',
+  'parameters',
+]);
 const allowedAskKeys = new Set(['field', 'question']);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const hasOnlyKeys = (value: Record<string, unknown>, allowed: Set<string>) =>
-  Object.keys(value).every((key) => allowed.has(key));
+  Object.keys(value).every(key => allowed.has(key));
 
-const optionalText = (value: unknown, field: string, maxLength = 500): string | undefined => {
+const optionalText = (
+  value: unknown,
+  field: string,
+  maxLength = 500,
+): string | undefined => {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || value.length > maxLength) {
     throw new Error(`${field} must be a string`);
@@ -130,7 +191,31 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
 
   try {
     const intent: ParsedAgentIntent = {};
-    if (parsed.reply !== undefined) intent.reply = optionalText(parsed.reply, 'reply', 4000);
+    if (parsed.type !== undefined) {
+      if (
+        !['action', 'question', 'response', 'mixed'].includes(
+          String(parsed.type),
+        )
+      ) {
+        throw new Error('type must be action, question, response, or mixed');
+      }
+      intent.type = parsed.type as ParsedAgentIntent['type'];
+    }
+    if (parsed.message !== undefined)
+      intent.message = optionalText(parsed.message, 'message', 4000);
+    if (parsed.speak !== undefined) {
+      if (typeof parsed.speak !== 'boolean')
+        throw new Error('speak must be boolean');
+      intent.speak = parsed.speak;
+    }
+    if (parsed.requires_confirmation !== undefined) {
+      if (typeof parsed.requires_confirmation !== 'boolean')
+        throw new Error('requires_confirmation must be boolean');
+      intent.requires_confirmation = parsed.requires_confirmation;
+    }
+    if (parsed.reply !== undefined)
+      intent.reply = optionalText(parsed.reply, 'reply', 4000);
+    if (!intent.reply && intent.message) intent.reply = intent.message;
 
     if (parsed.ask !== undefined) {
       if (!isRecord(parsed.ask) || !hasOnlyKeys(parsed.ask, allowedAskKeys)) {
@@ -147,15 +232,35 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
         throw new Error('actions must be an array of at most 8 items');
       }
       const unsupportedActions: string[] = [];
-      intent.actions = parsed.actions.map((rawAction) => {
-        if (!isRecord(rawAction) || !hasOnlyKeys(rawAction, allowedActionKeys)) {
+      intent.actions = parsed.actions.map(rawAction => {
+        if (
+          !isRecord(rawAction) ||
+          !hasOnlyKeys(rawAction, allowedActionKeys)
+        ) {
           throw new Error('action contains unsupported fields');
         }
-        if (typeof rawAction.action !== 'string') throw new Error('action.action is required');
-        const definition = definitionByName.get(rawAction.action as AgentActionName);
-        if (!definition) unsupportedActions.push(rawAction.action);
+        const actionName = rawAction.action || rawAction.type;
+        if (typeof actionName !== 'string')
+          throw new Error('action.type is required');
+        const definition = definitionByName.get(actionName as AgentActionName);
+        if (!definition) unsupportedActions.push(actionName);
+        const parameters = isRecord(rawAction.parameters)
+          ? rawAction.parameters
+          : undefined;
+        if (
+          rawAction.status !== undefined &&
+          !['pending', 'running', 'completed', 'failed', 'cancelled'].includes(
+            String(rawAction.status),
+          )
+        ) {
+          throw new Error('action.status is invalid');
+        }
         return {
-          action: rawAction.action as AgentActionName,
+          id: optionalText(rawAction.id, 'action.id', 120),
+          type: optionalText(rawAction.type, 'action.type', 80),
+          status: rawAction.status as AgentActionIntent['status'],
+          parameters,
+          action: actionName as AgentActionName,
           targetName: optionalText(rawAction.targetName, 'targetName', 160),
           targetRoute: optionalText(rawAction.targetRoute, 'targetRoute', 160),
           searchQuery: optionalText(rawAction.searchQuery, 'searchQuery', 500),
@@ -175,12 +280,18 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
     }
     return { ok: true, intent };
   } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Invalid intent.' };
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : 'Invalid intent.',
+    };
   }
 }
 
 export type MobileAgentActionAdapter = {
-  navigate?: (route: string, params?: Record<string, unknown>) => void | Promise<void>;
+  navigate?: (
+    route: string,
+    params?: Record<string, unknown>,
+  ) => void | Promise<void>;
   startLudo?: () => void | Promise<void>;
   startChess?: () => void | Promise<void>;
   startVoiceInput?: () => void | Promise<void>;
@@ -211,7 +322,9 @@ export function createMobileAgentActionAdapter(
   };
 }
 
-const navigationTargets: Partial<Record<AgentActionName, [string, Record<string, unknown>?]>> = {
+const navigationTargets: Partial<
+  Record<AgentActionName, [string, Record<string, unknown>?]>
+> = {
   navigate_home: ['Home'],
   navigate_friends: ['Friends'],
   navigate_videos: ['Videos'],
@@ -245,24 +358,54 @@ export async function executeAgentActions(
   for (const action of actions) {
     const definition = definitionByName.get(action.action);
     if (!definition) {
-      results.push({ action: action.action, ok: false, message: 'This action is not supported.' });
+      results.push({
+        action: action.action,
+        ok: false,
+        message: 'This action is not supported.',
+      });
       continue;
     }
     if (definition.sensitive) {
-      const confirmed = options.confirm ? await options.confirm(definition) : false;
+      const confirmed = options.confirm
+        ? await options.confirm(definition)
+        : false;
       if (!confirmed) {
-        results.push({ action: action.action, ok: false, cancelled: true, message: 'Action cancelled.' });
+        results.push({
+          action: action.action,
+          ok: false,
+          cancelled: true,
+          message: 'Action cancelled.',
+        });
         continue;
       }
     }
 
     try {
-      const target = navigationTargets[action.action];
-      if (target) {
+      const parameters = action.parameters || {};
+      const canonicalNavigation: Partial<Record<AgentActionName, string>> = {
+        NAVIGATE: String(parameters.route || action.targetRoute || ''),
+        OPEN_SETTINGS: 'Settings',
+      };
+      const target =
+        navigationTargets[action.action] ||
+        (canonicalNavigation[action.action]
+          ? [canonicalNavigation[action.action], undefined]
+          : undefined);
+      if (action.action === 'OPEN_LUDO') {
+        if (!adapter.startLudo)
+          throw new Error('Ludo is unavailable on this device.');
+        await adapter.startLudo();
+      } else if (target) {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
-        await adapter.navigate(target[0], target[1]);
+        await adapter.navigate(
+          target[0],
+          action.action === 'NAVIGATE'
+            ? (parameters.params as Record<string, unknown> | undefined)
+            : target[1],
+        );
       } else if (action.action === 'speak_text') {
-        if (!adapter.speakText || !action.messageText) throw new Error('No text was provided to read.');
+        if (!adapter.speakText || !action.messageText)
+          throw new Error('No text was provided to read.');
         await adapter.speakText(action.messageText);
       } else {
         const handler = {
@@ -274,10 +417,15 @@ export async function executeAgentActions(
           logout: adapter.logout,
           clear_agent_chat: adapter.clearAgentChat,
         }[action.action];
-        if (!handler) throw new Error('This feature is unavailable on this device.');
+        if (!handler)
+          throw new Error('This feature is unavailable on this device.');
         await handler();
       }
-      results.push({ action: action.action, ok: true, message: `${definition.label} completed.` });
+      results.push({
+        action: action.action,
+        ok: true,
+        message: `${definition.label} completed.`,
+      });
     } catch (error) {
       results.push({
         action: action.action,

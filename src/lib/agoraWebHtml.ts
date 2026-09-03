@@ -164,7 +164,10 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
         if (client && joinedChannel === channelName && joinedUid === uid) {
           try {
+            if (!localTracks.length) await createLocalTracks(isAudio);
             if (localTracks.length) await client.publish(localTracks);
+          } catch (e) {
+            post({ type: 'error', message: 'microphone publish failed: ' + (e && e.message) });
           } catch (e) {}
           post({ type: 'joined' });
           return;
@@ -185,7 +188,6 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
             bindClientEvents(client);
           }
-          var tracksPromise = localTracks.length ? Promise.resolve() : createLocalTracks(isAudio);
           await client.join(appId, channelName, token, uid);
           joinedChannel = channelName;
           joinedUid = uid;
@@ -193,12 +195,12 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           post({ type: 'joined' });
 
           try {
-            await tracksPromise;
+            if (!localTracks.length) await createLocalTracks(isAudio);
             if (localTracks.length) {
               await client.publish(localTracks);
             }
           } catch (micErr) {
-            post({ type: 'log', message: 'mic publish failed (receive-only): ' + (micErr && micErr.message) });
+            post({ type: 'error', message: 'microphone publish failed: ' + (micErr && micErr.message) });
             await stopTracks();
           }
 

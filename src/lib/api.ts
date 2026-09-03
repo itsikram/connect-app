@@ -1,4 +1,9 @@
-import axios, { AxiosInstance, AxiosResponse, AxiosError, AxiosRequestConfig } from 'axios';
+import axios, {
+  AxiosInstance,
+  AxiosResponse,
+  AxiosError,
+  AxiosRequestConfig,
+} from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from './config';
 
@@ -40,7 +45,10 @@ interface FaceFrames {
   frames: string[];
 }
 
-export type AuthRequestConfig = AxiosRequestConfig & { skipAuthRefresh?: boolean; _retry?: boolean };
+export type AuthRequestConfig = AxiosRequestConfig & {
+  skipAuthRefresh?: boolean;
+  _retry?: boolean;
+};
 
 interface DebugAuthResult {
   user: string | null;
@@ -72,10 +80,10 @@ const TOKEN_CACHE_DURATION = 30000; // Cache for 30 seconds
 const getCachedToken = async (): Promise<string | null> => {
   const now = Date.now();
   // Return cached token if still valid
-  if (cachedToken && (now - tokenCacheTime) < TOKEN_CACHE_DURATION) {
+  if (cachedToken && now - tokenCacheTime < TOKEN_CACHE_DURATION) {
     return cachedToken;
   }
-  
+
   // Fetch fresh token
   try {
     const token = await AsyncStorage.getItem('authToken');
@@ -101,9 +109,9 @@ const api: AxiosInstance = axios.create({
   baseURL: config.API_BASE_URL,
   timeout: config.API_TIMEOUT,
   headers: {
-    "User-Agent": "MyCustomUserAgent",
-    "Access-Control-Allow-Origin": "*",
-  }
+    'User-Agent': 'MyCustomUserAgent',
+    'Access-Control-Allow-Origin': '*',
+  },
 });
 
 // Only log API config once on module load (not on every request)
@@ -149,7 +157,11 @@ api.interceptors.response.use(
     const originalRequest = error.config as AuthRequestConfig;
 
     // Handle 401 Unauthorized errors
-    if (error.response?.status === 401 && !originalRequest.skipAuthRefresh && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest.skipAuthRefresh &&
+      !originalRequest._retry
+    ) {
       originalRequest._retry = true;
 
       try {
@@ -164,8 +176,13 @@ api.interceptors.response.use(
     }
 
     // Handle JWT verification errors (500 status with JWT error)
-    if (error.response?.status === 500 && (error.response?.data as any)?.message?.includes('JsonWebTokenError')) {
-      console.log('🚨 JWT verification failed - token may be expired or invalid');
+    if (
+      error.response?.status === 500 &&
+      (error.response?.data as any)?.message?.includes('JsonWebTokenError')
+    ) {
+      console.log(
+        '🚨 JWT verification failed - token may be expired or invalid',
+      );
       try {
         // Clear token cache and stored auth data
         clearTokenCache();
@@ -188,8 +205,8 @@ api.interceptors.response.use(
             url: error.config?.url,
             method: error.config?.method,
             baseURL: error.config?.baseURL,
-            timeout: error.config?.timeout
-          }
+            timeout: error.config?.timeout,
+          },
         });
       }
       // You can show a network error message to the user
@@ -201,66 +218,111 @@ api.interceptors.response.use(
 
 // API service methods
 export const authAPI = {
-  login: (email: string, password: string): Promise<AxiosResponse<AuthResponse>> => 
+  login: (
+    email: string,
+    password: string,
+  ): Promise<AxiosResponse<AuthResponse>> =>
     api.post('/auth/login', { email, password }),
 
-  signup: (userData: SignupData): Promise<AxiosResponse<AuthResponse>> => 
+  signup: (userData: SignupData): Promise<AxiosResponse<AuthResponse>> =>
     api.post('/auth/signup', userData),
 
-  googleSignIn: (googleData: GoogleSignInData): Promise<AxiosResponse<AuthResponse>> => 
+  googleSignIn: (
+    googleData: GoogleSignInData,
+  ): Promise<AxiosResponse<AuthResponse>> =>
     api.post('/auth/google-signin', googleData),
 
   logout: (): Promise<AxiosResponse> => api.post('/auth/logout'),
 
-  refreshToken: (): Promise<AxiosResponse<AuthResponse>> => api.post('/auth/refresh'),
+  refreshToken: (): Promise<AxiosResponse<AuthResponse>> =>
+    api.post('/auth/refresh'),
   faceLogin: (data: FaceFrames): Promise<AxiosResponse<AuthResponse>> =>
-    api.post('/auth/face/login', data, { skipAuthRefresh: true } as AuthRequestConfig),
+    api.post('/auth/face/login', data, {
+      skipAuthRefresh: true,
+    } as AuthRequestConfig),
   faceRegister: (data: FaceFrames): Promise<AxiosResponse> =>
-    api.post('/auth/face/register', data, { skipAuthRefresh: true } as AuthRequestConfig),
-  faceRemove: (): Promise<AxiosResponse> =>
-    api.post('/auth/face/remove', {}, { skipAuthRefresh: true } as AuthRequestConfig),
+    api.post('/auth/face/register', data, {
+      skipAuthRefresh: true,
+    } as AuthRequestConfig),
 };
 
 export const userAPI = {
   getProfile: (profileOrUser: any): Promise<AxiosResponse> => {
-    const profileId = typeof profileOrUser === 'string'
-      ? profileOrUser
-      : (profileOrUser?._id || profileOrUser?.profile?._id);
+    const profileId =
+      typeof profileOrUser === 'string'
+        ? profileOrUser
+        : profileOrUser?._id || profileOrUser?.profile?._id;
 
     return api.get(`profile/?profileId=${profileId}`);
   },
-  // checkProfile: (profileId: string): Promise<AxiosResponse> => 
+  // checkProfile: (profileId: string): Promise<AxiosResponse> =>
   //   api.post(`profile/check`, { profileId }),
 
-  updateProfile: (userData: any): Promise<AxiosResponse> => 
+  updateProfile: (userData: any): Promise<AxiosResponse> =>
     api.post('profile/update', userData),
 
-  updateLocation: (locationData: { lastLocation: { latitude: number; longitude: number; timestamp: number; accuracy?: number; altitude?: number; heading?: number; speed?: number } }): Promise<AxiosResponse> =>
-    api.post('profile/update', locationData),
+  updateLocation: (locationData: {
+    lastLocation: {
+      latitude: number;
+      longitude: number;
+      timestamp: number;
+      accuracy?: number;
+      altitude?: number;
+      heading?: number;
+      speed?: number;
+    };
+  }): Promise<AxiosResponse> => api.post('profile/update', locationData),
 
   changePassword: (passwordData: PasswordChangeData): Promise<AxiosResponse> =>
     api.post('user/change-password', passwordData),
 };
 
 export const chatAPI = {
-  getChatList: (profileId: string): Promise<AxiosResponse> => 
+  getChatList: (profileId: string): Promise<AxiosResponse> =>
     api.get(`/message/chatList?profileId=${profileId}`),
-  deleteConversation: (profileId: string, friendId: string): Promise<AxiosResponse> =>
+  deleteConversation: (
+    profileId: string,
+    friendId: string,
+  ): Promise<AxiosResponse> =>
     api.post('/message/deleteConversation', { profileId, friendId }),
 };
 
 // Push notification API methods
 export const pushAPI = {
   registerToken: (token: string, authToken?: string): Promise<AxiosResponse> =>
-    api.post('/notification/token/register', { token }, authToken ? { headers: { Authorization: authToken } } : {}),
-  unregisterToken: (token: string, authToken?: string): Promise<AxiosResponse> =>
-    api.post('/notification/token/unregister', { token }, authToken ? { headers: { Authorization: authToken } } : {}),
-  unregisterAllOtherTokens: (currentToken: string, authToken?: string): Promise<AxiosResponse> =>
-    api.post('/notification/token/unregister-all-others', { currentToken }, authToken ? { headers: { Authorization: authToken } } : {}),
-  sendTest: (payload: { title?: string; body?: string; data?: Record<string, string> }, authToken?: string): Promise<AxiosResponse> =>
-    api.post('/notification/send-test', payload || {}, authToken ? { headers: { Authorization: authToken } } : {}),
+    api.post(
+      '/notification/token/register',
+      { token },
+      authToken ? { headers: { Authorization: authToken } } : {},
+    ),
+  unregisterToken: (
+    token: string,
+    authToken?: string,
+  ): Promise<AxiosResponse> =>
+    api.post(
+      '/notification/token/unregister',
+      { token },
+      authToken ? { headers: { Authorization: authToken } } : {},
+    ),
+  unregisterAllOtherTokens: (
+    currentToken: string,
+    authToken?: string,
+  ): Promise<AxiosResponse> =>
+    api.post(
+      '/notification/token/unregister-all-others',
+      { currentToken },
+      authToken ? { headers: { Authorization: authToken } } : {},
+    ),
+  sendTest: (
+    payload: { title?: string; body?: string; data?: Record<string, string> },
+    authToken?: string,
+  ): Promise<AxiosResponse> =>
+    api.post(
+      '/notification/send-test',
+      payload || {},
+      authToken ? { headers: { Authorization: authToken } } : {},
+    ),
 };
-
 
 export const profileAPI = {
   follow: (profileId: string): Promise<AxiosResponse> =>
@@ -272,36 +334,38 @@ export const profileAPI = {
 };
 
 export const friendAPI = {
-  getFriendList: (profileId: string): Promise<AxiosResponse> => 
+  getFriendList: (profileId: string): Promise<AxiosResponse> =>
     api.get(`/friend/getFriends?profileId=${profileId}`),
-  getFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+  getFriendRequest: (profileId: string): Promise<AxiosResponse> =>
     api.get(`/friend/getRequest?profileId=${profileId}`),
-  getFriendSuggestions: (profileId: string): Promise<AxiosResponse> => 
+  getFriendSuggestions: (profileId: string): Promise<AxiosResponse> =>
     api.get(`/friend/getSuggetions?profileId=${profileId}`),
-  sendFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+  sendFriendRequest: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/friend/sendRequest?profileId=${profileId}`),
-  acceptFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+  acceptFriendRequest: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/friend/reqAccept`, { profile: profileId }),
-  deleteFriendRequest: (profileId: string): Promise<AxiosResponse> => 
+  deleteFriendRequest: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/friend/reqDelete`, { profile: profileId }),
-  removeFriend: (profileId: string): Promise<AxiosResponse> => 
+  removeFriend: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/friend/removeFriend?profileId=${profileId}`),
-  blockUser: (friendId: string): Promise<AxiosResponse> => 
+  blockUser: (friendId: string): Promise<AxiosResponse> =>
     api.post('/friend/block', { friendId }),
-  unblockUser: (friendId: string): Promise<AxiosResponse> => 
+  unblockUser: (friendId: string): Promise<AxiosResponse> =>
     api.post('/friend/unblock', { friendId }),
   getBlockStatus: (friendId: string): Promise<AxiosResponse> =>
     api.get('/friend/block-status', { params: { friendId } }),
 };
 
 export const storyAPI = {
-  getAllStories: (): Promise<AxiosResponse> => 
-    api.get('/story/'),
-  getSingleStory: (storyId: string): Promise<AxiosResponse> => 
+  getAllStories: (): Promise<AxiosResponse> => api.get('/story/'),
+  getSingleStory: (storyId: string): Promise<AxiosResponse> =>
     api.get(`/story/single?storyId=${storyId}`),
-  createStory: (data: { image: string; storyBg: string; audience: number }): Promise<AxiosResponse> =>
-    api.post('/story/create', data),
-  deleteStory: (storyId: string): Promise<AxiosResponse> => 
+  createStory: (data: {
+    image: string;
+    storyBg: string;
+    audience: number;
+  }): Promise<AxiosResponse> => api.post('/story/create', data),
+  deleteStory: (storyId: string): Promise<AxiosResponse> =>
     api.post('/story/delete', { storyId }),
   addReact: (storyId: string, reactType: string): Promise<AxiosResponse> =>
     api.post('/react/addReact', { id: storyId, reactType, postType: 'story' }),
@@ -314,10 +378,16 @@ export const storyAPI = {
 // Debug function to check stored tokens
 export const debugAuth = async (): Promise<DebugAuthResult> => {
   try {
-    const [userData, token] = await AsyncStorage.multiGet(['user', 'authToken']);
+    const [userData, token] = await AsyncStorage.multiGet([
+      'user',
+      'authToken',
+    ]);
     console.log('🔍 Debug Auth Storage:');
     console.log('👤 User data:', userData[1] ? 'Found' : 'Not found');
-    console.log('🔑 Token:', token[1] ? `${token[1].substring(0, 50)}...` : 'Not found');
+    console.log(
+      '🔑 Token:',
+      token[1] ? `${token[1].substring(0, 50)}...` : 'Not found',
+    );
 
     if (token[1]) {
       console.log('🔍 Token validation:', isValidToken(token[1]));
@@ -333,16 +403,27 @@ export const debugAuth = async (): Promise<DebugAuthResult> => {
 
 // Generic API methods
 export const apiService = {
-  get: (url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
+  get: (url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse> =>
     api.get(url, config),
-  post: (url: string, data: any = {}, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
-    api.post(url, data, config),
-  put: (url: string, data: any = {}, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
-    api.put(url, data, config),
-  delete: (url: string, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
-    api.delete(url, config),
-  patch: (url: string, data: any = {}, config: AxiosRequestConfig = {}): Promise<AxiosResponse> => 
-    api.patch(url, data, config),
+  post: (
+    url: string,
+    data: any = {},
+    config: AxiosRequestConfig = {},
+  ): Promise<AxiosResponse> => api.post(url, data, config),
+  put: (
+    url: string,
+    data: any = {},
+    config: AxiosRequestConfig = {},
+  ): Promise<AxiosResponse> => api.put(url, data, config),
+  delete: (
+    url: string,
+    config: AxiosRequestConfig = {},
+  ): Promise<AxiosResponse> => api.delete(url, config),
+  patch: (
+    url: string,
+    data: any = {},
+    config: AxiosRequestConfig = {},
+  ): Promise<AxiosResponse> => api.patch(url, data, config),
 };
 
 // Export the configured axios instance

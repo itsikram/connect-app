@@ -38,7 +38,7 @@ const AccountSettings = () => {
   const { colors: themeColors } = useTheme();
   const { showSuccess, showError } = useToast();
   const dispatch = useDispatch();
-  const { logout } = useContext(AuthContext);
+  const { logout, user, updateUser } = useContext(AuthContext);
   const currentProfile = useSelector((state: RootState) => state.profile);
   const currentEmail = getProfileEmail(currentProfile);
   const emailFetchAttempted = useRef(false);
@@ -58,7 +58,10 @@ const AccountSettings = () => {
   const [isRemovingFace, setIsRemovingFace] = useState(false);
   const [showFaceCapture, setShowFaceCapture] = useState(false);
   const [isFaceRegistered, setIsFaceRegistered] = useState(
-    Boolean((currentProfile?.user as any)?.faceLoginEnabled),
+    Boolean(
+      (currentProfile?.user as any)?.faceLoginEnabled ||
+        (user as any)?.faceLoginEnabled,
+    ),
   );
 
   useEffect(() => {
@@ -69,19 +72,39 @@ const AccountSettings = () => {
   }, [currentProfile?.banglaName, currentEmail, editEmail]);
 
   useEffect(() => {
-    setIsFaceRegistered(Boolean((currentProfile?.user as any)?.faceLoginEnabled));
-  }, [(currentProfile?.user as any)?.faceLoginEnabled]);
+    setIsFaceRegistered(
+      Boolean(
+        (currentProfile?.user as any)?.faceLoginEnabled ||
+          (user as any)?.faceLoginEnabled,
+      ),
+    );
+  }, [
+    (currentProfile?.user as any)?.faceLoginEnabled,
+    (user as any)?.faceLoginEnabled,
+  ]);
 
   useEffect(() => {
-    if (!currentProfile?._id || emailFetchAttempted.current) return;
+    const profileId =
+      currentProfile?._id ||
+      (typeof (user as any)?.profile === 'string'
+        ? (user as any).profile
+        : (user as any)?.profile?._id);
+    if (!profileId || emailFetchAttempted.current) return;
     emailFetchAttempted.current = true;
 
     let cancelled = false;
     (async () => {
       try {
-        const res = await userAPI.getProfile(currentProfile._id);
+        const res = await api.get('/profile', {
+          params: { profileId, _ts: Date.now() },
+        });
         if (!cancelled && res.data) {
-          setIsFaceRegistered(Boolean(res.data?.user?.faceLoginEnabled));
+          setIsFaceRegistered(
+            Boolean(
+              res.data?.user?.faceLoginEnabled ||
+                (user as any)?.faceLoginEnabled,
+            ),
+          );
           dispatch(
             updateProfileField({
               field: 'user',
@@ -100,7 +123,13 @@ const AccountSettings = () => {
     return () => {
       cancelled = true;
     };
-  }, [currentEmail, currentProfile?._id, dispatch]);
+  }, [
+    currentEmail,
+    currentProfile?._id,
+    dispatch,
+    (user as any)?.faceLoginEnabled,
+    (user as any)?.profile,
+  ]);
 
   const handleSaveBanglaName = async () => {
     const trimmedName = banglaName.trim();
@@ -127,6 +156,7 @@ const AccountSettings = () => {
     try {
       await authAPI.faceRegister({ frames });
       setIsFaceRegistered(true);
+      await updateUser({ faceLoginEnabled: true });
       setShowFaceCapture(false);
       dispatch(updateProfileField({
         field: 'user',
@@ -158,6 +188,7 @@ const AccountSettings = () => {
           try {
             await authAPI.faceRemove();
             setIsFaceRegistered(false);
+            await updateUser({ faceLoginEnabled: false });
             setShowFaceCapture(false);
             dispatch(updateProfileField({
               field: 'user',
@@ -202,6 +233,8 @@ const AccountSettings = () => {
       firstName: payload?.firstName ?? userData.firstName,
       surname: payload?.surname ?? userData.surname,
       user_id: payload?.user_id ?? userData.user_id,
+      faceLoginEnabled:
+        payload?.faceLoginEnabled ?? userData.faceLoginEnabled,
       profile: profileWithEmail,
       email: savedEmail,
     };
