@@ -1,4 +1,5 @@
-import api from '../lib/api';
+import api, { getAuthToken } from '../lib/api';
+import config from '../lib/config';
 import { AgentMessage, AgentStreamEvent } from '../types/aiAgent';
 
 const SYSTEM_PROMPT =
@@ -36,9 +37,7 @@ export async function streamAgentReply(
     const model = providers.models?.[provider] || providers.models?.gemini || 'gemini-2.0-flash';
     providerConfig = { provider, model };
   }
-  const response = await api.post(
-    '/ai-chat/complete-stream',
-    {
+  const payload = {
       provider: providerConfig.provider,
       model: providerConfig.model,
       system: SYSTEM_PROMPT,
@@ -46,28 +45,52 @@ export async function streamAgentReply(
       temperature: 0.25,
       maxTokens: 220,
       json: false,
-    },
-    { signal, responseType: 'text' },
-  );
-
-  const raw = typeof response.data === 'string' ? response.data : JSON.stringify(response.data);
+    };
+  const token = await getAuthToken();
+  const baseUrl = String(config.API_BASE_URL).replace(/\/+$/, '');
   let accumulated = '';
-  for (const chunk of raw.split(/\r?\n\r?\n/)) {
-    const event = parseEvent(chunk);
-    if (!event) continue;
-    if (event.error) throw new Error(event.error);
-    if (typeof event.text === 'string') {
-      accumulated = event.text.startsWith(accumulated)
-        ? event.text
-        : accumulated + event.text;
-      onDelta(accumulated);
-    }
-  }
-  if (!accumulated) {
-    const data = response.data as { text?: string; response?: string };
-    accumulated = data?.text || data?.response || '';
-    if (accumulated) onDelta(accumulated);
-  }
+  let processed = 0;
+  let buffer = '';
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const abort = () => xhr.abort();
+    signal?.addEventListener('abort', abort, { once: true });
+    xhr.open('POST', `${baseUrl}/ai-chat/complete-stream`);
+    xhr.setRequestHeader('Content-Type', 'application/json');
+    if (token) xhr.setRequestHeader('Authorization', token);
+    const consume = (raw: string) => {
+      buffer += raw.slice(processed);
+      processed = raw.length;
+      const events = buffer.split(/\r?\n\r?\n/);
+      buffer = events.pop() || '';
+      for (const chunk of events) {
+        const event = parseEvent(chunk);
+        if (event?.error) { reject(new Error(event.error)); return; }
+        if (typeof event?.text === 'string') {
+          accumulated = event.text.startsWith(accumulated) ? event.text : accumulated + event.text;
+          onDelta(accumulated);
+        }
+      }
+    };
+    xhr.onprogress = () => consume(xhr.responseText);
+    xhr.onload = () => {
+      consume(xhr.responseText);
+      if (buffer.trim()) {
+        const event = parseEvent(buffer);
+        if (event?.error) { reject(new Error(event.error)); return; }
+        if (typeof event?.text === 'string') {
+          accumulated = event.text.startsWith(accumulated) ? event.text : accumulated + event.text;
+          onDelta(accumulated);
+        }
+      }
+      signal?.removeEventListener('abort', abort);
+      if (xhr.status >= 400) reject(new Error(`AI Agent request failed (${xhr.status})`));
+      else resolve();
+    };
+    xhr.onerror = () => reject(new Error('Unable to connect to the AI Agent.'));
+    xhr.onabort = () => reject(Object.assign(new Error('Request cancelled'), { name: 'AbortError' }));
+    xhr.send(JSON.stringify(payload));
+  });
   if (!accumulated.trim()) throw new Error('The AI Agent returned an empty response.');
   return accumulated;
 }

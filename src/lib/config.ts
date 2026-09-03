@@ -1,4 +1,5 @@
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 // Environment configuration types
 interface EnvironmentConfig {
@@ -20,23 +21,26 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-// Get the appropriate development server URL based on platform
-// IMPORTANT: Android emulator uses 10.0.2.2 to access host machine's localhost
-// For physical Android devices, change the Android URL below to your local network IP (e.g., 192.168.0.101)
+// Get the appropriate development server URL based on platform.
+// EXPO_PUBLIC_API_URL always takes precedence, which is useful for a different
+// machine, tunnel, or deployed development server.
 const getDevServerUrl = (): string => {
-  // Set EXPO_PUBLIC_API_URL for a local Express server when testing face
-  // auth. The Python service is reached by Express, never by the app.
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL;
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
+
+  // Development builds expose the host used by Metro. Reusing it lets both
+  // physical devices and emulators reach the API without a machine-specific IP.
+  const hostUri = Constants.expoConfig?.hostUri;
+  const host = hostUri?.split(':')[0];
+  if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '[::1]' && /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+    return `http://${host}:4000`;
+  }
+
   if (Platform.OS === 'android') {
-    // For Android emulator: use 10.0.2.2 (maps to host machine's localhost)
-    // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:4000")
+    // 10.0.2.2 maps to the host machine's localhost from an Android emulator.
     return 'http://10.0.2.2:4000';
   }
-  return 'http://192.168.1.102:4000';
-  return 'https://connect-server-7h7d.onrender.com';
-  // For iOS simulator and other platforms, use local network IP
-  // Alternative: use production server for development
+  return 'http://127.0.0.1:4000';
 };
 
 const getDevMediapipeServerUrl = (): string => {

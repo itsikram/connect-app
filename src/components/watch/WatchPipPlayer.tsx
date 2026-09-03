@@ -527,7 +527,9 @@ const WatchPipPlayer = () => {
       resumeAppliedRef.current = pipTrackKey;
       const resumeAt = Number(pip.currentTime) || 0;
       if (resumeAt > 0.2) {
-        videoRef.current?.setPositionAsync(resumeAt * 1000).catch(() => {});
+        Promise.resolve(
+          videoRef.current?.setPositionAsync(resumeAt * 1000),
+        ).catch(() => {});
       }
     }
   }, [pipTrackKey, pip]);
@@ -751,7 +753,7 @@ const styles = StyleSheet.create({
   },
   video: { width: '100%', height: '100%', backgroundColor: '#000' },
   cover: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#000',
     alignItems: 'center',
     justifyContent: 'center',

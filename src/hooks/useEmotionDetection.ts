@@ -10,6 +10,8 @@ import {
   type EmotionDetectionState 
 } from '../lib/emotionDetection';
 
+type Face = Record<string, unknown>;
+
 interface EmotionDetectionOptions {
   profileId: string;
   friendId: string;
@@ -260,4 +262,3 @@ export const useEmotionDetection = (options: EmotionDetectionOptions) => {
     processFaceDetection,
   };
 };
-

@@ -71,7 +71,7 @@ async function ensureDownloadChannel() {
     await Notifications.setNotificationChannelAsync(DOWNLOADS_CHANNEL, {
       name: 'Downloads',
       importance: Notifications.AndroidImportance.LOW,
-      vibrationPattern: [0],
+      vibrationPattern: [100, 250],
       sound: undefined,
     });
     channelReady = true;

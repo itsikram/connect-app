@@ -204,7 +204,7 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
   useImperativeHandle(ref, () => ({
     playAsync: async () => { player.play(); },
     pauseAsync: async () => { player.pause(); },
-    setPositionAsync: (milliseconds: number) => { player.currentTime = milliseconds / 1000; },
+    setPositionAsync: async (milliseconds: number) => { player.currentTime = milliseconds / 1000; },
     getStatusAsync: async () => ({ isLoaded: player.status === 'readyToPlay', isPlaying: player.playing, positionMillis: player.currentTime * 1000, durationMillis: player.duration * 1000 }),
   }), [player]);
 

@@ -489,7 +489,7 @@ export default function useComposerLiveTranscribe({
           if (pcm) {
             let bytes = base64ToBytes(slice);
             if (!headerSkipped) {
-              bytes = stripWavHeader(bytes);
+              bytes = stripWavHeader(bytes) as Uint8Array<ArrayBuffer>;
               headerSkipped = true;
             }
             if (bytes.length) sendAudioBytes(bytes);
@@ -511,7 +511,7 @@ export default function useComposerLiveTranscribe({
         if (slice) {
           if (pcm) {
             let bytes = base64ToBytes(slice);
-            if (!headerSkipped) bytes = stripWavHeader(bytes);
+            if (!headerSkipped) bytes = stripWavHeader(bytes) as Uint8Array<ArrayBuffer>;
             if (bytes.length) sendAudioBytes(bytes);
           } else {
             sendJson({ type: 'audio', data: slice });

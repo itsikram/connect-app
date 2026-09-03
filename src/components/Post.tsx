@@ -1426,7 +1426,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   reactDismiss: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 10,
   },
   modalOverlay: {

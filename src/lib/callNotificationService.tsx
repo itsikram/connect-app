@@ -117,7 +117,7 @@ export class CallNotificationService {
           lightUpScreen: true,
           autoCancel: false,
           ongoing: true,
-          vibrationPattern: [0, 400, 200, 400, 200, 400],
+          vibrationPattern: [100, 400, 200, 400, 200, 400],
           ...(foregroundServiceTypes.length
             ? { foregroundServiceTypes }
             : {}),
@@ -158,7 +158,7 @@ export class CallNotificationService {
           visibility: AndroidVisibility.PUBLIC,
           sound: getRingtoneSoundName(id),
           vibration: true,
-          vibrationPattern: [0, 400, 200, 400, 200, 400],
+          vibrationPattern: [100, 400, 200, 400, 200, 400],
           bypassDnd: true,
           lights: true,
           lightColor: '#E53935',
@@ -172,7 +172,7 @@ export class CallNotificationService {
         visibility: AndroidVisibility.PUBLIC,
         sound: getRingtoneSoundName(selectedId),
         vibration: true,
-        vibrationPattern: [0, 400, 200, 400, 200, 400],
+        vibrationPattern: [100, 400, 200, 400, 200, 400],
         bypassDnd: true,
         lights: true,
         lightColor: '#E53935',

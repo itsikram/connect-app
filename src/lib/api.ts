@@ -88,6 +88,8 @@ const getCachedToken = async (): Promise<string | null> => {
   }
 };
 
+export const getAuthToken = getCachedToken;
+
 // Function to clear token cache (call when token changes)
 export const clearTokenCache = () => {
   cachedToken = null;

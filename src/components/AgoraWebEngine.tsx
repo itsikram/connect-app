@@ -133,7 +133,7 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
 
 const styles = StyleSheet.create({
   wrap: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 0,
   },
   hiddenAudio: {

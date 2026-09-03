@@ -47,7 +47,6 @@ const DeviceAppsGrid: React.FC<DeviceAppsGridProps> = ({
       <AppGrid
         title={title}
         columns={columns}
-        showDeviceApps={true}
       />
     </View>
   );

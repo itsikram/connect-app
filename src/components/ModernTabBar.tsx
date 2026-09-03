@@ -147,7 +147,7 @@ const ModernTabBar: React.FC<ModernTabBarProps> = ({
                     },
                   ]}
                 >
-                  <Text style={[styles.badgeText, { color: themeColors.white }]}>
+                  <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>
                     {tab.badge > 99 ? '99+' : tab.badge}
                   </Text>
                 </View>

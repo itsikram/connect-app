@@ -1,4 +1,5 @@
 import * as BackgroundFetch from 'expo-background-fetch';
+import { BackgroundFetchStatus } from 'expo-background-fetch';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -9,7 +10,7 @@ const TASK_INTERVAL = 300; // 5 minutes minimum interval
 interface BackgroundTaskStatus {
   isRegistered: boolean;
   lastRun: number | null;
-  status: BackgroundFetch.Status | null;
+  status: BackgroundFetchStatus | null;
 }
 
 class BackgroundTaskManager {
@@ -86,7 +87,7 @@ class BackgroundTaskManager {
       const status = await BackgroundFetch.getStatusAsync();
       this.taskStatus.status = status;
       
-      if (status !== BackgroundFetch.Status.Available) {
+      if (status !== BackgroundFetchStatus.Available) {
         console.warn('⚠️ Background fetch not available:', status);
         return false;
       }
@@ -174,7 +175,7 @@ class BackgroundTaskManager {
       }
       
       const status = await BackgroundFetch.getStatusAsync();
-      return status === BackgroundFetch.Status.Available;
+      return status === BackgroundFetchStatus.Available;
     } catch (error) {
       console.error('Error requesting background permissions:', error);
       return false;
@@ -187,8 +188,8 @@ class BackgroundTaskManager {
 
   async forceRunTask(): Promise<boolean> {
     try {
-      const result = await BackgroundFetch.fetchResultAsync(BACKGROUND_TASK_NAME);
-      return result === BackgroundFetch.BackgroundFetchResult.NewData;
+      console.warn('Manual background task execution is not supported by expo-background-fetch.');
+      return false;
     } catch (error) {
       console.error('Error forcing background task:', error);
       return false;

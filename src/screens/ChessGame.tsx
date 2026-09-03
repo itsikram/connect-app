@@ -203,7 +203,7 @@ const ChessGame: React.FC = () => {
 
   return (
     <View style={styles.bg} key={`fen-${fenVersion}`}>
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={StyleSheet.absoluteFill}>
 
       </View>
       <View style={[styles.container]}> 
@@ -381,5 +381,4 @@ const styles = StyleSheet.create({
 });
 
 export default ChessGame;
-
 

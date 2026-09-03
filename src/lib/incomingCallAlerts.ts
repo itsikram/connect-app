@@ -114,7 +114,7 @@ async function createCallChannel(id: string, sound: string) {
     description: 'Incoming audio and video calls',
     importance: Notifications.AndroidImportance.MAX,
     sound,
-    vibrationPattern: [0, 400, 200, 400, 200, 400],
+    vibrationPattern: [100, 400, 200, 400, 200, 400],
     enableVibrate: true,
     enableLights: true,
     lightColor: '#E53935',
@@ -189,7 +189,6 @@ export async function presentIncomingCallNotification(payload: RingingPayload): 
         categoryIdentifier: INCOMING_CALL_CATEGORY,
         sticky: true,
         priority: Notifications.AndroidNotificationPriority.MAX,
-        channelId: getIncomingCallChannelId(ringtoneId),
         data: {
           type: 'incoming_call',
           callerId: payload.callerId,

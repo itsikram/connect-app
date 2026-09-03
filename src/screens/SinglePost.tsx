@@ -413,7 +413,7 @@ const SinglePost = () => {
             marginBottom: 4,
         },
         spReactDismiss: {
-            ...StyleSheet.absoluteFillObject,
+            ...StyleSheet.absoluteFill,
             zIndex: 8,
         },
         fbCommentRow: {

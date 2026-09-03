@@ -1448,7 +1448,7 @@ const LudoGameSVG = () => {
 
   const renderConfetti = () => {
     return (
-      <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
+      <View style={StyleSheet.absoluteFill} pointerEvents="none">
         {confettiAnimations.map((confetti, index) => (
           <Animated.View
             key={index}
@@ -1833,7 +1833,7 @@ const LudoGameSVG = () => {
   const renderTokens = useMemo(() => {
     const maxSteps = 59;
     return (
-      <View style={StyleSheet.absoluteFillObject}>
+      <View style={StyleSheet.absoluteFill}>
         {renderPlayerOrder.map((playerIndex: number) =>
           players[playerIndex]?.pieces.map((piece: Piece, pieceIndex: number) => {
             const tokenSize = CELL_SIZE * 0.9;

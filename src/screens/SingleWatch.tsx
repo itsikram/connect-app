@@ -713,7 +713,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   playOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
   },

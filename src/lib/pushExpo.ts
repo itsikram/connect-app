@@ -22,7 +22,6 @@ export const initializeNotifications = async () => {
         allowAlert: true,
         allowBadge: true,
         allowSound: true,
-        allowTimeSensitive: true,
       },
     });
     console.log('✅ Notifications initialized');
@@ -119,15 +118,13 @@ export const configureNotificationsChannel = async () => {
     await Notifications.setNotificationChannelAsync('default', {
       name: 'Default',
       importance: Notifications.AndroidImportance.DEFAULT,
-      vibrationPattern: [0, 250, 250, 250],
-      sound: 'default',
+      vibrationPattern: [100, 250, 250, 250],
     });
     
     await Notifications.setNotificationChannelAsync('calls', {
       name: 'Calls',
       importance: Notifications.AndroidImportance.MAX,
-      vibrationPattern: [0, 400, 200, 400],
-      sound: 'default',
+      vibrationPattern: [100, 400, 200, 400],
       bypassDnd: true,
     });
     const callAudioAttributes = {
@@ -142,7 +139,7 @@ export const configureNotificationsChannel = async () => {
       Notifications.setNotificationChannelAsync(id, {
         name: 'Incoming Calls',
         importance: Notifications.AndroidImportance.MAX,
-        vibrationPattern: [0, 400, 200, 400, 200, 400],
+        vibrationPattern: [100, 400, 200, 400, 200, 400],
         sound,
         bypassDnd: true,
         enableVibrate: true,

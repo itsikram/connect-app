@@ -1791,7 +1791,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 60,
     backgroundColor: 'rgba(6, 10, 16, 0.72)',
     alignItems: 'center',
@@ -1821,7 +1821,7 @@ const styles = StyleSheet.create({
   },
   primaryBtnText: { color: '#06241f', fontWeight: '800' },
   diceHit: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 50,
     alignItems: 'center',
     justifyContent: 'center',

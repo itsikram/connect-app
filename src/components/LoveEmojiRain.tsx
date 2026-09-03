@@ -112,7 +112,7 @@ const LoveEmojiRain = ({ burstId }: { burstId: number }) => {
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'hidden',
     zIndex: 1,
   },

@@ -217,7 +217,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   activePill: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     borderRadius: 16,
   },
   badge: {

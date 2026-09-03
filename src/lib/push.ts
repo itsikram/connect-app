@@ -217,7 +217,7 @@ export async function configureNotificationsChannel() {
         name: 'Messages',
         importance: Notifications.AndroidImportance.HIGH,
         sound: 'default' as const,
-        vibrationPattern: [0, 250, 250, 250],
+        vibrationPattern: [100, 250, 250, 250],
         enableVibrate: true,
       };
       await Notifications.setNotificationChannelAsync('messages_high', messageChannel);
