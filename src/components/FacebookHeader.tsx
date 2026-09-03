@@ -143,7 +143,10 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
       switch (type) {
         case 'message': {
           // Open messages screen / specific thread if available
-          const threadId = notification.threadId || notification.conversationId || notification.meta?.threadId;
+          const threadId =
+            notification.threadId ||
+            notification.conversationId ||
+            notification.meta?.threadId;
           if (threadId) {
             (navigation as any).navigate('Message', {
               screen: 'Chat',
@@ -155,7 +158,11 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
           break;
         }
         case 'friend_request': {
-          const userId = notification.fromUserId || notification.userId || notification.actor?._id || notification.meta?.userId;
+          const userId =
+            notification.fromUserId ||
+            notification.userId ||
+            notification.actor?._id ||
+            notification.meta?.userId;
           if (userId) {
             (navigation as any).navigate('Profile', { userId });
           }
@@ -164,7 +171,10 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
         case 'post':
         case 'comment':
         case 'like': {
-          const postId = notification.postId || notification.entityId || notification.meta?.postId;
+          const postId =
+            notification.postId ||
+            notification.entityId ||
+            notification.meta?.postId;
           if (postId) {
             (navigation as any).navigate('Post', { postId });
           }

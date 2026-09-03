@@ -16,7 +16,6 @@ import {
 } from 'react-native';
 import WebView from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
 import { useToast } from '../contexts/ToastContext';
@@ -117,7 +116,6 @@ const ytPageInfoJS = `
 const YouTubeScreen = () => {
   // Downloads run in the background; there is no blocking progressState modal.
   const { colors: themeColors, isDarkMode } = useTheme();
-  const insets = useSafeAreaInsets();
   const navigation = useNavigation();
   const { showSuccess, showError, showInfo } = useToast();
   const webViewRef = useRef<WebView>(null);
@@ -262,7 +260,7 @@ const YouTubeScreen = () => {
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 8,
-          paddingTop: Math.max(insets.top, 2),
+          paddingTop: 0,
           paddingBottom: 8,
           backgroundColor: surface,
           borderBottomWidth: 1,
@@ -459,7 +457,7 @@ const YouTubeScreen = () => {
           paddingVertical: 6,
         },
       }),
-    [background, border, insets.top, isDarkMode, primary, surface, textPrimary, textSecondary, themeColors],
+    [background, border, isDarkMode, primary, surface, textPrimary, textSecondary, themeColors],
   );
 
   return (
@@ -510,6 +508,7 @@ const YouTubeScreen = () => {
           domStorageEnabled={true}
           cacheEnabled={true}
           cacheMode={Platform.OS === 'android' ? 'LOAD_DEFAULT' : undefined}
+          incognito={false}
           sharedCookiesEnabled={true}
           thirdPartyCookiesEnabled={true}
           pullToRefreshEnabled={Platform.OS === 'android'}

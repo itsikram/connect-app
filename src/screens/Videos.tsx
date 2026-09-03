@@ -848,7 +848,7 @@ const Videos = () => {
 
   if (loading && videos.length === 0) {
     return (
-      <View style={{ flex: 1, backgroundColor: t.pageBg, paddingBottom: 70 }}>
+      <View style={{ flex: 1, backgroundColor: t.pageBg }}>
         <WatchSkeleton />
       </View>
     );

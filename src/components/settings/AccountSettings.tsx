@@ -55,6 +55,8 @@ const AccountSettings = () => {
   const [isSavingBangla, setIsSavingBangla] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
+  const [isRemovingFace, setIsRemovingFace] = useState(false);
+  const [showFaceCapture, setShowFaceCapture] = useState(false);
   const [isFaceRegistered, setIsFaceRegistered] = useState(
     Boolean((currentProfile?.user as any)?.faceLoginEnabled),
   );
@@ -65,6 +67,10 @@ const AccountSettings = () => {
       setData((prev) => ({ ...prev, userEmail: currentEmail }));
     }
   }, [currentProfile?.banglaName, currentEmail, editEmail]);
+
+  useEffect(() => {
+    setIsFaceRegistered(Boolean((currentProfile?.user as any)?.faceLoginEnabled));
+  }, [(currentProfile?.user as any)?.faceLoginEnabled]);
 
   useEffect(() => {
     if (currentEmail || !currentProfile?._id || emailFetchAttempted.current) return;
@@ -121,6 +127,7 @@ const AccountSettings = () => {
     try {
       await authAPI.faceRegister({ frames });
       setIsFaceRegistered(true);
+      setShowFaceCapture(false);
       dispatch(updateProfileField({
         field: 'user',
         value: {
@@ -140,15 +147,18 @@ const AccountSettings = () => {
   };
 
   const handleRemoveFace = async () => {
+    if (isRemovingFace || isRegisteringFace) return;
     Alert.alert('Remove face login', 'You can add it again later from this screen.', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
+          setIsRemovingFace(true);
           try {
             await authAPI.faceRemove();
             setIsFaceRegistered(false);
+            setShowFaceCapture(false);
             dispatch(updateProfileField({
               field: 'user',
               value: {
@@ -159,6 +169,8 @@ const AccountSettings = () => {
             showSuccess('Face login removed');
           } catch (error: any) {
             showError(error?.response?.data?.message || 'Could not remove face login');
+          } finally {
+            setIsRemovingFace(false);
           }
         },
       },
@@ -317,9 +329,23 @@ const AccountSettings = () => {
             ? 'Face login is enabled. Capture again to replace it, or remove it below.'
             : 'Register your face to sign in without a password. Your face can only belong to one Connect account.'}
         </Text>
-        <FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace} />
-        {isFaceRegistered ? (
-          <SettingsDangerButton title="Remove face login" onPress={handleRemoveFace} disabled={isRegisteringFace} />
+        <View style={styles.faceActions}>
+          <SettingsPrimaryButton
+            title={showFaceCapture ? 'Close face camera' : isFaceRegistered ? 'Improve face login' : 'Register face login'}
+            onPress={() => setShowFaceCapture((value) => !value)}
+            disabled={isRegisteringFace || isRemovingFace}
+          />
+          {isFaceRegistered ? (
+            <SettingsDangerButton
+              title={isRemovingFace ? 'Removing…' : 'Remove face login'}
+              onPress={handleRemoveFace}
+              disabled={isRegisteringFace || isRemovingFace}
+              loading={isRemovingFace}
+            />
+          ) : null}
+        </View>
+        {showFaceCapture ? (
+          <FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace || isRemovingFace} />
         ) : null}
       </View>
 
@@ -428,6 +454,10 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     paddingBottom: 16,
     borderBottomWidth: 1,
+  },
+  faceActions: {
+    gap: 10,
+    marginBottom: 12,
   },
   subTitle: {
     fontSize: 16,

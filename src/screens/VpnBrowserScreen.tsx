@@ -84,6 +84,7 @@ const VpnBrowserScreen = () => {
         domStorageEnabled={true}
         cacheEnabled={true}
         cacheMode={Platform.OS === 'android' ? 'LOAD_DEFAULT' : undefined}
+        incognito={false}
         sharedCookiesEnabled={true}
         thirdPartyCookiesEnabled={true}
         pullToRefreshEnabled={Platform.OS === 'android'}
@@ -187,5 +188,4 @@ const styles = StyleSheet.create({
 });
 
 export default VpnBrowserScreen;
-
 

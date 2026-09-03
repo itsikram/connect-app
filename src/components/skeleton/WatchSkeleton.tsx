@@ -70,16 +70,23 @@ const WatchSkeleton: React.FC<WatchSkeletonProps> = ({ showBack = false, height,
   const t = useWatchTokens();
   const fillStyle = height ? { height } : { flex: 1 };
   const wellHeight = height || SCREEN_HEIGHT;
-  const videoHeight = Math.min(Math.round(SCREEN_WIDTH * (9 / 16)), Math.round(wellHeight * 0.52));
+  const videoHeight = Math.min(wellHeight, Math.round(SCREEN_WIDTH * (9 / 16)));
+  const metaContentWidth = SCREEN_WIDTH * 0.9 - 24;
+  const actionLabelWidths = [44, 24, 24, 52, 32, 30];
 
   return (
     <View style={[styles.item, fillStyle, { backgroundColor: t.pageBg }]}>
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
 
       <View style={[styles.videoWell, fillStyle, { backgroundColor: t.pageBg }]}>
-        <SkeletonBlock width={SCREEN_WIDTH} height={videoHeight} borderRadius={0} />
-        <View pointerEvents="none" style={styles.playOverlay}>
-          <SkeletonBlock width={72} height={72} borderRadius={36} />
+        <SkeletonBlock
+          width={SCREEN_WIDTH}
+          height={videoHeight}
+          borderRadius={0}
+          style={styles.video}
+        />
+        <View pointerEvents="none" style={styles.pauseToggle}>
+          <SkeletonBlock width={36} height={36} borderRadius={18} />
         </View>
       </View>
 
@@ -93,28 +100,28 @@ const WatchSkeleton: React.FC<WatchSkeletonProps> = ({ showBack = false, height,
       ) : null}
 
       <View style={styles.actions}>
-        {[0, 1, 2, 3].map((key) => (
+        {actionLabelWidths.map((labelWidth, key) => (
           <View key={key} style={styles.action}>
             <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
               <SkeletonBlock width={22} height={22} borderRadius={11} />
             </View>
-            <SkeletonBlock width={28} height={10} borderRadius={999} style={styles.count} />
+            <SkeletonBlock width={labelWidth} height={14} borderRadius={999} style={styles.count} />
           </View>
         ))}
       </View>
 
       <View style={[styles.meta, { backgroundColor: t.metaBg, borderColor: t.chipBorder }]}>
-        <SkeletonRow spacing={10} style={styles.authorRow}>
+        <View style={styles.authorRow}>
           <SkeletonBlock width={40} height={40} borderRadius={20} />
-          <SkeletonColumn style={{ flex: 1 }} spacing={8}>
+          <SkeletonColumn style={styles.authorInfo} spacing={8}>
             <SkeletonBlock width={140} height={14} borderRadius={999} />
             <SkeletonBlock width={86} height={10} borderRadius={999} />
           </SkeletonColumn>
           <SkeletonBlock width={72} height={28} borderRadius={16} />
-        </SkeletonRow>
+        </View>
         <SkeletonColumn spacing={8}>
-          <SkeletonBlock width={SCREEN_WIDTH - 80} height={12} borderRadius={999} />
-          <SkeletonBlock width={SCREEN_WIDTH - 140} height={12} borderRadius={999} />
+          <SkeletonBlock width={metaContentWidth} height={12} borderRadius={999} />
+          <SkeletonBlock width={metaContentWidth - 60} height={12} borderRadius={999} />
         </SkeletonColumn>
       </View>
     </View>
@@ -135,10 +142,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
   },
-  playOverlay: {
-    ...StyleSheet.absoluteFillObject,
+  video: {
+    alignSelf: 'center',
+    marginBottom: 120,
+  },
+  pauseToggle: {
+    position: 'absolute',
+    left: 12,
+    top: 12,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    zIndex: 12,
   },
   header: {
     position: 'absolute',
@@ -158,9 +175,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     position: 'absolute',
-    right: 12,
+    right: 5,
     top: 0,
-    bottom: 0,
+    bottom: 150,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
@@ -179,13 +196,14 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   count: {
-    marginTop: 6,
+    marginTop: 4,
   },
   meta: {
     position: 'absolute',
     left: '5%',
     width: '90%',
     bottom: 80,
+    marginBottom: 25,
     zIndex: 12,
     borderRadius: 16,
     borderWidth: 1,
@@ -193,7 +211,13 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   authorRow: {
-    marginBottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 10,
+  },
+  authorInfo: {
+    flex: 1,
   },
 });
 

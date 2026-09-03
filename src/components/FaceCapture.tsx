@@ -93,7 +93,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
         style={styles.camera}
         facing="front"
         mode="picture"
-        active={!capturing || capturing}
+        active={!disabled}
         pictureSize="640x480"
         onCameraReady={() => setCameraReady(true)}
       />
@@ -131,6 +131,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   help: { fontSize: 13, lineHeight: 18 },
+  securityNote: { fontSize: 12, lineHeight: 16, color: '#667085' },
   error: { color: '#d32f2f', fontSize: 13 },
   spinner: { marginTop: 2 },
   progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#D9DEE8', overflow: 'hidden' },

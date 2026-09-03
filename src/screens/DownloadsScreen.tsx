@@ -141,7 +141,10 @@ const DownloadsScreen = () => {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+    <SafeAreaView
+      edges={['left', 'right', 'bottom']}
+      style={[styles.container, { backgroundColor: themeColors.background.primary }]}
+    >
       <View style={[styles.header, { borderColor: themeColors.surface.secondary }]}>
         <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>Downloads</Text>
         <Text style={[styles.headerPath, { color: themeColors.text.secondary }]} numberOfLines={1}>
@@ -154,7 +157,7 @@ const DownloadsScreen = () => {
         renderItem={renderItem}
         onRefresh={load}
         refreshing={refreshing}
-        contentContainerStyle={{ padding: 12 }}
+        contentContainerStyle={{ paddingHorizontal: 12, paddingBottom: 12 }}
         ListHeaderComponent={
           activeJobs.length > 0 || activeWatchJobs.length > 0 ? (
             <View style={{ marginBottom: 12 }}>

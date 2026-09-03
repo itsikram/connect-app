@@ -25,7 +25,10 @@ const FacebookScreen = () => {
   }, [canGoBack]);
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
+    <SafeAreaView
+      edges={['left', 'right', 'bottom']}
+      style={[styles.container, { backgroundColor: themeColors.background.primary }]}
+    >
       <StatusBar 
         barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
         backgroundColor={themeColors.background.primary}
@@ -40,6 +43,7 @@ const FacebookScreen = () => {
         cacheEnabled={true}
         // Android-only caching behavior
         cacheMode={Platform.OS === 'android' ? 'LOAD_DEFAULT' : undefined}
+        incognito={false}
         // Persist and share cookies like a real browser
         sharedCookiesEnabled={true}
         thirdPartyCookiesEnabled={true}

@@ -20,6 +20,10 @@ const CricbuzzScreen = () => {
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        cacheEnabled={true}
+        sharedCookiesEnabled={true}
+        thirdPartyCookiesEnabled={true}
+        incognito={false}
         startInLoadingState={true}
         allowsInlineMediaPlayback={true}
         mediaPlaybackRequiresUserAction={false}
@@ -49,6 +53,5 @@ const styles = StyleSheet.create({
 });
 
 export default CricbuzzScreen;
-
 
 
