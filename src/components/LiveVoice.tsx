@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, DeviceEventEmitter } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio } from '../lib/avCompat';
 import { useSelector } from 'react-redux';
 import { useSocket } from '../contexts/SocketContext';
 import { RootState } from '../store';

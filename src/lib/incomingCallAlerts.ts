@@ -230,7 +230,7 @@ export async function cancelIncomingCallNotifications(channelName?: string): Pro
 /**
  * Ring for an incoming call:
  * - Foreground: one looping in-app ringtone (no OS notification sound).
- * - iOS / Expo Go background: keep expo-av looping (works in Expo Go) + banner.
+ * - iOS / Expo Go background: keep the audio player looping + banner.
  * - Android background: high-priority OS / Notifee call notification with channel ringtone.
  */
 export async function startIncomingCallAlert(payload: RingingPayload): Promise<void> {

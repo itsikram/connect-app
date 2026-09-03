@@ -10,7 +10,7 @@ import {
   AppStateStatus,
   DeviceEventEmitter,
 } from 'react-native';
-import { Audio } from 'expo-av';
+import { Audio } from '../lib/avCompat';
 import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';

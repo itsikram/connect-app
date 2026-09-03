@@ -5,7 +5,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
-import { Audio } from 'expo-av';
+import { Audio } from '../lib/avCompat';
 
 interface OutgoingCallParams {
   calleeId: string;

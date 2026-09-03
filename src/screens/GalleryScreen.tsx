@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Dimensions, Alert, Platform } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '../lib/avCompat';
 import { deleteMedia, listMedia, MediaItem } from '../lib/mediaLibrary';
 
 const { width } = Dimensions.get('window');

@@ -26,7 +26,7 @@ import { useNavigation, NavigationProp } from '@react-navigation/native';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { Video as ExpoVideo, ResizeMode } from 'expo-av';
+import { Video as ExpoVideo, ResizeMode } from '../lib/avCompat';
 import { useDispatch, useSelector } from 'react-redux';
 import api, { profileAPI } from '../lib/api';
 import { useFocusEffect } from '@react-navigation/native';

@@ -19,7 +19,7 @@ import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/nativ
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { ResizeMode, Video as ExpoVideo } from 'expo-av';
+import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat';
 import { useDispatch, useSelector } from 'react-redux';
 import moment from 'moment';
 import api, { profileAPI } from '../lib/api';

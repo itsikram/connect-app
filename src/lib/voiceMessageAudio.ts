@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { Audio } from './avCompat';
 import * as FileSystem from 'expo-file-system/legacy';
 
 const NATIVE_EXT = /\.(mp3|m4a|aac|mp4|wav)(?:\?|$)/i;

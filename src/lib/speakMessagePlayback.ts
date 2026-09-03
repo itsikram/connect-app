@@ -1,5 +1,5 @@
 import { Platform } from 'react-native';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from './avCompat';
 import * as Speech from 'expo-speech';
 import socketService from '../services/socketService';
 import {

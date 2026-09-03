@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity, Platform } from 'react-native';
-import { Video, ResizeMode } from 'expo-av';
+import { Video, ResizeMode } from '../lib/avCompat';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { deleteMedia, MediaItem } from '../lib/mediaLibrary';
 

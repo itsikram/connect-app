@@ -1,5 +1,5 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS, AVPlaybackStatus } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS, AVPlaybackStatus } from './avCompat';
 
 const PLAYBACK_CHANNEL = 'pip-playback';
 const PLAYBACK_NOTIFICATION_ID = 'pip-playback';

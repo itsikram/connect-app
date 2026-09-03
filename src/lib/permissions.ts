@@ -1,7 +1,7 @@
 import { Platform, Alert, Linking } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { Camera } from 'expo-camera';
-import { Audio } from 'expo-av';
+import { Audio } from './avCompat';
 import { requestPushPermission } from './push';
 
 export interface PermissionStatus {

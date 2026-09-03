@@ -1,4 +1,4 @@
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from './avCompat';
 import { Vibration, Platform } from 'react-native';
 import {
   RINGTONE_SOURCES,

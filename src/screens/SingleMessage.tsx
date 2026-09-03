@@ -30,13 +30,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 // react-native-permissions replaced with expo-permissions for Expo compatibility
-import { Audio } from 'expo-av';
+import { Audio } from '../lib/avCompat';
 import useComposerLiveTranscribe, {
     requestChatMicPermission,
     restoreChatPlaybackAudioMode,
     setChatRecordingAudioMode,
 } from '../hooks/useComposerLiveTranscribe';
-// Audio recording functionality moved to expo-av
+// Audio recording functionality uses the local SDK 57 compatibility adapter.
 import { useTheme } from '../contexts/ThemeContext';
 import { ChatBubblesSkeleton, ChatComposerSkeleton, ChatPageSkeleton } from '../components/skeleton/ChatSkeleton';
 import { SkeletonBlock } from '../components/skeleton/Skeleton';
@@ -334,7 +334,7 @@ const SingleMessage = () => {
     const swipeableRefs = useRef<Map<string, any>>(new Map());
     const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
 
-    // Voice message (recording) - using expo-av
+    // Voice message recording uses the local SDK 57 compatibility adapter.
     const [recording, setRecording] = React.useState<Audio.Recording | null>(null);
     const recordingRef = React.useRef<Audio.Recording | null>(null);
     

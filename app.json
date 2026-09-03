@@ -120,7 +120,6 @@
           ]
         }
       ],
-      "expo-av",
       [
         "expo-media-library",
         {
@@ -141,9 +140,11 @@
           "minimumInterval": 300
         }
       ],
-      "@react-native-google-signin/google-signin"
+      "@react-native-google-signin/google-signin",
+      "expo-audio",
+      "expo-video"
     ],
-    "sdkVersion": "54.0.0",
+    "sdkVersion": "57.0.0",
     "extra": {
       "eas": {
         "projectId": "2705eb94-d61a-4af6-af53-02399dce8b6f"

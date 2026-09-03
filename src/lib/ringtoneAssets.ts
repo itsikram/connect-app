@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from 'expo-av';
+import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from './avCompat';
 
 export const RINGTONE_STORAGE_KEY = '@incoming_call_ringtone_id';
 export const MAX_RINGTONE_ID = 5;

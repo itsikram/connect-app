@@ -108,6 +108,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
   const [likingCommentId, setLikingCommentId] = useState<string | null>(null);
+  const [showFullCaption, setShowFullCaption] = useState<boolean>(false);
+  const [captionHasMore, setCaptionHasMore] = useState<boolean>(false);
+  const [showAllComments, setShowAllComments] = useState<boolean>(false);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
   const [imageHeight, setImageHeight] = useState<number>(Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH));
   const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
@@ -181,6 +184,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
 
   useEffect(() => {
     commentsFetchedRef.current = null;
+    setShowAllComments(false);
     const next = normalizeComments(post.comments);
     setComments(next);
     setTotalComments(Array.isArray(post.comments) ? post.comments.length : next.length);
@@ -240,6 +244,11 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   useEffect(() => {
     setSelectedAudience(Number(data?.audience) || 3);
   }, [data?._id, data?.audience]);
+
+  useEffect(() => {
+    setShowFullCaption(false);
+    setCaptionHasMore(false);
+  }, [post._id, post.caption]);
 
   // Like, Love, Haha, Sad, Remove React, Place React logic
   const removeReact = async () => {
@@ -990,9 +999,31 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
       </View>
       <View style={styles.body}>
         {post.caption ? (
-          <TouchableOpacity onPress={openSinglePost} activeOpacity={0.85}>
-            <Text style={[styles.caption, { color: textColor }]}>{post.caption}</Text>
-          </TouchableOpacity>
+          <View>
+            <TouchableOpacity onPress={openSinglePost} activeOpacity={0.85}>
+              <Text
+                style={[styles.caption, { color: textColor }]}
+                numberOfLines={showFullCaption ? undefined : 2}
+                onTextLayout={(event) => {
+                  if (!showFullCaption) {
+                    setCaptionHasMore(event.nativeEvent.lines.length > 2);
+                  }
+                }}
+              >
+                {post.caption}
+              </Text>
+            </TouchableOpacity>
+            {captionHasMore || showFullCaption ? (
+              <TouchableOpacity
+                onPress={() => setShowFullCaption((expanded) => !expanded)}
+                style={styles.seeMoreButton}
+              >
+                <Text style={[styles.seeMoreText, { color: accentColor }]}>
+                  {showFullCaption ? 'See less' : 'See more'}
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         ) : null}
 
         {isValidImageUrl(post.photos) && !imageLoadError && (
@@ -1097,11 +1128,13 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           ) : comments.length === 0 ? (
             <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet</Text>
           ) : (
-            comments.map((c) => renderCommentThread(c))
+            (showAllComments ? comments : comments.slice(0, 2)).map((c) => renderCommentThread(c))
           )}
-          {totalComments > 3 ? (
-            <TouchableOpacity onPress={openSinglePost} style={styles.moreCommentsBtn}>
-              <Text style={[styles.moreCommentsText, { color: accentColor }]}>View more comments</Text>
+          {comments.length > 2 ? (
+            <TouchableOpacity onPress={() => setShowAllComments((expanded) => !expanded)} style={styles.moreCommentsBtn}>
+              <Text style={[styles.moreCommentsText, { color: accentColor }]}>
+                {showAllComments ? 'See less comments' : 'See more comments'}
+              </Text>
             </TouchableOpacity>
           ) : null}
         </View>
@@ -1282,6 +1315,24 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     fontSize: 15,
     lineHeight: 21.5,
+  },
+  seeMoreButton: {
+    alignSelf: 'flex-start',
+    marginLeft: 12,
+    marginTop: -6,
+    marginBottom: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.35)',
+    backgroundColor: 'rgba(0, 212, 255, 0.10)',
+  },
+  seeMoreText: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: 0.1,
   },
   attachmentContainer: {
     width: '100%',
@@ -1911,11 +1962,21 @@ const styles = StyleSheet.create({
   },
   moreCommentsBtn: {
     marginLeft: 40,
-    paddingVertical: 6,
+    alignSelf: 'flex-start',
+    marginTop: 2,
+    marginBottom: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: 'rgba(0, 212, 255, 0.35)',
+    backgroundColor: 'rgba(0, 212, 255, 0.10)',
   },
   moreCommentsText: {
-    fontSize: 13,
-    fontWeight: '600',
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '700',
+    letterSpacing: 0.1,
   },
   fbCommentRow: {
     flexDirection: 'row',

@@ -21,7 +21,7 @@ import KeyboardSafeView from '../components/KeyboardSafeView';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { Audio, Video as ExpoVideo, ResizeMode, AVPlaybackStatus } from 'expo-av';
+import { Audio, Video as ExpoVideo, ResizeMode, AVPlaybackStatus } from '../lib/avCompat';
 import * as ImagePicker from 'expo-image-picker';
 import { RootState } from '../store';
 import { useWatchPipOptional } from '../contexts/WatchPipContext';
