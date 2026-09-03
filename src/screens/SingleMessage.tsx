@@ -49,6 +49,7 @@ import { updateProfileField } from '../reducers/profileReducer';
 import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
 import * as ImagePicker from 'expo-image-picker';
+import * as Clipboard from 'expo-clipboard';
 import api, { friendAPI } from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // Background TTS service removed for Expo compatibility
@@ -75,7 +76,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { upsertConfirmedMessage, mergeHistoryWithLive, isConversationMessage } from '../utils/optimisticMessage';
 import { playSpeakPayload, stopSpokenPlayback } from '../lib/speakMessagePlayback';
 import { createPlayableVoiceSound, isAudioAttachmentUrl } from '../lib/voiceMessageAudio';
-import { getInfoAsync } from 'expo-file-system/legacy';
+import * as FileSystem from 'expo-file-system/legacy';
 import { hideTabBarForChat, restoreTabBarAfterChat } from '../lib/chatScreenChrome';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
@@ -91,13 +92,32 @@ interface Message {
     isSeen: boolean;
     parent?: any | null;
     tempId?: string;
-    reacts?: string[];
+    reacts?: MessageReaction[];
     messageType?: 'text' | 'call' | 'audio';
     callType?: 'audio' | 'video';
     callEvent?: 'missed' | 'ended' | 'declined' | 'started';
     isOptimistic?: boolean;
     sendFailed?: boolean;
 }
+
+interface MessageReaction {
+    profile: string | { _id?: string };
+    type: string;
+}
+
+const normalizeMessageReactions = (reacts: any[] = []): MessageReaction[] =>
+    (Array.isArray(reacts) ? reacts : []).reduce((result: MessageReaction[], reaction: any) => {
+        const profile = reaction?.profile || reaction;
+        const profileId = String(profile?._id || profile || '');
+        if (!profileId || result.some((item) => reactionProfileId(item) === profileId)) {
+            return result;
+        }
+        result.push({ profile, type: reaction?.type || '👍' });
+        return result;
+    }, []);
+
+const reactionProfileId = (reaction: MessageReaction) =>
+    String(typeof reaction?.profile === 'object' ? reaction.profile?._id || '' : reaction?.profile || '');
 
 const MESSAGES_PER_PAGE = 20;
 const NEAR_BOTTOM_PX = 100;
@@ -563,7 +583,7 @@ const SingleMessage = () => {
             if (!uri.startsWith('file://') && !uri.startsWith('content://')) {
                 uri = `file://${uri}`;
             }
-            const fileInfo: any = await getInfoAsync(uri);
+            const fileInfo: any = await FileSystem.getInfoAsync(uri);
             console.log('Voice recording file info:', {
                 exists: fileInfo.exists,
                 size: fileInfo.size,
@@ -1170,9 +1190,9 @@ const SingleMessage = () => {
         };
     }, [friend?._id, myProfile?._id, fetchChatHistory]);
 
-    // Persist conversation after the first fresh server load, matching web cache behavior.
+    // Keep the cache warm for live messages and call-event messages as well as HTTP loads.
     useEffect(() => {
-        if (!hasLoadedFreshMessagesRef.current || !friend?._id || messages.length === 0) return;
+        if (!friend?._id || messages.length === 0) return;
         debouncedSaveMessages(friend._id, messages);
         return () => {
             if (saveTimeoutRef.current) {
@@ -1239,7 +1259,11 @@ const SingleMessage = () => {
                 callEvent: newMessage.callEvent,
             };
 
-            setMessages(prev => upsertConfirmedMessage(prev, newMessage, newMessage.tempId));
+            const nextMessages = upsertConfirmedMessage(messagesRef.current, newMessage, newMessage.tempId);
+            messagesRef.current = nextMessages;
+            setMessages(nextMessages);
+            // Persist live data immediately so the next screen mount can render it before HTTP returns.
+            void saveMessagesToStorage(friend._id, nextMessages);
 
             if (newMessage.tempId) {
                 setPendingMessages(prev => prev.filter(msg => msg.tempId !== newMessage.tempId));
@@ -1305,6 +1329,17 @@ const SingleMessage = () => {
             );
         };
 
+        const handleReactionUpdate = (payload: any) => {
+            const updated = payload?.message || payload;
+            if (!updated?._id || !isConversationMessage(updated, myProfile?._id, friend?._id)) return;
+            const reacts = normalizeMessageReactions(payload?.reactions || updated.reacts);
+            setMessages((prevMessages) =>
+                prevMessages.map((message) =>
+                    String(message._id) === String(updated._id) ? { ...message, reacts } : message,
+                ),
+            );
+        };
+
         const handleEmotionChange = (payload: any) => {
             try {
                 if (!payload) return;
@@ -1364,6 +1399,7 @@ const SingleMessage = () => {
 
         on('seenMessage', handleSeenMessage);
         on('messageSeen', handleSeenMessage);
+        on('messageReactionUpdated', handleReactionUpdate);
 
         on('newMessage', handleNewMessage);
         on('newMessageToUser', handleNewMessage);
@@ -1400,6 +1436,7 @@ const SingleMessage = () => {
             off('typing', handleReceiveTyping);
             off('seenMessage', handleSeenMessage);
             off('messageSeen', handleSeenMessage);
+            off('messageReactionUpdated', handleReactionUpdate);
             off('previousMessages', handlePreviousMessages);
             off('emotion_change', handleEmotionChange);
             off('friend_location_update', handleFriendLocationUpdate);
@@ -2715,7 +2752,7 @@ const SingleMessage = () => {
     // Add function to handle long press
     const handleMessageLongPress = (message: Message, event: any) => {
         setSelectedMessage(message);
-        setIsReactedByMe(message?.reacts?.includes(myProfile?._id) || false);
+        setIsReactedByMe(normalizeMessageReactions(message?.reacts).some((reaction) => reactionProfileId(reaction) === String(myProfile?._id)));
         setContextMenuVisible(true);
 
         const { pageY } = event.nativeEvent;
@@ -2846,33 +2883,36 @@ const SingleMessage = () => {
         );
     };
 
-    const likeOrUnlikeMessage = () => {
+    const likeOrUnlikeMessage = (reactionType = '👍') => {
         if (!selectedMessage) return;
         const messageId = selectedMessage._id;
         const myId = myProfile?._id;
         if (!messageId || !myId) return;
 
-        if (isReactedByMe) {
-            emit('removeReactMessage', { messageId, profileId: myId });
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m._id === messageId
-                        ? { ...m, reacts: (m.reacts || []).filter((id) => String(id) !== String(myId)) }
-                        : m,
-                ),
-            );
-            api.post('/message/removeReact', { messageId, myId }).catch(() => {});
+        const previousReacts = normalizeMessageReactions(selectedMessage.reacts);
+        const currentReaction = previousReacts.find((reaction) => reactionProfileId(reaction) === String(myId));
+        const shouldRemove = Boolean(currentReaction && currentReaction.type === reactionType);
+        const nextReacts = shouldRemove
+            ? previousReacts.filter((reaction) => reactionProfileId(reaction) !== String(myId))
+            : [...previousReacts.filter((reaction) => reactionProfileId(reaction) !== String(myId)), { profile: myId, type: reactionType }];
+        setMessages((prev) => prev.map((m) => m._id === messageId ? { ...m, reacts: nextReacts } : m));
+        setSelectedMessage((message) => message ? { ...message, reacts: nextReacts } : message);
+
+        const rollback = () => {
+            setMessages((prev) => prev.map((m) => m._id === messageId ? { ...m, reacts: previousReacts } : m));
+            setSelectedMessage((message) => message ? { ...message, reacts: previousReacts } : message);
+            setIsReactedByMe(Boolean(currentReaction));
+            Alert.alert('Reaction failed', 'Your reaction could not be saved. Please try again.');
+        };
+        const handleAck = (result: any) => {
+            if (!result?.ok) rollback();
+        };
+
+        if (shouldRemove) {
+            emit('removeReactMessage', { messageId, profileId: myId }, handleAck);
             setIsReactedByMe(false);
         } else {
-            emit('reactMessage', { messageId, profileId: myId });
-            setMessages((prev) =>
-                prev.map((m) =>
-                    m._id === messageId
-                        ? { ...m, reacts: [...(m.reacts || []), myId] }
-                        : m,
-                ),
-            );
-            api.post('/message/addReact', { messageId, myId }).catch(() => {});
+            emit('reactMessage', { messageId, profileId: myId, reactType: reactionType }, handleAck);
             setIsReactedByMe(true);
         }
         setContextMenuVisible(false);
@@ -3095,6 +3135,75 @@ const SingleMessage = () => {
         }
     }, [friend]);
 
+    const uploadImageAsset = async (asset: { uri: string; fileName?: string | null; mimeType?: string | null; type?: string | null }) => {
+        setIsUploading(true);
+        setUploadProgress(0);
+        setPendingAttachmentLocal(asset.uri);
+
+        try {
+            const formData: any = new FormData();
+            formData.append('image', {
+                uri: asset.uri,
+                name: asset.fileName || 'photo.jpg',
+                type: asset.mimeType || asset.type || 'image/jpeg',
+            } as any);
+
+            const uploadRes = await api.post('/upload', formData, {
+                headers: { 'Content-Type': 'multipart/form-data' },
+                onUploadProgress: (progressEvent: any) => {
+                    const total = progressEvent.total;
+                    const loaded = progressEvent.loaded || 0;
+                    if (total) {
+                        setUploadProgress(Math.floor((loaded / total) * 100));
+                    }
+                },
+            } as any);
+
+            const secureUrl = uploadRes?.data?.secure_url || uploadRes?.data?.url;
+            if (!secureUrl) throw new Error('Upload failed');
+
+            setUploadProgress(100);
+            setPendingAttachment(secureUrl);
+            setPendingAttachmentLocal(asset.uri);
+        } catch (err: any) {
+            console.error('Attachment upload error:', err?.message || err);
+            Alert.alert('Upload failed', 'Could not upload the image.');
+            setPendingAttachment(null);
+            setPendingAttachmentLocal(null);
+        } finally {
+            setIsUploading(false);
+            setUploadProgress(null);
+        }
+    };
+
+    const pasteImageFromClipboard = async () => {
+        if (isUploading || !isConnected) return;
+
+        try {
+            const clipboardImage = await Clipboard.getImageAsync({ format: 'png' });
+            if (!clipboardImage?.data) {
+                Alert.alert('No image found', 'Copy an image first, then try again.');
+                return;
+            }
+
+            const base64 = clipboardImage.data.replace(/^data:image\/png;base64,/, '');
+            const cacheDirectory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
+            if (!cacheDirectory) throw new Error('No writable cache directory available');
+
+            const uri = `${cacheDirectory}clipboard-${Date.now()}.png`;
+            await FileSystem.writeAsStringAsync(uri, base64, { encoding: FileSystem.EncodingType.Base64 });
+            setShowAttachTray(false);
+            await uploadImageAsset({
+                uri,
+                fileName: 'clipboard-image.png',
+                mimeType: 'image/png',
+            });
+        } catch (err: any) {
+            console.error('Clipboard image error:', err?.message || err);
+            Alert.alert('Paste failed', 'Could not paste an image from the clipboard.');
+        }
+    };
+
     const pickAndUploadImage = async (fromCamera: boolean) => {
         try {
             if (fromCamera) {
@@ -3113,50 +3222,11 @@ const SingleMessage = () => {
             if (result.canceled) return;
             const asset = result.assets && result.assets[0];
             if (!asset?.uri) return;
-
-            setIsUploading(true);
-            setUploadProgress(0);
-            setPendingAttachmentLocal(asset.uri);
-
-            const formData: any = new FormData();
-            formData.append('image', {
-                uri: asset.uri,
-                name: asset.fileName || 'photo.jpg',
-                type: asset.mimeType || asset.type || 'image/jpeg',
-            } as any);
-
-            const uploadRes = await api.post('/upload', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-                onUploadProgress: (progressEvent: any) => {
-                    try {
-                        const total = progressEvent.total;
-                        const loaded = progressEvent.loaded || 0;
-                        if (total) {
-                            const percent = Math.floor((loaded / total) * 100);
-                            setUploadProgress(percent);
-                        }
-                    } catch (e) {
-                        // noop
-                    }
-                }
-            } as any);
-
-            const secureUrl = uploadRes?.data?.secure_url || uploadRes?.data?.url;
-            if (!secureUrl) {
-                throw new Error('Upload failed');
-            }
-
-            setUploadProgress(100);
-            setPendingAttachment(secureUrl);
-            setPendingAttachmentLocal(asset.uri);
+            await uploadImageAsset(asset);
         } catch (err: any) {
-            console.error('Attachment upload error:', err?.message || err);
-            Alert.alert('Upload failed', 'Could not upload the image.');
+            console.error('Image picker error:', err?.message || err);
             setPendingAttachment(null);
             setPendingAttachmentLocal(null);
-        } finally {
-            setIsUploading(false);
-            setUploadProgress(null);
         }
     };
 
@@ -3343,7 +3413,11 @@ const SingleMessage = () => {
                 return;
             }
 
-            setMessages((prev) => [...uniqueOlder, ...prev]);
+            setMessages((prev) =>
+                [...uniqueOlder, ...prev].sort(
+                    (a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+                ),
+            );
             setHasMoreMessages(response.hasMore);
             hasMoreMessagesRef.current = response.hasMore;
         } catch (error) {
@@ -3486,6 +3560,8 @@ const SingleMessage = () => {
                         flexDirection: 'row',
                         alignItems: 'flex-end',
                         justifyContent: isMyMessage ? 'flex-end' : 'flex-start',
+                        zIndex: Array.isArray(item.reacts) && item.reacts.length > 0 ? 10 : 0,
+                        elevation: Array.isArray(item.reacts) && item.reacts.length > 0 ? 10 : 0,
                     }}>
                         {!isMyMessage && (
                             <View style={{ marginRight: 8, marginBottom: 2 }}>
@@ -3509,6 +3585,8 @@ const SingleMessage = () => {
                                     ? chatTheme.colors.accent
                                     : (isMyMessage ? chatTheme.colors.sentBorder : chatTheme.colors.recvBorder),
                                 position: 'relative',
+                                zIndex: Array.isArray(item.reacts) && item.reacts.length > 0 ? 11 : 0,
+                                elevation: Array.isArray(item.reacts) && item.reacts.length > 0 ? 11 : 0,
                             }}>
                                 {item.parent ? (
                                     <TouchableOpacity
@@ -3668,20 +3746,34 @@ const SingleMessage = () => {
                                         />
                                     ) : null}
                                 </View>
-                                {(Array.isArray(item.reacts) && item.reacts.some((id) => String(id) === String(myProfile?._id) || String(id) === String(friend?._id))) ? (
+                                {normalizeMessageReactions(item.reacts).length > 0 ? (
                                     <View style={{
                                         position: 'absolute',
-                                        top: -12,
-                                        right: isMyMessage ? undefined : -10,
-                                        left: isMyMessage ? -10 : undefined,
-                                        backgroundColor: '#6b7280',
-                                        borderRadius: 15,
-                                        width: 30,
-                                        height: 30,
+                                        top: -14,
+                                        right: isMyMessage ? 8 : undefined,
+                                        left: isMyMessage ? undefined : 8,
+                                        flexDirection: 'row',
                                         alignItems: 'center',
-                                        justifyContent: 'center',
+                                        backgroundColor: themeColors.surface.primary,
+                                        borderRadius: 14,
+                                        paddingHorizontal: 6,
+                                        paddingVertical: 3,
+                                        borderWidth: 1,
+                                        borderColor: themeColors.border.primary,
+                                        shadowColor: '#000',
+                                        shadowOpacity: 0.18,
+                                        shadowRadius: 4,
+                                        zIndex: 20,
+                                        elevation: 20,
                                     }}>
-                                        <Text style={{ fontSize: 14 }}>👍</Text>
+                                        {Object.entries(normalizeMessageReactions(item.reacts).reduce<Record<string, number>>((counts, reaction) => {
+                                            counts[reaction.type] = (counts[reaction.type] || 0) + 1;
+                                            return counts;
+                                        }, {})).slice(0, 4).map(([emoji, count]) => (
+                                            <Text key={emoji} style={{ fontSize: 14, marginHorizontal: 2 }}>
+                                                {emoji}{count > 1 ? <Text style={{ fontSize: 10, color: themeColors.text.secondary }}> {count}</Text> : null}
+                                            </Text>
+                                        ))}
                                     </View>
                                 ) : null}
                             </View>
@@ -4279,6 +4371,40 @@ const SingleMessage = () => {
                             maxHeight: Dimensions.get('window').height - 80,
                         }}
                     >
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 10,
+                            paddingBottom: 8,
+                            borderBottomWidth: 1,
+                            borderBottomColor: themeColors.border.primary,
+                        }}>
+                            {QUICK_REACTION_PRESETS.slice(0, 8).map((emoji) => {
+                                const selected = normalizeMessageReactions(selectedMessage?.reacts)
+                                    .some((reaction) => reactionProfileId(reaction) === String(myProfile?._id) && reaction.type === emoji);
+                                return (
+                                    <TouchableOpacity
+                                        key={emoji}
+                                        onPress={() => likeOrUnlikeMessage(emoji)}
+                                        accessibilityRole="button"
+                                        accessibilityLabel={`${selected ? 'Remove' : 'Add'} ${emoji} reaction`}
+                                        style={{
+                                            width: 34,
+                                            height: 34,
+                                            borderRadius: 17,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            marginHorizontal: 2,
+                                            backgroundColor: selected ? `${chatTheme.colors.accent}55` : themeColors.surface.secondary,
+                                            borderWidth: selected ? 1 : 0,
+                                            borderColor: chatTheme.colors.accent,
+                                        }}
+                                    >
+                                        <Text style={{ fontSize: 20 }}>{emoji}</Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
 
                         <TouchableOpacity
                             style={{
@@ -4301,7 +4427,7 @@ const SingleMessage = () => {
                                 paddingVertical: 12,
                                 paddingHorizontal: 16,
                             }}
-                            onPress={likeOrUnlikeMessage}
+                            onPress={() => likeOrUnlikeMessage()}
                         >
                             <Icon name={isReactedByMe ? 'thumb-down' : 'thumb-up'} size={20} color={themeColors.text.primary} />
                             <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
@@ -5898,6 +6024,7 @@ const SingleMessage = () => {
                         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
                             {[
                                 { key: 'photo', label: 'Photo', icon: 'image', onPress: () => pickAndUploadImage(false) },
+                                { key: 'paste', label: 'Paste', icon: 'content-paste', onPress: pasteImageFromClipboard },
                                 { key: 'file', label: 'File', icon: 'attach-file', onPress: pickAndUploadFile },
                                 { key: 'live', label: isLiveVoiceActive ? 'Stop' : (isLiveVoiceConnecting ? 'Wait' : 'Live'), icon: isLiveVoiceActive ? 'phone-disabled' : 'headset', onPress: () => { if (isLiveVoiceConnecting || isRecording || isUploadingAudio) return; setShowAttachTray(false); stopTranscriptionRef.current?.(); handleLiveVoiceButtonClick(); } },
                                 { key: 'react', label: 'React', icon: null, onPress: () => { setShowAttachTray(false); handleEmojiPress(); } },

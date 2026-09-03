@@ -147,7 +147,15 @@ const Friends = () => {
                 <ProfileImage uri={friend.profilePic} pixelSize={200} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
-                <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
+                <View style={styles.profileNameContainer}>
+                  <Text
+                    style={[styles.profileName, { color: textColor }]}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                  >
+                    {friend.fullName}
+                  </Text>
+                </View>
                 <View style={styles.buttonRow}>
                   <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleAcceptFriendRequest(friend._id); }}>
                     <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Accept</Text>
@@ -180,7 +188,15 @@ const Friends = () => {
                 <ProfileImage uri={friend.profilePic} pixelSize={200} style={styles.profilePicture} />
               </View>
               <View style={styles.gridBody}>
-                <Text style={[styles.profileName, { color: textColor }]}>{friend.fullName}</Text>
+                <View style={styles.profileNameContainer}>
+                  <Text
+                    style={[styles.profileName, { color: textColor }]}
+                    numberOfLines={2}
+                    ellipsizeMode="tail"
+                  >
+                    {friend.fullName}
+                  </Text>
+                </View>
                 <View style={styles.buttonRow}>
                   <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleSendFriendRequest(friend._id); }}>
                     <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Add Friend</Text>
@@ -287,8 +303,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600',
     color: '#222',
-    marginBottom: 8,
+    lineHeight: 22,
     textAlign: 'center',
+  },
+  profileNameContainer: {
+    height: 44,
+    justifyContent: 'center',
+    marginBottom: 8,
   },
   buttonRow: {
     flexDirection: 'column',

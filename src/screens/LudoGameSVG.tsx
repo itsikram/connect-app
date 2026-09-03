@@ -1458,7 +1458,7 @@ const LudoGameSVG = () => {
 
   if (gameEnded) {
     return (
-      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.root} edges={['bottom']}>
         <StatusBar barStyle="light-content" />
         <GameEndedScreen winners={winners} onResetGame={startNewGame} />
       </SafeAreaView>
@@ -1482,7 +1482,7 @@ const LudoGameSVG = () => {
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.root} edges={['bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={THEME.bg} />
       <View style={styles.bgBlobA} />
       <View style={styles.bgBlobB} />
@@ -1731,6 +1731,7 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: THEME.bg,
+    paddingTop: 0,
   },
   bgBlobA: {
     position: 'absolute',
@@ -1754,7 +1755,7 @@ const styles = StyleSheet.create({
   },
   stage: {
     alignItems: 'center',
-    paddingTop: 12,
+    paddingTop: 16,
     paddingBottom: 28,
     gap: 14,
   },

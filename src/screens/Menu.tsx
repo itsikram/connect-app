@@ -412,13 +412,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 14,
-    paddingTop: 0,
+    paddingHorizontal: 16,
+    paddingTop: 6,
     paddingBottom: 120,
   },
   header: {
-    marginBottom: 14,
-    paddingHorizontal: 2,
+    marginBottom: 10,
+    paddingHorizontal: 0,
   },
   title: {
     fontSize: 28,
@@ -426,9 +426,9 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6,
   },
   subtitle: {
-    marginTop: 4,
-    fontSize: 14,
-    lineHeight: 20,
+    marginTop: 2,
+    fontSize: 13,
+    lineHeight: 18,
   },
   searchBar: {
     flexDirection: 'row',
@@ -437,8 +437,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     paddingHorizontal: 12,
-    minHeight: 46,
-    marginBottom: 14,
+    minHeight: 44,
+    marginBottom: 8,
   },
   searchInput: {
     flex: 1,

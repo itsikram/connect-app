@@ -20,6 +20,7 @@ import {
   uniquePlacedReacts,
 } from './post/ReactIcons';
 import EditAudienceModal from './post/EditAudienceModal';
+import KeyboardSafeView from './KeyboardSafeView';
 import CacheManager from '../utils/cacheManager';
 import { emitPostUpdated } from '../utils/postEvents';
 import { getAudienceOption } from '../constants/audience';
@@ -95,6 +96,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [shareCap, setShareCap] = useState<string>('');
   const [placedReacts, setPlacedReacts] = useState<string[]>(uniqueReactTypes(post.reacts));
   const [isShareModal, setIsShareModal] = useState<boolean>(false);
+  const [isSharing, setIsSharing] = useState<boolean>(false);
   const [isPostOption, setIsPostOption] = useState<boolean>(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState<boolean>(false);
   const [showReactions, setShowReactions] = useState<boolean>(false);
@@ -349,13 +351,32 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     }
   };
 
-  // Share logic (already implemented)
   const onClickShareNow = async () => {
-    let res = await api.post('post/share', { postId: post._id, caption: shareCap });
-    if (res.status == 200) {
-      setTotalShares(state => state + 1);
-      // dispatch(addPost(res.data.post)); // Optionally update global state
-      setIsShareModal(false);
+    if (isSharing || !post._id) return;
+    setIsSharing(true);
+    try {
+      const res = await api.post('/post/share', {
+        postId: post._id,
+        caption: shareCap.trim(),
+      });
+      if (res.status === 200) {
+        setTotalShares(state => state + 1);
+        setIsShareModal(false);
+        setShareCap('');
+        showToast({
+          type: 'success',
+          title: 'Post shared',
+          message: 'The post was shared to your feed.',
+        });
+      }
+    } catch (error: any) {
+      showToast({
+        type: 'error',
+        title: 'Could not share post',
+        message: error?.response?.data?.message || 'Please try again.',
+      });
+    } finally {
+      setIsSharing(false);
     }
   };
 
@@ -1169,25 +1190,74 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           </View>
         </View>
       </View>
-      <Modal visible={isShareModal} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.shareModal, { backgroundColor: cardBg }]}>
-            <Text style={{ color: textColor }}>Share Post</Text>
+      <Modal
+        visible={isShareModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!isSharing) setIsShareModal(false);
+        }}
+      >
+        <KeyboardSafeView force>
+          <TouchableOpacity
+            style={styles.modalOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              if (!isSharing) setIsShareModal(false);
+            }}
+          >
+            <TouchableOpacity
+              style={[styles.shareModal, { backgroundColor: cardBg, borderColor }]}
+              activeOpacity={1}
+              onPress={(event) => event.stopPropagation()}
+            >
+            <View style={styles.shareHeader}>
+              <Text style={[styles.shareTitle, { color: textColor }]}>Share post</Text>
+              <TouchableOpacity
+                onPress={() => setIsShareModal(false)}
+                disabled={isSharing}
+                accessibilityLabel="Close share dialog"
+              >
+                <Icon name="close" size={22} color={subTextColor} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.shareSubtitle, { color: subTextColor }]}>
+              Add a message before sharing this post to your feed.
+            </Text>
             <VoiceTextInput
               style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
-              placeholder="What's on your mind?"
+              placeholder="Say something about this post…"
               placeholderTextColor={subTextColor}
               value={shareCap}
               onChangeText={setShareCap}
+              editable={!isSharing}
+              multiline
+              maxLength={500}
             />
-            <TouchableOpacity onPress={onClickShareNow}>
-              <Text style={{ color: themeColors.primary }}>Share Now</Text>
+            <Text style={[styles.shareCounter, { color: subTextColor }]}>
+              {shareCap.length}/500
+            </Text>
+            <TouchableOpacity
+              onPress={onClickShareNow}
+              disabled={isSharing}
+              style={[styles.sharePrimaryButton, { backgroundColor: themeColors.primary, opacity: isSharing ? 0.6 : 1 }]}
+            >
+              {isSharing ? (
+                <ActivityIndicator color="#FFFFFF" />
+              ) : (
+                <Text style={styles.sharePrimaryText}>Share now</Text>
+              )}
             </TouchableOpacity>
-            <TouchableOpacity onPress={() => setIsShareModal(false)}>
+            <TouchableOpacity
+              onPress={() => setIsShareModal(false)}
+              disabled={isSharing}
+              style={styles.shareCancelButton}
+            >
               <Text style={{ color: subTextColor }}>Cancel</Text>
             </TouchableOpacity>
-          </View>
-        </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardSafeView>
       </Modal>
       <EditAudienceModal
         visible={isEditAudienceModal}
@@ -1503,17 +1573,61 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   shareModal: {
-    backgroundColor: '#FFFFFF',
     padding: 20,
-    borderRadius: 10,
-    width: '80%',
+    borderRadius: 20,
+    width: '95%',
+    maxHeight: '90%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    borderWidth: 1,
+  },
+  shareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  shareTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  shareSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
   },
   shareInput: {
     borderWidth: 1,
-    borderColor: '#E5E5EA',
-    borderRadius: 8,
-    marginVertical: 10,
-    padding: 8,
+    borderRadius: 12,
+    marginTop: 16,
+    minHeight: 96,
+    maxHeight: 140,
+    padding: 12,
+    textAlignVertical: 'top',
+  },
+  shareCounter: {
+    alignSelf: 'flex-end',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  sharePrimaryButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    justifyContent: 'center',
+    minHeight: 46,
+    marginTop: 16,
+  },
+  sharePrimaryText: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  shareCancelButton: {
+    alignItems: 'center',
+    minHeight: 42,
+    justifyContent: 'center',
   },
   reactionPopup: {
     flexDirection: 'row',

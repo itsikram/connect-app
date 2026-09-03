@@ -52,6 +52,27 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
     setSearchOpen(true);
   };
 
+  const isMessageNotification = (notification: any) => {
+    const type = String(
+      notification?.type ||
+        notification?.category ||
+        notification?.kind ||
+        notification?.meta?.type ||
+        '',
+    ).toLowerCase();
+
+    return (
+      type === 'message' ||
+      type === 'new_message' ||
+      type === 'message_received' ||
+      type === 'received_message' ||
+      type.includes('message')
+    );
+  };
+
+  const shouldCountNotification = (notification: any) =>
+    !isMessageNotification(notification);
+
   const handleNotificationsPress = () => {
     const newState = !notifOpen;
     setNotifOpen(newState);
@@ -213,12 +234,16 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
     const handleOld = (data: any[]) => {
       const reversedData = data.reverse();
       setNotifications(reversedData);
-      const unread = reversedData.filter(n => !n.isSeen).length;
+      const unread = reversedData.filter(
+        n => shouldCountNotification(n) && !n.isSeen,
+      ).length;
       setUnreadCount(unread);
     };
     const handleNew = (data: any) => {
       setNotifications(prev => [data, ...prev]);
-      setUnreadCount(prev => prev + 1);
+      if (shouldCountNotification(data)) {
+        setUnreadCount(prev => prev + 1);
+      }
 
       // Animate badge when new notification arrives
       Animated.sequence([

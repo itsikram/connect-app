@@ -66,12 +66,14 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
 
 const styles = StyleSheet.create({
   header: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingTop: 0,
+    paddingBottom: 12,
     backgroundColor: 'rgba(12, 18, 25, 0.88)',
     borderBottomWidth: 1,
     borderBottomColor: THEME.border,

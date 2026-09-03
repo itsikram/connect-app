@@ -14,6 +14,7 @@ export interface AgentMessage {
   timestamp: string;
   streaming?: boolean;
   success?: boolean;
+  profileChoices?: Array<{ id: string; name: string; username?: string; profilePic?: string }>;
 }
 
 export interface AgentAction {

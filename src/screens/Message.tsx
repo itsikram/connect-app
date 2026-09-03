@@ -794,7 +794,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 0,
+    paddingBottom: 50,
     flexGrow: 1,
   },
   peopleSection: {

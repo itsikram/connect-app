@@ -44,7 +44,7 @@ export function upsertConfirmedMessage<T extends {
     return true;
   });
 
-  return [...withoutDupes, { ...confirmed, isOptimistic: false }];
+  return sortMessages([...withoutDupes, { ...confirmed, isOptimistic: false }]);
 }
 
 export function isConversationMessage(msg: any, userId: any, friendId: any): boolean {
@@ -90,5 +90,18 @@ export function mergeHistoryWithLive<T extends {
     return Boolean(id && !histIds.has(id));
   });
 
-  return [...hist, ...extras];
+  return sortMessages([...hist, ...extras]);
+}
+
+function sortMessages<T extends { timestamp?: Date | string }>(messages: T[]): T[] {
+  return messages
+    .map((message, index) => ({ message, index }))
+    .sort((a, b) => {
+      const timeA = new Date(a.message.timestamp as any).getTime();
+      const timeB = new Date(b.message.timestamp as any).getTime();
+      const safeTimeA = Number.isFinite(timeA) ? timeA : 0;
+      const safeTimeB = Number.isFinite(timeB) ? timeB : 0;
+      return safeTimeA - safeTimeB || a.index - b.index;
+    })
+    .map(({ message }) => message);
 }

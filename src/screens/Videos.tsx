@@ -674,26 +674,36 @@ const VideoItem = ({
         animationType="fade"
         onRequestClose={() => setShareOpen(false)}
       >
-        <KeyboardSafeView force style={styles.modalBackdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setShareOpen(false)}
-          />
-          <View
-            style={[
-              styles.sheet,
-              { backgroundColor: t.surface, borderColor: t.chipBorder },
-            ]}
+        <KeyboardSafeView force>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              if (!sharing) setShareOpen(false);
+            }}
           >
+            <TouchableOpacity
+              style={[
+                styles.sheet,
+                { backgroundColor: t.surface, borderColor: t.chipBorder },
+              ]}
+              activeOpacity={1}
+              onPress={(event) => event.stopPropagation()}
+            >
             <Text style={[styles.sheetTitle, { color: t.chromeText }]}>
               Share video
+            </Text>
+            <Text style={[styles.sheetSubtitle, { color: t.chromeMuted }]}>
+              Add a message before sharing this video to your feed.
             </Text>
             <VoiceTextInput
               value={shareCap}
               onChangeText={setShareCap}
-              placeholder="Say something about this video"
+              placeholder="Say something about this video…"
               placeholderTextColor={t.placeholder}
               multiline
+              editable={!sharing}
+              maxLength={500}
               style={[
                 styles.sheetInput,
                 {
@@ -703,12 +713,15 @@ const VideoItem = ({
                 },
               ]}
             />
+            <Text style={[styles.sheetCounter, { color: t.chromeMuted }]}>
+              {shareCap.length}/500
+            </Text>
             <TouchableOpacity
               onPress={handleShareNow}
               disabled={sharing}
               style={[
                 styles.sheetCta,
-                { backgroundColor: t.primary, alignSelf: 'stretch' },
+                { backgroundColor: t.primary, alignSelf: 'stretch', opacity: sharing ? 0.6 : 1 },
               ]}
             >
               {sharing ? (
@@ -719,7 +732,15 @@ const VideoItem = ({
                 </Text>
               )}
             </TouchableOpacity>
-          </View>
+            <TouchableOpacity
+              onPress={() => setShareOpen(false)}
+              disabled={sharing}
+              style={styles.sheetCancel}
+            >
+              <Text style={{ color: t.chromeMuted }}>Cancel</Text>
+            </TouchableOpacity>
+            </TouchableOpacity>
+          </TouchableOpacity>
         </KeyboardSafeView>
       </Modal>
     </View>
@@ -1070,20 +1091,32 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sheet: {
-    margin: 16,
-    marginBottom: 28,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 16,
+    padding: 20,
+    width: '95%',
+    maxHeight: '90%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
   },
   sheetTitle: {
     fontSize: 18,
     fontWeight: '700',
     marginBottom: 12,
+  },
+  sheetSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: -6,
+    marginBottom: 4,
   },
   sheetInput: {
     minHeight: 88,
@@ -1093,6 +1126,12 @@ const styles = StyleSheet.create({
     marginBottom: 12,
     textAlignVertical: 'top',
     fontSize: 15,
+  },
+  sheetCounter: {
+    alignSelf: 'flex-end',
+    fontSize: 12,
+    marginTop: -7,
+    marginBottom: 4,
   },
   sheetRow: {
     flexDirection: 'row',
@@ -1105,6 +1144,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 20,
     alignItems: 'center',
+  },
+  sheetCancel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 42,
   },
   // PiP window styles
   pipWindow: {

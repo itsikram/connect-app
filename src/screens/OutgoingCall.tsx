@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Image, StatusBar, Animated, Dimensions, S
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Video from 'react-native-video';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
 import { Audio } from '../lib/avCompat';

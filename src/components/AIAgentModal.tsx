@@ -2,6 +2,8 @@ import React from 'react';
 import {
   Alert,
   FlatList,
+  Image,
+  InteractionManager,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -67,6 +69,69 @@ const providerLabels: Record<AIProvider, string> = {
   cursor: 'Cursor',
   grok: 'Grok',
   groq: 'Groq Cloud',
+};
+
+const normalizeFriendName = (value: unknown) =>
+  String(value || '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9\u0980-\u09FF]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+const levenshteinDistance = (left: string, right: string) => {
+  if (left === right) return 0;
+  if (!left) return right.length;
+  if (!right) return left.length;
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let index = 1; index <= left.length; index += 1) {
+    const current = [index];
+    for (let j = 1; j <= right.length; j += 1) {
+      current[j] = Math.min(
+        current[j - 1] + 1,
+        previous[j] + 1,
+        previous[j - 1] + (left[index - 1] === right[j - 1] ? 0 : 1),
+      );
+    }
+    previous = current;
+  }
+  return previous[right.length];
+};
+
+const getNameSimilarity = (query: string, candidate: string) => {
+  if (!query || !candidate) return 0;
+  const queryTokens = query.split(' ').filter(Boolean);
+  const candidateTokens = candidate.split(' ').filter(Boolean);
+  const sharedTokens = queryTokens.filter(token => candidateTokens.includes(token)).length;
+  const tokenDice = (2 * sharedTokens) /
+    Math.max(1, queryTokens.length + candidateTokens.length);
+  const containsScore = candidate.includes(query) || query.includes(candidate)
+    ? Math.min(query.length, candidate.length) / Math.max(query.length, candidate.length)
+    : 0;
+  const editScore = 1 - levenshteinDistance(query, candidate) /
+    Math.max(query.length, candidate.length);
+  const bestTokenEdit = Math.max(0, ...queryTokens.flatMap(queryToken =>
+    candidateTokens.map(candidateToken =>
+      1 - levenshteinDistance(queryToken, candidateToken) /
+        Math.max(queryToken.length, candidateToken.length),
+    ),
+  ));
+  return Math.max(tokenDice, containsScore, editScore, bestTokenEdit);
+};
+
+const getFriendDisplayName = (friend: Record<string, unknown>) => {
+  const user = friend.user && typeof friend.user === 'object'
+    ? friend.user as Record<string, unknown>
+    : {};
+  if (friend.fullName) return String(friend.fullName);
+  if (user.fullName) return String(user.fullName);
+  const full = `${user.firstName || friend.firstName || ''} ${user.surname || friend.surname || ''}`.trim();
+  return String(
+    full || friend.username || friend.displayName || user.displayName ||
+    friend.nickname || user.nickname || friend.name || user.name ||
+    user.username || 'Unknown',
+  );
 };
 
 const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
@@ -142,6 +207,8 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     typeof createAgentSpeechController
   > | null>(null);
   const requestRef = React.useRef<AbortController | null>(null);
+  const ambiguityRef = React.useRef<AgentMessage['profileChoices']>(undefined);
+  const ambiguousActionRef = React.useRef<AgentActionIntent | null>(null);
   const generationRef = React.useRef(0);
   const agentMemoryRef = React.useRef<{
     activeUser?: { id?: string; name?: string };
@@ -157,7 +224,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const resolveUser = React.useCallback(async (query: string) => {
     const profileId = String((profile as Record<string, unknown> | null)?._id || '');
     if (!profileId) return null;
-    const normalizedQuery = query.normalize('NFC').replace(/\u200c|\u200d/g, '').replace(/\s+/g, ' ').trim();
+    const normalizedQuery = normalizeFriendName(query.normalize('NFC').replace(/\u200c|\u200d/g, ''));
     const searchQueries = Array.from(new Set([
       normalizedQuery,
       normalizedQuery.replace(/(কে|কো|এর|র|তে|কে)$/u, '').trim(),
@@ -176,37 +243,72 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         if (userId) friendMap.set(userId, user);
       });
     }
-    const friends = [...friendMap.values()];
-    const needle = normalizedQuery.toLowerCase();
-    const normalizedNeedle = searchQueries[searchQueries.length - 1].toLowerCase();
+    const friends: Array<Record<string, unknown>> = [...new Map(
+      [...knownFriendsRef.current, ...friendMap.values()].map(friend => [
+        String((friend as Record<string, unknown>).id || (friend as Record<string, unknown>)._id || ''),
+        friend,
+      ]),
+    ).values()].map(friend => friend as Record<string, unknown>);
+    const normalizedNeedle = normalizeFriendName(searchQueries[searchQueries.length - 1]);
+    if (normalizedNeedle.replace(/\s/g, '').length < 3) return null;
     const scored = friends.map((friend: Record<string, unknown>) => {
-      const nestedUser = friend.user && typeof friend.user === 'object'
-        ? friend.user as Record<string, unknown>
-        : {};
+      const nestedUser = friend.user && typeof friend.user === 'object' ? friend.user as Record<string, unknown> : {};
       const fields = [
-        friend.fullName, friend.displayName, friend.username, friend.nickname,
-        friend.banglaName, friend.email, friend.name,
-        nestedUser.fullName, nestedUser.displayName, nestedUser.username,
-        nestedUser.nickname, nestedUser.banglaName, nestedUser.email, nestedUser.name,
+        nestedUser.firstName, friend.firstName, nestedUser.surname, friend.surname,
+        `${nestedUser.firstName || friend.firstName || ''} ${nestedUser.surname || friend.surname || ''}`,
+        nestedUser.displayName, friend.displayName, nestedUser.nickname, friend.nickname,
+        friend.banglaName, nestedUser.username, friend.username, friend.name,
+        nestedUser.name, friend.fullName, nestedUser.fullName,
       ]
-        .filter(value => typeof value === 'string')
-        .map(value => String(value).toLowerCase());
-      const score = fields.reduce((best, value) => Math.max(
-        best,
-        value === needle || value === normalizedNeedle ? 100 :
-          value.startsWith(needle) || value.startsWith(normalizedNeedle) ? 80 :
-            value.includes(needle) || value.includes(normalizedNeedle) ? 55 : 0,
-      ), 0);
+        .map(value => normalizeFriendName(value))
+        .filter(Boolean);
+      const queryTokens = normalizedNeedle.split(' ').filter(Boolean);
+      let score = 0;
+      for (const candidate of fields) {
+        if (candidate === normalizedNeedle) {
+          score = Math.max(score, 1);
+          continue;
+        }
+        const candidateTokens = candidate.split(' ').filter(Boolean);
+        if (queryTokens.length === 1) {
+          const token = queryTokens[0];
+          if (candidateTokens.some(value => value === token)) score = Math.max(score, 1);
+          else if (candidateTokens.some(value => value.startsWith(token) && token.length / value.length >= 0.8)) score = Math.max(score, 0.98);
+          else if (candidateTokens.some(value => value.includes(token) && Math.abs(value.length - token.length) <= 1)) score = Math.max(score, candidateTokens.some(value => value === token) ? 0.98 : 0.9);
+        } else {
+          if (candidate.includes(normalizedNeedle)) score = Math.max(score, 0.99);
+          const tokenMatches = queryTokens.filter(token => candidateTokens.includes(token)).length;
+          if (tokenMatches > 0) score = Math.max(score, 0.85 + (tokenMatches / queryTokens.length) * 0.1);
+        }
+        if (score < 0.85) score = Math.max(score, getNameSimilarity(normalizedNeedle, candidate) >= 0.6 ? getNameSimilarity(normalizedNeedle, candidate) : 0);
+      }
       return { friend, score };
-    }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
+    }).filter(item => item.score >= 0.4).sort((a, b) => b.score - a.score);
     if (!scored.length) return null;
     const bestScore = scored[0].score;
     const matches = scored.filter(item => item.score === bestScore);
     if (matches.length > 1) {
-      const names = matches.slice(0, 5).map(item => String(
-        item.friend.fullName || item.friend.username || item.friend.name || query,
-      ));
-      throw new Error(`I found multiple relevant people: ${names.join(', ')}. Which one should I use?`);
+      const names = matches.slice(0, 5).map(item => getFriendDisplayName(item.friend));
+      const ambiguity = new Error(
+        `I found multiple relevant people: ${names.join(', ')}. Which one should I use?`,
+      ) as Error & {
+        profileChoices?: Array<{ id: string; name: string; username?: string; profilePic?: string }>;
+      };
+      ambiguity.profileChoices = matches.slice(0, 5).map(item => {
+        const nested = item.friend.user && typeof item.friend.user === 'object'
+          ? item.friend.user as Record<string, unknown>
+          : {};
+        return {
+          id: String(item.friend._id || item.friend.id || item.friend.userId || nested._id || nested.id),
+          name: getFriendDisplayName(item.friend),
+          username: String(item.friend.username || nested.username || '') || undefined,
+          profilePic: String(
+            item.friend.profilePic || item.friend.profilePicture ||
+            nested.profilePic || nested.profilePicture || nested.avatar || '',
+          ) || undefined,
+        };
+      });
+      throw ambiguity;
     }
     const match = matches[0].friend;
     const nestedUser = match.user && typeof match.user === 'object'
@@ -214,9 +316,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       : {};
     const id = match._id || match.userId || nestedUser._id || nestedUser.id;
     if (!id) return null;
-    const displayName = match.fullName || match.displayName || match.name ||
-      nestedUser.fullName || nestedUser.displayName || nestedUser.name ||
-      match.username || nestedUser.username || match.nickname || nestedUser.nickname || query;
+    const displayName = getFriendDisplayName(match);
     return {
       id: String(id),
       name: String(displayName),
@@ -556,6 +656,17 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         }
         const adapter = createMobileAgentActionAdapter({
           ...callAdapter,
+          resolveUser: async (query: string) => {
+            try {
+              return await callAdapter.resolveUser(query);
+            } catch (error) {
+              const choices = (error as Error & {
+                profileChoices?: AgentMessage['profileChoices'];
+              }).profileChoices;
+              if (choices?.length) ambiguityRef.current = choices;
+              throw error;
+            }
+          },
           navigate: (route, params) => {
             const routeAliases: Record<string, string> = {
               messages: 'Message',
@@ -644,7 +755,13 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
           return;
         }
-        if (autoMode && intent.actions?.length) setAutoActionRunning(true);
+        if (autoMode && intent.actions?.length) {
+          setAutoActionRunning(true);
+          // Paint the compact overlay before starting potentially slow action work.
+          await new Promise<void>(resolve => {
+            InteractionManager.runAfterInteractions(() => resolve());
+          });
+        }
         const results = await executeAgentActions(intent.actions, adapter, {
           skipConfirmation: autoMode,
           onResolvedUser: resolved => {
@@ -674,6 +791,26 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               );
             }),
         });
+        if (ambiguityRef.current?.length) {
+          const profileChoices = ambiguityRef.current;
+          ambiguityRef.current = undefined;
+          ambiguousActionRef.current = intent.actions?.find(action =>
+            ['START_AUDIO_CALL', 'START_VIDEO_CALL'].includes(action.action),
+          ) || null;
+          setPendingActions([]);
+          setMessages(previous =>
+            previous.map(item =>
+              item.id === stream.id
+                ? {
+                    ...item,
+                    content: 'I found multiple people. Choose the profile you want to call.',
+                    profileChoices,
+                  }
+                : item,
+            ),
+          );
+          return;
+        }
         setAutoActionRunning(false);
         const failed = results.filter(result => !result.ok);
         const completed = results.filter(result => result.ok);
@@ -861,6 +998,42 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               </Text>
             )}
           </View>
+          {item.profileChoices?.length ? (
+            <View style={styles.profileChoices}>
+              {item.profileChoices.map(choice => (
+                <Pressable
+                  key={choice.id}
+                  onPress={() => chooseProfileForAction(choice)}
+                  style={[
+                    styles.profileChoice,
+                    {
+                      backgroundColor: colors.surface.secondary,
+                      borderColor: colors.border.primary,
+                    },
+                  ]}
+                >
+                  {choice.profilePic ? (
+                    <Image source={{ uri: choice.profilePic }} style={styles.profileChoiceImage} />
+                  ) : (
+                    <View style={[styles.profileChoicePlaceholder, { backgroundColor: `${colors.primary}20` }]}>
+                      <Icon name="person" size={20} color={colors.primary} />
+                    </View>
+                  )}
+                  <View style={styles.profileChoiceText}>
+                    <Text style={[styles.profileChoiceName, { color: colors.text.primary }]}>
+                      {choice.name}
+                    </Text>
+                    {choice.username ? (
+                      <Text style={[styles.profileChoiceUsername, { color: colors.text.secondary }]}>
+                        @{choice.username}
+                      </Text>
+                    ) : null}
+                  </View>
+                  <Icon name="call" size={18} color={colors.primary} />
+                </Pressable>
+              ))}
+            </View>
+          ) : null}
           <Text style={[styles.time, { color: colors.text.tertiary }]}>
             {new Date(item.timestamp).toLocaleTimeString([], {
               hour: 'numeric',
@@ -879,7 +1052,14 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       logout,
       clearAgentChat: clearChat,
     });
+    if (autoMode) {
+      setAutoActionRunning(true);
+      await new Promise<void>(resolve =>
+        InteractionManager.runAfterInteractions(() => resolve()),
+      );
+    }
     const results = await executeAgentActions([action], adapter, {
+      skipConfirmation: autoMode,
       confirm: definition =>
         new Promise<boolean>(resolve => {
           Alert.alert(
@@ -900,6 +1080,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
         }),
     });
+    setAutoActionRunning(false);
     const result = results[0];
     setPendingActions(previous => previous.filter(item => item !== action));
     setMessages(previous => [
@@ -912,6 +1093,28 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         success: result?.ok,
       },
     ]);
+  };
+  const chooseProfileForAction = (choice: NonNullable<AgentMessage['profileChoices']>[number]) => {
+    const action = ambiguousActionRef.current;
+    if (!action) return;
+    ambiguousActionRef.current = null;
+    runPendingAction({
+      ...action,
+      parameters: {
+        ...(action.parameters || {}),
+        userId: choice.id,
+        userName: choice.name,
+      },
+      targetName: choice.name,
+    }).catch(error => {
+      setMessages(previous => [...previous, {
+        id: id(),
+        type: 'action-result',
+        content: error instanceof Error ? error.message : 'Action failed.',
+        timestamp: new Date().toISOString(),
+        success: false,
+      }]);
+    });
   };
 
   return (
@@ -1396,6 +1599,27 @@ const styles = StyleSheet.create({
   agentBubble: { borderRadius: 18, borderBottomLeftRadius: 5 },
   messageText: { fontSize: 15, lineHeight: 22 },
   time: { fontSize: 10, marginTop: 4, marginHorizontal: 4 },
+  profileChoices: { marginTop: 8, gap: 7 },
+  profileChoice: {
+    minHeight: 54,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    paddingHorizontal: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+  },
+  profileChoiceImage: { width: 36, height: 36, borderRadius: 18 },
+  profileChoicePlaceholder: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileChoiceText: { flex: 1 },
+  profileChoiceName: { fontSize: 13, fontWeight: '700' },
+  profileChoiceUsername: { fontSize: 11, marginTop: 2 },
   typingDots: {
     flexDirection: 'row',
     alignItems: 'center',

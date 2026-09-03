@@ -601,26 +601,63 @@ const SingleWatch = () => {
         </View>
       </KeyboardSafeView>
 
-      <Modal visible={shareOpen} transparent animationType="fade" onRequestClose={() => setShareOpen(false)}>
-        <View style={styles.modalBackdrop}>
-          <Pressable style={StyleSheet.absoluteFill} onPress={() => setShareOpen(false)} />
-          <View style={[styles.shareSheet, { backgroundColor: t.surface, borderColor: t.border }]}>
-            <Text style={[styles.shareTitle, { color: t.chromeText }]}>Share video</Text>
+      <Modal
+        visible={shareOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (!sharing) setShareOpen(false);
+        }}
+      >
+        <KeyboardSafeView force>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => {
+              if (!sharing) setShareOpen(false);
+            }}
+          >
+            <TouchableOpacity
+              style={[styles.shareSheet, { backgroundColor: t.surface, borderColor: t.border }]}
+              activeOpacity={1}
+              onPress={(event) => event.stopPropagation()}
+            >
+            <View style={styles.shareHeader}>
+              <Text style={[styles.shareTitle, { color: t.chromeText }]}>Share video</Text>
+              <TouchableOpacity
+                onPress={() => setShareOpen(false)}
+                disabled={sharing}
+                accessibilityLabel="Close share dialog"
+              >
+                <Icon name="close" size={22} color={t.chromeMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={[styles.shareSubtitle, { color: t.chromeMuted }]}>
+              Add a message before sharing this video to your feed.
+            </Text>
             <VoiceTextInput
               value={shareCap}
               onChangeText={setShareCap}
-              placeholder="Say something about this video"
+              placeholder="Say something about this video…"
               placeholderTextColor={t.placeholder}
               style={[
                 styles.shareInput,
                 { backgroundColor: t.inputBg, color: t.chromeText, borderColor: t.chipBorder },
               ]}
               multiline
+              editable={!sharing}
+              maxLength={500}
             />
+            <Text style={[styles.shareCounter, { color: t.chromeMuted }]}>
+              {shareCap.length}/500
+            </Text>
             <TouchableOpacity
               onPress={handleShareNow}
               disabled={sharing}
-              style={[styles.retry, { backgroundColor: t.primary, alignSelf: 'stretch' }]}
+              style={[
+                styles.shareButton,
+                { backgroundColor: t.primary, opacity: sharing ? 0.6 : 1 },
+              ]}
             >
               {sharing ? (
                 <ActivityIndicator color={t.ctaText} />
@@ -628,8 +665,16 @@ const SingleWatch = () => {
                 <Text style={{ color: t.ctaText, fontWeight: '700' }}>Share Now</Text>
               )}
             </TouchableOpacity>
-          </View>
-        </View>
+            <TouchableOpacity
+              onPress={() => setShareOpen(false)}
+              disabled={sharing}
+              style={styles.shareCancel}
+            >
+              <Text style={{ color: t.chromeMuted }}>Cancel</Text>
+            </TouchableOpacity>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardSafeView>
       </Modal>
     </SafeAreaView>
   );
@@ -816,27 +861,60 @@ const styles = StyleSheet.create({
   },
   modalBackdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
-    padding: 24,
+    alignItems: 'center',
   },
   shareSheet: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    padding: 16,
+    padding: 20,
+    width: '95%',
+    maxHeight: '90%',
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+  },
+  shareHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   shareTitle: {
     fontSize: 18,
     fontWeight: '700',
-    marginBottom: 12,
+  },
+  shareSubtitle: {
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 6,
   },
   shareInput: {
     minHeight: 88,
     borderRadius: 12,
     borderWidth: 1,
     padding: 12,
-    marginBottom: 12,
+    marginTop: 16,
     textAlignVertical: 'top',
+  },
+  shareCounter: {
+    alignSelf: 'flex-end',
+    fontSize: 12,
+    marginTop: 5,
+  },
+  shareButton: {
+    alignItems: 'center',
+    borderRadius: 12,
+    justifyContent: 'center',
+    minHeight: 46,
+    marginTop: 16,
+  },
+  shareCancel: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 42,
   },
 });
 
