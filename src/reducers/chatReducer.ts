@@ -129,6 +129,15 @@ const chatSlice = createSlice({
         state.unreadMessageCount += 1;
       }
     },
+    removeConversation: (state, action: PayloadAction<{ friendId: string; currentUserId: string }>) => {
+      const { friendId, currentUserId } = action.payload;
+      state.chats = state.chats.filter(chat => String(chat.person._id) !== String(friendId));
+      state.unreadMessageCount = state.chats.reduce((count, chat) => {
+        return count + chat.messages.filter(message =>
+          !message.isSeen && String(message.receiverId) === String(currentUserId),
+        ).length;
+      }, 0);
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -154,6 +163,7 @@ export const {
   clearChatList, 
   updateUnreadMessageCount, 
   markMessagesAsRead, 
-  addNewMessage 
+  addNewMessage,
+  removeConversation,
 } = chatSlice.actions;
 export default chatSlice.reducer; 

@@ -1,12 +1,15 @@
 import { Platform } from 'react-native';
 import * as FileSystem from 'expo-file-system/legacy';
-import * as MediaLibrary from 'expo-media-library';
 import * as Notifications from 'expo-notifications';
 
 export const GALLERY_ALBUM_NAME = 'Connect';
 
 // Use document directory for downloads on all platforms
 export const DOWNLOADS_DIR = `${(FileSystem as any).documentDirectory || ''}downloads/`;
+
+async function getMediaLibrary() {
+  return import('expo-media-library');
+}
 
 export type DownloadKind = 'video' | 'audio';
 
@@ -211,7 +214,8 @@ export async function downloadVideoAndSave(
 
 async function requestGalleryPermission(): Promise<boolean> {
   try {
-    const granular: MediaLibrary.GranularPermission[] = ['video', 'audio', 'photo'];
+    const MediaLibrary = await getMediaLibrary();
+    const granular = ['video', 'audio', 'photo'] as any[];
     let permission = await MediaLibrary.requestPermissionsAsync(false, granular);
     if (permission.status !== 'granted') {
       permission = await MediaLibrary.requestPermissionsAsync(true, granular);
@@ -223,7 +227,7 @@ async function requestGalleryPermission(): Promise<boolean> {
   }
 }
 
-async function addAssetToAlbum(asset: MediaLibrary.Asset): Promise<void> {
+async function addAssetToAlbum(asset: any, MediaLibrary: any): Promise<void> {
   const existing = await MediaLibrary.getAlbumAsync(GALLERY_ALBUM_NAME);
   if (existing) {
     await MediaLibrary.addAssetsToAlbumAsync([asset], existing, false);
@@ -239,11 +243,12 @@ export async function saveToDeviceGallery(fileUri: string): Promise<boolean> {
     console.warn('Photos/Gallery permission was not granted');
     return false;
   }
+  const MediaLibrary = await getMediaLibrary();
 
   try {
     const asset = await MediaLibrary.createAssetAsync(uri);
     try {
-      await addAssetToAlbum(asset);
+      await addAssetToAlbum(asset, MediaLibrary);
     } catch (albumError) {
       console.warn('Created gallery asset but album update failed:', albumError);
     }
@@ -265,7 +270,7 @@ export async function saveToDeviceGallery(fileUri: string): Promise<boolean> {
     await FileSystem.copyAsync({ from: uri, to: cacheUri });
     const copied = await MediaLibrary.createAssetAsync(toFileUri(cacheUri));
     try {
-      await addAssetToAlbum(copied);
+      await addAssetToAlbum(copied, MediaLibrary);
     } catch (_) {}
     return true;
   } catch (copyError) {

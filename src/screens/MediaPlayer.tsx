@@ -15,6 +15,7 @@ import {
   StyleSheet,
   StatusBar,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';
@@ -28,6 +29,11 @@ import { useWatchPipOptional } from '../contexts/WatchPipContext';
 import { buildLibraryPipPayloadFromVideo } from '../utils/watchPipHelpers';
 import { useWatchTokens } from '../theme/watchTokens';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
+import api from '../lib/api';
+import {
+  pollYoutubeDownloadProgress,
+  startYoutubeDownloadJob,
+} from '../lib/ytDownload';
 import {
   loadCustomPlaylist,
   saveCustomPlaylist,
@@ -134,6 +140,10 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [filter, setFilter] = useState<FilterId>('all');
   const [sortMode, setSortMode] = useState<SortId>('custom');
   const [searchQuery, setSearchQuery] = useState('');
+  const [youtubeResults, setYoutubeResults] = useState<any[]>([]);
+  const [youtubeSearching, setYoutubeSearching] = useState(false);
+  const [youtubeSearchError, setYoutubeSearchError] = useState('');
+  const [youtubeDownload, setYoutubeDownload] = useState<{ title: string; percent: number; stage: string; error?: string } | null>(null);
   const [playlistOrder, setPlaylistOrder] = useState<string[]>([]);
   const [playQueue, setPlayQueue] = useState<QueueItem[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
@@ -143,7 +153,38 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [videoDuration, setVideoDuration] = useState(0);
   const [scrubWidth, setScrubWidth] = useState(0);
 
-  const videoRef = useRef<ExpoVideo | null>(null);
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setYoutubeResults([]);
+      setYoutubeSearchError('');
+      return undefined;
+    }
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setYoutubeSearching(true);
+      setYoutubeSearchError('');
+      try {
+        const response = await api.get('/yt-download/youtube/search', {
+          params: { q: query, maxResults: 8, _ts: Date.now() },
+        });
+        if (!cancelled) setYoutubeResults(response.data?.items || []);
+      } catch (_) {
+        if (!cancelled) {
+          setYoutubeResults([]);
+          setYoutubeSearchError('YouTube search failed. Check your connection or API configuration.');
+        }
+      } finally {
+        if (!cancelled) setYoutubeSearching(false);
+      }
+    }, 350);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [searchQuery]);
+
+  const videoRef = useRef<any | null>(null);
   const playUrlHandledRef = useRef('');
   const skipPipOnUnmount = useRef(false);
   const currentVideoRef = useRef<PlaylistItem | null>(null);
@@ -658,6 +699,92 @@ const MediaPlayer = ({ route, navigation }: any) => {
     });
   }, []);
 
+  const handleSelectYoutubeResult = useCallback(async (result: any) => {
+    if (!result?.url) return;
+    const youtubeId = result.videoId;
+    const existingWatch = watchVideos.find((video) => video.youtubeId === youtubeId);
+    if (existingWatch) {
+      addToPlayQueue(existingWatch);
+      setSearchQuery('');
+      return;
+    }
+    const existing = allVideos.find((video) => video.url === result.url);
+    const newVideo = normalizePlaylistItem({
+      id: `youtube-${result.videoId || Date.now()}`,
+      url: result.url,
+      title: result.title || 'YouTube video',
+      thumbnail: result.thumbnail || '',
+      type: 'url',
+      online: true,
+    });
+    if (!newVideo) return;
+    const selectedVideo = existing || newVideo;
+    if (!existing) {
+      setCustomVideos((prev) => [...prev, newVideo]);
+    }
+    addToPlayQueue(selectedVideo);
+    setSearchQuery('');
+    try {
+      setYoutubeDownload({ title: result.title || 'YouTube video', percent: 2, stage: 'Starting download…' });
+      const started = await startYoutubeDownloadJob({
+        url: result.url,
+        height: 1080,
+        postAsWatch: true,
+      });
+      const replaceWithWatch = (completed: any) => {
+        if (!completed?.watch_id || !completed?.file_url) return;
+        const watchItem = normalizePlaylistItem({
+          id: `watch-${completed.watch_id}`,
+          sourceId: completed.watch_id,
+          url: completed.file_url,
+          title: completed.title || result.title || 'YouTube video',
+          thumbnail: result.thumbnail || '',
+          type: 'watch',
+          online: true,
+          youtubeId,
+        });
+        if (!watchItem) return;
+        setCustomVideos((prev) => prev.filter((video) => video.id !== newVideo.id));
+        setPlayQueue((prev) => prev.map((item) => item.videoId === newVideo.id
+          ? { ...item, videoId: watchItem.id, url: watchItem.url, title: watchItem.title, thumbnail: watchItem.thumbnail, type: watchItem.type }
+          : item));
+      };
+      if (started.status === 'completed') {
+        replaceWithWatch(started);
+        await refreshLibrary({ showSpinner: false });
+        return;
+      }
+      if (started.status === 'accepted' && started.progress_id) {
+        pollYoutubeDownloadProgress({
+          progressId: started.progress_id,
+          onUpdate: (data) => setYoutubeDownload((prev) => ({
+            ...(prev || { title: result.title || 'YouTube video' }),
+            percent: Math.max(prev?.percent || 0, Math.round(Number(data.pct) || 0)),
+            stage: data.stage || 'Downloading…',
+          })),
+        }).then(async (completed) => {
+          replaceWithWatch(completed);
+          setYoutubeDownload((prev) => ({ ...(prev || { title: result.title || 'YouTube video' }), percent: 100, stage: 'Complete' }));
+          await refreshLibrary({ showSpinner: false });
+          setTimeout(() => setYoutubeDownload(null), 2500);
+        }).catch((error) => {
+          setYoutubeDownload((prev) => ({
+            ...(prev || { title: result.title || 'YouTube video', percent: 0, stage: 'Downloading…' }),
+            stage: 'Failed',
+            error: error?.message,
+          }));
+          Alert.alert('Download failed', error?.message || 'YouTube download failed.');
+        });
+      } else if (started.status !== 'completed') {
+        throw new Error(started.error || started.message || 'Could not start YouTube download.');
+      }
+      Alert.alert('Download started', 'Added to your playlist and posting to Watch in the background.');
+    } catch (error: any) {
+      setYoutubeDownload({ title: result.title || 'YouTube video', percent: 0, stage: 'Failed', error: error?.message });
+      Alert.alert('Download failed', error?.message || 'Could not start YouTube download.');
+    }
+  }, [addToPlayQueue, allVideos, refreshLibrary, watchVideos]);
+
   const updateQueuePlayCount = useCallback((queueId: string, nextCount: number) => {
     setPlayQueue((prev) =>
       prev.map((item) =>
@@ -941,6 +1068,18 @@ const MediaPlayer = ({ route, navigation }: any) => {
           </View>
 
           {libraryError ? <Text style={[styles.error, { color: t.error }]}>{libraryError}</Text> : null}
+          {youtubeDownload ? (
+            <View style={[styles.downloadProgress, { backgroundColor: t.surface, borderColor: t.border }]}>
+              <View style={styles.downloadProgressHeader}>
+                <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={1}>{youtubeDownload.title}</Text>
+                <Text style={[styles.itemMeta, { color: t.primary }]}>{youtubeDownload.percent}%</Text>
+              </View>
+              <View style={styles.downloadTrack}>
+                <View style={[styles.downloadFill, { width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%`, backgroundColor: t.primary }]} />
+              </View>
+              <Text style={[styles.itemMeta, { color: youtubeDownload.error ? t.error : t.muted }]}>{youtubeDownload.error || youtubeDownload.stage}</Text>
+            </View>
+          ) : null}
 
           {currentVideo ? (
             <View style={[styles.stage, { backgroundColor: t.surface, borderColor: t.border }]}>
@@ -1216,6 +1355,33 @@ const MediaPlayer = ({ route, navigation }: any) => {
               value={searchQuery}
               onChangeText={setSearchQuery}
             />
+            {searchQuery.trim() ? (
+              <View style={[styles.youtubeResults, { borderColor: t.border, backgroundColor: t.inputBg }]}>
+                <Text style={[styles.youtubeHeading, { color: t.muted }]}>
+                  YouTube {youtubeSearching ? 'searching…' : ''}
+                </Text>
+                {youtubeSearchError ? (
+                  <Text style={[styles.hint, { color: t.error }]}>{youtubeSearchError}</Text>
+                ) : null}
+                {youtubeResults.map((result) => (
+                  <Pressable
+                    key={result.videoId}
+                    style={[styles.youtubeResult, { borderTopColor: t.border }]}
+                    onPress={() => handleSelectYoutubeResult(result)}
+                  >
+                    <Image source={{ uri: result.thumbnail }} style={styles.youtubeThumb} />
+                    <View style={styles.youtubeResultInfo}>
+                      <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>{result.title}</Text>
+                      <Text style={[styles.itemMeta, { color: t.muted }]} numberOfLines={1}>{result.channelTitle}</Text>
+                    </View>
+                    <Icon name="add" size={20} color={t.primary} />
+                  </Pressable>
+                ))}
+                {!youtubeSearching && youtubeResults.length === 0 ? (
+                  <Text style={[styles.hint, { color: t.tertiary }]}>No YouTube results</Text>
+                ) : null}
+              </View>
+            ) : null}
 
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
               {SORT_OPTIONS.map((opt) => (
@@ -1364,6 +1530,10 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   error: { textAlign: 'center' },
+  downloadProgress: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 7 },
+  downloadProgressHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  downloadTrack: { height: 6, borderRadius: 99, overflow: 'hidden', backgroundColor: 'rgba(148,163,184,0.25)' },
+  downloadFill: { height: '100%', borderRadius: 99 },
   stage: {
     borderRadius: 16,
     overflow: 'hidden',
@@ -1411,7 +1581,7 @@ const styles = StyleSheet.create({
   scrubTrack: { width: '100%', height: 8, borderRadius: 999, overflow: 'hidden' },
   scrubFill: { height: '100%', borderRadius: 999 },
   cover: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000',
@@ -1531,6 +1701,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
+  youtubeResults: { borderWidth: 1, borderRadius: 10, padding: 8, gap: 4 },
+  youtubeHeading: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
+  youtubeResult: { flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, paddingVertical: 6 },
+  youtubeThumb: { width: 72, height: 42, borderRadius: 5 },
+  youtubeResultInfo: { flex: 1, minWidth: 0 },
   inputLabel: { fontSize: 12 },
   primaryBtn: {
     borderRadius: 10,

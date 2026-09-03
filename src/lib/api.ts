@@ -241,6 +241,8 @@ export const userAPI = {
 export const chatAPI = {
   getChatList: (profileId: string): Promise<AxiosResponse> => 
     api.get(`/message/chatList?profileId=${profileId}`),
+  deleteConversation: (profileId: string, friendId: string): Promise<AxiosResponse> =>
+    api.post('/message/deleteConversation', { profileId, friendId }),
 };
 
 // Push notification API methods

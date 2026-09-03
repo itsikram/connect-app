@@ -3,6 +3,7 @@
  */
 
 import 'react-native-gesture-handler';
+import './src/lib/suppressExpoGoNotificationWarning';
 import { AppRegistry, AppState, ErrorUtils, Platform } from 'react-native';
 import * as TaskManager from 'expo-task-manager';
 import Constants from 'expo-constants';

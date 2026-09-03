@@ -39,6 +39,7 @@ export type PlaylistItem = {
   type: PlaylistType;
   thumbnail: string;
   sourceId: string;
+  youtubeId?: string;
   online: boolean;
 };
 
@@ -181,6 +182,7 @@ export const watchesToPlaylistItems = (watches: any[]): PlaylistItem[] => {
         type: 'watch',
         thumbnail: w.thumbnail || w.photos || '',
         sourceId: w._id,
+        youtubeId: w.youtubeId,
         online: true,
       }),
     )

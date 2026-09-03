@@ -44,7 +44,7 @@ import UserPP from '../components/UserPP';
 import { useSelector, useDispatch } from 'react-redux';
 import { RootState, AppDispatch } from '../store';
 import ProfileImage from '../components/ProfileImage';
-import { markMessagesAsRead, addNewMessage, updateUnreadMessageCount } from '../reducers/chatReducer';
+import { markMessagesAsRead, addNewMessage, updateUnreadMessageCount, removeConversation } from '../reducers/chatReducer';
 import { updateProfileField } from '../reducers/profileReducer';
 import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
@@ -563,7 +563,7 @@ const SingleMessage = () => {
             if (!uri.startsWith('file://') && !uri.startsWith('content://')) {
                 uri = `file://${uri}`;
             }
-            const fileInfo = await getInfoAsync(uri);
+            const fileInfo: any = await getInfoAsync(uri);
             console.log('Voice recording file info:', {
                 exists: fileInfo.exists,
                 size: fileInfo.size,
@@ -2796,6 +2796,43 @@ const SingleMessage = () => {
         }
     };
 
+    const deleteConversation = async () => {
+        if (!friend?._id || !myProfile?._id) return;
+
+        Alert.alert(
+            'Delete conversation',
+            `Delete this conversation with ${friend?.fullName || 'this friend'}?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await api.post('/message/deleteConversation', {
+                                profileId: myProfile._id,
+                                friendId: friend._id,
+                            });
+
+                            dispatch(removeConversation({
+                                friendId: friend._id,
+                                currentUserId: myProfile._id,
+                            }));
+
+                            setMessages([]);
+                            setInputText('');
+                            setContextMenuVisible(false);
+                            navigation.goBack();
+                        } catch (error: any) {
+                            console.error('Failed to delete conversation:', error);
+                            Alert.alert('Error', error?.response?.data?.message || 'Unable to delete this conversation.');
+                        }
+                    },
+                },
+            ],
+        );
+    };
+
     const likeOrUnlikeMessage = () => {
         if (!selectedMessage) return;
         const messageId = selectedMessage._id;
@@ -4892,6 +4929,47 @@ const SingleMessage = () => {
                                         <ActivityIndicator size="small" color={themeColors.primary} />
                                     </View>
                                 )}
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                key="delete-conversation"
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    paddingVertical: 15,
+                                }}
+                                onPress={() => {
+                                    setContextMenuVisible(false);
+                                    deleteConversation();
+                                }}
+                            >
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: themeColors.status.error + '15',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 15,
+                                }}>
+                                    <Icon name="delete-outline" size={20} color={themeColors.status.error} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '500',
+                                        color: themeColors.status.error,
+                                    }}>
+                                        Delete Conversation
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: themeColors.status.error + '80',
+                                        marginTop: 2,
+                                    }}>
+                                        Remove this chat history from your inbox
+                                    </Text>
+                                </View>
                             </TouchableOpacity>
 
                             <TouchableOpacity

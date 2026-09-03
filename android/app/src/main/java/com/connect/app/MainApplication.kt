@@ -107,6 +107,13 @@ class MainApplication : Application(), ReactApplication {
           NotificationManager.IMPORTANCE_HIGH
         )
       )
+      manager.createNotificationChannel(
+        NotificationChannel(
+          "messages_high",
+          "Messages",
+          NotificationManager.IMPORTANCE_HIGH
+        )
+      )
     }
 
     DefaultNewArchitectureEntryPoint.releaseLevel = try {

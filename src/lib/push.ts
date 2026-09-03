@@ -7,6 +7,7 @@ import { callNotificationService } from './callNotificationService';
 import { emitIncomingCallFromPush, emitRejectCallFromPush } from './callEvents';
 import { getNativeOrExpoPushToken, PUSH_TOKEN_STORAGE_KEY } from './pushToken';
 import config from './config';
+import { isAndroidExpoGo } from './expoGo';
 // Background TTS service removed for Expo compatibility
 
 // Import Notifee types and functions - made optional for Expo Go compatibility
@@ -104,6 +105,10 @@ setInterval(() => {
 }, 10000); // Clean up every 10 seconds
 
 export async function requestPushPermission(): Promise<boolean> {
+  if (isAndroidExpoGo()) {
+    return false;
+  }
+
   try {
     const settings = await Notifications.requestPermissionsAsync({
       ios: {
@@ -121,6 +126,10 @@ export async function requestPushPermission(): Promise<boolean> {
 }
 
 export async function getOrCreateFcmToken(): Promise<string | null> {
+  if (isAndroidExpoGo()) {
+    return null;
+  }
+
   try {
     const result = await getNativeOrExpoPushToken();
     if (!result?.token) {
@@ -136,6 +145,10 @@ export async function getOrCreateFcmToken(): Promise<string | null> {
 }
 
 export async function registerTokenWithServer(): Promise<string | null> {
+  if (isAndroidExpoGo()) {
+    return null;
+  }
+
   try {
     const ok = await requestPushPermission();
     if (!ok) {
@@ -176,6 +189,10 @@ export async function registerTokenWithServer(): Promise<string | null> {
 }
 
 export async function unregisterTokenWithServer(): Promise<void> {
+  if (isAndroidExpoGo()) {
+    return;
+  }
+
   try {
     const token = await AsyncStorage.getItem(STORAGE_KEY);
     const authToken = await AsyncStorage.getItem('authToken');
@@ -187,6 +204,10 @@ export async function unregisterTokenWithServer(): Promise<void> {
 }
 
 export async function configureNotificationsChannel() {
+  if (isAndroidExpoGo()) {
+    return;
+  }
+
   try {
     const { configureIncomingCallChannels } = await import('./incomingCallAlerts');
     await configureIncomingCallChannels();
@@ -299,6 +320,10 @@ export async function displayIncomingCallNotification(payload: {
 
 // Handle notification events (foreground)
 export function listenNotificationEvents(navigate: (screen: string, params?: any) => void) {
+  if (isAndroidExpoGo()) {
+    return () => {};
+  }
+
   // Use expo-notifications if Notifee is not available
   if (!Notifee) {
     return Notifications.addNotificationResponseReceivedListener(async response => {
@@ -377,6 +402,10 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
 }
 
 export function listenForegroundMessages() {
+  if (isAndroidExpoGo()) {
+    return () => {};
+  }
+
   return Notifications.addNotificationResponseReceivedListener(async response => {
     const data = (response.notification.request.content.data || {}) as Record<string, string>;
     try {
@@ -423,6 +452,10 @@ let initializationPromise: Promise<boolean> | null = null;
 
 // Initialize all notification services
 export async function initializeNotifications(): Promise<boolean> {
+  if (isAndroidExpoGo()) {
+    return false;
+  }
+
   // If already initialized, return true
   if (isInitialized) {
     console.log('Notifications already initialized');
@@ -583,5 +616,3 @@ export async function requestIncomingCallPermissions(): Promise<boolean> {
     return false;
   }
 }
-
-
