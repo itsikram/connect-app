@@ -3831,7 +3831,12 @@ const SingleMessage = () => {
     };
 
     const renderEmptyConversation = () => (
-        <View style={{ alignItems: 'center', paddingTop: 72, paddingHorizontal: 28 }}>
+        <View style={{
+            alignItems: 'center',
+            paddingTop: 72,
+            paddingHorizontal: 28,
+            transform: [{ scaleY: -1 }],
+        }}>
             <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={88} />
             <Text style={{
                 color: '#FFFFFF',

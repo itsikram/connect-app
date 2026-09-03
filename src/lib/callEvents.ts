@@ -13,7 +13,11 @@ const PENDING_TTL_MS = 90 * 1000;
 export type StartCallDetail = {
   to: string;
   channelName: string;
+  calleeName?: string;
+  calleeProfilePic?: string;
+  /** @deprecated Use calleeName/calleeProfilePic for outgoing calls. */
   callerName?: string;
+  /** @deprecated Use calleeName/calleeProfilePic for outgoing calls. */
   callerProfilePic?: string;
 };
 

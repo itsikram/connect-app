@@ -312,14 +312,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       setIsAudioCall(true);
       setReceivingCall(false);
       setCaller(to);
-      setCallerName(detail.callerName || 'Friend');
-      setCallerProfilePic(detail.callerProfilePic || '');
+      setCallerName(detail.calleeName || detail.callerName || 'Friend');
+      setCallerProfilePic(detail.calleeProfilePic || detail.callerProfilePic || '');
       setCurrentChannel(detail.channelName);
       setIncomingCall({
         from: myId,
         channelName: detail.channelName,
-        name: detail.callerName || 'Friend',
-        profilePic: detail.callerProfilePic,
+        name: detail.calleeName || detail.callerName || 'Friend',
+        profilePic: detail.calleeProfilePic || detail.callerProfilePic,
       });
       setOutgoingCallStatus('Calling...');
       setEngineWarm(true);

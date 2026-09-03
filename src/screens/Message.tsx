@@ -288,19 +288,21 @@ const Message = React.memo(() => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
-  const activeFriends = useSelector((state: RootState) => state.presence.activeFriends);
-  const { chats: chatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
+  const activeFriendsValue = useSelector((state: RootState) => state.presence.activeFriends);
+  const activeFriends = Array.isArray(activeFriendsValue) ? activeFriendsValue : [];
+  const { chats: rawChatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
     chats: any[];
     loading: boolean;
     error: string | null;
   });
+  const chatList = Array.isArray(rawChatList) ? rawChatList : [];
 
   const { isConnected, checkUserActive } = useSocket();
   const searchInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
 
   const sortedFriends = useMemo(() => {
-    const friendsList = [...(profileData?.friends || [])];
+    const friendsList = Array.isArray(profileData?.friends) ? [...profileData.friends] : [];
     return friendsList.sort((a: any, b: any) => {
       const aActive = activeFriends.includes(a?._id) ? 1 : 0;
       const bActive = activeFriends.includes(b?._id) ? 1 : 0;

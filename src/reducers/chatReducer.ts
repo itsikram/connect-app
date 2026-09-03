@@ -54,6 +54,16 @@ interface ChatState {
   unreadMessageCount: number;
 }
 
+const normalizeChats = (value: unknown): Chat[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((chat): chat is Chat => !!chat && typeof chat === 'object')
+    .map((chat) => ({
+      ...chat,
+      messages: Array.isArray(chat.messages) ? chat.messages : [],
+    }));
+};
+
 const initialState: ChatState = {
   chats: [],
   loading: false,
@@ -85,7 +95,7 @@ const chatSlice = createSlice({
       // Calculate unread message count from all chats
       const currentUserId = action.payload;
       const totalUnread = state.chats.reduce((count, chat) => {
-        const unreadInChat = chat.messages.filter(message => 
+        const unreadInChat = (Array.isArray(chat.messages) ? chat.messages : []).filter(message =>
           !message.isSeen && message.receiverId === currentUserId
         ).length;
         return count + unreadInChat;
@@ -105,7 +115,7 @@ const chatSlice = createSlice({
       }
       // Recalculate unread count
       const totalUnread = state.chats.reduce((count, chat) => {
-        const unreadInChat = chat.messages.filter(message => 
+        const unreadInChat = (Array.isArray(chat.messages) ? chat.messages : []).filter(message =>
           !message.isSeen && message.receiverId === currentUserId
         ).length;
         return count + unreadInChat;
@@ -117,6 +127,7 @@ const chatSlice = createSlice({
       const chatIndex = state.chats.findIndex(c => String(c.person._id) === String(chatId));
       if (chatIndex === -1) return;
       const chat = state.chats[chatIndex];
+      if (!Array.isArray(chat.messages)) chat.messages = [];
       if (chat.messages.some(m => String(m._id) === String(message._id))) {
         return;
       }
@@ -133,7 +144,7 @@ const chatSlice = createSlice({
       const { friendId, currentUserId } = action.payload;
       state.chats = state.chats.filter(chat => String(chat.person._id) !== String(friendId));
       state.unreadMessageCount = state.chats.reduce((count, chat) => {
-        return count + chat.messages.filter(message =>
+        return count + (Array.isArray(chat.messages) ? chat.messages : []).filter(message =>
           !message.isSeen && String(message.receiverId) === String(currentUserId),
         ).length;
       }, 0);
@@ -147,7 +158,7 @@ const chatSlice = createSlice({
       })
       .addCase(fetchChatList.fulfilled, (state, action: PayloadAction<Chat[]>) => {
         state.loading = false;
-        state.chats = action.payload;
+        state.chats = normalizeChats(action.payload);
         state.error = null;
         // Calculate unread message count after fetching chats
         // Note: We'll need to call updateUnreadMessageCount separately with current user ID

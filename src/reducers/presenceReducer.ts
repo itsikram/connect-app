@@ -30,7 +30,7 @@ const presenceSlice = createSlice({
     },
     setPresenceBulk: (state, action: PayloadAction<{ onlineIds?: string[]; lastSeen?: Record<string, string | undefined> }>) => {
       const { onlineIds, lastSeen } = action.payload;
-      if (onlineIds) {
+      if (Array.isArray(onlineIds)) {
         state.activeFriends = Array.from(new Set(onlineIds));
       }
       if (lastSeen) {
@@ -46,5 +46,4 @@ const presenceSlice = createSlice({
 
 export const { setFriendOnline, setFriendOffline, setFriendLastSeen, setPresenceBulk, clearPresence } = presenceSlice.actions;
 export default presenceSlice.reducer;
-
 

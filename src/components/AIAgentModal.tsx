@@ -4,6 +4,7 @@ import {
   FlatList,
   Image,
   InteractionManager,
+  LayoutAnimation,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -174,6 +175,10 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
+  const updateAutoActionRunning = React.useCallback((running: boolean) => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setAutoActionRunning(running);
+  }, []);
   const autoReplyRulesRef = React.useRef<
     Array<{ userId: string; userName: string; replyText: string }>
   >([]);
@@ -397,13 +402,23 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     startAudioCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
-      emitStartAudioCall({ to: userId, channelName: effectiveChannel, callerName: userName, callerProfilePic: profilePic });
+       emitStartAudioCall({
+         to: userId,
+         channelName: effectiveChannel,
+         calleeName: userName,
+         calleeProfilePic: profilePic,
+       });
       startAudioCall(userId, effectiveChannel);
     },
     startVideoCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
-      emitStartVideoCall({ to: userId, channelName: effectiveChannel, callerName: userName, callerProfilePic: profilePic });
+      emitStartVideoCall({
+        to: userId,
+        channelName: effectiveChannel,
+        calleeName: userName,
+        calleeProfilePic: profilePic,
+      });
       startVideoCall(userId, effectiveChannel);
     },
     followUser: async (userId: string) => {
@@ -755,8 +770,11 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
           return;
         }
+        const startsCall = Boolean(intent.actions?.some(action =>
+          action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL',
+        ));
         if (autoMode && intent.actions?.length) {
-          setAutoActionRunning(true);
+          updateAutoActionRunning(true);
           // Paint the compact overlay before starting potentially slow action work.
           await new Promise<void>(resolve => {
             InteractionManager.runAfterInteractions(() => resolve());
@@ -811,9 +829,16 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
           return;
         }
-        setAutoActionRunning(false);
+        if (!startsCall) updateAutoActionRunning(false);
         const failed = results.filter(result => !result.ok);
         const completed = results.filter(result => result.ok);
+        if (startsCall && failed.length) {
+          updateAutoActionRunning(false);
+        } else if (startsCall && autoMode && completed.length) {
+          // Native call modals must not be presented behind the AI modal.
+          updateAutoActionRunning(false);
+          onClose();
+        }
         const outcome = failed.length
           ? failed.map(result => result.message).join(' ')
           : completed.length
@@ -874,7 +899,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         );
       }
     } finally {
-      setAutoActionRunning(false);
+      updateAutoActionRunning(false);
       if (generation === generationRef.current) setLoading(false);
       if (voiceConversation && generation === generationRef.current) {
         if (shouldSpeak) await speechController.finish();
@@ -1053,7 +1078,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       clearAgentChat: clearChat,
     });
     if (autoMode) {
-      setAutoActionRunning(true);
+      updateAutoActionRunning(true);
       await new Promise<void>(resolve =>
         InteractionManager.runAfterInteractions(() => resolve()),
       );
@@ -1080,7 +1105,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
         }),
     });
-    setAutoActionRunning(false);
+    updateAutoActionRunning(false);
     const result = results[0];
     setPendingActions(previous => previous.filter(item => item !== action));
     setMessages(previous => [
