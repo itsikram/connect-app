@@ -81,6 +81,7 @@ const AccountSettings = () => {
       try {
         const res = await userAPI.getProfile(currentProfile._id);
         if (!cancelled && res.data) {
+          setIsFaceRegistered(Boolean(res.data?.user?.faceLoginEnabled));
           dispatch(
             updateProfileField({
               field: 'user',
