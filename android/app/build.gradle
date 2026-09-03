@@ -150,8 +150,6 @@ dependencies {
     }
 }
 
-apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")
-
 // EAS Build writes this file on the builder and injects release signing credentials.
 def easBuildGradlePath = file("./eas-build.gradle")
 if (easBuildGradlePath.exists()) {

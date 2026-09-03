@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@expo/metro": "^54.2.0",
+    "@expo/vector-icons": "^15.0.2",
     "@notifee/react-native": "^9.1.8",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-community/datetimepicker": "9.1.0",
@@ -66,7 +67,6 @@
     "react-native-svg": "15.15.4",
     "react-native-svg-transformer": "^1.5.3",
     "react-native-toast-message": "2.2.0",
-    "react-native-vector-icons": "10.2.0",
     "react-native-video": "^6.19.0",
     "react-native-web": "^0.21.0",
     "react-native-webview": "13.16.1",

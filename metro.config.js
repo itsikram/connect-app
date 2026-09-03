@@ -16,6 +16,10 @@ config.transformer = {
 
 config.resolver = {
   ...config.resolver,
+  extraNodeModules: {
+    ...(config.resolver.extraNodeModules || {}),
+    'react-native-vector-icons': require.resolve('@expo/vector-icons'),
+  },
   assetExts: [...new Set([...config.resolver.assetExts.filter((ext) => ext !== 'svg'), 'wav', 'mp3'])],
   sourceExts: [...new Set([...(config.resolver.sourceExts || []), 'ts', 'tsx', 'js', 'jsx', 'svg'])],
 };

@@ -179,13 +179,13 @@ if (!__DEV__) {
 try {
   // MaterialIcons
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const MaterialIcons = require('react-native-vector-icons/MaterialIcons').default;
+  const MaterialIcons = require('@expo/vector-icons/MaterialIcons').default;
   if (MaterialIcons && MaterialIcons.loadFont) {
     MaterialIcons.loadFont();
   }
   // FontAwesome5
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const FA5 = require('react-native-vector-icons/FontAwesome5').default;
+  const FA5 = require('@expo/vector-icons/FontAwesome5').default;
   if (FA5 && FA5.loadFont) {
     FA5.loadFont();
   }
