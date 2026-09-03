@@ -143,7 +143,13 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [youtubeResults, setYoutubeResults] = useState<any[]>([]);
   const [youtubeSearching, setYoutubeSearching] = useState(false);
   const [youtubeSearchError, setYoutubeSearchError] = useState('');
-  const [youtubeDownload, setYoutubeDownload] = useState<{ title: string; percent: number; stage: string; error?: string } | null>(null);
+  const [youtubeDownload, setYoutubeDownload] = useState<{
+    queueId: string;
+    title: string;
+    percent: number;
+    stage: string;
+    error?: string;
+  } | null>(null);
   const [playlistOrder, setPlaylistOrder] = useState<string[]>([]);
   const [playQueue, setPlayQueue] = useState<QueueItem[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
@@ -196,6 +202,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const currentTimeRef = useRef(0);
   const isPlayingRef = useRef(false);
   const endedKeyRef = useRef('');
+  const libraryRefreshRef = useRef<Promise<void> | null>(null);
 
   useEffect(() => {
     Audio.setAudioModeAsync({
@@ -313,21 +320,29 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   const refreshLibrary = useCallback(
     async ({ showSpinner = false } = {}) => {
+      if (libraryRefreshRef.current) {
+        return libraryRefreshRef.current;
+      }
       if (showSpinner) setLibraryLoading(true);
       setLibraryError('');
-      try {
-        const [watches, saved] = await Promise.all([
-          loadWatchPlaylistItems(myProfileId),
-          loadSavedPlaylistItems(),
-        ]);
-        setWatchVideos(watches);
-        setSavedVideos(saved);
-      } catch (err) {
-        console.error(err);
-        setLibraryError('Could not refresh some video sources.');
-      } finally {
-        setLibraryLoading(false);
-      }
+      const refreshPromise = (async () => {
+        try {
+          const [watches, saved] = await Promise.all([
+            loadWatchPlaylistItems(myProfileId),
+            loadSavedPlaylistItems(),
+          ]);
+          setWatchVideos(watches);
+          setSavedVideos(saved);
+        } catch (err) {
+          console.error(err);
+          setLibraryError('Could not refresh some video sources.');
+        } finally {
+          setLibraryLoading(false);
+          libraryRefreshRef.current = null;
+        }
+      })();
+      libraryRefreshRef.current = refreshPromise;
+      return refreshPromise;
     },
     [myProfileId],
   );
@@ -689,7 +704,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   const addToPlayQueue = useCallback((video: PlaylistItem, playCount = MIN_PLAY_COUNT) => {
     const item = videoToQueueItem(video, playCount);
-    if (!item) return;
+    if (!item) return null;
     setPlayQueue((prev) => {
       if (prev.length === 0) {
         setQueueIndex(0);
@@ -697,6 +712,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
       }
       return [...prev, item];
     });
+    return item.queueId;
   }, []);
 
   const handleSelectYoutubeResult = useCallback(async (result: any) => {
@@ -722,54 +738,80 @@ const MediaPlayer = ({ route, navigation }: any) => {
     if (!existing) {
       setCustomVideos((prev) => [...prev, newVideo]);
     }
-    addToPlayQueue(selectedVideo);
+    const downloadQueueId = addToPlayQueue(selectedVideo);
     setSearchQuery('');
     try {
-      setYoutubeDownload({ title: result.title || 'YouTube video', percent: 2, stage: 'Starting download…' });
+      if (!downloadQueueId) {
+        throw new Error('Could not add the video to the playlist.');
+      }
+      setYoutubeDownload({
+        queueId: downloadQueueId,
+        title: result.title || 'YouTube video',
+        percent: 2,
+        stage: 'Starting download…',
+      });
       const started = await startYoutubeDownloadJob({
         url: result.url,
         height: 1080,
         postAsWatch: true,
       });
       const replaceWithWatch = (completed: any) => {
-        if (!completed?.watch_id || !completed?.file_url) return;
+        if (!completed?.file_url) return;
         const watchItem = normalizePlaylistItem({
-          id: `watch-${completed.watch_id}`,
-          sourceId: completed.watch_id,
+          id: completed.watch_id ? `watch-${completed.watch_id}` : selectedVideo.id,
+          sourceId: completed.watch_id || selectedVideo.sourceId,
           url: completed.file_url,
           title: completed.title || result.title || 'YouTube video',
           thumbnail: result.thumbnail || '',
-          type: 'watch',
+          type: completed.watch_id ? 'watch' : selectedVideo.type,
           online: true,
           youtubeId,
         });
         if (!watchItem) return;
         setCustomVideos((prev) => prev.filter((video) => video.id !== newVideo.id));
-        setPlayQueue((prev) => prev.map((item) => item.videoId === newVideo.id
+        setPlayQueue((prev) => prev.map((item) => item.videoId === selectedVideo.id
           ? { ...item, videoId: watchItem.id, url: watchItem.url, title: watchItem.title, thumbnail: watchItem.thumbnail, type: watchItem.type }
           : item));
       };
       if (started.status === 'completed') {
         replaceWithWatch(started);
+        setYoutubeDownload((prev) => ({
+          ...(prev || { queueId: downloadQueueId, title: result.title || 'YouTube video' }),
+          percent: 100,
+          stage: 'Complete',
+        }));
         await refreshLibrary({ showSpinner: false });
+        setTimeout(() => setYoutubeDownload(null), 2500);
         return;
       }
       if (started.status === 'accepted' && started.progress_id) {
         pollYoutubeDownloadProgress({
           progressId: started.progress_id,
           onUpdate: (data) => setYoutubeDownload((prev) => ({
-            ...(prev || { title: result.title || 'YouTube video' }),
+            ...(prev || {
+              queueId: downloadQueueId,
+              title: result.title || 'YouTube video',
+            }),
             percent: Math.max(prev?.percent || 0, Math.round(Number(data.pct) || 0)),
             stage: data.stage || 'Downloading…',
           })),
         }).then(async (completed) => {
           replaceWithWatch(completed);
-          setYoutubeDownload((prev) => ({ ...(prev || { title: result.title || 'YouTube video' }), percent: 100, stage: 'Complete' }));
+          setYoutubeDownload((prev) => ({
+            ...(prev || { queueId: downloadQueueId, title: result.title || 'YouTube video' }),
+            percent: 100,
+            stage: 'Complete',
+          }));
           await refreshLibrary({ showSpinner: false });
           setTimeout(() => setYoutubeDownload(null), 2500);
         }).catch((error) => {
           setYoutubeDownload((prev) => ({
-            ...(prev || { title: result.title || 'YouTube video', percent: 0, stage: 'Downloading…' }),
+            ...(prev || {
+              queueId: downloadQueueId,
+              title: result.title || 'YouTube video',
+              percent: 0,
+              stage: 'Downloading…',
+            }),
             stage: 'Failed',
             error: error?.message,
           }));
@@ -780,7 +822,13 @@ const MediaPlayer = ({ route, navigation }: any) => {
       }
       Alert.alert('Download started', 'Added to your playlist and posting to Watch in the background.');
     } catch (error: any) {
-      setYoutubeDownload({ title: result.title || 'YouTube video', percent: 0, stage: 'Failed', error: error?.message });
+      setYoutubeDownload({
+        queueId: downloadQueueId || '',
+        title: result.title || 'YouTube video',
+        percent: 0,
+        stage: 'Failed',
+        error: error?.message,
+      });
       Alert.alert('Download failed', error?.message || 'Could not start YouTube download.');
     }
   }, [addToPlayQueue, allVideos, refreshLibrary, watchVideos]);
@@ -1068,19 +1116,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
           </View>
 
           {libraryError ? <Text style={[styles.error, { color: t.error }]}>{libraryError}</Text> : null}
-          {youtubeDownload ? (
-            <View style={[styles.downloadProgress, { backgroundColor: t.surface, borderColor: t.border }]}>
-              <View style={styles.downloadProgressHeader}>
-                <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={1}>{youtubeDownload.title}</Text>
-                <Text style={[styles.itemMeta, { color: t.primary }]}>{youtubeDownload.percent}%</Text>
-              </View>
-              <View style={styles.downloadTrack}>
-                <View style={[styles.downloadFill, { width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%`, backgroundColor: t.primary }]} />
-              </View>
-              <Text style={[styles.itemMeta, { color: youtubeDownload.error ? t.error : t.muted }]}>{youtubeDownload.error || youtubeDownload.stage}</Text>
-            </View>
-          ) : null}
-
           {currentVideo ? (
             <View style={[styles.stage, { backgroundColor: t.surface, borderColor: t.border }]}>
               <View style={styles.stageHeader}>
@@ -1277,6 +1312,32 @@ const MediaPlayer = ({ route, navigation }: any) => {
                         ? `Playing ${playPass} of ${clampPlayCount(item.playCount)}`
                         : `Play ${clampPlayCount(item.playCount)} time${clampPlayCount(item.playCount) === 1 ? '' : 's'}`}
                     </Text>
+                    {youtubeDownload?.queueId === item.queueId ? (
+                      <View style={[styles.downloadProgress, { backgroundColor: t.surface, borderColor: t.border }]}>
+                        <View style={styles.downloadProgressHeader}>
+                          <Text style={[styles.itemMeta, { color: t.primary }]}>
+                            {youtubeDownload.percent}%
+                          </Text>
+                          <Text
+                            style={[styles.itemMeta, { color: youtubeDownload.error ? t.error : t.muted }]}
+                            numberOfLines={1}
+                          >
+                            {youtubeDownload.error || youtubeDownload.stage}
+                          </Text>
+                        </View>
+                        <View style={styles.downloadTrack}>
+                          <View
+                            style={[
+                              styles.downloadFill,
+                              {
+                                width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%`,
+                                backgroundColor: t.primary,
+                              },
+                            ]}
+                          />
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
                   <View style={styles.repeatControl}>
                     <Pressable
@@ -1530,8 +1591,8 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   error: { textAlign: 'center' },
-  downloadProgress: { borderWidth: 1, borderRadius: 12, padding: 12, gap: 7 },
-  downloadProgressHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  downloadProgress: { borderWidth: 1, borderRadius: 8, padding: 6, gap: 4, marginTop: 4 },
+  downloadProgressHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   downloadTrack: { height: 6, borderRadius: 99, overflow: 'hidden', backgroundColor: 'rgba(148,163,184,0.25)' },
   downloadFill: { height: '100%', borderRadius: 99 },
   stage: {

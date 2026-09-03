@@ -13,88 +13,77 @@ import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
-import com.facebook.react.ReactNativeHost
 import com.facebook.react.ReactPackage
 import com.facebook.react.common.ReleaseLevel
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint
-import com.facebook.react.defaults.DefaultReactNativeHost
 import expo.modules.ApplicationLifecycleDispatcher
-import expo.modules.ReactNativeHostWrapper
+import expo.modules.ExpoReactHostFactory
 
 class MainApplication : Application(), ReactApplication {
   private val TAG = "MainApplication"
   private val isBackgroundProcess: Boolean
     get() = packageName.endsWith(":bg")
 
-  override val reactNativeHost: ReactNativeHost =
-      ReactNativeHostWrapper(
-          this,
-          object : DefaultReactNativeHost(this) {
-            override fun getPackages(): List<ReactPackage> {
-              val packages = PackageList(this).packages.toMutableList()
+  override val reactHost: ReactHost by lazy {
+    ExpoReactHostFactory.getDefaultReactHost(
+      context = applicationContext,
+      packageList = getPackages()
+    )
+  }
 
-              if (isBackgroundProcess) {
-                Log.d(TAG, "All packages before filtering (${packages.size} total):")
-                packages.forEach { pkg ->
-                  Log.d(TAG, "  - ${pkg.javaClass.name}")
-                }
+  private fun getPackages(): List<ReactPackage> {
+    val packages = PackageList(this).packages.toMutableList()
 
-                val filteredPackages = packages.filter { pkg ->
-                  val packageName = pkg.javaClass.name
-                  val simpleName = pkg.javaClass.simpleName
-                  val packageNameLower = packageName.lowercase()
-                  val simpleNameLower = simpleName.lowercase()
+    if (isBackgroundProcess) {
+      Log.d(TAG, "All packages before filtering (${packages.size} total):")
+      packages.forEach { pkg ->
+        Log.d(TAG, "  - ${pkg.javaClass.name}")
+      }
 
-                  val isCameraPackage = packageNameLower.contains("mrousavy") ||
-                      packageNameLower.contains("vision.camera") ||
-                      packageNameLower.contains("visioncamera") ||
-                      packageNameLower.contains("cameradevices") ||
-                      packageNameLower.contains("cameradevicesmanager") ||
-                      packageNameLower.contains("camera.react") ||
-                      packageNameLower.contains("react.camera") ||
-                      simpleNameLower == "visioncamerapackage" ||
-                      simpleNameLower.contains("visioncamera") ||
-                      simpleNameLower.contains("camerapackage") ||
-                      (simpleNameLower.contains("camera") &&
-                          (simpleNameLower.contains("device") ||
-                              simpleNameLower.contains("vision") ||
-                              simpleNameLower.contains("mrousavy") ||
-                              simpleNameLower.contains("react") ||
-                              simpleNameLower.contains("package")))
+      val filteredPackages = packages.filter { pkg ->
+        val packageName = pkg.javaClass.name
+        val simpleName = pkg.javaClass.simpleName
+        val packageNameLower = packageName.lowercase()
+        val simpleNameLower = simpleName.lowercase()
 
-                  if (isCameraPackage) {
-                    Log.w(TAG, "Filtering out camera package in background process: $packageName (simple: $simpleName)")
-                  }
-                  !isCameraPackage
-                }.toMutableList()
+        val isCameraPackage = packageNameLower.contains("mrousavy") ||
+            packageNameLower.contains("vision.camera") ||
+            packageNameLower.contains("visioncamera") ||
+            packageNameLower.contains("cameradevices") ||
+            packageNameLower.contains("cameradevicesmanager") ||
+            packageNameLower.contains("camera.react") ||
+            packageNameLower.contains("react.camera") ||
+            simpleNameLower == "visioncamerapackage" ||
+            simpleNameLower.contains("visioncamera") ||
+            simpleNameLower.contains("camerapackage") ||
+            (simpleNameLower.contains("camera") &&
+                (simpleNameLower.contains("device") ||
+                    simpleNameLower.contains("vision") ||
+                    simpleNameLower.contains("mrousavy") ||
+                    simpleNameLower.contains("react") ||
+                    simpleNameLower.contains("package")))
 
-                val remainingCameraPackages = filteredPackages.filter { pkg ->
-                  val name = pkg.javaClass.name.lowercase()
-                  name.contains("mrousavy") || name.contains("visioncamera") || name.contains("camera.react")
-                }
-                remainingCameraPackages.forEach { filteredPackages.remove(it) }
+        if (isCameraPackage) {
+          Log.w(TAG, "Filtering out camera package in background process: $packageName (simple: $simpleName)")
+        }
+        !isCameraPackage
+      }.toMutableList()
 
-                filteredPackages.add(FloatingOverlayPackage())
-                filteredPackages.add(CallNotificationPackage())
-                return filteredPackages
-              }
+      val remainingCameraPackages = filteredPackages.filter { pkg ->
+        val name = pkg.javaClass.name.lowercase()
+        name.contains("mrousavy") || name.contains("visioncamera") || name.contains("camera.react")
+      }
+      remainingCameraPackages.forEach { filteredPackages.remove(it) }
 
-              packages.add(FloatingOverlayPackage())
-              packages.add(CallNotificationPackage())
-              return packages
-            }
+      filteredPackages.add(FloatingOverlayPackage())
+      filteredPackages.add(CallNotificationPackage())
+      return filteredPackages
+    }
 
-            override fun getJSMainModuleName(): String = ".expo/.virtual-metro-entry"
-
-            override fun getUseDeveloperSupport(): Boolean = BuildConfig.DEBUG
-
-            override val isNewArchEnabled: Boolean = BuildConfig.IS_NEW_ARCHITECTURE_ENABLED
-            override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-          }
-      )
-
-  override val reactHost: ReactHost
-    get() = ReactNativeHostWrapper.createReactHost(applicationContext, reactNativeHost)
+    packages.add(FloatingOverlayPackage())
+    packages.add(CallNotificationPackage())
+    return packages
+  }
 
   override fun onCreate() {
     super.onCreate()

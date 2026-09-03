@@ -33,8 +33,8 @@ const getDevServerUrl = (): string => {
     // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:4000")
     return 'http://10.0.2.2:4000';
   }
-  // return 'http://192.168.1.102:4000';
-  return  'https://connect-server-7h7d.onrender.com';;
+  return 'http://192.168.1.102:4000';
+  return 'https://connect-server-7h7d.onrender.com';
   // For iOS simulator and other platforms, use local network IP
   // Alternative: use production server for development
 };
