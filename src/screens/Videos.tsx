@@ -855,11 +855,11 @@ const Videos = () => {
       style={{
         flex: 1,
         backgroundColor: t.pageBg,
-        paddingBottom: 30,
       }}
     >
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
       <FlatList
+        style={{ flex: 1 }}
         data={videos}
         keyExtractor={(item, idx) => item._id || String(idx)}
         renderItem={({ item, index }) => (
@@ -871,7 +871,10 @@ const Videos = () => {
           />
         )}
         pagingEnabled
-        onLayout={e => setListHeight(e.nativeEvent.layout.height)}
+        onLayout={e => {
+          const height = e.nativeEvent.layout.height;
+          if (height > 0 && height !== listHeight) setListHeight(height);
+        }}
         onMomentumScrollEnd={onMomentumScrollEnd}
         showsVerticalScrollIndicator={false}
         onEndReached={onEndReached}
