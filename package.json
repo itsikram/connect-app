@@ -10,6 +10,7 @@
     "web": "expo start --web",
     "lint": "eslint .",
     "test": "jest",
+    "eas-build-post-install": "bash scripts/eas-fix-hermesc.sh",
     "eas:android:dev": "eas build --platform android --profile development",
     "eas:android:preview": "eas build --platform android --profile preview",
     "eas:android:production": "eas build --platform android --profile production"

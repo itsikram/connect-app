@@ -172,17 +172,9 @@ if (typeof global !== 'undefined' && !global.HermesInternal) {
   };
 }
 
-// Reduce console.log overhead in production
-if (!__DEV__) {
-  const noop = () => {};
-  const originalLog = console.log;
-  const originalWarn = console.warn;
-  const originalError = console.error;
-  
-  // Keep error logs but reduce others
-  console.log = noop;
-  console.warn = noop;
-  // Keep console.error for critical errors
+// Keep verbose informational logs out of the Expo console while preserving warnings and errors.
+if (typeof console !== 'undefined') {
+  console.log = () => {};
 }
 // Ensure vector icon fonts are loaded early to avoid missing icons on Android/iOS
 try {

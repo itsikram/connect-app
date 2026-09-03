@@ -2733,21 +2733,21 @@ const SingleMessage = () => {
     const playSound = () => {
         const msg = selectedMessage;
         setContextMenuVisible(false);
-        if (!msg || String(msg.senderId) !== String(myProfile?._id)) return;
+        if (!msg) return;
 
         const msgId = msg._id;
-        const targetFriendId = friend?._id || msg.receiverId;
-        if (!targetFriendId || !msgId) {
-            console.warn('Speak failed: missing friendId or msgId', { targetFriendId, msgId });
+        if (!msgId) {
+            console.warn('Speak failed: message has no id');
             return;
         }
 
-        emit('speak_message', {
+        playSpeakPayload({
             msgId: String(msgId),
-            friendId: String(targetFriendId),
             message: msg.message || '',
             attachment: typeof msg.attachment === 'string' ? msg.attachment : '',
             messageType: msg.messageType || '',
+        }).catch((error) => {
+            console.error('Speak failed:', error);
         });
     };
 
@@ -4265,22 +4265,20 @@ const SingleMessage = () => {
                         }}
                     >
 
-                        {selectedMessage?.senderId === myProfile?._id && (
-                            <TouchableOpacity
-                                style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    paddingVertical: 12,
-                                    paddingHorizontal: 16,
-                                }}
-                                onPress={playSound}
-                            >
-                                <Icon name="speaker" size={20} color={themeColors.text.primary} />
-                                <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
-                                    Speak
-                                </Text>
-                            </TouchableOpacity>
-                        )}
+                        <TouchableOpacity
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                paddingVertical: 12,
+                                paddingHorizontal: 16,
+                            }}
+                            onPress={playSound}
+                        >
+                            <Icon name="speaker" size={20} color={themeColors.text.primary} />
+                            <Text style={{ marginLeft: 12, fontSize: 16, color: themeColors.text.primary }}>
+                                Speak
+                            </Text>
+                        </TouchableOpacity>
                         <TouchableOpacity
                             style={{
                                 flexDirection: 'row',

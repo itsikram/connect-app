@@ -153,9 +153,7 @@
     ],
     "sdkVersion": "57.0.0",
     "extra": {
-      "eas": {
-        "projectId": "9672137f-df12-4e92-98a5-9c7c9a371c59"
-      }
+
     }
   }
 }

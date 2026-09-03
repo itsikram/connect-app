@@ -168,7 +168,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             if (localTracks.length) await client.publish(localTracks);
           } catch (e) {
             post({ type: 'error', message: 'microphone publish failed: ' + (e && e.message) });
-          } catch (e) {}
+          }
           post({ type: 'joined' });
           return;
         }

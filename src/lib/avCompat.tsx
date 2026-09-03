@@ -191,25 +191,29 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
   const player = useVideoPlayer(source, (created: any) => {
     created.loop = Boolean(isLooping);
     created.muted = Boolean(isMuted);
-    created.staysActiveInBackground = staysActiveInBackground;
-    created.showNowPlayingNotification = showNowPlayingNotification;
     if (shouldPlay) created.play();
   });
 
   useEffect(() => {
     player.loop = Boolean(isLooping);
     player.muted = Boolean(isMuted);
-    player.staysActiveInBackground = staysActiveInBackground;
-    player.showNowPlayingNotification = showNowPlayingNotification;
     if (shouldPlay) player.play(); else player.pause();
   }, [
     player,
     isLooping,
     isMuted,
     shouldPlay,
-    staysActiveInBackground,
-    showNowPlayingNotification,
   ]);
+
+  useEffect(() => {
+    // Configure the playback service after the native player is attached to the
+    // React context; configuring it during player construction can bind too early.
+    const timer = setTimeout(() => {
+      player.staysActiveInBackground = staysActiveInBackground;
+      player.showNowPlayingNotification = showNowPlayingNotification;
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [player, staysActiveInBackground, showNowPlayingNotification]);
 
   useEffect(() => {
     if (!onPlaybackStatusUpdate) return undefined;

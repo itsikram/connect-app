@@ -18,6 +18,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import { useChessGame } from '../contexts/ChessGameContext';
+import { useSocket } from '../contexts/SocketContext';
 import useComposerLiveTranscribe from '../hooks/useComposerLiveTranscribe';
 import {
   clearAgentChat,
@@ -37,6 +38,8 @@ import {
 import { AgentMessage } from '../types/aiAgent';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
+import { friendAPI } from '../lib/api';
+import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 
 interface Props {
   visible: boolean;
@@ -66,6 +69,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   );
   const { setLudoGameActive } = useLudoGame();
   const { setChessGameActive } = useChessGame();
+  const { startAudioCall, startVideoCall } = useSocket();
   const [messages, setMessages] = React.useState<AgentMessage[]>([welcome()]);
   const [input, setInput] = React.useState('');
   const [interimInput, setInterimInput] = React.useState('');
@@ -87,6 +91,43 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     await clearAgentChat();
     setMessages([welcome()]);
   }, []);
+  const resolveUser = React.useCallback(async (query: string) => {
+    const profileId = String((profile as Record<string, unknown> | null)?._id || '');
+    if (!profileId) return null;
+    const response = await friendAPI.getFriendList(profileId);
+    const data: unknown = response.data;
+    const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+    const friends = Array.isArray(data)
+      ? data
+      : (Array.isArray(dataRecord.friends)
+        ? dataRecord.friends
+        : (Array.isArray(dataRecord.data) ? dataRecord.data : []));
+    const needle = query.trim().toLowerCase();
+    const match = friends.find((friend: Record<string, unknown>) => {
+      const fields = [friend.fullName, friend.username, friend.email, friend.name]
+        .filter(value => typeof value === 'string')
+        .map(value => String(value).toLowerCase());
+      return fields.some(value => value === needle || value.includes(needle));
+    });
+    if (!match?._id) return null;
+    return { id: String(match._id), name: String(match.fullName || match.username || query) };
+  }, [profile]);
+
+  const callAdapter = React.useMemo(() => ({
+    resolveUser,
+    startAudioCall: async (userId: string, channelName: string, userName?: string) => {
+      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
+      emitStartAudioCall({ to: userId, channelName: effectiveChannel, callerName: userName });
+      startAudioCall(userId, effectiveChannel);
+    },
+    startVideoCall: async (userId: string, channelName: string, userName?: string) => {
+      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
+      emitStartVideoCall({ to: userId, channelName: effectiveChannel, callerName: userName });
+      startVideoCall(userId, effectiveChannel);
+    },
+  }), [profile, resolveUser, startAudioCall, startVideoCall]);
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
       setInput(text);
@@ -207,6 +248,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             speechController.update(visibleReply, language);
         }
         const adapter = createMobileAgentActionAdapter({
+          ...callAdapter,
           startLudo: () => setLudoGameActive(true),
           startChess: () => setChessGameActive(true),
           startVoiceInput: async () => {
@@ -448,6 +490,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   };
   const runPendingAction = async (action: AgentActionIntent) => {
     const adapter = createMobileAgentActionAdapter({
+      ...callAdapter,
       startLudo: () => setLudoGameActive(true),
       startChess: () => setChessGameActive(true),
       logout,

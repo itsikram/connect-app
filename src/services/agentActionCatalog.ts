@@ -130,6 +130,20 @@ export const AGENT_ACTION_CATALOG: readonly AgentActionDefinition[] =
 const definitionByName = new Map(
   AGENT_ACTION_CATALOG.map(definition => [definition.name, definition]),
 );
+const ACTION_ALIASES: Record<string, AgentActionName> = {
+  CALL: 'START_AUDIO_CALL',
+  AUDIO_CALL: 'START_AUDIO_CALL',
+  START_AUDIO: 'START_AUDIO_CALL',
+  START_CALL: 'START_AUDIO_CALL',
+  MAKE_CALL: 'START_AUDIO_CALL',
+  CALL_USER: 'START_AUDIO_CALL',
+  VIDEO_CALL: 'START_VIDEO_CALL',
+  START_VIDEO_CALLING: 'START_VIDEO_CALL',
+  START_VIDEO: 'START_VIDEO_CALL',
+  OPEN_PROFILE: 'VIEW_PROFILE',
+  PROFILE: 'VIEW_PROFILE',
+  OPEN_MESSAGES: 'navigate_message',
+};
 const allowedIntentKeys = new Set([
   'reply',
   'actions',
@@ -167,6 +181,7 @@ const optionalText = (
   if (typeof value !== 'string' || value.length > maxLength) {
     throw new Error(`${field} must be a string`);
   }
+
   return value;
 };
 
@@ -239,7 +254,19 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
         ) {
           throw new Error('action contains unsupported fields');
         }
-        const actionName = rawAction.action || rawAction.type;
+        const requestedAction = rawAction.action || rawAction.type;
+        const actionKey = typeof requestedAction === 'string'
+          ? requestedAction.trim().toUpperCase().replace(/[\s-]+/g, '_')
+          : '';
+        const catalogAction = typeof requestedAction === 'string'
+          ? AGENT_ACTION_CATALOG.find(
+              definition =>
+                definition.name.toUpperCase().replace(/[\s-]+/g, '_') === actionKey,
+            )?.name
+          : undefined;
+        const actionName = typeof requestedAction === 'string'
+          ? ACTION_ALIASES[actionKey] || catalogAction || requestedAction
+          : requestedAction;
         if (typeof actionName !== 'string')
           throw new Error('action.type is required');
         const definition = definitionByName.get(actionName as AgentActionName);
@@ -288,6 +315,9 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
 }
 
 export type MobileAgentActionAdapter = {
+  resolveUser?: (
+    query: string,
+  ) => Promise<{ id: string; name?: string } | null>;
   navigate?: (
     route: string,
     params?: Record<string, unknown>,
@@ -300,6 +330,8 @@ export type MobileAgentActionAdapter = {
   stopSpeaking?: () => void | Promise<void>;
   logout?: () => void | Promise<void>;
   clearAgentChat?: () => void | Promise<void>;
+  startAudioCall?: (userId: string, channelName: string, userName?: string) => void | Promise<void>;
+  startVideoCall?: (userId: string, channelName: string, userName?: string) => void | Promise<void>;
 };
 
 export type AgentActionResult = {
@@ -395,6 +427,24 @@ export async function executeAgentActions(
         if (!adapter.startLudo)
           throw new Error('Ludo is unavailable on this device.');
         await adapter.startLudo();
+      } else if (action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL') {
+        let userId = String(parameters.userId || parameters.profileId || '');
+        let resolvedName = String(parameters.userName || action.targetName || '');
+        if (!userId && resolvedName && adapter.resolveUser) {
+          const resolved = await adapter.resolveUser(resolvedName);
+          userId = resolved?.id || '';
+          resolvedName = resolved?.name || resolvedName;
+        }
+        if (!userId) throw new Error('I need the person’s resolved user ID before starting the call.');
+        const channelName = String(parameters.channelName || userId);
+        const userName = resolvedName;
+        if (action.action === 'START_AUDIO_CALL') {
+          if (!adapter.startAudioCall) throw new Error('Audio calling is unavailable.');
+          await adapter.startAudioCall(userId, channelName, userName);
+        } else {
+          if (!adapter.startVideoCall) throw new Error('Video calling is unavailable.');
+          await adapter.startVideoCall(userId, channelName, userName);
+        }
       } else if (target) {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
         await adapter.navigate(
