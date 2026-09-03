@@ -73,15 +73,14 @@ const AccountSettings = () => {
   }, [(currentProfile?.user as any)?.faceLoginEnabled]);
 
   useEffect(() => {
-    if (currentEmail || !currentProfile?._id || emailFetchAttempted.current) return;
+    if (!currentProfile?._id || emailFetchAttempted.current) return;
     emailFetchAttempted.current = true;
 
     let cancelled = false;
     (async () => {
       try {
         const res = await userAPI.getProfile(currentProfile._id);
-        const email = getProfileEmail(res.data);
-        if (!cancelled && email) {
+        if (!cancelled && res.data) {
           dispatch(
             updateProfileField({
               field: 'user',

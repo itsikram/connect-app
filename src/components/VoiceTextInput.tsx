@@ -14,6 +14,7 @@ import useComposerLiveTranscribe from '../hooks/useComposerLiveTranscribe';
 type VoiceTextInputProps = TextInputProps & {
   voiceEnabled?: boolean;
   wrapperStyle?: ViewStyle;
+  rightAccessory?: React.ReactNode;
 };
 
 const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
@@ -21,6 +22,7 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
   value,
   voiceEnabled = true,
   wrapperStyle,
+  rightAccessory,
   ...props
 }, ref) => {
   const { colors } = useTheme();
@@ -83,7 +85,7 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
   }
 
   return (
-    <View style={[{ flexDirection: 'row', alignItems: 'center' }, wrapperStyle]}>
+    <View style={[{ flex: 1, minWidth: 0, position: 'relative' }, wrapperStyle]}>
       <TextInput
         ref={ref}
         value={value}
@@ -93,7 +95,7 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
           onChangeText?.(text);
         }}
         {...props}
-        style={[{ flex: 1 }, props.style]}
+        style={[{ flex: 1, paddingRight: rightAccessory ? 82 : 42 }, props.style]}
       />
       <TouchableOpacity
         onPress={toggleVoice}
@@ -101,7 +103,7 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
         accessibilityLabel={transcribe.listening
           ? 'Stop voice input'
           : `Start ${language.startsWith('bn') ? 'Bangla' : 'English'} voice input`}
-        style={{ padding: 8 }}
+        style={{ position: 'absolute', right: rightAccessory ? 38 : 2, top: 0, bottom: 0, paddingHorizontal: 8, justifyContent: 'center' }}
       >
         <Icon
           name={transcribe.listening ? 'stop' : 'mic'}
@@ -109,6 +111,11 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
           color={transcribe.listening ? colors.status.error : colors.primary}
         />
       </TouchableOpacity>
+      {rightAccessory ? (
+        <View style={{ position: 'absolute', right: 2, top: 0, bottom: 0, justifyContent: 'center' }}>
+          {rightAccessory}
+        </View>
+      ) : null}
     </View>
   );
 });

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Animated, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
@@ -169,7 +169,9 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
         {
           backgroundColor: themeColors.surface.header,
           borderTopColor: themeColors.border.primary,
-          paddingBottom: Math.max(insets.bottom, 8) + 20,
+          paddingTop: Platform.OS === 'android' ? 15 : 0,
+          paddingBottom:
+            Math.max(insets.bottom, 8) + 20 + (Platform.OS === 'android' ? 15 : 0),
         },
       ]}
     >
