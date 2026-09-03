@@ -245,17 +245,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         if (track) {
           try { await track.setEnabled(!muted); } catch (e) {}
         }
+      }
 
-        async function enableAudio() {
-          if (!client || !joinedChannel) throw new Error('Live voice is not connected');
-          var track = localTracks.find(function (t) { return t.trackMediaType === 'audio'; });
-          if (!track) {
-            track = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true });
-            localTracks.push(track);
-          }
-          await client.publish([track]);
-          post({ type: 'audio-enabled' });
+      async function enableAudio() {
+        if (!client || !joinedChannel) throw new Error('Live voice is not connected');
+        var track = localTracks.find(function (t) { return t.trackMediaType === 'audio'; });
+        if (!track) {
+          track = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true });
+          localTracks.push(track);
         }
+        await client.publish([track]);
+        post({ type: 'audio-enabled' });
       }
 
       async function muteVideo(muted) {

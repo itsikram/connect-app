@@ -250,6 +250,15 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         return;
       }
 
+      if (
+        isJoiningRef.current &&
+        channelRef.current &&
+        String(channelRef.current) === String(channelName)
+      ) {
+        setIsOpen(true);
+        return;
+      }
+
       if (isJoiningRef.current || isActiveRef.current) {
         console.warn('Live voice: already in a session');
         return;
