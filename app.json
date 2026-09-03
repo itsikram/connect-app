@@ -85,6 +85,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "newArchEnabled": true,
     "plugins": [
       "expo-font",
       "expo-dev-client",

@@ -1096,7 +1096,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
   );
 
   return (
-    <SafeAreaView style={[styles.page, { backgroundColor: t.pageBg }]} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={[styles.page, { backgroundColor: t.pageBg }]} edges={['left', 'right' ]}>
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
       <KeyboardSafeView nested>
         <View style={styles.header}>
@@ -1560,7 +1560,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
+  page: { flex: 1, backgroundColor: 'blue' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1580,8 +1580,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
-  // reduced top padding to make the page content sit closer to the header
-  scroll: { paddingTop: 6, paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
+  scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   statPill: {
     fontSize: 12,

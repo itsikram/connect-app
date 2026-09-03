@@ -17,9 +17,11 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
   const [cameraReady, setCameraReady] = useState(false);
   const [capturing, setCapturing] = useState(false);
   const [status, setStatus] = useState('');
+  const [progress, setProgress] = useState(0);
 
   const startCamera = async () => {
     setStatus('');
+    setProgress(0);
     if (!permission?.granted) {
       const result = await requestPermission();
       if (!result.granted) {
@@ -33,6 +35,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
   const capture = async () => {
     if (!cameraRef.current || !cameraReady || capturing) return;
     setCapturing(true);
+    setProgress(0);
     setStatus('Look at the camera and blink naturally...');
 
     try {
@@ -44,6 +47,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
           skipProcessing: true,
         });
         if (photo?.base64) frames.push(photo.base64);
+        setProgress(Math.round(((index + 1) / FRAME_COUNT) * 100));
         await new Promise(resolve => setTimeout(resolve, FRAME_INTERVAL_MS));
       }
 
@@ -68,7 +72,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
     return (
       <View style={styles.container}>
         <Text style={styles.help}>
-          Look at the camera and blink naturally during capture.
+          Center your face, keep good lighting, and blink once naturally during capture.
         </Text>
         <Button mode="outlined" onPress={startCamera} disabled={disabled}>
           Allow camera
@@ -88,19 +92,27 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
         ref={cameraRef}
         style={styles.camera}
         facing="front"
+        mode="picture"
+        active={!capturing || capturing}
         pictureSize="640x480"
         onCameraReady={() => setCameraReady(true)}
       />
       <Text style={styles.help}>
-        {status || 'Look at the camera and blink naturally, then capture.'}
+        {status || 'Center your face and blink once naturally, then capture.'}
       </Text>
+      <Text style={styles.securityNote}>
+        Use the live front camera. Photos, screen recordings, and video files are not accepted.
+      </Text>
+      <View style={styles.progressTrack}>
+        <View style={[styles.progressBar, { width: `${progress}%` }]} />
+      </View>
       <Button
         mode="contained"
         onPress={capture}
         disabled={disabled || capturing || !cameraReady}
       >
         {capturing
-          ? 'Capturing...'
+          ? `Capturing… ${progress}%`
           : cameraReady
           ? 'Capture'
           : 'Starting camera...'}
@@ -121,6 +133,8 @@ const styles = StyleSheet.create({
   help: { fontSize: 13, lineHeight: 18 },
   error: { color: '#d32f2f', fontSize: 13 },
   spinner: { marginTop: 2 },
+  progressTrack: { height: 5, borderRadius: 3, backgroundColor: '#D9DEE8', overflow: 'hidden' },
+  progressBar: { height: '100%', backgroundColor: '#2563EB' },
 });
 
 export default FaceCapture;

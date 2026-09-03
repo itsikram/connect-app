@@ -215,6 +215,8 @@ export const authAPI = {
     api.post('/auth/face/login', data, { skipAuthRefresh: true } as AuthRequestConfig),
   faceRegister: (data: FaceFrames): Promise<AxiosResponse> =>
     api.post('/auth/face/register', data, { skipAuthRefresh: true } as AuthRequestConfig),
+  faceRemove: (): Promise<AxiosResponse> =>
+    api.post('/auth/face/remove', {}, { skipAuthRefresh: true } as AuthRequestConfig),
 };
 
 export const userAPI = {

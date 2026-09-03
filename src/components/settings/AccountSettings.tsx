@@ -55,6 +55,9 @@ const AccountSettings = () => {
   const [isSavingBangla, setIsSavingBangla] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isRegisteringFace, setIsRegisteringFace] = useState(false);
+  const [isFaceRegistered, setIsFaceRegistered] = useState(
+    Boolean((currentProfile?.user as any)?.faceLoginEnabled),
+  );
 
   useEffect(() => {
     setBanglaName(currentProfile?.banglaName || '');
@@ -117,6 +120,14 @@ const AccountSettings = () => {
     setIsRegisteringFace(true);
     try {
       await authAPI.faceRegister({ frames });
+      setIsFaceRegistered(true);
+      dispatch(updateProfileField({
+        field: 'user',
+        value: {
+          ...(typeof currentProfile.user === 'object' ? currentProfile.user : {}),
+          faceLoginEnabled: true,
+        },
+      }));
       showSuccess('Face login registered successfully');
     } catch (error: any) {
       showError(
@@ -126,6 +137,32 @@ const AccountSettings = () => {
     } finally {
       setIsRegisteringFace(false);
     }
+  };
+
+  const handleRemoveFace = async () => {
+    Alert.alert('Remove face login', 'You can add it again later from this screen.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await authAPI.faceRemove();
+            setIsFaceRegistered(false);
+            dispatch(updateProfileField({
+              field: 'user',
+              value: {
+                ...(typeof currentProfile.user === 'object' ? currentProfile.user : {}),
+                faceLoginEnabled: false,
+              },
+            }));
+            showSuccess('Face login removed');
+          } catch (error: any) {
+            showError(error?.response?.data?.message || 'Could not remove face login');
+          }
+        },
+      },
+    ]);
   };
 
   const persistAuthPayload = async (payload: any, email?: string) => {
@@ -276,9 +313,14 @@ const AccountSettings = () => {
       <View style={[styles.banglaBlock, { borderBottomColor: themeColors.border.primary }]}>
         <Text style={[styles.subTitle, { color: themeColors.text.primary }]}>Face Login</Text>
         <Text style={[styles.muted, { color: themeColors.text.secondary }]}>
-          Register your face to sign in without a password. Blink naturally during capture.
+          {isFaceRegistered
+            ? 'Face login is enabled. Capture again to replace it, or remove it below.'
+            : 'Register your face to sign in without a password. Your face can only belong to one Connect account.'}
         </Text>
         <FaceCapture onCapture={handleFaceCapture} disabled={isRegisteringFace} />
+        {isFaceRegistered ? (
+          <SettingsDangerButton title="Remove face login" onPress={handleRemoveFace} disabled={isRegisteringFace} />
+        ) : null}
       </View>
 
       <View style={[styles.banglaBlock, { borderBottomColor: themeColors.border.primary }]}>
