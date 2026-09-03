@@ -496,25 +496,6 @@ export async function initializeNotifications(): Promise<boolean> {
         return false;
       }
 
-      try {
-        Notifications.addPushTokenListener(async (devicePushToken) => {
-          const nextToken =
-            typeof devicePushToken === 'string'
-              ? devicePushToken
-              : (devicePushToken as { data?: string })?.data;
-          if (!nextToken) return;
-          try {
-            await AsyncStorage.setItem(STORAGE_KEY, nextToken);
-            const authToken = await AsyncStorage.getItem('authToken');
-            if (authToken) {
-              await pushAPI.registerToken(nextToken, authToken);
-            }
-          } catch (tokenError) {
-            console.warn('Failed to refresh push token', tokenError);
-          }
-        });
-      } catch (_) {}
-      
       isInitialized = true;
       console.log('Notifications initialized successfully');
       return true;
