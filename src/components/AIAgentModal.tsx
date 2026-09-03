@@ -22,10 +22,14 @@ import { useSocket } from '../contexts/SocketContext';
 import useComposerLiveTranscribe from '../hooks/useComposerLiveTranscribe';
 import {
   clearAgentChat,
+  fetchAIProviderStatus,
   fetchLatestAgentChat,
   saveAgentChat,
   streamAgentReply,
+  AIProvider,
+  AIProviderStatus,
 } from '../services/aiAgentService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   createMobileAgentActionAdapter,
   executeAgentActions,
@@ -38,7 +42,7 @@ import {
 import { AgentMessage } from '../types/aiAgent';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
-import { friendAPI } from '../lib/api';
+import { friendAPI, profileAPI } from '../lib/api';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 
 interface Props {
@@ -53,6 +57,14 @@ const welcome = (): AgentMessage => ({
   content:
     'Hi! I am Connect AI Agent. Ask me to search, navigate, or help with Connect.',
 });
+const AI_PROVIDER_STORAGE_KEY = '@connect/ai-provider';
+const providerLabels: Record<AIProvider, string> = {
+  gemini: 'Gemini',
+  openai: 'OpenAI',
+  cursor: 'Cursor',
+  grok: 'Grok',
+  groq: 'Groq Cloud',
+};
 
 const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const { colors } = useTheme();
@@ -69,7 +81,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   );
   const { setLudoGameActive } = useLudoGame();
   const { setChessGameActive } = useChessGame();
-  const { startAudioCall, startVideoCall } = useSocket();
+  const { startAudioCall, startVideoCall, sendMessage: socketSendMessage } = useSocket();
   const [messages, setMessages] = React.useState<AgentMessage[]>([welcome()]);
   const [input, setInput] = React.useState('');
   const [interimInput, setInterimInput] = React.useState('');
@@ -80,12 +92,20 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     AgentActionIntent[]
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
+  const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
+  const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
+  const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const sendRef = React.useRef<() => void>(() => {});
   const speechControllerRef = React.useRef<ReturnType<
     typeof createAgentSpeechController
   > | null>(null);
   const requestRef = React.useRef<AbortController | null>(null);
   const generationRef = React.useRef(0);
+  const agentMemoryRef = React.useRef<{
+    activeUser?: { id?: string; name?: string };
+    activeProfile?: { id?: string; name?: string };
+    activeConversation?: { userId?: string; name?: string };
+  }>({});
   const listRef = React.useRef<FlatList<AgentMessage>>(null);
   const clearChat = React.useCallback(async () => {
     await clearAgentChat();
@@ -116,7 +136,14 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   }, [profile]);
 
   const callAdapter = React.useMemo(() => ({
-    resolveUser,
+    resolveUser: async (query: string) => {
+      const normalized = query.trim().toLowerCase();
+      if (['him', 'her', 'them', 'ওকে', 'তাকে', 'ওর', 'তার'].includes(normalized)) {
+        const active = agentMemoryRef.current.activeUser;
+        if (active?.id) return { id: active.id, name: active.name };
+      }
+      return resolveUser(query);
+    },
     startAudioCall: async (userId: string, channelName: string, userName?: string) => {
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
@@ -129,7 +156,25 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       emitStartVideoCall({ to: userId, channelName: effectiveChannel, callerName: userName });
       startVideoCall(userId, effectiveChannel);
     },
-  }), [profile, resolveUser, startAudioCall, startVideoCall]);
+    followUser: async (userId: string) => {
+      await profileAPI.follow(userId);
+    },
+    unfollowUser: async (userId: string) => {
+      await profileAPI.unfollow(userId);
+    },
+    blockUser: async (userId: string) => {
+      await friendAPI.blockUser(userId);
+    },
+    unblockUser: async (userId: string) => {
+      await friendAPI.unblockUser(userId);
+    },
+    sendMessage: async (userId: string, message: string) => {
+      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      if (!ownId) throw new Error('You must be signed in to send messages.');
+      const room = [ownId, userId].sort().join('_');
+      socketSendMessage(room, ownId, userId, message);
+    },
+  }), [profile, resolveUser, startAudioCall, startVideoCall, socketSendMessage]);
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
       setInput(text);
@@ -142,6 +187,22 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   React.useEffect(() => {
     if (!visible) return;
     let active = true;
+    Promise.all([
+      fetchAIProviderStatus(),
+      AsyncStorage.getItem(AI_PROVIDER_STORAGE_KEY),
+    ])
+      .then(([status, saved]) => {
+        if (!active) return;
+        setProviderStatus(status);
+        const savedProvider = saved as AIProvider | null;
+        const available = (Object.keys(providerLabels) as AIProvider[]).find(
+          provider => status.enabled[provider] !== false && status.configured[provider],
+        );
+        const next = savedProvider && status.enabled[savedProvider] !== false &&
+          status.configured[savedProvider] ? savedProvider : (available || status.defaultProvider);
+        setSelectedProvider(next);
+      })
+      .catch(error => console.warn('Failed to load AI providers', error));
     fetchLatestAgentChat()
       .then(data => {
         if (active && Array.isArray(data?.messages) && data.messages.length)
@@ -152,6 +213,14 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       active = false;
     };
   }, [visible]);
+
+  const chooseProvider = React.useCallback((provider: AIProvider) => {
+    setSelectedProvider(provider);
+    setProviderMenuOpen(false);
+    AsyncStorage.setItem(AI_PROVIDER_STORAGE_KEY, provider).catch(error =>
+      console.warn('Failed to save AI provider', error),
+    );
+  }, []);
 
   React.useEffect(() => {
     if (messages.length <= 1) return;
@@ -230,16 +299,44 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         },
         controller.signal,
         profileContext,
+        {
+          provider: selectedProvider,
+          model: providerStatus?.models[selectedProvider],
+          memory: agentMemoryRef.current,
+        },
       );
       if (generation !== generationRef.current) return;
 
       const parsed = parseAgentIntent(rawReply);
       if (parsed.ok) {
         const intent = parsed.intent;
-        const visibleReply =
-          intent.reply ||
-          intent.ask?.question ||
-          (intent.actions?.length ? 'ঠিক আছে, কাজটি করছি।' : '');
+        const contextualAction = intent.actions?.find(action =>
+          action.targetName ||
+          action.parameters?.userName ||
+          action.parameters?.userId ||
+          action.parameters?.profileId,
+        );
+        if (contextualAction) {
+          const parameters = contextualAction.parameters || {};
+          const idValue = String(
+            parameters.userId || parameters.profileId || '',
+          ) || undefined;
+          const nameValue = String(
+            parameters.userName || contextualAction.targetName || '',
+          ) || undefined;
+          agentMemoryRef.current = {
+            activeUser: { id: idValue, name: nameValue },
+            activeProfile: { id: idValue, name: nameValue },
+            activeConversation:
+              contextualAction.action === 'OPEN_CHAT' ||
+              contextualAction.action === 'SEND_MESSAGE'
+                ? { userId: idValue, name: nameValue }
+                : agentMemoryRef.current.activeConversation,
+          };
+        }
+        const visibleReply = intent.actions?.length
+          ? 'ঠিক আছে, কাজটি করছি।'
+          : intent.reply || intent.ask?.question || '';
         if (visibleReply) {
           setMessages(previous =>
             previous.map(item =>
@@ -288,6 +385,14 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           return;
         }
         const results = await executeAgentActions(intent.actions, adapter, {
+          skipConfirmation: autoMode,
+          onResolvedUser: resolved => {
+            agentMemoryRef.current = {
+              ...agentMemoryRef.current,
+              activeUser: resolved,
+              activeProfile: resolved,
+            };
+          },
           confirm: definition =>
             new Promise<boolean>(resolve => {
               Alert.alert(
@@ -309,18 +414,27 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             }),
         });
         const failed = results.filter(result => !result.ok);
+        const completed = results.filter(result => result.ok);
+        const outcome = failed.length
+          ? failed.map(result => result.message).join(' ')
+          : completed.length
+            ? completed.map(result => result.message).join(' ')
+            : '';
         if (failed.length) {
-          const summary = failed.map(result => result.message).join(' ');
           setMessages(previous =>
             previous.map(item =>
               item.id === stream.id
                 ? {
                     ...item,
-                    content: `${visibleReply}${
-                      visibleReply ? '\n' : ''
-                    }${summary}`,
+                    content: outcome,
                   }
                 : item,
+            ),
+          );
+        } else if (outcome) {
+          setMessages(previous =>
+            previous.map(item =>
+              item.id === stream.id ? { ...item, content: outcome } : item,
             ),
           );
         }
@@ -564,6 +678,9 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               <Text style={[styles.heading, { color: colors.text.primary }]}>
                 Connect AI
               </Text>
+              <Text style={[styles.providerText, { color: colors.text.secondary }]}>
+                Powered by {providerLabels[selectedProvider]}
+              </Text>
               <View style={styles.statusLine}>
                 <View
                   style={[
@@ -650,6 +767,41 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               <Icon name="close" size={25} color={colors.text.primary} />
             </Pressable>
           </View>
+          {providerStatus && (
+            <View style={[styles.providerBar, { backgroundColor: colors.surface.primary }]}>
+              <Pressable
+                onPress={() => setProviderMenuOpen(value => !value)}
+                style={[styles.providerSelector, { borderColor: colors.border.primary }]}
+                accessibilityLabel="Select AI provider"
+              >
+                <Text style={[styles.providerSelectorText, { color: colors.text.primary }]}>
+                  AI Provider: {providerLabels[selectedProvider]}
+                </Text>
+                <Icon
+                  name={providerMenuOpen ? 'expand-less' : 'expand-more'}
+                  size={20}
+                  color={colors.text.secondary}
+                />
+              </Pressable>
+              {providerMenuOpen && (
+                <View style={[styles.providerMenu, { backgroundColor: colors.surface.secondary, borderColor: colors.border.primary }]}>
+                  {(Object.keys(providerLabels) as AIProvider[])
+                    .filter(provider => providerStatus.enabled[provider] !== false && providerStatus.configured[provider])
+                    .map(provider => (
+                      <Pressable
+                        key={provider}
+                        onPress={() => chooseProvider(provider)}
+                        style={styles.providerOption}
+                      >
+                        <Text style={[styles.providerOptionText, { color: colors.text.primary }]}>
+                          {selectedProvider === provider ? '● ' : '○ '}{providerLabels[provider]}
+                        </Text>
+                      </Pressable>
+                    ))}
+                </View>
+              )}
+            </View>
+          )}
           <FlatList
             ref={listRef}
             style={styles.flex}
@@ -858,6 +1010,7 @@ const styles = StyleSheet.create({
   },
   title: { flex: 1 },
   heading: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
+  providerText: { fontSize: 11, marginTop: 1 },
   statusLine: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -883,6 +1036,25 @@ const styles = StyleSheet.create({
   },
   modeText: { fontSize: 11, fontWeight: '700' },
   language: { fontSize: 11, fontWeight: '700' },
+  providerBar: { paddingHorizontal: 16, paddingVertical: 8, zIndex: 2 },
+  providerSelector: {
+    minHeight: 38,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  providerSelectorText: { fontSize: 13, fontWeight: '600' },
+  providerMenu: {
+    marginTop: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  providerOption: { paddingHorizontal: 12, paddingVertical: 10 },
+  providerOptionText: { fontSize: 13 },
   messages: { padding: 16, paddingBottom: 20, gap: 14 },
   messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
   userMessageRow: { justifyContent: 'flex-end' },

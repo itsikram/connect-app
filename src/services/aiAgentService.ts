@@ -2,13 +2,30 @@ import api, { getAuthToken } from '../lib/api';
 import config from '../lib/config';
 import { AgentMessage, AgentStreamEvent } from '../types/aiAgent';
 
+export type AIProvider = 'gemini' | 'openai' | 'cursor' | 'grok' | 'groq';
+export interface AIProviderStatus {
+  defaultProvider: AIProvider;
+  enabled: Partial<Record<AIProvider, boolean>>;
+  configured: Partial<Record<AIProvider, boolean>>;
+  models: Partial<Record<AIProvider, string>>;
+}
+
 const SYSTEM_PROMPT =
   "You are Connect's mobile AI Agent. Reply in the user's language, be concise, never invent app data, and ask one clarification when needed. " +
   'Always return ONLY strict JSON with this shape: ' +
   '{"type":"action|question|response|mixed","message":"human-readable response","speak":true,"requires_confirmation":false,"actions":[{"id":"unique_id","type":"registered action","status":"pending","parameters":{}}]}. ' +
   'Use an empty actions array for questions and normal responses. Use SEARCH_USERS before actions that need a person; never invent IDs. ' +
-  'Never use markdown or add unknown fields. Only request actions that are available in the mobile app.';
-let providerConfig: { provider: string; model: string } | null = null;
+  'Never use markdown or add unknown fields. Only request actions that are available in the mobile app. ' +
+  'Understand Bangla, Banglish, English, and mixed language. Resolve pronouns such as him/her/ওকে from the active context. ' +
+  'For social actions, include targetName or userId and messageText/parameters.message when needed.';
+const DEFAULT_PROVIDER: AIProvider = 'gemini';
+const DEFAULT_MODELS: Record<AIProvider, string> = {
+  gemini: 'gemini-2.0-flash',
+  openai: 'gpt-4o-mini',
+  cursor: 'composer-2.5',
+  grok: 'grok-3-mini',
+  groq: 'openai/gpt-oss-20b',
+};
 
 const PRIVATE_PROFILE_KEYS = new Set([
   'password',
@@ -55,14 +72,21 @@ export async function streamAgentReply(
   onDelta: (text: string) => void,
   signal?: AbortSignal,
   profile?: unknown,
+  providerOptions?: {
+    provider: AIProvider;
+    model?: string;
+    memory?: {
+      activeUser?: { id?: string; name?: string };
+      activeProfile?: { id?: string; name?: string };
+      activeConversation?: { userId?: string; name?: string };
+    };
+  },
 ): Promise<string> {
+  let providerConfig = providerOptions;
   if (!providerConfig) {
     const providers = (await api.get('/ai-chat/providers')).data;
-    const provider = providers.defaultProvider || 'gemini';
-    const model =
-      providers.models?.[provider] ||
-      providers.models?.gemini ||
-      'gemini-2.0-flash';
+    const provider = (providers.defaultProvider || DEFAULT_PROVIDER) as AIProvider;
+    const model = providers.models?.[provider] || DEFAULT_MODELS[provider];
     providerConfig = { provider, model };
   }
   const profileContext = profile
@@ -70,10 +94,15 @@ export async function streamAgentReply(
         sanitizeProfile(profile),
       )}`
     : '';
+  const memoryContext = providerOptions?.memory
+    ? `\n\nActive conversation context (use only when relevant; do not invent missing values):\n${JSON.stringify(
+        providerOptions.memory,
+      )}`
+    : '';
   const payload = {
     provider: providerConfig.provider,
     model: providerConfig.model,
-    system: SYSTEM_PROMPT + profileContext,
+    system: SYSTEM_PROMPT + profileContext + memoryContext,
     messages: [
       ...toPayloadMessages(history),
       { role: 'user', content: message },
@@ -105,6 +134,7 @@ export async function streamAgentReply(
           reject(new Error(event.error));
           return;
         }
+
         if (typeof event?.text === 'string') {
           accumulated = event.text.startsWith(accumulated)
             ? event.text
@@ -145,6 +175,17 @@ export async function streamAgentReply(
     throw new Error('The AI Agent returned an empty response.');
   return accumulated;
 }
+
+export const fetchAIProviderStatus = async (): Promise<AIProviderStatus> => {
+  const response = await api.get('/ai-chat/providers');
+  const data = response.data || {};
+  return {
+    defaultProvider: (data.defaultProvider || DEFAULT_PROVIDER) as AIProvider,
+    enabled: data.enabled || {},
+    configured: data.configured || {},
+    models: { ...DEFAULT_MODELS, ...(data.models || {}) },
+  };
+};
 
 export const fetchLatestAgentChat = async () =>
   (await api.get('/ai-chat/latest')).data;

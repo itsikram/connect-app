@@ -5,14 +5,13 @@
 import 'react-native-gesture-handler';
 import './src/lib/suppressExpoGoNotificationWarning';
 import { AppRegistry, AppState, ErrorUtils, Platform } from 'react-native';
-import * as TaskManager from 'expo-task-manager';
-import Constants from 'expo-constants';
+import { isExpoGo as runningInExpoGo } from './src/lib/expoGo';
 
 const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
-const isExpoGo =
-  Platform.OS === 'android' &&
-  (Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient');
-const Notifications = isExpoGo ? null : require('expo-notifications');
+const isExpoGo = runningInExpoGo();
+const Notifications =
+  Platform.OS === 'android' && isExpoGo ? null : require('expo-notifications');
+const TaskManager = isExpoGo ? null : require('expo-task-manager');
 
 if (Notifications) {
   Notifications.setNotificationHandler({
@@ -44,50 +43,52 @@ if (Notifications) {
   });
 }
 
-TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
-  if (error) {
-    console.warn('Background notification task error', error);
-    return;
-  }
+if (TaskManager) {
+  TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
+    if (error) {
+      console.warn('Background notification task error', error);
+      return;
+    }
 
-  const payload =
-    data?.notification?.request?.content?.data ||
-    data?.notification?.data ||
-    data?.data ||
-    data ||
-    {};
-  if (payload?.type !== 'incoming_call') return;
+    const payload =
+      data?.notification?.request?.content?.data ||
+      data?.notification?.data ||
+      data?.data ||
+      data ||
+      {};
+    if (payload?.type !== 'incoming_call') return;
 
-  try {
-    const { startIncomingCallAlert } = require('./src/lib/incomingCallAlerts');
-    const { emitIncomingCallFromPush } = require('./src/lib/callEvents');
-    const callerId = String(payload.callerId || payload.from || '');
-    const channelName = String(payload.channelName || '');
-    if (!callerId && !channelName) return;
+    try {
+      const { startIncomingCallAlert } = require('./src/lib/incomingCallAlerts');
+      const { emitIncomingCallFromPush } = require('./src/lib/callEvents');
+      const callerId = String(payload.callerId || payload.from || '');
+      const channelName = String(payload.channelName || '');
+      if (!callerId && !channelName) return;
 
-    const callPayload = {
-      callerId,
-      callerName: payload.callerName || 'Someone',
-      callerProfilePic: payload.callerProfilePic || '',
-      channelName,
-      isAudio: payload.isAudio === true || payload.isAudio === 'true',
-      ringtoneId: payload.ringtoneId,
-    };
-    await startIncomingCallAlert(callPayload);
-    emitIncomingCallFromPush({
-      from: callerId,
-      channelName,
-      callerName: callPayload.callerName,
-      callerProfilePic: callPayload.callerProfilePic,
-      isAudio: callPayload.isAudio,
-      ringtoneId: callPayload.ringtoneId,
-    });
-  } catch (taskError) {
-    console.warn('Background incoming-call task failed', taskError);
-  }
-});
+      const callPayload = {
+        callerId,
+        callerName: payload.callerName || 'Someone',
+        callerProfilePic: payload.callerProfilePic || '',
+        channelName,
+        isAudio: payload.isAudio === true || payload.isAudio === 'true',
+        ringtoneId: payload.ringtoneId,
+      };
+      await startIncomingCallAlert(callPayload);
+      emitIncomingCallFromPush({
+        from: callerId,
+        channelName,
+        callerName: callPayload.callerName,
+        callerProfilePic: callPayload.callerProfilePic,
+        isAudio: callPayload.isAudio,
+        ringtoneId: callPayload.ringtoneId,
+      });
+    } catch (taskError) {
+      console.warn('Background incoming-call task failed', taskError);
+    }
+  });
+}
 
-if (Notifications) {
+if (Notifications && TaskManager) {
   Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((error) => {
     console.warn('Failed to register background notification task', error);
   });

@@ -11,6 +11,10 @@ export type AgentActionName =
   | 'END_CALL'
   | 'SEARCH_VIDEO'
   | 'PLAY_VIDEO'
+  | 'FOLLOW_USER'
+  | 'UNFOLLOW_USER'
+  | 'BLOCK_USER'
+  | 'UNBLOCK_USER'
   | 'OPEN_SETTINGS'
   | 'CHANGE_SETTING'
   | 'OPEN_LUDO'
@@ -87,6 +91,10 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['END_CALL', 'End call', true],
   ['SEARCH_VIDEO', 'Search videos'],
   ['PLAY_VIDEO', 'Play video'],
+  ['FOLLOW_USER', 'Follow user', true],
+  ['UNFOLLOW_USER', 'Unfollow user', true],
+  ['BLOCK_USER', 'Block user', true],
+  ['UNBLOCK_USER', 'Unblock user', true],
   ['OPEN_SETTINGS', 'Open settings'],
   ['CHANGE_SETTING', 'Change setting', true],
   ['OPEN_LUDO', 'Open Ludo'],
@@ -143,6 +151,10 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   OPEN_PROFILE: 'VIEW_PROFILE',
   PROFILE: 'VIEW_PROFILE',
   OPEN_MESSAGES: 'navigate_message',
+  FOLLOW: 'FOLLOW_USER',
+  UNFOLLOW: 'UNFOLLOW_USER',
+  BLOCK: 'BLOCK_USER',
+  UNBLOCK: 'UNBLOCK_USER',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -332,6 +344,11 @@ export type MobileAgentActionAdapter = {
   clearAgentChat?: () => void | Promise<void>;
   startAudioCall?: (userId: string, channelName: string, userName?: string) => void | Promise<void>;
   startVideoCall?: (userId: string, channelName: string, userName?: string) => void | Promise<void>;
+  followUser?: (userId: string) => void | Promise<void>;
+  unfollowUser?: (userId: string) => void | Promise<void>;
+  blockUser?: (userId: string) => void | Promise<void>;
+  unblockUser?: (userId: string) => void | Promise<void>;
+  sendMessage?: (userId: string, message: string) => void | Promise<void>;
 };
 
 export type AgentActionResult = {
@@ -343,6 +360,8 @@ export type AgentActionResult = {
 
 export type AgentActionExecutionOptions = {
   confirm?: (definition: AgentActionDefinition) => Promise<boolean>;
+  skipConfirmation?: boolean;
+  onResolvedUser?: (user: { id: string; name?: string }) => void;
 };
 
 export function createMobileAgentActionAdapter(
@@ -397,7 +416,7 @@ export async function executeAgentActions(
       });
       continue;
     }
-    if (definition.sensitive) {
+    if (definition.sensitive && !options.skipConfirmation) {
       const confirmed = options.confirm
         ? await options.confirm(definition)
         : false;
@@ -423,13 +442,25 @@ export async function executeAgentActions(
         (canonicalNavigation[action.action]
           ? [canonicalNavigation[action.action], undefined]
           : undefined);
+      const requiresUser = ['VIEW_PROFILE', 'OPEN_CHAT', 'FOLLOW_USER',
+        'UNFOLLOW_USER', 'BLOCK_USER', 'UNBLOCK_USER', 'SEND_MESSAGE'].includes(action.action);
+      let resolvedUserId = String(parameters.userId || parameters.profileId || '');
+      let resolvedUserName = String(parameters.userName || action.targetName || '');
+      if (requiresUser && !resolvedUserId && resolvedUserName && adapter.resolveUser) {
+        const resolved = await adapter.resolveUser(resolvedUserName);
+        resolvedUserId = resolved?.id || '';
+        resolvedUserName = resolved?.name || resolvedUserName;
+        if (resolved?.id) options.onResolvedUser?.(resolved);
+      }
+      if (requiresUser && !resolvedUserId)
+        throw new Error('I could not uniquely resolve that person.');
       if (action.action === 'OPEN_LUDO') {
         if (!adapter.startLudo)
           throw new Error('Ludo is unavailable on this device.');
         await adapter.startLudo();
       } else if (action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL') {
-        let userId = String(parameters.userId || parameters.profileId || '');
-        let resolvedName = String(parameters.userName || action.targetName || '');
+        let userId = resolvedUserId;
+        let resolvedName = resolvedUserName;
         if (!userId && resolvedName && adapter.resolveUser) {
           const resolved = await adapter.resolveUser(resolvedName);
           userId = resolved?.id || '';
@@ -445,13 +476,42 @@ export async function executeAgentActions(
           if (!adapter.startVideoCall) throw new Error('Video calling is unavailable.');
           await adapter.startVideoCall(userId, channelName, userName);
         }
+      } else if (action.action === 'FOLLOW_USER' || action.action === 'UNFOLLOW_USER' ||
+        action.action === 'BLOCK_USER' || action.action === 'UNBLOCK_USER') {
+        const handler = {
+          FOLLOW_USER: adapter.followUser,
+          UNFOLLOW_USER: adapter.unfollowUser,
+          BLOCK_USER: adapter.blockUser,
+          UNBLOCK_USER: adapter.unblockUser,
+        }[action.action];
+        if (!handler) throw new Error('This user action is unavailable.');
+        await handler(resolvedUserId);
+      } else if (action.action === 'SEND_MESSAGE') {
+        const message = String(parameters.message || action.messageText || '');
+        if (!message.trim()) throw new Error('The message cannot be empty.');
+        if (!adapter.sendMessage) throw new Error('Messaging is unavailable.');
+        await adapter.sendMessage(resolvedUserId, message);
+      } else if (action.action === 'SEARCH_USERS') {
+        const query = String(
+          parameters.query || action.searchQuery || action.targetName || '',
+        ).trim();
+        if (!query || !adapter.resolveUser)
+          throw new Error('Tell me the name of the person to search for.');
+        const match = await adapter.resolveUser(query);
+        if (!match) throw new Error('I could not find one unique matching user.');
       } else if (target) {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
+        const params = action.action === 'NAVIGATE'
+          ? (parameters.params as Record<string, unknown> | undefined)
+          : target[1];
+        await adapter.navigate(target[0], params);
+      } else if (action.action === 'VIEW_PROFILE' || action.action === 'OPEN_CHAT') {
+        if (!adapter.navigate) throw new Error('Navigation is unavailable.');
         await adapter.navigate(
-          target[0],
-          action.action === 'NAVIGATE'
-            ? (parameters.params as Record<string, unknown> | undefined)
-            : target[1],
+          action.action === 'VIEW_PROFILE' ? 'FriendProfile' : 'Message',
+          action.action === 'VIEW_PROFILE'
+            ? { friendId: resolvedUserId }
+            : { screen: 'SingleMessage', friendId: resolvedUserId, profileId: resolvedUserId },
         );
       } else if (action.action === 'speak_text') {
         if (!adapter.speakText || !action.messageText)

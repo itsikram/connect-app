@@ -1,8 +1,11 @@
-import * as BackgroundFetch from 'expo-background-fetch';
-import { BackgroundFetchStatus } from 'expo-background-fetch';
-import * as TaskManager from 'expo-task-manager';
+import type { BackgroundFetchStatus as BackgroundFetchStatusType } from 'expo-background-fetch';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { isExpoGo } from './expoGo';
+
+const BackgroundFetch = isExpoGo() ? null : require('expo-background-fetch');
+const TaskManager = isExpoGo() ? null : require('expo-task-manager');
+const BackgroundFetchStatus = BackgroundFetch?.BackgroundFetchStatus;
 
 const BACKGROUND_TASK_NAME = 'background-connect-task';
 const TASK_INTERVAL = 300; // 5 minutes minimum interval
@@ -10,7 +13,7 @@ const TASK_INTERVAL = 300; // 5 minutes minimum interval
 interface BackgroundTaskStatus {
   isRegistered: boolean;
   lastRun: number | null;
-  status: BackgroundFetchStatus | null;
+  status: BackgroundFetchStatusType | null;
 }
 
 class BackgroundTaskManager {
@@ -31,6 +34,11 @@ class BackgroundTaskManager {
 
   async initialize(): Promise<boolean> {
     try {
+      if (!BackgroundFetch || !TaskManager) {
+        console.warn('Background tasks are unavailable in Expo Go; use a development build.');
+        return false;
+      }
+
       if (this.isInitialized) {
         console.log('📱 Background task manager already initialized');
         return true;
@@ -58,6 +66,8 @@ class BackgroundTaskManager {
   }
 
   private defineBackgroundTask(): void {
+    if (!TaskManager || !BackgroundFetch) return;
+
     TaskManager.defineTask(BACKGROUND_TASK_NAME, async () => {
       try {
         console.log('🔄 Running background task...');
@@ -84,6 +94,8 @@ class BackgroundTaskManager {
 
   private async registerBackgroundTask(): Promise<boolean> {
     try {
+      if (!BackgroundFetch || !TaskManager) return false;
+
       const status = await BackgroundFetch.getStatusAsync();
       this.taskStatus.status = status;
       
@@ -117,6 +129,8 @@ class BackgroundTaskManager {
 
   async unregisterBackgroundTask(): Promise<void> {
     try {
+      if (!TaskManager || !BackgroundFetch) return;
+
       const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_TASK_NAME);
       
       if (isRegistered) {
@@ -133,6 +147,8 @@ class BackgroundTaskManager {
 
   async checkStatus(): Promise<BackgroundTaskStatus> {
     try {
+      if (!BackgroundFetch || !TaskManager) return { ...this.taskStatus };
+
       const status = await BackgroundFetch.getStatusAsync();
       const isRegistered = await TaskManager.isTaskRegisteredAsync(BACKGROUND_TASK_NAME);
       
@@ -169,6 +185,8 @@ class BackgroundTaskManager {
 
   async requestPermissions(): Promise<boolean> {
     try {
+      if (!BackgroundFetch) return false;
+
       if (Platform.OS === 'ios') {
         // iOS permissions are handled through Info.plist
         return true;
