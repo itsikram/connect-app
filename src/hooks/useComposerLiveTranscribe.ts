@@ -124,7 +124,7 @@ const openSpeechSocket = (socketUrl: string, onMessage: (event: any) => void) =>
   });
 
 const base64ToBytes = (base64: string) => {
-  const binary = global.atob(base64);
+  const binary = globalThis.atob(base64);
   const bytes = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i);
@@ -138,7 +138,7 @@ const bytesToBase64 = (bytes: Uint8Array) => {
   for (let i = 0; i < bytes.length; i += chunk) {
     binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
   }
-  return global.btoa(binary);
+  return globalThis.btoa(binary);
 };
 
 const stripWavHeader = (bytes: Uint8Array) => {
@@ -321,7 +321,7 @@ export default function useComposerLiveTranscribe({
           bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
             ? bytes.buffer
             : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-        ws.send(buffer);
+        ws.send(buffer as ArrayBuffer);
         return true;
       } catch {
         return sendJson({

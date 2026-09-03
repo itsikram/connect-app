@@ -53,7 +53,7 @@ async function configurePlayback(): Promise<void> {
 export async function configureInCallAudio(speakerOn: boolean): Promise<void> {
   try {
     await Audio.setAudioModeAsync({
-      allowsRecordingIOS: !speakerOn,
+      allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
       staysActiveInBackground: true,
       interruptionModeIOS: InterruptionModeIOS.DoNotMix,

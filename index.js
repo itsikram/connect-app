@@ -4,12 +4,17 @@
 
 import 'react-native-gesture-handler';
 import { AppRegistry, AppState, ErrorUtils, Platform } from 'react-native';
-import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
+import Constants from 'expo-constants';
 
 const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
+const isExpoGo =
+  Platform.OS === 'android' &&
+  (Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient');
+const Notifications = isExpoGo ? null : require('expo-notifications');
 
-Notifications.setNotificationHandler({
+if (Notifications) {
+  Notifications.setNotificationHandler({
   handleNotification: async (notification) => {
     const data = notification?.request?.content?.data || {};
     const isCall = data?.type === 'incoming_call';
@@ -35,7 +40,8 @@ Notifications.setNotificationHandler({
         : Notifications.AndroidNotificationPriority.HIGH,
     };
   },
-});
+  });
+}
 
 TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => {
   if (error) {
@@ -80,9 +86,11 @@ TaskManager.defineTask(BACKGROUND_NOTIFICATION_TASK, async ({ data, error }) => 
   }
 });
 
-Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((error) => {
-  console.warn('Failed to register background notification task', error);
-});
+if (Notifications) {
+  Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK).catch((error) => {
+    console.warn('Failed to register background notification task', error);
+  });
+}
 // react-native-reanimated removed for Expo compatibility
 
 // Global error handler for unhandled errors

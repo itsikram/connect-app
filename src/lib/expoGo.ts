@@ -9,6 +9,10 @@ export function isExpoGo(): boolean {
   );
 }
 
+export function isAndroidExpoGo(): boolean {
+  return Platform.OS === 'android' && isExpoGo();
+}
+
 /** OS notification sound. Expo Go cannot play custom bundled ringtone files. */
 export function getIncomingCallOsSound(ringtoneId?: unknown): string {
   if (isExpoGo()) return 'default';

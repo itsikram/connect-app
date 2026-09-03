@@ -10,6 +10,7 @@ import {
 import { configureIncomingCallChannels } from '../lib/incomingCallAlerts';
 import { handleIncomingCallNotificationAction, expoActionId, notifeeActionId } from '../lib/callNotificationActions';
 import { consumePendingIncomingCall, dispatchPendingIncomingCall } from '../lib/pendingIncomingCall';
+import { isAndroidExpoGo } from '../lib/expoGo';
 
 interface UseNotificationsProps {
   navigate: (screen: string, params?: any) => void;
@@ -46,6 +47,10 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
   }, []);
 
   useEffect(() => {
+    if (isAndroidExpoGo()) {
+      console.log('Android Expo Go detected: remote push notifications require an EAS development build');
+      return;
+    }
     if (isInitializedRef.current || initializationPromiseRef.current) {
       return;
     }

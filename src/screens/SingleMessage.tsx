@@ -75,6 +75,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { upsertConfirmedMessage, mergeHistoryWithLive, isConversationMessage } from '../utils/optimisticMessage';
 import { playSpeakPayload, stopSpokenPlayback } from '../lib/speakMessagePlayback';
 import { createPlayableVoiceSound, isAudioAttachmentUrl } from '../lib/voiceMessageAudio';
+import { getInfoAsync } from 'expo-file-system/legacy';
 import { hideTabBarForChat, restoreTabBarAfterChat } from '../lib/chatScreenChrome';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
@@ -562,6 +563,15 @@ const SingleMessage = () => {
             if (!uri.startsWith('file://') && !uri.startsWith('content://')) {
                 uri = `file://${uri}`;
             }
+            const fileInfo = await getInfoAsync(uri);
+            console.log('Voice recording file info:', {
+                exists: fileInfo.exists,
+                size: fileInfo.size,
+                uri,
+            });
+            if (!fileInfo.exists || !fileInfo.size || fileInfo.size < 1024) {
+                throw new Error('Voice recording file is empty or unavailable');
+            }
             const fileName = `voice-${Date.now()}.m4a`;
             const formData: any = new FormData();
             formData.append('file', {
@@ -570,16 +580,15 @@ const SingleMessage = () => {
                 type: 'audio/mp4',
             } as any);
 
-            const res = await api.post('/upload/file', formData, {
-                headers: { 'Content-Type': 'multipart/form-data' },
-            } as any);
+            const res = await api.post('/upload/file', formData);
             const voiceUrl = res?.data?.secure_url || res?.data?.url;
             if (voiceUrl) {
                 sendVoiceMessageRef.current?.(voiceUrl);
             } else {
                 Alert.alert('Upload failed', 'Could not upload voice message.');
             }
-        } catch (e) {
+        } catch (e: any) {
+            console.error('Voice upload failed:', e?.response?.status, e?.response?.data || e?.message || e);
             Alert.alert('Upload failed', 'Could not upload voice message.');
         } finally {
             setIsUploadingAudio(false);

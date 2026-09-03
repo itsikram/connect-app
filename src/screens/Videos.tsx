@@ -383,7 +383,6 @@ const VideoItem = ({
               </View>
             )}
           </View>
-
         </>
       ) : (
         <VideoPlaceholder text={t.text} muted={t.muted} />
@@ -391,7 +390,9 @@ const VideoItem = ({
 
       <View style={styles.sideActions}>
         <TouchableOpacity
-          onPress={() => navigation.navigate('SingleWatch', { watchId: post._id })}
+          onPress={() =>
+            navigation.navigate('SingleWatch', { watchId: post._id })
+          }
           activeOpacity={0.8}
           style={styles.sideAction}
         >
@@ -403,7 +404,9 @@ const VideoItem = ({
           >
             <Icon name="open-outline" size={20} color={t.chromeText} />
           </View>
-          <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Details</Text>
+          <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+            Details
+          </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -736,7 +739,8 @@ const Videos = () => {
 
   // Use global WatchPipContext to open a floating Pip player that persists across screens
   const { pip: currentPip, isPipActive, startPip } = useWatchPip();
-  const navigation = useNavigation<NavigationProp<Record<string, object | undefined>>>();
+  const navigation =
+    useNavigation<NavigationProp<Record<string, object | undefined>>>();
 
   const openGlobalPip = (post: Video) => {
     const uri = post?.videoUrl || post?.photos;
@@ -913,8 +917,6 @@ const Videos = () => {
           </View>
         }
       />
-
-
     </View>
   );
 };
@@ -992,7 +994,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 5,
     top: 0,
-    bottom: 100,
+    bottom: 150,
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
@@ -1030,6 +1032,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     paddingHorizontal: 12,
     paddingVertical: 10,
+    marginBottom: 25,
     shadowColor: '#000',
     shadowOpacity: 0.1,
     shadowRadius: 8,

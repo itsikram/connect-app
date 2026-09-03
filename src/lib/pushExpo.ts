@@ -9,11 +9,13 @@ import {
 } from './ringtoneAssets';
 import { getNativeOrExpoPushToken, PUSH_TOKEN_STORAGE_KEY } from './pushToken';
 import config from './config';
+import { isAndroidExpoGo } from './expoGo';
 
 const STORAGE_KEY = PUSH_TOKEN_STORAGE_KEY;
 
 // Initialize notifications
 export const initializeNotifications = async () => {
+  if (isAndroidExpoGo()) return;
   try {
     await Notifications.requestPermissionsAsync({
       ios: {
@@ -31,6 +33,7 @@ export const initializeNotifications = async () => {
 
 // Get notification token (Expo equivalent)
 export const getNotificationToken = async () => {
+  if (isAndroidExpoGo()) return null;
   try {
     const result = await getNativeOrExpoPushToken();
     if (!result?.token) return null;
@@ -43,6 +46,7 @@ export const getNotificationToken = async () => {
 };
 
 export const saveNotificationToken = async (token: string, previousToken?: string | null) => {
+  if (isAndroidExpoGo()) return;
   try {
     await AsyncStorage.setItem(STORAGE_KEY, token);
 

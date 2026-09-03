@@ -8,6 +8,15 @@ import { useNavigation } from '@react-navigation/native';
 import FriendCardSkeleton from '../components/skeleton/FriendCardSkeleton';
 import ProfileImage from '../components/ProfileImage';
 
+const uniqueById = (items: any[]) => {
+  const seen = new Set<string>();
+  return (Array.isArray(items) ? items : []).filter((item) => {
+    const id = String(item?._id || '');
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+};
 
 const Friends = () => {
   const navigation = useNavigation();
@@ -37,8 +46,8 @@ const Friends = () => {
         friendAPI.getFriendSuggestions(myProfile._id)
       ]);
       
-      setFriendRequests(friendRequestsRes.data);
-      setFriendSuggestions(friendSuggestionsRes.data);
+      setFriendRequests(uniqueById(friendRequestsRes.data));
+      setFriendSuggestions(uniqueById(friendSuggestionsRes.data));
     } catch (error) {
       console.error('Error fetching friend data:', error);
     } finally {

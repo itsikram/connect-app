@@ -67,10 +67,10 @@ import { WatchPipProvider } from './src/contexts/WatchPipContext';
 import WatchPipPlayer from './src/components/watch/WatchPipPlayer';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
-import NotificationSetup from './src/components/NotificationSetup';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
 import ExpoGoFallback from './src/components/ExpoGoFallback';
 import KeyboardSafeView from './src/components/KeyboardSafeView';
+import { isAndroidExpoGo } from './src/lib/expoGo';
 
 import * as Speech from 'expo-speech';
 import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
@@ -89,6 +89,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
+
+const ExpoGoSafeNotificationSetup = React.memo(() => {
+  const [Setup, setSetup] = React.useState<React.ComponentType | null>(null);
+
+  React.useEffect(() => {
+    if (isAndroidExpoGo()) return;
+    import('./src/components/NotificationSetup').then((module) => {
+      setSetup(() => module.default);
+    });
+  }, []);
+
+  return Setup ? <Setup /> : null;
+});
 
 
 // Stack navigator for Message tab
@@ -916,7 +929,7 @@ function AppContent() {
           <>
             <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
             {/* Initialize notifications */}
-            <NotificationSetup />
+            <ExpoGoSafeNotificationSetup />
             {/* Request required permissions on app start */}
             <PermissionsInitializer user={user} />
             {myProfile?._id ? (

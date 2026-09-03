@@ -30,10 +30,11 @@ class LegacySound {
     this.player = createAudioPlayer(source);
   }
 
-  static async createAsync(source: any, initialStatus: any = {}) {
+  static async createAsync(source: any, initialStatus: any = {}, onStatusUpdate?: (status: any) => void) {
     const sound = new LegacySound(source);
+    sound.setOnPlaybackStatusUpdate(onStatusUpdate || null);
     sound.applyStatus(initialStatus);
-    return { sound, status: await sound.getStatusAsync() };
+    return { sound, status: await sound.waitUntilLoaded() };
   }
 
   async loadAsync(source: any, initialStatus: any = {}) {
@@ -55,6 +56,37 @@ class LegacySound {
 
   async getStatusAsync() {
     return toLegacyStatus(this.player.currentStatus);
+  }
+
+  async waitUntilLoaded(timeoutMs = 15000) {
+    const currentStatus = this.player.currentStatus;
+    if (currentStatus?.isLoaded) return toLegacyStatus(currentStatus);
+    if (currentStatus?.error) throw new Error(currentStatus.error);
+
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout>;
+      const subscription = this.player.addListener('playbackStatusUpdate', (status: any) => {
+        if (settled) return;
+        if (status?.isLoaded) {
+          settled = true;
+          clearTimeout(timeout);
+          subscription.remove();
+          resolve(toLegacyStatus(status));
+        } else if (status?.error) {
+          settled = true;
+          clearTimeout(timeout);
+          subscription.remove();
+          reject(new Error(status.error));
+        }
+      });
+      timeout = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        subscription.remove();
+        reject(new Error('Timed out while loading audio'));
+      }, timeoutMs);
+    });
   }
 
   async playAsync() { this.player.play(); return this.getStatusAsync(); }
@@ -82,15 +114,22 @@ class LegacyRecording {
     this.recorder = new AudioModuleNative.AudioRecorder(options || RecordingPresets.HIGH_QUALITY);
   }
 
-  static async createAsync(options: any = RecordingPresets.HIGH_QUALITY) {
+  static async createAsync(options: any = RecordingPresets.HIGH_QUALITY, onStatusUpdate?: (status: any) => void, _progressUpdateInterval?: number) {
     const recording = new LegacyRecording(options);
+    recording.setOnRecordingStatusUpdate(onStatusUpdate || null);
     await recording.recorder.prepareToRecordAsync();
+    recording.recorder.record();
     return { recording, status: recording.getStatus() };
   }
 
   getStatus() {
     const status = this.recorder.getStatus();
-    return { ...status, isLoaded: true, isRecording: Boolean(status?.isRecording) };
+    return {
+      ...status,
+      isLoaded: true,
+      isRecording: Boolean(status?.isRecording),
+      uri: status?.url || this.recorder.uri,
+    };
   }
 
   async prepareToRecordAsync(options?: any) {
@@ -103,7 +142,9 @@ class LegacyRecording {
   getURI() { return this.recorder.uri; }
   setOnRecordingStatusUpdate(callback: ((status: any) => void) | null) {
     this.recorder.removeAllListeners?.('recordingStatusUpdate');
-    if (callback) this.recorder.addListener('recordingStatusUpdate', callback);
+    if (callback) {
+      this.recorder.addListener('recordingStatusUpdate', () => callback(this.getStatus()));
+    }
   }
 }
 
@@ -125,9 +166,9 @@ export const Audio = {
     interruptionMode: mode.interruptionMode || mode.interruptionModeAndroid || mode.interruptionModeIOS,
   }),
   IOSAudioQuality: AudioQuality,
-  AndroidOutputFormat: { MPEG4: 'mpeg4' },
+  AndroidOutputFormat: { MPEG4: 'mpeg4', AAC_ADTS: 'aac_adts' },
   AndroidAudioEncoder: { AAC: 'aac' },
-  IOSOutputFormat: { MPEG4AAC: 'aac ' },
+  IOSOutputFormat: { MPEG4AAC: 'aac ', LINEARPCM: 'lpcm' },
 };
 
 export const ResizeMode = { CONTAIN: 'contain', COVER: 'cover', STRETCH: 'fill' } as const;
@@ -171,3 +212,11 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
 
 export type AVPlaybackStatus = any;
 export { getRecordingPermissionsAsync, requestRecordingPermissionsAsync };
+
+export namespace Audio {
+  export type Sound = LegacySound;
+  export type Recording = LegacyRecording;
+  export type RecordingOptions = any;
+  export type AVPlaybackStatus = any;
+  export type AVPlaybackStatusToSet = any;
+}

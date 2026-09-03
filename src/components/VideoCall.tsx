@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TouchableOpacity,
+  Modal,
   Alert,
   StyleSheet,
   StatusBar,
@@ -523,93 +524,100 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   return (
     <>
-      <View
-        style={[showUi ? styles.engineFill : styles.hiddenEngine, { zIndex: showUi ? 9998 : 0 }]}
-        pointerEvents={showUi ? 'auto' : 'none'}
+      <Modal
+        visible={showUi}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        statusBarTranslucent
+        onRequestClose={endCall}
       >
-        <AgoraWebEngine
-          ref={engineRef}
-          visible={Boolean(isVideoCall || mediaActive || engineWarm)}
-          isAudio={false}
-          onEvent={handleEngineEvent}
-        />
-      </View>
-      {showUi ? (
-        <View style={styles.overlay} pointerEvents="box-none">
-          <StatusBar barStyle="light-content" />
-          {showRemotePlaceholder && (
-            <View style={styles.placeholder} pointerEvents="auto">
-              {callerProfilePic ? (
-                <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
-              ) : (
-                <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                  <Icon name="person" size={80} color="#fff" />
+        <View style={styles.videoScreen}>
+          <AgoraWebEngine
+            ref={engineRef}
+            visible={Boolean(isVideoCall || mediaActive || engineWarm)}
+            isAudio={false}
+            onEvent={handleEngineEvent}
+            style={styles.engineFill}
+          />
+          {showUi ? (
+            <View style={styles.overlay} pointerEvents="box-none">
+              <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+              {showRemotePlaceholder && (
+                <View style={styles.placeholder} pointerEvents="auto">
+                  {callerProfilePic ? (
+                    <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
+                  ) : (
+                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
+                      <Icon name="person" size={80} color="#fff" />
+                    </View>
+                  )}
+                  <Text style={styles.name}>{callerName || 'Unknown'}</Text>
+                  <Text style={styles.status}>{statusText}</Text>
                 </View>
               )}
-              <Text style={styles.name}>{callerName || 'Unknown'}</Text>
-              <Text style={styles.status}>{statusText}</Text>
-            </View>
-          )}
 
-          {callAccepted && (
-            <View style={styles.topBar} pointerEvents="box-none">
-              <Text style={styles.topTitle}>{callerName || 'Video call'}</Text>
-              <Text style={styles.topStatus}>{statusText}</Text>
-            </View>
-          )}
+              {callAccepted && (
+                <View style={styles.topBar} pointerEvents="box-none">
+                  <Text style={styles.topTitle}>{callerName || 'Video call'}</Text>
+                  <Text style={styles.topStatus}>{statusText}</Text>
+                </View>
+              )}
 
-          <View style={styles.controls}>
-            {callAccepted && (
-              <>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: isMuted ? '#666' : '#29B1A9' }]} onPress={toggleMute}>
-                  <Icon name={isMuted ? 'mic-off' : 'mic'} size={24} color="#fff" />
+              <View style={styles.controls}>
+                {callAccepted && (
+                  <>
+                    <TouchableOpacity style={[styles.btn, { backgroundColor: isMuted ? '#666' : '#29B1A9' }]} onPress={toggleMute}>
+                      <Icon name={isMuted ? 'mic-off' : 'mic'} size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.btn, { backgroundColor: isCameraOn ? '#29B1A9' : '#666' }]} onPress={toggleCamera}>
+                      <Icon name={isCameraOn ? 'videocam' : 'videocam-off'} size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={switchCamera}>
+                      <Icon name="flip-camera-ios" size={24} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={minimizeVideoCall}>
+                      <Icon name="expand-more" size={24} color="#fff" />
+                    </TouchableOpacity>
+                  </>
+                )}
+                {receivingCall && !callAccepted && (
+                  <TouchableOpacity style={[styles.btn, { backgroundColor: '#34C759' }]} onPress={answerCall}>
+                    <Icon name="videocam" size={26} color="#fff" />
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={[styles.btn, { backgroundColor: '#E53935' }]} onPress={endCall}>
+                  <Icon name="call-end" size={26} color="#fff" />
                 </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: isCameraOn ? '#29B1A9' : '#666' }]} onPress={toggleCamera}>
-                  <Icon name={isCameraOn ? 'videocam' : 'videocam-off'} size={24} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={switchCamera}>
-                  <Icon name="flip-camera-ios" size={24} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={minimizeVideoCall}>
-                  <Icon name="expand-more" size={24} color="#fff" />
-                </TouchableOpacity>
-              </>
-            )}
-            {receivingCall && !callAccepted && (
-              <TouchableOpacity style={[styles.btn, { backgroundColor: '#34C759' }]} onPress={answerCall}>
-                <Icon name="videocam" size={26} color="#fff" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#E53935' }]} onPress={endCall}>
-              <Icon name="call-end" size={26} color="#fff" />
-            </TouchableOpacity>
-          </View>
+              </View>
+            </View>
+          ) : null}
         </View>
-      ) : null}
+      </Modal>
     </>
   );
 };
 
 const styles = StyleSheet.create({
+  videoScreen: { flex: 1, backgroundColor: '#0b0f17' },
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
     elevation: 9999,
     backgroundColor: 'transparent',
-    paddingTop: 50,
+    paddingTop: 48,
   },
-  engineFill: { ...StyleSheet.absoluteFillObject, backgroundColor: '#0b0f17' },
+  engineFill: { ...StyleSheet.absoluteFill, backgroundColor: '#0b0f17' },
   hiddenEngine: { position: 'absolute', width: 2, height: 2, opacity: 0.01, overflow: 'hidden' },
-  container: { flex: 1, backgroundColor: '#0b0f17' },
   placeholder: {
-    position: 'absolute',
-    top: 50,
+    ...StyleSheet.absoluteFill,
+    top: 0,
     left: 0,
     right: 0,
     bottom: 0,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#0b0f17',
+    zIndex: 1,
   },
   avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#29B1A9' },
   avatarPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#222' },
@@ -620,13 +628,14 @@ const styles = StyleSheet.create({
   topStatus: { color: '#ddd', marginTop: 4 },
   controls: {
     position: 'absolute',
-    bottom: 36,
+    bottom: 40,
     left: 0,
     right: 0,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     gap: 16,
+    zIndex: 2,
   },
   btn: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
 });

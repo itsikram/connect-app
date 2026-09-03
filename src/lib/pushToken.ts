@@ -2,6 +2,7 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { isAndroidExpoGo } from './expoGo';
 
 export const PUSH_TOKEN_STORAGE_KEY = 'fcmToken';
 
@@ -29,6 +30,7 @@ export async function getNativeOrExpoPushToken(): Promise<{
   token: string;
   previousToken: string | null;
 } | null> {
+  if (isAndroidExpoGo()) return null;
   const previousToken = await AsyncStorage.getItem(PUSH_TOKEN_STORAGE_KEY);
   const runningInExpoGo =
     Constants.appOwnership === 'expo' || Constants.executionEnvironment === 'storeClient';
