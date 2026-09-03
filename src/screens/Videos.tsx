@@ -26,6 +26,7 @@ import { useNavigation, NavigationProp } from '@react-navigation/native';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import Icon from 'react-native-vector-icons/Ionicons';
+import VoiceTextInput from '../components/VoiceTextInput';
 import { Video as ExpoVideo, ResizeMode } from '../lib/avCompat';
 import { useDispatch, useSelector } from 'react-redux';
 import api, { profileAPI } from '../lib/api';
@@ -616,7 +617,7 @@ const VideoItem = ({
             <Text style={[styles.sheetTitle, { color: t.chromeText }]}>
               Comment
             </Text>
-            <TextInput
+            <VoiceTextInput
               value={commentText}
               onChangeText={setCommentText}
               placeholder="Write a comment…"
@@ -687,7 +688,7 @@ const VideoItem = ({
             <Text style={[styles.sheetTitle, { color: t.chromeText }]}>
               Share video
             </Text>
-            <TextInput
+            <VoiceTextInput
               value={shareCap}
               onChangeText={setShareCap}
               placeholder="Say something about this video"

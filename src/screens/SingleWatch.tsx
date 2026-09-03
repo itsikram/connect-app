@@ -24,6 +24,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import moment from 'moment';
 import api, { profileAPI } from '../lib/api';
 import UserPP from '../components/UserPP';
+import VoiceTextInput from '../components/VoiceTextInput';
 import { RootState } from '../store';
 import { saveWatchVideoFromUrl } from '../lib/saveWatchVideo';
 import { subscribeWatchDownloads, WatchDownloadJob } from '../utils/watchDownloadProgress';
@@ -574,7 +575,7 @@ const SingleWatch = () => {
 
         <View style={[styles.composer, { backgroundColor: t.surface, borderTopColor: t.border }]}>
           <UserPP size={34} image={myProfile?.profilePic || ''} isActive={false} />
-          <TextInput
+          <VoiceTextInput
             ref={commentInputRef}
             value={commentText}
             onChangeText={setCommentText}
@@ -605,7 +606,7 @@ const SingleWatch = () => {
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setShareOpen(false)} />
           <View style={[styles.shareSheet, { backgroundColor: t.surface, borderColor: t.border }]}>
             <Text style={[styles.shareTitle, { color: t.chromeText }]}>Share video</Text>
-            <TextInput
+            <VoiceTextInput
               value={shareCap}
               onChangeText={setShareCap}
               placeholder="Say something about this video"

@@ -14,6 +14,7 @@ import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
 import type { FriendUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
 import KeyboardSafeView from '../../components/KeyboardSafeView';
+import VoiceTextInput from '../../components/VoiceTextInput';
 
 interface PlayerEditorModalProps {
   show: boolean;
@@ -110,7 +111,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
               </View>
             </View>
 
-            <TextInput
+            <VoiceTextInput
               style={styles.field}
               value={editName}
               onChangeText={onNameChange}
@@ -118,7 +119,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
               placeholderTextColor={THEME.muted}
               autoCapitalize="words"
             />
-            <TextInput
+            <VoiceTextInput
               style={styles.field}
               value={editAvatarUrl}
               onChangeText={onAvatarUrlChange}
@@ -134,7 +135,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
             <View style={styles.divider}>
               <Text style={styles.sectionTitle}>Pick a user from Connect</Text>
               <View style={styles.search}>
-                <TextInput
+                <VoiceTextInput
                   style={styles.searchInput}
                   placeholder="Search users by name..."
                   placeholderTextColor={THEME.muted}

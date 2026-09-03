@@ -17,6 +17,7 @@ import { userAPI, debugAuth } from '../lib/api';
 import { setProfile } from '../reducers/profileReducer';
 import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
+import VoiceTextInput from '../components/VoiceTextInput';
 import { useNavigation } from '@react-navigation/native';
 import { hideTabBarForChat } from '../lib/chatScreenChrome';
 import { useTheme } from '../contexts/ThemeContext';
@@ -675,7 +676,7 @@ const Message = React.memo(() => {
         ]}
       >
         <Icon name="search" size={20} color={themeColors.text.tertiary} />
-        <TextInput
+        <VoiceTextInput
           ref={searchInputRef}
           placeholder="Search conversations"
           placeholderTextColor={themeColors.text.tertiary}

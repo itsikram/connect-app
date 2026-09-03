@@ -82,7 +82,7 @@ const WatchSkeleton: React.FC<WatchSkeletonProps> = ({ showBack = false, height,
         <SkeletonBlock
           width={SCREEN_WIDTH}
           height={videoHeight}
-          borderRadius={0}
+          borderRadius={18}
           style={styles.video}
         />
         <View pointerEvents="none" style={styles.pauseToggle}>
@@ -145,6 +145,7 @@ const styles = StyleSheet.create({
   video: {
     alignSelf: 'center',
     marginBottom: 120,
+    borderRadius: 18,
   },
   pauseToggle: {
     position: 'absolute',

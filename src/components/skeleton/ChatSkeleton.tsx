@@ -73,7 +73,7 @@ const ChatBubbleSkeletonRow: React.FC<{ index: number; theme?: SkeletonColors }>
     return (
         <View
             style={{
-                marginBottom: 8,
+                marginBottom: 12,
                 marginHorizontal: 16,
                 flexDirection: 'row',
                 alignItems: 'flex-end',
@@ -85,8 +85,8 @@ const ChatBubbleSkeletonRow: React.FC<{ index: number; theme?: SkeletonColors }>
                 <View
                     style={{
                         backgroundColor: bubbleBg,
-                        paddingHorizontal: 12,
-                        paddingVertical: 8,
+                        paddingHorizontal: 14,
+                        paddingVertical: 10,
                         borderRadius: 18,
                         borderBottomLeftRadius: isSent ? 18 : 4,
                         borderBottomRightRadius: isSent ? 4 : 18,
@@ -103,7 +103,7 @@ const ChatBubbleSkeletonRow: React.FC<{ index: number; theme?: SkeletonColors }>
                                 borderLeftWidth: 3,
                                 borderLeftColor: 'rgba(255,255,255,0.35)',
                                 backgroundColor: 'rgba(0,0,0,0.18)',
-                                borderRadius: 8,
+                                borderRadius: 10,
                             }}
                         >
                             <SkeletonBlock width={72} height={8} borderRadius={4} style={{ marginBottom: 6 }} />
@@ -202,7 +202,7 @@ export const ChatPageSkeleton: React.FC<{
     showComposer?: boolean;
 }> = ({ count = 14, theme, showHeader = true, showComposer = true }) => {
     return (
-        <View style={{ flex: 1 }}>
+        <View style={{ flex: 1, backgroundColor: theme?.overlay || 'transparent' }}>
             {showHeader ? <ChatHeaderSkeleton theme={theme} /> : null}
             <ChatBubblesSkeleton count={count} theme={theme} />
             {showComposer ? <ChatComposerSkeleton theme={theme} /> : null}

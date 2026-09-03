@@ -33,6 +33,7 @@ import { useLudoGame } from '../contexts/LudoGameContext';
 import { useSocket } from '../contexts/SocketContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Logo from '../components/Logo';
+import VoiceTextInput from '../components/VoiceTextInput';
 // react-native-particles removed for Expo compatibility
 import api, { friendAPI } from '../lib/api';
 import config from '../lib/config';
@@ -2440,7 +2441,7 @@ const LudoGameSVG = () => {
                 <View style={{ marginTop: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
                     <Icon name="search" size={18} color="#FFD700" />
-                    <TextInput
+                    <VoiceTextInput
                       placeholder="Search friends by name..."
                       placeholderTextColor="#B0B0B0"
                       value={friendSearchQuery}
@@ -3361,4 +3362,3 @@ const styles = StyleSheet.create({
 });
 
 export default LudoGameSVG;
-

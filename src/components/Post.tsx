@@ -9,6 +9,7 @@ import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
+import VoiceTextInput from './VoiceTextInput';
 import config from '../lib/config';
 import { useFeedTokens } from '../theme/feedTokens';
 import {
@@ -748,7 +749,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 </TouchableOpacity>
               </View>
               <View style={[styles.fbCommentField, { backgroundColor: inputBg, borderColor }]}>
-                <TextInput
+                <VoiceTextInput
                   style={[styles.fbFieldText, { color: inputText }, isPostingReply ? { opacity: 0.6 } : null]}
                   placeholder={isPostingReply ? 'Posting reply...' : `Reply to ${commentAuthorName(c)}`}
                   placeholderTextColor={subTextColor}
@@ -1142,7 +1143,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           <View style={styles.commentInputRow}>
             <UserPP image={myProfile?.profilePic || default_pp_src} isActive={false} size={34} />
             <View style={[styles.fbCommentField, styles.fbComposerField, { backgroundColor: inputBg, borderColor }]}>
-              <TextInput
+              <VoiceTextInput
                 ref={commentInputRef}
                 style={[styles.fbFieldText, { color: inputText }, isPostingComment ? { opacity: 0.6 } : null]}
                 placeholder={isPostingComment ? 'Posting comment...' : 'Write a public comment…'}
@@ -1172,7 +1173,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         <View style={styles.modalOverlay}>
           <View style={[styles.shareModal, { backgroundColor: cardBg }]}>
             <Text style={{ color: textColor }}>Share Post</Text>
-            <TextInput
+            <VoiceTextInput
               style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
               placeholder="What's on your mind?"
               placeholderTextColor={subTextColor}

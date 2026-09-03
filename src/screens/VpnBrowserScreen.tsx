@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, StyleSheet, StatusBar, Platform, BackHandler, TextInput, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import VoiceTextInput from '../components/VoiceTextInput';
 import FloatingBackButton from '../components/FloatingBackButton';
 import WebView from 'react-native-webview';
 
@@ -54,7 +55,7 @@ const VpnBrowserScreen = () => {
       <View style={[styles.controlsContainer, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.surface.secondary }]}>
         <View style={styles.row}>
           <Text style={[styles.label, { color: themeColors.text.secondary }]}>URL</Text>
-          <TextInput
+          <VoiceTextInput
             style={[styles.input, { color: themeColors.text.primary, borderColor: themeColors.surface.secondary }]}
             placeholder="Enter URL"
             placeholderTextColor={themeColors.text.secondary + '99'}
@@ -188,4 +189,3 @@ const styles = StyleSheet.create({
 });
 
 export default VpnBrowserScreen;
-

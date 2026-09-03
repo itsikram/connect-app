@@ -4,12 +4,12 @@ import {
   StyleSheet,
   Switch,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../contexts/ThemeContext';
+import VoiceTextInput from '../VoiceTextInput';
 
 export const SettingsSectionHeader = ({
   title,
@@ -92,7 +92,7 @@ export const SettingsInput = ({
       ) : icon ? (
         <Icon name={icon} size={18} color={colors.gray[400]} style={styles.inputIcon} />
       ) : null}
-      <TextInput
+      <VoiceTextInput
         style={[styles.input, { color: colors.text.primary }]}
         value={value}
         onChangeText={onChangeText}
@@ -102,6 +102,7 @@ export const SettingsInput = ({
         editable={editable}
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
+        voiceEnabled={!secureTextEntry && keyboardType === 'default'}
       />
     </View>
   );

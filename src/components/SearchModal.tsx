@@ -22,6 +22,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { getColorWithOpacity } from '../theme/colors';
 import api from '../lib/api';
 import UserPP from './UserPP';
+import VoiceTextInput from './VoiceTextInput';
 
 interface SearchModalProps {
   visible: boolean;
@@ -517,7 +518,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
               </TouchableOpacity>
 
               <View style={styles.inputWrap}>
-                <TextInput
+                <VoiceTextInput
                   placeholder="Search"
                   placeholderTextColor={overlay(0.45)}
                   value={query}

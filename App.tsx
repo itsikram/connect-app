@@ -29,6 +29,7 @@ import Message from './src/screens/Message';
 import Menu from './src/screens/Menu';
 import YouTubeScreen from './src/screens/YouTubeScreen';
 import Settings from './src/screens/Settings';
+import Tasks from './src/screens/Tasks';
 import MyProfile from './src/screens/MyProfile';
 import Friends from './src/screens/Friends';
 // Redux Provider and store
@@ -262,6 +263,7 @@ function MenuStack() {
       <Stack.Screen name="FriendProfile" component={FriendProfile} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="Settings" component={Settings} />
+      <Stack.Screen name="Tasks" component={Tasks} />
       <Stack.Screen name="VideoLibrary">
         {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
       </Stack.Screen>

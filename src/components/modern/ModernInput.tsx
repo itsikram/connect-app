@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import VoiceTextInput from '../VoiceTextInput';
 
 interface ModernInputProps extends TextInputProps {
   label?: string;
@@ -165,7 +166,7 @@ const ModernInput = forwardRef<TextInput, ModernInputProps>(({
           />
         )}
         
-        <TextInput
+        <VoiceTextInput
           ref={ref}
           style={[getInputStyle(), inputStyle]}
           placeholderTextColor={colors.text.tertiary}

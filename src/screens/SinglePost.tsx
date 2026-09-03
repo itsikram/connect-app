@@ -19,6 +19,7 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';
+import VoiceTextInput from '../components/VoiceTextInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type RootStackParamList = {
@@ -1517,7 +1518,7 @@ const SinglePost = () => {
                         isActive={false}
                     />
                     <View style={[styles.inputContainer, { borderRadius: 20 }]}>
-                        <TextInput
+                        <VoiceTextInput
                             value={replyText}
                             onChangeText={setReplyText}
                             placeholder={`Reply to ${commentAuthorName(replyingTo)}...`}
@@ -1556,7 +1557,7 @@ const SinglePost = () => {
                         isActive={false}
                     />
                     <View style={styles.inputContainer}>
-                        <TextInput
+                        <VoiceTextInput
                             ref={commentInputRef}
                             value={commentText}
                             onChangeText={setCommentText}

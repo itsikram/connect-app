@@ -11,6 +11,7 @@ import {
   Keyboard,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import VoiceTextInput from '../VoiceTextInput';
 import moment from 'moment';
 import api, { storyAPI } from '../../lib/api';
 import ProfileImage from '../ProfileImage';
@@ -355,7 +356,7 @@ const StoryEngagementSheet: React.FC<StoryEngagementSheetProps> = ({
             ) : null}
             <View style={styles.composerRow}>
               <UserPP image={myProfile?.profilePic} size={34} />
-              <TextInput
+              <VoiceTextInput
                 style={styles.input}
                 value={draft}
                 onChangeText={setDraft}

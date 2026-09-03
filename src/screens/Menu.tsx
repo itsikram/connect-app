@@ -19,6 +19,7 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import VoiceTextInput from '../components/VoiceTextInput';
 import AppGrid from '../components/AppGrid';
 import ProfileImage from '../components/ProfileImage';
 import { sampleApps, AppItem } from '../data/appData';
@@ -170,6 +171,7 @@ const Menu = () => {
     { id: 'friends', label: 'Friends', hint: 'People you know', icon: 'people', color: '#2196F3', onPress: () => (navigation as any).navigate('Friends') },
     { id: 'messages', label: 'Messages', hint: 'Chats & calls', icon: 'chat', color: '#9C27B0', onPress: () => (navigation as any).navigate('Message') },
     { id: 'downloads', label: 'Downloads', hint: 'Saved videos', icon: 'download', color: '#009688', onPress: () => (navigation as any).navigate('Menu', { screen: 'Downloads' }) },
+    { id: 'tasks', label: 'Tasks', hint: 'Keep track of work', icon: 'checklist', color: '#10B981', onPress: () => (navigation as any).navigate('Menu', { screen: 'Tasks' }) },
   ];
 
   const showComingSoonSection = comingSoonApps.length > 0 && (showComingSoon || Boolean(normalizedQuery));
@@ -200,7 +202,7 @@ const Menu = () => {
           ]}
         >
           <Icon name="search" size={20} color={themeColors.text.tertiary} />
-          <TextInput
+          <VoiceTextInput
             value={query}
             onChangeText={setQuery}
             placeholder="Search apps"

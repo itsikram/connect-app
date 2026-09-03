@@ -23,6 +23,7 @@ import api from '../lib/api';
 import { RootState } from '../store';
 import CacheManager from '../utils/cacheManager';
 import { emitPostUpdated } from '../utils/postEvents';
+import VoiceTextInput from '../components/VoiceTextInput';
 import { AUDIENCE_OPTIONS, getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
 
@@ -705,7 +706,7 @@ const EditPost = () => {
                     <View style={styles.formSection}>
                         <Text style={styles.sectionTitle}>What's on your mind?</Text>
                         <View style={styles.inputContainer}>
-                            <TextInput
+                            <VoiceTextInput
                                 style={[styles.textInput, styles.multilineInput]}
                                 value={caption}
                                 onChangeText={setCaption}
@@ -729,7 +730,7 @@ const EditPost = () => {
                     <View style={styles.formSection}>
                         <Text style={styles.sectionTitle}>How are you feeling?</Text>
                         <View style={styles.inputContainer}>
-                            <TextInput
+                            <VoiceTextInput
                                 style={styles.textInput}
                                 value={feelings}
                                 onChangeText={setFeelings}
@@ -762,7 +763,7 @@ const EditPost = () => {
                     <View style={styles.formSection}>
                         <Text style={styles.sectionTitle}>Where are you?</Text>
                         <View style={styles.inputContainer}>
-                            <TextInput
+                            <VoiceTextInput
                                 style={styles.textInput}
                                 value={location}
                                 onChangeText={setLocation}

@@ -30,6 +30,7 @@ import { RootState } from '../store';
 import { useWatchPipOptional } from '../contexts/WatchPipContext';
 import { buildLibraryPipPayloadFromVideo } from '../utils/watchPipHelpers';
 import { useWatchTokens } from '../theme/watchTokens';
+import VoiceTextInput from '../components/VoiceTextInput';
 import { subscribeWatchDownloads } from '../utils/watchDownloadProgress';
 import {
   configurePipAudioMode,
@@ -1506,7 +1507,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
               ))}
             </ScrollView>
 
-            <TextInput
+            <VoiceTextInput
               style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               placeholder="Search library…"
               placeholderTextColor={t.placeholder}
@@ -1622,7 +1623,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
           <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
             <Text style={[styles.cardTitle, { color: t.text }]}>Add custom video</Text>
             <Text style={[styles.inputLabel, { color: t.muted }]}>Video title (optional)</Text>
-            <TextInput
+            <VoiceTextInput
               style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               placeholder="Enter video title"
               placeholderTextColor={t.placeholder}
@@ -1630,7 +1631,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
               onChangeText={setVideoTitle}
             />
             <Text style={[styles.inputLabel, { color: t.muted }]}>Video URL</Text>
-            <TextInput
+            <VoiceTextInput
               style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
               placeholder="https://example.com/video.mp4"
               placeholderTextColor={t.placeholder}

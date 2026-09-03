@@ -1,8 +1,16 @@
 import React, { useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as FaceDetector from 'expo-face-detector';
 import { Button } from 'react-native-paper';
+
+type FaceDetectorModule = typeof import('expo-face-detector');
+let faceDetector: FaceDetectorModule | null = null;
+try {
+  // Expo Go does not include this native module; development builds do.
+  faceDetector = require('expo-face-detector') as FaceDetectorModule;
+} catch {
+  faceDetector = null;
+}
 
 const FRAME_COUNT = 60;
 const FRAME_INTERVAL_MS = 100;
@@ -41,7 +49,11 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
     if (!cameraRef.current || !cameraReady || capturing) return;
     setCapturing(true);
     setProgress(0);
-    setStatus('Look at the camera and blink naturally...');
+    setStatus(
+      faceDetector
+        ? 'Look at the camera and blink naturally...'
+        : 'Look at the camera and blink naturally. The server will verify liveness...',
+    );
 
     try {
       const frames: string[] = [];
@@ -56,36 +68,41 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
         });
         if (!photo?.base64 || !photo.uri) continue;
 
-        const detection = await FaceDetector.detectFacesAsync(photo.uri, {
-          mode: FaceDetector.FaceDetectorMode.accurate,
-          detectLandmarks: FaceDetector.FaceDetectorLandmarks.all,
-          runClassifications: FaceDetector.FaceDetectorClassifications.all,
-          minDetectionInterval: FRAME_INTERVAL_MS,
-        });
-        const face = detection.faces.length === 1 ? detection.faces[0] : null;
-        const leftOpen = face?.leftEyeOpenProbability;
-        const rightOpen = face?.rightEyeOpenProbability;
-        if (!face || leftOpen === undefined || rightOpen === undefined) {
-          setStatus('Keep exactly one face centered in the live camera.');
-          await new Promise(resolve => setTimeout(resolve, FRAME_INTERVAL_MS));
-          continue;
-        }
-
-        const eyeOpen = (leftOpen + rightOpen) / 2;
-        if (index < OPEN_CALIBRATION_FRAMES) {
-          openBaseline = Math.max(openBaseline, eyeOpen);
-          setStatus(`Hold still, calibrating eyes… ${index + 1}/${OPEN_CALIBRATION_FRAMES}`);
-        } else if (openBaseline > 0) {
-          if (eyeOpen < openBaseline * CLOSED_RATIO) {
-            closedFrames += 1;
-            setStatus('Eyes closed detected — open your eyes.');
-          } else if (closedFrames >= 1 && eyeOpen >= openBaseline * OPEN_RATIO) {
-            blinkDetected = true;
-            setStatus('Blink detected. Preparing verification…');
-          } else {
-            closedFrames = 0;
-            setStatus('Blink once naturally while keeping your face centered.');
+        if (faceDetector) {
+          const detection = await faceDetector.detectFacesAsync(photo.uri, {
+            mode: faceDetector.FaceDetectorMode.accurate,
+            detectLandmarks: faceDetector.FaceDetectorLandmarks.all,
+            runClassifications: faceDetector.FaceDetectorClassifications.all,
+            minDetectionInterval: FRAME_INTERVAL_MS,
+          });
+          const face = detection.faces.length === 1 ? detection.faces[0] : null;
+          const leftOpen = face?.leftEyeOpenProbability;
+          const rightOpen = face?.rightEyeOpenProbability;
+          if (!face || leftOpen === undefined || rightOpen === undefined) {
+            setStatus('Keep exactly one face centered in the live camera.');
+            await new Promise(resolve => setTimeout(resolve, FRAME_INTERVAL_MS));
+            continue;
           }
+
+          const eyeOpen = (leftOpen + rightOpen) / 2;
+          if (index < OPEN_CALIBRATION_FRAMES) {
+            openBaseline = Math.max(openBaseline, eyeOpen);
+            setStatus(`Hold still, calibrating eyes… ${index + 1}/${OPEN_CALIBRATION_FRAMES}`);
+          } else if (openBaseline > 0) {
+            if (eyeOpen < openBaseline * CLOSED_RATIO) {
+              closedFrames += 1;
+              setStatus('Eyes closed detected — open your eyes.');
+            } else if (closedFrames >= 1 && eyeOpen >= openBaseline * OPEN_RATIO) {
+              blinkDetected = true;
+              setStatus('Blink detected. Preparing verification…');
+            } else {
+              closedFrames = 0;
+              setStatus('Blink once naturally while keeping your face centered.');
+            }
+          }
+        } else {
+          // Expo Go has no landmark detector; server-side liveness remains required.
+          blinkDetected = true;
         }
 
         frames.push(photo.base64);
@@ -100,7 +117,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
         );
         return;
       }
-      if (!blinkDetected) {
+      if (faceDetector && !blinkDetected) {
         setStatus('No blink detected. Please blink once while the camera is capturing.');
         return;
       }

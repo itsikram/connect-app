@@ -2,7 +2,10 @@ import api from '../lib/api';
 import { AgentMessage, AgentStreamEvent } from '../types/aiAgent';
 
 const SYSTEM_PROMPT =
-  "You are Connect's mobile AI Agent. Reply in the user's language, be concise, never invent app data, and ask one clarification when needed.";
+  "You are Connect's mobile AI Agent. Reply in the user's language, be concise, never invent app data, and ask one clarification when needed. " +
+  'When the user requests an app action, return ONLY strict JSON with this shape: ' +
+  '{"reply":"optional text","actions":[{"action":"one allowlisted action","messageText":"optional"}],"ask":{"question":"optional"}}. ' +
+  'Never use markdown or add unknown fields. Only request actions that are available in the mobile app.';
 let providerConfig: { provider: string; model: string } | null = null;
 
 const toPayloadMessages = (messages: AgentMessage[]) =>

@@ -14,6 +14,7 @@ import { COLORS, PLAYER_LETTERS, THEME } from './constants';
 import type { FriendUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
 import KeyboardSafeView from '../../components/KeyboardSafeView';
+import VoiceTextInput from '../../components/VoiceTextInput';
 
 interface PlayerSelectionModalProps {
   show: boolean;
@@ -153,7 +154,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                   {onlineMode ? 'Invite Friends' : 'Add Friends (optional)'}
                 </Text>
                 <View style={styles.search}>
-                  <TextInput
+                  <VoiceTextInput
                     style={styles.searchInput}
                     placeholder="Search friends by name..."
                     placeholderTextColor={THEME.muted}

@@ -11,6 +11,7 @@ import { useModernToast } from '../contexts/ModernToastContext';
 import ProfileImage from './ProfileImage';
 import { useFeedTokens } from '../theme/feedTokens';
 import KeyboardSafeView from './KeyboardSafeView';
+import VoiceTextInput from './VoiceTextInput';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -352,7 +353,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 </View>
                 <View style={styles.locationContainer}>
                   <Text style={[styles.label, { color: textColor }]}>Location:</Text>
-                  <TextInput
+                  <VoiceTextInput
                     style={[styles.input, { backgroundColor: inputBg, color: inputText, borderColor }]}
                     placeholder="Location..."
                     placeholderTextColor={isDarkMode ? themeColors.gray[400] : themeColors.gray[600]}
@@ -373,7 +374,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   </Text>
                 </TouchableOpacity>
               </View>
-              <TextInput
+              <VoiceTextInput
                 style={[styles.captionInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder={textInputPlaceholder}
                 placeholderTextColor={isDarkMode ? themeColors.gray[400] : themeColors.gray[600]}
