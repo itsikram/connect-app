@@ -103,12 +103,14 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         ? dataRecord.friends
         : (Array.isArray(dataRecord.data) ? dataRecord.data : []));
     const needle = query.trim().toLowerCase();
-    const match = friends.find((friend: Record<string, unknown>) => {
+    const matches = friends.filter((friend: Record<string, unknown>) => {
       const fields = [friend.fullName, friend.username, friend.email, friend.name]
         .filter(value => typeof value === 'string')
         .map(value => String(value).toLowerCase());
       return fields.some(value => value === needle || value.includes(needle));
     });
+    if (matches.length !== 1) return null;
+    const match = matches[0] as Record<string, unknown>;
     if (!match?._id) return null;
     return { id: String(match._id), name: String(match.fullName || match.username || query) };
   }, [profile]);
