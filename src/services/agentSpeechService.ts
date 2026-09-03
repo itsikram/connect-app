@@ -132,10 +132,24 @@ export function createAgentSpeechController(
     void drain(generation);
   };
 
+  const waitForIdle = () =>
+    new Promise<void>(resolve => {
+      const check = () => {
+        if (!draining && !pending) {
+          resolve();
+          return;
+        }
+        setTimeout(check, 50);
+      };
+      check();
+    });
+
   const finish = () => {
-    if (!pending) return;
-    flushRequested = true;
-    void drain(generation);
+    if (pending) {
+      flushRequested = true;
+      void drain(generation);
+    }
+    return waitForIdle();
   };
 
   return { update, finish, stop };

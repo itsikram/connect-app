@@ -2741,13 +2741,18 @@ const SingleMessage = () => {
             return;
         }
 
-        playSpeakPayload({
+        const friendId = friend?._id;
+        if (!friendId) {
+            console.warn('Speak failed: friend has no id');
+            return;
+        }
+
+        emit('speak_message', {
             msgId: String(msgId),
+            friendId: String(friendId),
             message: msg.message || '',
             attachment: typeof msg.attachment === 'string' ? msg.attachment : '',
             messageType: msg.messageType || '',
-        }).catch((error) => {
-            console.error('Speak failed:', error);
         });
     };
 

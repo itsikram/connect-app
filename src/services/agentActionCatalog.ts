@@ -17,6 +17,9 @@ export type AgentActionName =
   | 'UNBLOCK_USER'
   | 'OPEN_SETTINGS'
   | 'CHANGE_SETTING'
+  | 'CREATE_TASK'
+  | 'VIEW_TASKS'
+  | 'UPDATE_TASK'
   | 'OPEN_LUDO'
   | 'INVITE_LUDO_PLAYER'
   | 'navigate_home'
@@ -97,6 +100,9 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['UNBLOCK_USER', 'Unblock user', true],
   ['OPEN_SETTINGS', 'Open settings'],
   ['CHANGE_SETTING', 'Change setting', true],
+  ['CREATE_TASK', 'Create task', true],
+  ['VIEW_TASKS', 'View tasks'],
+  ['UPDATE_TASK', 'Edit task', true],
   ['OPEN_LUDO', 'Open Ludo'],
   ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true],
   ['navigate_home', 'Open Home'],
@@ -155,6 +161,12 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   UNFOLLOW: 'UNFOLLOW_USER',
   BLOCK: 'BLOCK_USER',
   UNBLOCK: 'UNBLOCK_USER',
+  ADD_TASK: 'CREATE_TASK',
+  CREATE_TODO: 'CREATE_TASK',
+  LIST_TASKS: 'VIEW_TASKS',
+  SHOW_TASKS: 'VIEW_TASKS',
+  EDIT_TASK: 'UPDATE_TASK',
+  COMPLETE_TASK: 'UPDATE_TASK',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -171,6 +183,9 @@ const allowedActionKeys = new Set([
   'targetRoute',
   'searchQuery',
   'messageText',
+  'taskId',
+  'taskQuery',
+  'taskText',
   'id',
   'type',
   'status',
@@ -329,7 +344,7 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
 export type MobileAgentActionAdapter = {
   resolveUser?: (
     query: string,
-  ) => Promise<{ id: string; name?: string } | null>;
+  ) => Promise<{ id: string; name?: string; profilePic?: string } | null>;
   navigate?: (
     route: string,
     params?: Record<string, unknown>,
@@ -342,13 +357,18 @@ export type MobileAgentActionAdapter = {
   stopSpeaking?: () => void | Promise<void>;
   logout?: () => void | Promise<void>;
   clearAgentChat?: () => void | Promise<void>;
-  startAudioCall?: (userId: string, channelName: string, userName?: string) => void | Promise<void>;
-  startVideoCall?: (userId: string, channelName: string, userName?: string) => void | Promise<void>;
+  startAudioCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
+  startVideoCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
+  playVideo?: (videoId: string) => void | Promise<void>;
+  searchVideo?: (query: string) => void | Promise<void>;
   followUser?: (userId: string) => void | Promise<void>;
   unfollowUser?: (userId: string) => void | Promise<void>;
   blockUser?: (userId: string) => void | Promise<void>;
   unblockUser?: (userId: string) => void | Promise<void>;
   sendMessage?: (userId: string, message: string) => void | Promise<void>;
+  createTask?: (text: string) => void | Promise<void>;
+  updateTask?: (taskId: string, values: { text?: string; completed?: boolean }) => void | Promise<void>;
+  resolveTask?: (query: string) => Promise<{ id: string } | null>;
 };
 
 export type AgentActionResult = {
@@ -361,7 +381,7 @@ export type AgentActionResult = {
 export type AgentActionExecutionOptions = {
   confirm?: (definition: AgentActionDefinition) => Promise<boolean>;
   skipConfirmation?: boolean;
-  onResolvedUser?: (user: { id: string; name?: string }) => void;
+  onResolvedUser?: (user: { id: string; name?: string; profilePic?: string }) => void;
 };
 
 export function createMobileAgentActionAdapter(
@@ -433,6 +453,24 @@ export async function executeAgentActions(
 
     try {
       const parameters = action.parameters || {};
+      const requestedName = String(
+        parameters.userName || action.targetName || '',
+      ).trim().toLowerCase();
+      if (
+        action.action === 'VIEW_PROFILE' &&
+        ['me', 'my profile', 'myself', 'নিজের প্রোফাইল', 'আমার প্রোফাইল'].includes(
+          requestedName,
+        )
+      ) {
+        if (!adapter.navigate) throw new Error('Navigation is unavailable.');
+        await adapter.navigate('Menu', { screen: 'MyProfile' });
+        results.push({
+          action: action.action,
+          ok: true,
+          message: 'Your profile is open.',
+        });
+        continue;
+      }
       const canonicalNavigation: Partial<Record<AgentActionName, string>> = {
         NAVIGATE: String(parameters.route || action.targetRoute || ''),
         OPEN_SETTINGS: 'Settings',
@@ -442,14 +480,25 @@ export async function executeAgentActions(
         (canonicalNavigation[action.action]
           ? [canonicalNavigation[action.action], undefined]
           : undefined);
-      const requiresUser = ['VIEW_PROFILE', 'OPEN_CHAT', 'FOLLOW_USER',
-        'UNFOLLOW_USER', 'BLOCK_USER', 'UNBLOCK_USER', 'SEND_MESSAGE'].includes(action.action);
+      const requiresUser = [
+        'VIEW_PROFILE',
+        'OPEN_CHAT',
+        'FOLLOW_USER',
+        'UNFOLLOW_USER',
+        'BLOCK_USER',
+        'UNBLOCK_USER',
+        'SEND_MESSAGE',
+        'START_AUDIO_CALL',
+        'START_VIDEO_CALL',
+      ].includes(action.action);
       let resolvedUserId = String(parameters.userId || parameters.profileId || '');
       let resolvedUserName = String(parameters.userName || action.targetName || '');
+      let resolvedProfilePic: string | undefined;
       if (requiresUser && !resolvedUserId && resolvedUserName && adapter.resolveUser) {
         const resolved = await adapter.resolveUser(resolvedUserName);
         resolvedUserId = resolved?.id || '';
         resolvedUserName = resolved?.name || resolvedUserName;
+        resolvedProfilePic = resolved?.profilePic;
         if (resolved?.id) options.onResolvedUser?.(resolved);
       }
       if (requiresUser && !resolvedUserId)
@@ -465,16 +514,17 @@ export async function executeAgentActions(
           const resolved = await adapter.resolveUser(resolvedName);
           userId = resolved?.id || '';
           resolvedName = resolved?.name || resolvedName;
+          resolvedProfilePic = resolved?.profilePic;
         }
         if (!userId) throw new Error('I need the person’s resolved user ID before starting the call.');
         const channelName = String(parameters.channelName || userId);
         const userName = resolvedName;
         if (action.action === 'START_AUDIO_CALL') {
           if (!adapter.startAudioCall) throw new Error('Audio calling is unavailable.');
-          await adapter.startAudioCall(userId, channelName, userName);
+          await adapter.startAudioCall(userId, channelName, userName, resolvedProfilePic);
         } else {
           if (!adapter.startVideoCall) throw new Error('Video calling is unavailable.');
-          await adapter.startVideoCall(userId, channelName, userName);
+          await adapter.startVideoCall(userId, channelName, userName, resolvedProfilePic);
         }
       } else if (action.action === 'FOLLOW_USER' || action.action === 'UNFOLLOW_USER' ||
         action.action === 'BLOCK_USER' || action.action === 'UNBLOCK_USER') {
@@ -499,6 +549,41 @@ export async function executeAgentActions(
           throw new Error('Tell me the name of the person to search for.');
         const match = await adapter.resolveUser(query);
         if (!match) throw new Error('I could not find one unique matching user.');
+      } else if (action.action === 'PLAY_VIDEO') {
+        const videoId = String(parameters.videoId || parameters.watchId || action.id || '');
+        if (!videoId) throw new Error('I need the video ID before playing it.');
+        if (!adapter.playVideo) throw new Error('Video playback is unavailable.');
+        await adapter.playVideo(videoId);
+      } else if (action.action === 'SEARCH_VIDEO') {
+        const query = String(parameters.query || action.searchQuery || '').trim();
+        if (!query) throw new Error('Tell me what video to search for.');
+        if (!adapter.searchVideo) throw new Error('Video search is unavailable.');
+        await adapter.searchVideo(query);
+      } else if (action.action === 'CREATE_TASK') {
+        const text = String(parameters.text || parameters.taskText || action.messageText || '').trim();
+        if (!text) throw new Error('Tell me what the task should say.');
+        if (!adapter.createTask) throw new Error('Task creation is unavailable.');
+        await adapter.createTask(text);
+      } else if (action.action === 'VIEW_TASKS') {
+        if (!adapter.navigate) throw new Error('Navigation is unavailable.');
+        await adapter.navigate('Menu', { screen: 'Tasks' });
+      } else if (action.action === 'UPDATE_TASK') {
+        let taskId = String(parameters.taskId || parameters.id || action.id || '').trim();
+        const taskQuery = String(parameters.taskQuery || parameters.taskText || '').trim();
+        if (!taskId && taskQuery && adapter.resolveTask) {
+          taskId = String((await adapter.resolveTask(taskQuery))?.id || '');
+        }
+        const text = parameters.text === undefined && (parameters.taskText === undefined || !parameters.taskId)
+          ? undefined
+          : String(parameters.text || parameters.taskText || '').trim();
+        const completed = parameters.completed === undefined
+          ? undefined
+          : Boolean(parameters.completed);
+        if (!taskId) throw new Error('I need the task ID to edit that task.');
+        if (text === undefined && completed === undefined)
+          throw new Error('Tell me what to change in the task.');
+        if (!adapter.updateTask) throw new Error('Task editing is unavailable.');
+        await adapter.updateTask(taskId, { text, completed });
       } else if (target) {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
         const params = action.action === 'NAVIGATE'

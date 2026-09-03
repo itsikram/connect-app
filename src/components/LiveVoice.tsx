@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Alert, DeviceEventEmitter } from 'react-native';
 import { Audio } from '../lib/avCompat';
 import { useSelector } from 'react-redux';
@@ -14,7 +20,10 @@ import {
   LiveVoiceStatusDetail,
   emitLiveVoiceStatus,
 } from '../lib/liveVoiceEvents';
-import AgoraWebEngine, { AgoraEngineEvent, AgoraWebEngineHandle } from './AgoraWebEngine';
+import AgoraWebEngine, {
+  AgoraEngineEvent,
+  AgoraWebEngineHandle,
+} from './AgoraWebEngine';
 import LiveVoiceModal from './LiveVoiceModal';
 
 const mapAgoraQuality = (uplink = 0, downlink = 0) => {
@@ -29,12 +38,13 @@ const peerFromChannel = (channelName: string | null, myId?: string | null) => {
   if (!channelName || !myId) return null;
   const parts = String(channelName).split('_');
   if (parts.length < 2) return null;
-  return parts.find((id) => String(id) !== String(myId)) || null;
+  return parts.find(id => String(id) !== String(myId)) || null;
 };
 
 const normalizeLiveVoicePayload = (payload: any) => {
   const data = Array.isArray(payload) ? payload[0] : payload;
-  if (!data || typeof data !== 'object') return { from: undefined, channelName: undefined, callerName: undefined };
+  if (!data || typeof data !== 'object')
+    return { from: undefined, channelName: undefined, callerName: undefined };
   return {
     from: data.from || data.senderId || data.callerId,
     channelName: data.channelName || data.channel || data.room,
@@ -58,9 +68,17 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
   const [friendName, setFriendName] = useState('Friend');
   const [connectionQuality, setConnectionQuality] = useState(4);
   const [mediaActive, setMediaActive] = useState(false);
+  const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
+  const [microphonePending, setMicrophonePending] = useState(false);
 
   const engineRef = useRef<AgoraWebEngineHandle>(null);
-  const pendingJoinRef = useRef<{ appId: string; token: string; channelName: string; uid: number } | null>(null);
+  const pendingJoinRef = useRef<{
+    appId: string;
+    token: string;
+    channelName: string;
+    uid: number;
+    publishAudio?: boolean;
+  } | null>(null);
   const channelRef = useRef<string | null>(null);
   const peerIdRef = useRef<string | null>(null);
   const isJoiningRef = useRef(false);
@@ -68,14 +86,18 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
   const sessionIdRef = useRef(0);
   const durationTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const roleRef = useRef<'sender' | 'receiver'>('sender');
-  const stopSessionRef = useRef<(notifyPeer?: boolean) => Promise<void>>(async () => {});
-  const startSessionRef = useRef<(args: {
-    to: string;
-    channelName: string;
-    friendName?: string;
-    sessionRole?: 'sender' | 'receiver';
-    notifyPeer?: boolean;
-  }) => Promise<void>>(async () => {});
+  const stopSessionRef = useRef<(notifyPeer?: boolean) => Promise<void>>(
+    async () => {},
+  );
+  const startSessionRef = useRef<
+    (args: {
+      to: string;
+      channelName: string;
+      friendName?: string;
+      sessionRole?: 'sender' | 'receiver';
+      notifyPeer?: boolean;
+    }) => Promise<void>
+  >(async () => {});
   const recentlyStoppedRef = useRef<Map<string, number>>(new Map());
   const notifyPeerOnJoinRef = useRef(false);
   const userLeftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -96,187 +118,229 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     }
   }, []);
 
-  const broadcastStatus = useCallback((overrides: Partial<LiveVoiceStatusDetail> = {}) => {
-    emitLiveVoiceStatus({
-      active: isActiveRef.current,
-      connecting: isJoiningRef.current,
-      duration: 0,
-      peerId: peerIdRef.current,
-      channelName: channelRef.current,
-      role: roleRef.current,
-      ...overrides,
-    });
-  }, []);
+  const broadcastStatus = useCallback(
+    (overrides: Partial<LiveVoiceStatusDetail> = {}) => {
+      emitLiveVoiceStatus({
+        active: isActiveRef.current,
+        connecting: isJoiningRef.current,
+        duration: 0,
+        peerId: peerIdRef.current,
+        channelName: channelRef.current,
+        role: roleRef.current,
+        ...overrides,
+      });
+    },
+    [],
+  );
 
-  const resolveFriendName = useCallback((friendId?: string | null, fallback?: string) => {
-    if (fallback) return fallback;
-    if (!friendId) return 'Friend';
-    const chat = (chats || []).find((c: any) =>
-      String(c?.person?._id) === String(friendId) ||
-      String(c?.friend?._id) === String(friendId) ||
-      String(c?.friend?.user?._id) === String(friendId) ||
-      String(c?.user?._id) === String(friendId),
-    );
-    return (
-      chat?.person?.fullName ||
-      chat?.friend?.fullName ||
-      [chat?.friend?.user?.firstName, chat?.friend?.user?.lastName].filter(Boolean).join(' ').trim() ||
-      [chat?.user?.firstName, chat?.user?.lastName].filter(Boolean).join(' ').trim() ||
-      'Friend'
-    );
-  }, [chats]);
+  const resolveFriendName = useCallback(
+    (friendId?: string | null, fallback?: string) => {
+      if (fallback) return fallback;
+      if (!friendId) return 'Friend';
+      const chat = (chats || []).find(
+        (c: any) =>
+          String(c?.person?._id) === String(friendId) ||
+          String(c?.friend?._id) === String(friendId) ||
+          String(c?.friend?.user?._id) === String(friendId) ||
+          String(c?.user?._id) === String(friendId),
+      );
+      return (
+        chat?.person?.fullName ||
+        chat?.friend?.fullName ||
+        [chat?.friend?.user?.firstName, chat?.friend?.user?.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim() ||
+        [chat?.user?.firstName, chat?.user?.lastName]
+          .filter(Boolean)
+          .join(' ')
+          .trim() ||
+        'Friend'
+      );
+    },
+    [chats],
+  );
 
   const ensureLeave = useCallback(() => {
-    try { engineRef.current?.leave(); } catch (_e) {}
+    try {
+      engineRef.current?.leave();
+    } catch (_e) {}
     pendingJoinRef.current = null;
     setMediaActive(false);
   }, []);
 
-  const stopSession = useCallback(async (notifyPeer = true) => {
-    const channelName = channelRef.current;
-    const peerId = peerIdRef.current || peerFromChannel(channelName, myId);
-    const hadSession = isActiveRef.current || isJoiningRef.current || !!channelName;
+  const stopSession = useCallback(
+    async (notifyPeer = true) => {
+      const channelName = channelRef.current;
+      const peerId = peerIdRef.current || peerFromChannel(channelName, myId);
+      const hadSession =
+        isActiveRef.current || isJoiningRef.current || !!channelName;
 
-    if (channelName) {
-      recentlyStoppedRef.current.set(String(channelName), Date.now());
-    }
+      if (channelName) {
+        recentlyStoppedRef.current.set(String(channelName), Date.now());
+      }
 
-    sessionIdRef.current += 1;
-    notifyPeerOnJoinRef.current = false;
-    clearUserLeftTimer();
+      sessionIdRef.current += 1;
+      notifyPeerOnJoinRef.current = false;
+      clearUserLeftTimer();
 
-    if (notifyPeer && hadSession && (peerId || channelName)) {
-      emit('live-voice-stop', {
-        to: peerId ? String(peerId) : undefined,
-        channelName,
+      if (notifyPeer && hadSession && (peerId || channelName)) {
+        emit('live-voice-stop', {
+          to: peerId ? String(peerId) : undefined,
+          channelName,
+        });
+      }
+
+      clearDurationTimer();
+      ensureLeave();
+
+      isJoiningRef.current = false;
+      isActiveRef.current = false;
+      channelRef.current = null;
+      peerIdRef.current = null;
+
+      setIsConnecting(false);
+      setIsActive(false);
+      setIsOpen(false);
+      setDuration(0);
+      setConnectionQuality(4);
+      setMicrophoneEnabled(false);
+      setMicrophonePending(false);
+
+      broadcastStatus({
+        active: false,
+        connecting: false,
+        duration: 0,
+        peerId: null,
+        channelName: null,
       });
-    }
+    },
+    [
+      broadcastStatus,
+      clearDurationTimer,
+      clearUserLeftTimer,
+      emit,
+      ensureLeave,
+      myId,
+    ],
+  );
 
-    clearDurationTimer();
-    ensureLeave();
-
-    isJoiningRef.current = false;
-    isActiveRef.current = false;
-    channelRef.current = null;
-    peerIdRef.current = null;
-
-    setIsConnecting(false);
-    setIsActive(false);
-    setIsOpen(false);
-    setDuration(0);
-    setConnectionQuality(4);
-
-    broadcastStatus({
-      active: false,
-      connecting: false,
-      duration: 0,
-      peerId: null,
-      channelName: null,
-    });
-  }, [broadcastStatus, clearDurationTimer, clearUserLeftTimer, emit, ensureLeave, myId]);
-
-  const startSession = useCallback(async ({
-    to,
-    channelName,
-    friendName: name,
-    sessionRole = 'sender',
-    notifyPeer = true,
-  }: {
-    to: string;
-    channelName: string;
-    friendName?: string;
-    sessionRole?: 'sender' | 'receiver';
-    notifyPeer?: boolean;
-  }) => {
-    if (!to || !channelName || !myId) return;
-
-    if (
-      isActiveRef.current &&
-      channelRef.current &&
-      String(channelRef.current) === String(channelName)
-    ) {
-      setIsOpen(true);
-      return;
-    }
-
-    if (isJoiningRef.current || isActiveRef.current) {
-      console.warn('Live voice: already in a session');
-      return;
-    }
-
-    if (isCallBusy()) {
-      Alert.alert('Busy', 'Finish your current call before starting live voice.');
-      return;
-    }
-
-    const sessionId = ++sessionIdRef.current;
-    isJoiningRef.current = true;
-    notifyPeerOnJoinRef.current = notifyPeer;
-    peerIdRef.current = String(to);
-    channelRef.current = channelName;
-    roleRef.current = sessionRole;
-    setRole(sessionRole);
-    setFriendName(resolveFriendName(to, name));
-    setIsOpen(true);
-    setIsConnecting(true);
-    setIsActive(false);
-    setDuration(0);
-    setConnectionQuality(4);
-    // Start loading the Agora WebView immediately so incoming (web → app)
-    // does not wait on mic permission / token before the engine can join.
-    setMediaActive(true);
-    broadcastStatus({
-      active: false,
-      connecting: true,
-      duration: 0,
-      peerId: String(to),
+  const startSession = useCallback(
+    async ({
+      to,
       channelName,
-      role: sessionRole,
-    });
+      friendName: name,
+      sessionRole = 'sender',
+      notifyPeer = true,
+    }: {
+      to: string;
+      channelName: string;
+      friendName?: string;
+      sessionRole?: 'sender' | 'receiver';
+      notifyPeer?: boolean;
+    }) => {
+      if (!to || !channelName || !myId) return;
 
-    if (notifyPeer) {
-      emit('live-voice-start', {
-        to: String(to),
-        channelName,
-      });
-    }
-
-    try {
-      const permission = await Audio.requestPermissionsAsync();
-      if (!permission.granted && sessionRole === 'sender') {
-        throw new Error('Microphone permission is required for live voice.');
+      if (
+        isActiveRef.current &&
+        channelRef.current &&
+        String(channelRef.current) === String(channelName)
+      ) {
+        setIsOpen(true);
+        return;
       }
-      await configureLiveVoiceAudio();
 
-      const { data } = await api.post('/agora/token', {
-        channelName,
-        uid: numericUid,
-        role: 'publisher',
-      });
-      if (!data?.appId || !data?.token) {
-        throw new Error('Invalid Agora token response');
+      if (isJoiningRef.current || isActiveRef.current) {
+        console.warn('Live voice: already in a session');
+        return;
       }
-      if (sessionId !== sessionIdRef.current) return;
 
-      pendingJoinRef.current = {
-        appId: data.appId,
-        token: data.token,
+      if (isCallBusy()) {
+        Alert.alert(
+          'Busy',
+          'Finish your current call before starting live voice.',
+        );
+        return;
+      }
+
+      const sessionId = ++sessionIdRef.current;
+      isJoiningRef.current = true;
+      notifyPeerOnJoinRef.current = notifyPeer;
+      peerIdRef.current = String(to);
+      channelRef.current = channelName;
+      roleRef.current = sessionRole;
+      setRole(sessionRole);
+      setFriendName(resolveFriendName(to, name));
+      setIsOpen(true);
+      setIsConnecting(true);
+      setIsActive(false);
+      setDuration(0);
+      setConnectionQuality(4);
+      // Start loading the Agora WebView immediately so incoming (web → app)
+      // does not wait on mic permission / token before the engine can join.
+      setMediaActive(true);
+      broadcastStatus({
+        active: false,
+        connecting: true,
+        duration: 0,
+        peerId: String(to),
         channelName,
-        uid: numericUid,
-      };
-      engineRef.current?.join({
-        appId: data.appId,
-        token: data.token,
-        channelName,
-        uid: numericUid,
-        isAudio: true,
+        role: sessionRole,
       });
-    } catch (error: any) {
-      console.error('Live voice start failed:', error);
-      await stopSession(false);
-      Alert.alert('Live Voice Error', error?.message || 'Failed to start live voice transfer');
-    }
-  }, [broadcastStatus, emit, myId, numericUid, resolveFriendName, stopSession]);
+
+      if (notifyPeer) {
+        emit('live-voice-start', {
+          to: String(to),
+          channelName,
+        });
+      }
+
+      try {
+        const permission =
+          sessionRole === 'sender'
+            ? await Audio.requestPermissionsAsync()
+            : { granted: true };
+        if (!permission.granted && sessionRole === 'sender') {
+          throw new Error('Microphone permission is required for live voice.');
+        }
+        await configureLiveVoiceAudio();
+
+        const { data } = await api.post('/agora/token', {
+          channelName,
+          uid: numericUid,
+          role: 'publisher',
+        });
+        if (!data?.appId || !data?.token) {
+          throw new Error('Invalid Agora token response');
+        }
+        if (sessionId !== sessionIdRef.current) return;
+
+        pendingJoinRef.current = {
+          appId: data.appId,
+          token: data.token,
+          channelName,
+          uid: numericUid,
+          publishAudio: sessionRole === 'sender',
+        };
+        engineRef.current?.join({
+          appId: data.appId,
+          token: data.token,
+          channelName,
+          uid: numericUid,
+          isAudio: true,
+          publishAudio: sessionRole === 'sender',
+        });
+      } catch (error: any) {
+        console.error('Live voice start failed:', error);
+        await stopSession(false);
+        Alert.alert(
+          'Live Voice Error',
+          error?.message || 'Failed to start live voice transfer',
+        );
+      }
+    },
+    [broadcastStatus, emit, myId, numericUid, resolveFriendName, stopSession],
+  );
 
   startSessionRef.current = startSession;
   stopSessionRef.current = stopSession;
@@ -303,7 +367,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
 
     clearDurationTimer();
     durationTimerRef.current = setInterval(() => {
-      setDuration((prev) => {
+      setDuration(prev => {
         const next = prev + 1;
         broadcastStatus({
           active: true,
@@ -327,52 +391,97 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     });
   }, [broadcastStatus, clearDurationTimer, emit]);
 
-  const onEngineEvent = useCallback((event: AgoraEngineEvent) => {
-    if (event.type === 'ready' && pendingJoinRef.current) {
-      const pending = pendingJoinRef.current;
-      engineRef.current?.join({ ...pending, isAudio: true });
-      return;
-    }
-    if (event.type === 'joined') {
-      markJoined();
-      return;
-    }
-    if (event.type === 'user-published') {
-      clearUserLeftTimer();
-      return;
-    }
-    if (event.type === 'network-quality') {
-      setConnectionQuality(mapAgoraQuality(event.uplink, event.downlink));
-      return;
-    }
-    if (event.type === 'user-left') {
-      // Ignore leaves while we are still joining — the peer WebView can
-      // briefly disconnect/reconnect. Only end an already-active session,
-      // and debounce so a leave+rejoin from the web client does not hang up.
-      if (!isActiveRef.current) return;
-      clearUserLeftTimer();
-      userLeftTimerRef.current = setTimeout(() => {
-        userLeftTimerRef.current = null;
-        if (isActiveRef.current) {
-          stopSessionRef.current(false);
-        }
-      }, 2500);
-      return;
-    }
-    if (event.type === 'error') {
-      console.warn('Live voice engine error:', event.message);
-      if (isJoiningRef.current && !isActiveRef.current) {
-        stopSessionRef.current(false);
-        Alert.alert('Live Voice Error', event.message || 'Failed to join live voice');
+  const onEngineEvent = useCallback(
+    (event: AgoraEngineEvent) => {
+      if (event.type === 'ready' && pendingJoinRef.current) {
+        const pending = pendingJoinRef.current;
+        engineRef.current?.join({ ...pending, isAudio: true });
+        return;
       }
+      if (event.type === 'joined') {
+        markJoined();
+        return;
+      }
+      if (event.type === 'audio-enabled') {
+        setMicrophoneEnabled(true);
+        setMicrophonePending(false);
+        return;
+      }
+      if (event.type === 'user-published') {
+        clearUserLeftTimer();
+        return;
+      }
+      if (event.type === 'network-quality') {
+        setConnectionQuality(mapAgoraQuality(event.uplink, event.downlink));
+        return;
+      }
+      if (event.type === 'user-left') {
+        // Ignore leaves while we are still joining — the peer WebView can
+        // briefly disconnect/reconnect. Only end an already-active session,
+        // and debounce so a leave+rejoin from the web client does not hang up.
+        if (!isActiveRef.current) return;
+        clearUserLeftTimer();
+        userLeftTimerRef.current = setTimeout(() => {
+          userLeftTimerRef.current = null;
+          if (isActiveRef.current) {
+            stopSessionRef.current(false);
+          }
+        }, 2500);
+        return;
+      }
+      if (event.type === 'error') {
+        console.warn('Live voice engine error:', event.message);
+        if (microphonePending) {
+          setMicrophonePending(false);
+          Alert.alert(
+            'Microphone Error',
+            event.message || 'Unable to turn on microphone',
+          );
+          return;
+        }
+        if (isJoiningRef.current && !isActiveRef.current) {
+          stopSessionRef.current(false);
+          Alert.alert(
+            'Live Voice Error',
+            event.message || 'Failed to join live voice',
+          );
+        }
+      }
+    },
+    [clearUserLeftTimer, markJoined, microphonePending],
+  );
+
+  const enableMicrophone = useCallback(async () => {
+    if (
+      roleRef.current !== 'receiver' ||
+      microphoneEnabled ||
+      microphonePending
+    )
+      return;
+    setMicrophonePending(true);
+    try {
+      const permission = await Audio.requestPermissionsAsync();
+      if (!permission.granted)
+        throw new Error(
+          'Microphone permission is required to share your voice.',
+        );
+      await configureLiveVoiceAudio();
+      engineRef.current?.enableAudio();
+    } catch (error: any) {
+      setMicrophonePending(false);
+      Alert.alert(
+        'Microphone Error',
+        error?.message || 'Unable to turn on microphone',
+      );
     }
-  }, [clearUserLeftTimer, markJoined]);
+  }, [microphoneEnabled, microphonePending]);
 
   useEffect(() => {
     if (!myId) return;
 
     const onIncoming = (payload: any) => {
-      const { from, channelName, callerName } = normalizeLiveVoicePayload(payload);
+      const { from, channelName, callerName } =
+        normalizeLiveVoicePayload(payload);
       if (!from || !channelName) return;
       if (String(from) === String(myId)) return;
       const stoppedAt = recentlyStoppedRef.current.get(String(channelName));
@@ -407,7 +516,11 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       ) {
         return;
       }
-      if (!isActiveRef.current && !isJoiningRef.current && !channelRef.current) {
+      if (
+        !isActiveRef.current &&
+        !isJoiningRef.current &&
+        !channelRef.current
+      ) {
         return;
       }
       void stopSessionRef.current(false);
@@ -438,8 +551,14 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       void stopSessionRef.current(true);
     };
 
-    const startSub = DeviceEventEmitter.addListener(LIVE_VOICE_EVENTS.START, onOutgoing);
-    const stopSub = DeviceEventEmitter.addListener(LIVE_VOICE_EVENTS.STOP, onStopRequest);
+    const startSub = DeviceEventEmitter.addListener(
+      LIVE_VOICE_EVENTS.START,
+      onOutgoing,
+    );
+    const stopSub = DeviceEventEmitter.addListener(
+      LIVE_VOICE_EVENTS.STOP,
+      onStopRequest,
+    );
     return () => {
       startSub.remove();
       stopSub.remove();
@@ -463,14 +582,23 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       {isOpen ? (
         <LiveVoiceModal
           isOpen
-          onClose={() => { void stopSession(true); }}
+          onClose={() => {
+            void stopSession(true);
+          }}
           isActive={isActive}
           duration={duration}
           isConnecting={isConnecting}
           role={role}
           friendName={friendName}
           connectionQuality={connectionQuality}
-          onStop={() => { void stopSession(true); }}
+          onStop={() => {
+            void stopSession(true);
+          }}
+          onEnableMicrophone={() => {
+            void enableMicrophone();
+          }}
+          microphoneEnabled={microphoneEnabled}
+          microphonePending={microphonePending}
         />
       ) : null}
     </>

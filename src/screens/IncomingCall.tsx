@@ -327,7 +327,7 @@ const IncomingCall: React.FC = () => {
       // Cleanup listeners
       return () => {
         off('audio-call-ended', handleCallEnd);
-        off('audio-call-ended', handleCallEnd);
+        off('video-call-ended', handleCallEnd);
         off('audio-call-cancelled', handleCallCancel);
         off('video-call-cancelled', handleCallCancel);
         off('video-call-rejected', handleReject);

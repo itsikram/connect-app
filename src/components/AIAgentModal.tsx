@@ -5,6 +5,8 @@ import {
   KeyboardAvoidingView,
   Modal,
   Platform,
+  Animated,
+  PanResponder,
   Pressable,
   SafeAreaView,
   StyleSheet,
@@ -42,8 +44,9 @@ import {
 import { AgentMessage } from '../types/aiAgent';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
-import { friendAPI, profileAPI } from '../lib/api';
+import api, { friendAPI, profileAPI } from '../lib/api';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
+import { navigate as navigateWithQueue } from '../lib/navigationService';
 
 interface Props {
   visible: boolean;
@@ -92,9 +95,36 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     AgentActionIntent[]
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
+  const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] = React.useState(false);
   const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
   const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
+  const [autoActionRunning, setAutoActionRunning] = React.useState(false);
+  const miniPosition = React.useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const miniOffset = React.useRef({ x: 0, y: 0 });
+  const miniPanResponder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => false,
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dx) + Math.abs(gesture.dy) > 4,
+        onPanResponderGrant: () => {
+          miniPosition.setOffset(miniOffset.current);
+          miniPosition.setValue({ x: 0, y: 0 });
+        },
+        onPanResponderMove: (_, gesture) => {
+          miniPosition.setValue({ x: gesture.dx, y: gesture.dy });
+        },
+        onPanResponderRelease: (_, gesture) => {
+          miniPosition.flattenOffset();
+          miniOffset.current = {
+            x: miniOffset.current.x + gesture.dx,
+            y: miniOffset.current.y + gesture.dy,
+          };
+        },
+      }),
+    [miniPosition],
+  );
   const sendRef = React.useRef<() => void>(() => {});
   const speechControllerRef = React.useRef<ReturnType<
     typeof createAgentSpeechController
@@ -114,46 +144,74 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const resolveUser = React.useCallback(async (query: string) => {
     const profileId = String((profile as Record<string, unknown> | null)?._id || '');
     if (!profileId) return null;
-    const response = await friendAPI.getFriendList(profileId);
+    const response = await api.get('/search', { params: { input: query } });
     const data: unknown = response.data;
     const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
-    const friends = Array.isArray(data)
-      ? data
-      : (Array.isArray(dataRecord.friends)
-        ? dataRecord.friends
-        : (Array.isArray(dataRecord.data) ? dataRecord.data : []));
+    const friends = Array.isArray(dataRecord.users)
+      ? dataRecord.users
+      : [];
     const needle = query.trim().toLowerCase();
     const matches = friends.filter((friend: Record<string, unknown>) => {
-      const fields = [friend.fullName, friend.username, friend.email, friend.name]
+      const nestedUser = friend.user && typeof friend.user === 'object'
+        ? friend.user as Record<string, unknown>
+        : {};
+      const fields = [
+        friend.fullName, friend.username, friend.email, friend.name,
+        nestedUser.fullName, nestedUser.username, nestedUser.email, nestedUser.name,
+      ]
         .filter(value => typeof value === 'string')
         .map(value => String(value).toLowerCase());
       return fields.some(value => value === needle || value.includes(needle));
     });
     if (matches.length !== 1) return null;
     const match = matches[0] as Record<string, unknown>;
-    if (!match?._id) return null;
-    return { id: String(match._id), name: String(match.fullName || match.username || query) };
+    const nestedUser = match.user && typeof match.user === 'object'
+      ? match.user as Record<string, unknown>
+      : {};
+    const id = match._id || match.userId || nestedUser._id || nestedUser.id;
+    if (!id) return null;
+    return {
+      id: String(id),
+      name: String(
+        match.fullName || match.username || match.name ||
+        nestedUser.fullName || nestedUser.username || nestedUser.name || query,
+      ),
+      profilePic: String(
+        match.profilePic || match.profilePicture || nestedUser.profilePic ||
+          nestedUser.profilePicture || '',
+      ) || undefined,
+    };
   }, [profile]);
 
   const callAdapter = React.useMemo(() => ({
     resolveUser: async (query: string) => {
       const normalized = query.trim().toLowerCase();
+      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      const ownName = String(
+        (profile as Record<string, unknown> | null)?.fullName ||
+          (profile as Record<string, unknown> | null)?.username ||
+          user?.profile?.fullName ||
+          'My profile',
+      );
+      if (['me', 'my profile', 'myself', 'নিজের প্রোফাইল', 'আমার প্রোফাইল'].includes(normalized) && ownId) {
+        return { id: ownId, name: ownName };
+      }
       if (['him', 'her', 'them', 'ওকে', 'তাকে', 'ওর', 'তার'].includes(normalized)) {
         const active = agentMemoryRef.current.activeUser;
         if (active?.id) return { id: active.id, name: active.name };
       }
       return resolveUser(query);
     },
-    startAudioCall: async (userId: string, channelName: string, userName?: string) => {
+    startAudioCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
-      emitStartAudioCall({ to: userId, channelName: effectiveChannel, callerName: userName });
+      emitStartAudioCall({ to: userId, channelName: effectiveChannel, callerName: userName, callerProfilePic: profilePic });
       startAudioCall(userId, effectiveChannel);
     },
-    startVideoCall: async (userId: string, channelName: string, userName?: string) => {
+    startVideoCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
-      emitStartVideoCall({ to: userId, channelName: effectiveChannel, callerName: userName });
+      emitStartVideoCall({ to: userId, channelName: effectiveChannel, callerName: userName, callerProfilePic: profilePic });
       startVideoCall(userId, effectiveChannel);
     },
     followUser: async (userId: string) => {
@@ -173,6 +231,25 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       if (!ownId) throw new Error('You must be signed in to send messages.');
       const room = [ownId, userId].sort().join('_');
       socketSendMessage(room, ownId, userId, message);
+    },
+    createTask: async (text: string) => {
+      const response = await api.post('/tasks', { text });
+      if (!response.data?.success) throw new Error('I could not create that task.');
+    },
+    resolveTask: async (query: string) => {
+      const response = await api.get('/tasks');
+      const tasks = Array.isArray(response.data?.tasks) ? response.data.tasks : [];
+      const needle = query.trim().toLowerCase();
+      const matches = tasks.filter((task: Record<string, unknown>) =>
+        String(task.text || '').toLowerCase().includes(needle),
+      );
+      return matches.length === 1 && matches[0]?._id
+        ? { id: String(matches[0]._id) }
+        : null;
+    },
+    updateTask: async (taskId: string, values: { text?: string; completed?: boolean }) => {
+      const response = await api.put(`/tasks/${encodeURIComponent(taskId)}`, values);
+      if (!response.data?.success) throw new Error('I could not update that task.');
     },
   }), [profile, resolveUser, startAudioCall, startVideoCall, socketSendMessage]);
   const transcribe = useComposerLiveTranscribe({
@@ -278,6 +355,10 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     setLoading(true);
     const controller = new AbortController();
     const speechController = createAgentSpeechController(language);
+    const shouldSpeak = voiceConversation;
+    if (shouldSpeak) {
+      await transcribe.stop({ discard: true });
+    }
     await speechControllerRef.current?.stop().catch(() => {});
     speechControllerRef.current = speechController;
     requestRef.current = controller;
@@ -294,7 +375,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
           // Do not read machine-readable JSON while it is streaming; read the
           // user-facing reply after the intent has been validated below.
-          if (!next.trimStart().startsWith('{'))
+          if (shouldSpeak && !next.trimStart().startsWith('{'))
             speechController.update(next, language);
         },
         controller.signal,
@@ -343,11 +424,61 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               item.id === stream.id ? { ...item, content: visibleReply } : item,
             ),
           );
-          if (rawReply.trimStart().startsWith('{'))
+          if (shouldSpeak && rawReply.trimStart().startsWith('{'))
             speechController.update(visibleReply, language);
         }
         const adapter = createMobileAgentActionAdapter({
           ...callAdapter,
+          navigate: (route, params) => {
+            const routeAliases: Record<string, string> = {
+              messages: 'Message',
+              message: 'Message',
+              home: 'Home',
+              friends: 'Friends',
+              videos: 'Videos',
+              menu: 'Menu',
+              profile: 'Menu',
+              settings: 'Menu',
+              tasks: 'Menu',
+              task: 'Menu',
+            };
+            const normalizedRoute = routeAliases[String(route).trim().toLowerCase()] || route;
+            const normalizedParams =
+              String(route).trim().toLowerCase() === 'messages' ||
+              String(route).trim().toLowerCase() === 'message'
+                ? { screen: 'MessageList', ...(params || {}) }
+                : String(route).trim().toLowerCase() === 'profile'
+                  ? { screen: 'MyProfile', ...(params || {}) }
+                  : String(route).trim().toLowerCase() === 'settings'
+                    ? { screen: 'Settings', ...(params || {}) }
+                    : ['tasks', 'task'].includes(String(route).trim().toLowerCase())
+                      ? { screen: 'Tasks', ...(params || {}) }
+                    : params;
+            const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+            const friendId = String(
+              (normalizedParams as Record<string, unknown> | undefined)?.friendId || '',
+            );
+            if (normalizedRoute === 'FriendProfile' && ownId && friendId === ownId) {
+              return navigateWithQueue('Menu', { screen: 'MyProfile' });
+            }
+            return navigateWithQueue(normalizedRoute, normalizedParams);
+          },
+          playVideo: videoId =>
+            navigateWithQueue('Videos', {
+              screen: 'SingleWatch',
+              params: { watchId: videoId },
+            }),
+          searchVideo: async (query: string) => {
+            const response = await api.get('/search', { params: { input: query } });
+            const data = response.data as { videos?: Array<Record<string, unknown>> };
+            const video = Array.isArray(data?.videos) ? data.videos[0] : null;
+            const videoId = String(video?._id || video?.id || '');
+            if (!videoId) throw new Error('I could not find a matching video.');
+            await navigateWithQueue('Videos', {
+              screen: 'SingleWatch',
+              params: { watchId: videoId },
+            });
+          },
           startLudo: () => setLudoGameActive(true),
           startChess: () => setChessGameActive(true),
           startVoiceInput: async () => {
@@ -357,10 +488,12 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             await transcribe.stop();
           },
           speakText: value => {
-            const reader = createAgentSpeechController(language);
-            reader.update(value, language);
-            reader.finish();
-            speechControllerRef.current = reader;
+            if (shouldSpeak) {
+              const reader = createAgentSpeechController(language);
+              reader.update(value, language);
+              reader.finish();
+              speechControllerRef.current = reader;
+            }
           },
           stopSpeaking: () => speechControllerRef.current?.stop(),
           logout,
@@ -368,7 +501,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         });
         if (!autoMode && intent.actions?.length) {
           setPendingActions(intent.actions);
-          speechController.finish();
+          if (shouldSpeak) speechController.finish();
           setMessages(previous =>
             previous.map(item =>
               item.id === stream.id
@@ -384,6 +517,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           );
           return;
         }
+        if (autoMode && intent.actions?.length) setAutoActionRunning(true);
         const results = await executeAgentActions(intent.actions, adapter, {
           skipConfirmation: autoMode,
           onResolvedUser: resolved => {
@@ -413,6 +547,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               );
             }),
         });
+        setAutoActionRunning(false);
         const failed = results.filter(result => !result.ok);
         const completed = results.filter(result => result.ok);
         const outcome = failed.length
@@ -453,7 +588,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           ),
         );
       }
-      speechController.finish();
+      if (shouldSpeak) speechController.finish();
       setMessages(previous =>
         previous.map(item =>
           item.id === stream.id ? { ...item, streaming: false } : item,
@@ -475,8 +610,10 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         );
       }
     } finally {
+      setAutoActionRunning(false);
       if (generation === generationRef.current) setLoading(false);
       if (voiceConversation && generation === generationRef.current) {
+        if (shouldSpeak) await speechController.finish();
         const started = await transcribe.start(
           language === 'auto' ? undefined : language,
         );
@@ -504,15 +641,18 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const toggleVoice = async () => {
     if (transcribe.listening) {
       setVoiceConversation(false);
+      setVoiceLanguageMenuOpen(false);
       await transcribe.stop();
       return;
     }
     setVoiceConversation(true);
+    setVoiceLanguageMenuOpen(true);
     const started = await transcribe.start(
       language === 'auto' ? undefined : language,
     );
     if (!started) {
       setVoiceConversation(false);
+      setVoiceLanguageMenuOpen(false);
       Alert.alert(
         'Microphone unavailable',
         'Allow microphone access and try again.',
@@ -652,6 +792,29 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       <SafeAreaView
         style={[styles.safe, { backgroundColor: colors.background.primary }]}
       >
+        {autoActionRunning && autoMode ? (
+          <Animated.View
+            {...miniPanResponder.panHandlers}
+            style={[styles.agentMini, { transform: miniPosition.getTranslateTransform(), backgroundColor: colors.surface.primary }]}
+          >
+            <Icon name="psychology" size={22} color={colors.primary} />
+            <View style={styles.agentMiniText}>
+              <Text style={[styles.agentMiniTitle, { color: colors.text.primary }]}>
+                Connect AI
+              </Text>
+              <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
+                Running action...
+              </Text>
+            </View>
+            <Pressable
+              style={[styles.agentMiniMic, { backgroundColor: `${colors.primary}20` }]}
+              onPress={toggleVoice}
+              accessibilityLabel="Voice input"
+            >
+              <Icon name={transcribe.listening ? 'mic' : 'mic-none'} size={20} color={colors.primary} />
+            </Pressable>
+          </Animated.View>
+        ) : (
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -678,9 +841,6 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               <Text style={[styles.heading, { color: colors.text.primary }]}>
                 Connect AI
               </Text>
-              <Text style={[styles.providerText, { color: colors.text.secondary }]}>
-                Powered by {providerLabels[selectedProvider]}
-              </Text>
               <View style={styles.statusLine}>
                 <View
                   style={[
@@ -695,33 +855,6 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
                 </Text>
               </View>
             </View>
-            <Pressable
-              style={styles.headerButton}
-              onPress={() =>
-                setLanguage(current =>
-                  current === 'auto'
-                    ? 'bn-BD'
-                    : current === 'bn-BD'
-                    ? 'en-US'
-                    : 'auto',
-                )
-              }
-              accessibilityLabel={`Speech language: ${
-                language === 'bn-BD'
-                  ? 'Bangla'
-                  : language === 'en-US'
-                  ? 'English'
-                  : 'Auto'
-              }`}
-            >
-              <Text style={[styles.language, { color: colors.primary }]}>
-                {language === 'bn-BD'
-                  ? 'বাংলা'
-                  : language === 'en-US'
-                  ? 'EN'
-                  : 'Auto'}
-              </Text>
-            </Pressable>
             <Pressable
               style={styles.headerButton}
               onPress={clear}
@@ -919,6 +1052,26 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               {interimInput}
             </Text>
           ) : null}
+          {voiceConversation && voiceLanguageMenuOpen && (
+            <View style={[styles.voiceLanguageBar, { backgroundColor: colors.surface.primary }]}>
+              {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
+                <Pressable
+                  key={option}
+                  onPress={() => {
+                    setLanguage(option);
+                    setVoiceLanguageMenuOpen(false);
+                  }}
+                  style={[styles.voiceLanguageOption, {
+                    backgroundColor: language === option ? `${colors.primary}20` : colors.surface.secondary,
+                  }]}
+                >
+                  <Text style={[styles.language, { color: language === option ? colors.primary : colors.text.secondary }]}>
+                    {option === 'bn-BD' ? 'বাংলা' : option === 'en-US' ? 'English' : 'Auto'}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          )}
           <View
             style={[
               styles.composer,
@@ -928,31 +1081,33 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               },
             ]}
           >
-            <Pressable
-              style={[
-                styles.iconButton,
-                {
-                  backgroundColor: transcribe.listening
-                    ? `${colors.status.error}18`
-                    : colors.surface.secondary,
-                },
-              ]}
-              onPress={toggleVoice}
-              disabled={loading || !transcribe.supported}
-              accessibilityLabel={
-                transcribe.listening ? 'Stop voice input' : 'Start voice input'
-              }
-            >
-              <Icon
-                name={transcribe.listening ? 'mic' : 'mic-none'}
-                size={24}
-                color={
-                  transcribe.listening
-                    ? colors.status.error
-                    : colors.text.secondary
+            <View style={styles.voiceControl}>
+              <Pressable
+                style={[
+                  styles.iconButton,
+                  {
+                    backgroundColor: transcribe.listening
+                      ? `${colors.status.error}18`
+                      : colors.surface.secondary,
+                  },
+                ]}
+                onPress={toggleVoice}
+                disabled={loading || !transcribe.supported}
+                accessibilityLabel={
+                  transcribe.listening ? 'Stop voice input' : 'Start voice input'
                 }
-              />
-            </Pressable>
+              >
+                <Icon
+                  name={transcribe.listening ? 'mic' : 'mic-none'}
+                  size={24}
+                  color={
+                    transcribe.listening
+                      ? colors.status.error
+                      : colors.text.secondary
+                  }
+                />
+              </Pressable>
+            </View>
             <TextInput
               value={input}
               onChangeText={setInput}
@@ -986,6 +1141,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
+        )}
       </SafeAreaView>
     </Modal>
   );
@@ -994,23 +1150,22 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   flex: { flex: 1 },
   header: {
-    minHeight: 68,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    gap: 10,
+    paddingHorizontal: 12,
+    gap: 6,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 14,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: { flex: 1 },
-  heading: { fontSize: 19, fontWeight: '700', letterSpacing: -0.2 },
-  providerText: { fontSize: 11, marginTop: 1 },
+  heading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
   statusLine: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1036,9 +1191,9 @@ const styles = StyleSheet.create({
   },
   modeText: { fontSize: 11, fontWeight: '700' },
   language: { fontSize: 11, fontWeight: '700' },
-  providerBar: { paddingHorizontal: 16, paddingVertical: 8, zIndex: 2 },
+  providerBar: { paddingHorizontal: 12, paddingVertical: 4, zIndex: 2 },
   providerSelector: {
-    minHeight: 38,
+    minHeight: 32,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
     paddingHorizontal: 12,
@@ -1047,11 +1202,50 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   providerSelectorText: { fontSize: 13, fontWeight: '600' },
+  voiceLanguageBar: {
+    flexDirection: 'row',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+  },
+  voiceLanguageOption: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderRadius: 8,
+  },
+  voiceControl: { alignItems: 'center', justifyContent: 'center' },
   providerMenu: {
     marginTop: 4,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 10,
     overflow: 'hidden',
+  },
+  agentMini: {
+    position: 'absolute',
+    right: 18,
+    bottom: 28,
+    minWidth: 210,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+  },
+  agentMiniText: { flex: 1 },
+  agentMiniTitle: { fontSize: 13, fontWeight: '700' },
+  agentMiniStatus: { fontSize: 11, marginTop: 2 },
+  agentMiniMic: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   providerOption: { paddingHorizontal: 12, paddingVertical: 10 },
   providerOptionText: { fontSize: 13 },

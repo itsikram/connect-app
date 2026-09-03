@@ -426,11 +426,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     const onAppState = (state: AppStateStatus) => {
       if (state === 'active') {
         markCallSeenIfNeeded();
+      } else {
+        markCallIgnoredIfNeeded();
       }
     };
     const sub = AppState.addEventListener('change', onAppState);
     return () => sub.remove();
-  }, [markCallSeenIfNeeded]);
+  }, [markCallIgnoredIfNeeded, markCallSeenIfNeeded]);
 
   const toggleMute = useCallback(() => {
     const next = !isMutedRef.current;

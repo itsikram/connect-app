@@ -160,11 +160,12 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         var channelName = payload.channelName;
         var uid = payload.uid;
         var isAudio = !!payload.isAudio;
+        var publishAudio = payload.publishAudio !== false;
         setAudioOnlyUi(isAudio);
 
         if (client && joinedChannel === channelName && joinedUid === uid) {
           try {
-            if (!localTracks.length) await createLocalTracks(isAudio);
+            if (publishAudio && !localTracks.length) await createLocalTracks(isAudio);
             if (localTracks.length) await client.publish(localTracks);
           } catch (e) {
             post({ type: 'error', message: 'microphone publish failed: ' + (e && e.message) });
@@ -192,18 +193,19 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           joinedChannel = channelName;
           joinedUid = uid;
           tryResumeAudio();
-          post({ type: 'joined' });
 
           try {
-            if (!localTracks.length) await createLocalTracks(isAudio);
-            if (localTracks.length) {
+            if (publishAudio && !localTracks.length) await createLocalTracks(isAudio);
+            if (publishAudio && localTracks.length) {
               await client.publish(localTracks);
             }
           } catch (micErr) {
             post({ type: 'error', message: 'microphone publish failed: ' + (micErr && micErr.message) });
             await stopTracks();
+            throw micErr;
           }
 
+          post({ type: 'joined' });
           var remotes = client.remoteUsers || [];
           for (var i = 0; i < remotes.length; i++) {
             var user = remotes[i];
@@ -243,6 +245,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         if (track) {
           try { await track.setEnabled(!muted); } catch (e) {}
         }
+
+        async function enableAudio() {
+          if (!client || !joinedChannel) throw new Error('Live voice is not connected');
+          var track = localTracks.find(function (t) { return t.trackMediaType === 'audio'; });
+          if (!track) {
+            track = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true });
+            localTracks.push(track);
+          }
+          await client.publish([track]);
+          post({ type: 'audio-enabled' });
+        }
       }
 
       async function muteVideo(muted) {
@@ -280,6 +293,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           else if (cmd.type === 'preview') await preview(cmd);
           else if (cmd.type === 'leave') await leave();
           else if (cmd.type === 'muteAudio') await muteAudio(!!cmd.muted);
+          else if (cmd.type === 'enableAudio') await enableAudio();
           else if (cmd.type === 'muteVideo') await muteVideo(!!cmd.muted);
           else if (cmd.type === 'switchCamera') await switchCamera();
         else if (cmd.type === 'republish') {

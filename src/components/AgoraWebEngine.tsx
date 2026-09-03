@@ -9,6 +9,7 @@ export type AgoraJoinPayload = {
   channelName: string;
   uid: number;
   isAudio: boolean;
+  publishAudio?: boolean;
 };
 
 export type AgoraEngineEvent =
@@ -20,6 +21,7 @@ export type AgoraEngineEvent =
   | { type: 'user-unpublished'; uid: number; mediaType?: string }
   | { type: 'user-left'; uid: number }
   | { type: 'network-quality'; uplink: number; downlink: number }
+  | { type: 'audio-enabled' }
   | { type: 'error'; message: string }
   | { type: 'log'; message: string };
 
@@ -28,6 +30,7 @@ export type AgoraWebEngineHandle = {
   preview: (isAudio: boolean) => void;
   leave: () => void;
   muteAudio: (muted: boolean) => void;
+  enableAudio: () => void;
   muteVideo: (muted: boolean) => void;
   switchCamera: () => void;
   republish?: () => void;
@@ -78,6 +81,7 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
     preview: (audioOnly) => inject({ type: 'preview', isAudio: audioOnly }),
     leave: () => inject({ type: 'leave' }),
     muteAudio: (muted) => inject({ type: 'muteAudio', muted }),
+    enableAudio: () => inject({ type: 'enableAudio' }),
     muteVideo: (muted) => inject({ type: 'muteVideo', muted }),
     switchCamera: () => inject({ type: 'switchCamera' }),
     republish: () => inject({ type: 'republish' }),

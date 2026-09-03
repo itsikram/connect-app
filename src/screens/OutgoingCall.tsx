@@ -154,9 +154,10 @@ const OutgoingCall: React.FC = () => {
       setCallStatus('Call ended');
       setTimeout(() => safeGoBack(), 1000);
     };
-    const handleUpdatedStatus = ({ from, status }: any) => {
-      // We are the caller; any status from callee should update our banner
-      if (status) {
+    const handleUpdatedStatus = ({ from, status, channelName }: any) => {
+      const isFromCallee = !from || String(from) === String(calleeId);
+      const isForThisCall = !channelName || String(channelName) === String(params?.channelName);
+      if (isFromCallee && isForThisCall && status) {
         setCallStatus(status);
       }
     };

@@ -21,6 +21,9 @@ interface LiveVoiceModalProps {
     role: 'sender' | 'receiver';
     friendName: string;
     onStop?: () => void;
+    onEnableMicrophone?: () => void;
+    microphoneEnabled?: boolean;
+    microphonePending?: boolean;
     connectionQuality?: number | null;
 }
 
@@ -33,6 +36,9 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
     role,
     friendName,
     onStop,
+    onEnableMicrophone,
+    microphoneEnabled = false,
+    microphonePending = false,
     connectionQuality = 4,
 }) => {
     const { colors: themeColors, isDarkMode } = useTheme();
@@ -128,7 +134,7 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
 
                                 {friendName && (
                                     <Text style={[styles.participant, { color: themeColors.text.secondary }]}>
-                                        {'Connected with: '}
+                                        {role === 'sender' ? 'Sending your voice to: ' : 'Hearing: '}
                                         <Text style={{ fontWeight: '600', color: themeColors.text.primary }}>
                                             {friendName}
                                         </Text>
@@ -143,6 +149,23 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                                 )}
                             </View>
                         </View>
+
+                        {role === 'receiver' && isActive && !microphoneEnabled && onEnableMicrophone ? (
+                            <TouchableOpacity
+                                style={styles.microphoneButton}
+                                onPress={onEnableMicrophone}
+                                disabled={microphonePending}
+                            >
+                                {microphonePending ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <Icon name="mic" size={20} color="#FFFFFF" />
+                                )}
+                                <Text style={styles.stopButtonText}>
+                                    {microphonePending ? 'Turning on microphone...' : 'Turn on microphone'}
+                                </Text>
+                            </TouchableOpacity>
+                        ) : null}
 
                         {isActive ? (
                             <View style={[styles.qualityWrap, { backgroundColor: themeColors.surface.secondary || (isDarkMode ? '#252525' : '#F5F5F5') }]}>
@@ -319,6 +342,15 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         gap: 8,
     },
+    microphoneButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: '#1DB954',
+        padding: 12,
+        borderRadius: 6,
+        gap: 8,
+    },
     stopButtonText: {
         color: '#FFFFFF',
         fontSize: 16,
@@ -327,4 +359,3 @@ const styles = StyleSheet.create({
 });
 
 export default LiveVoiceModal;
-
