@@ -4,10 +4,17 @@ This document ensures FCM (Firebase Cloud Messaging) notifications work correctl
 
 ## Critical Requirements
 
-### 1. Background Message Handler Registration
-- ✅ The `setBackgroundMessageHandler` is called **BEFORE** `AppRegistry.registerComponent`
-- ✅ The handler is registered at the top level of `index.js`
-- ✅ The handler works in production (no `__DEV__` checks that prevent execution)
+### 1. Background Message Handling
+- ✅ `ConnectFirebaseMessagingService` handles data-only FCM messages natively.
+- ✅ Native notifications are displayed when the React Native process is stopped.
+- ✅ Android displays notification payloads while the app is backgrounded or stopped.
+- ⚠️ Android force-stop is an OS restriction: delivery resumes after the user
+  launches the app again.
+
+For custom notifications that must display while the app is stopped, send a
+data-only message with `type`, `title`, `body`, and (when needed) `channelId`,
+`messageId`, and navigation identifiers inside `data`. Do not include a
+`notification` object for this path.
 
 ### 2. ProGuard Rules
 - ✅ FCM classes are kept in `proguard-rules.pro`
@@ -15,9 +22,8 @@ This document ensures FCM (Firebase Cloud Messaging) notifications work correctl
 - ✅ Notifee classes are preserved
 
 ### 3. Error Handling
-- ✅ All critical errors are logged even in production (using `console.error`)
-- ✅ Fallback handlers ensure notifications are displayed even if primary handler fails
-- ✅ Graceful degradation if Firebase initialization fails
+- ✅ Native FCM errors are logged with the `ConnectFCM` tag.
+- ✅ JavaScript registration updates the authenticated API after login/startup.
 
 ### 4. Android Configuration
 - ✅ `google-services.json` is present in `app/android/app/`
@@ -51,8 +57,8 @@ This document ensures FCM (Firebase Cloud Messaging) notifications work correctl
 ## Troubleshooting
 
 ### Notifications not received when app is killed:
-1. Check that `setBackgroundMessageHandler` is called before `AppRegistry.registerComponent`
-2. Verify `google-services.json` is present and correct
+1. Verify the server sent a data-only message with a non-empty `data` object
+2. Verify `google-services.json` is present and matches `com.connect.app`
 3. Check ProGuard rules are applied
 4. Ensure notification permissions are granted
 
@@ -68,9 +74,8 @@ This document ensures FCM (Firebase Cloud Messaging) notifications work correctl
 
 ## Key Files
 
-- `app/index.js` - Background message handler registration
+- `app/index.js` - Foreground and Expo task registration
 - `app/android/app/proguard-rules.pro` - ProGuard rules for FCM
-- `app/src/lib/push.ts` - Foreground message handling
-- `app/src/lib/pushBackgroundService.ts` - Background message handling
+- `app/src/lib/push.ts` - Token registration and foreground handling
+- `app/android/app/src/main/java/com/connect/app/ConnectFirebaseMessagingService.kt` - Killed-state FCM handling
 - `app/android/app/src/main/AndroidManifest.xml` - Android permissions
-

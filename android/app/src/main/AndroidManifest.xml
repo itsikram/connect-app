@@ -72,7 +72,7 @@
       android:theme="@style/AppTheme"
       android:supportsRtl="true"
       android:requestLegacyExternalStorage="true"
-      android:usesCleartextTraffic="true">
+      android:usesCleartextTraffic="false">
       <meta-data
         android:name="com.google.android.gms.ads.APPLICATION_ID"
         android:value="ca-app-pub-8953965236531270~4949960103"

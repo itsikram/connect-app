@@ -5,11 +5,29 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.RemoteMessage
 import expo.modules.notifications.service.ExpoFirebaseMessagingService
 
 class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
+  companion object {
+    private const val TAG = "ConnectFCM"
+    private const val PREFS = "connect_push"
+    private const val TOKEN_KEY = "fcm_token"
+  }
+
+  override fun onNewToken(token: String) {
+    super.onNewToken(token)
+    // Persist rotation immediately. JavaScript re-registers this value with the
+    // authenticated API the next time the user opens the app.
+    getSharedPreferences(PREFS, MODE_PRIVATE)
+      .edit()
+      .putString(TOKEN_KEY, token)
+      .apply()
+    Log.i(TAG, "FCM token refreshed")
+  }
+
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
     val data = remoteMessage.data
     if (data["type"] == "incoming_call") {

@@ -7,7 +7,7 @@ import { isAndroidExpoGo } from './expoGo';
 export const PUSH_TOKEN_STORAGE_KEY = 'fcmToken';
 
 const EXPO_PROJECT_ID =
-  Constants.expoConfig?.extra?.eas?.projectId || '2705eb94-d61a-4af6-af53-02399dce8b6f';
+  Constants.expoConfig?.extra?.eas?.projectId;
 
 export function isExpoPushToken(token: string | null | undefined): boolean {
   const value = String(token || '');
@@ -56,7 +56,9 @@ export async function getNativeOrExpoPushToken(): Promise<{
 
   if (previousToken && (Platform.OS !== 'android' || isExpoPushToken(previousToken))) {
     try {
-      const expo = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
+      const expo = EXPO_PROJECT_ID
+        ? await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID })
+        : await Notifications.getExpoPushTokenAsync();
       const expoToken = tokenFromDevice(expo);
       if (expoToken) {
         if (previousToken !== expoToken) {
@@ -71,7 +73,9 @@ export async function getNativeOrExpoPushToken(): Promise<{
   }
 
   try {
-    const expo = await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID });
+    const expo = EXPO_PROJECT_ID
+      ? await Notifications.getExpoPushTokenAsync({ projectId: EXPO_PROJECT_ID })
+      : await Notifications.getExpoPushTokenAsync();
     const expoToken = tokenFromDevice(expo);
     if (expoToken) {
       await AsyncStorage.setItem(PUSH_TOKEN_STORAGE_KEY, expoToken);
