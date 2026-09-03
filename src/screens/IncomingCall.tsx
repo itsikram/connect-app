@@ -170,6 +170,12 @@ const IncomingCall: React.FC = () => {
   }, [playRingtone, channelName]);
 
   useEffect(() => {
+    return () => {
+      stopIncomingCallAlert(channelName).catch(() => {});
+    };
+  }, [channelName]);
+
+  useEffect(() => {
     if (!callerId || !channelName) {
       try {
         if (Platform.OS === 'android') {

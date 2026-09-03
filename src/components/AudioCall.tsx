@@ -270,11 +270,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (isAudio === false) return;
       applyIncomingAudioCall({ from, channelName, callerName: name, callerProfilePic: pic });
     };
-    const onCallAccepted = ({ channelName, isAudio }: any) => {
+    const onCallAccepted = ({ channelName, isAudio, callerName: acceptedName, callerProfilePic: acceptedPic }: any) => {
       if (!isAudio) return;
       if (!receivingCallRef.current && incomingCallRef.current?.from === myId) {
         stopIncomingCallAlert();
         setOutgoingCallStatus('');
+        if (acceptedName) setCallerName(String(acceptedName));
+        if (acceptedPic) setCallerProfilePic(String(acceptedPic));
         startCallRef.current(channelName);
       }
     };

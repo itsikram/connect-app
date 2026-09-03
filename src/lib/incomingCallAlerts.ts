@@ -40,6 +40,7 @@ let presentedNotificationId: string | null = null;
 let ringingPayload: RingingPayload | null = null;
 let appStateSub: { remove: () => void } | null = null;
 let appStateTimer: ReturnType<typeof setTimeout> | null = null;
+let alertToken = 0;
 
 function callNotificationId(channelName?: string) {
   return `incoming_call_${channelName || 'active'}`;
@@ -233,9 +234,11 @@ export async function cancelIncomingCallNotifications(channelName?: string): Pro
  * - Android background: high-priority OS / Notifee call notification with channel ringtone.
  */
 export async function startIncomingCallAlert(payload: RingingPayload): Promise<void> {
+  const token = ++alertToken;
   const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
   const next = { ...payload, ringtoneId };
   const inForeground = AppState.currentState === 'active';
+  if (token !== alertToken) return;
 
   if (sameCall(ringingPayload, next)) {
     if (!isIncomingRingtonePlaying() && (inForeground || Platform.OS === 'ios')) {
@@ -249,11 +252,14 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 
   if (Platform.OS === 'ios') {
     await playIncomingRingtone(ringtoneId);
+    if (token !== alertToken || !ringingPayload || !sameCall(ringingPayload, next)) return;
     if (!inForeground) {
       await presentIncomingCallNotification(next);
     }
     return;
   }
+
+  if (token !== alertToken || !ringingPayload || !sameCall(ringingPayload, next)) return;
 
   if (inForeground) {
     playIncomingRingtone(ringtoneId).catch(() => {});
@@ -267,6 +273,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 }
 
 export async function stopIncomingCallAlert(channelName?: string): Promise<void> {
+  alertToken += 1;
   ringingPayload = null;
   if (appStateTimer) {
     clearTimeout(appStateTimer);

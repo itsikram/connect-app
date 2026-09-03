@@ -25,7 +25,7 @@ const OutgoingCall: React.FC = () => {
   const route = useRoute();
   const { startVideoCall, startAudioCall, endVideoCall, endAudioCall, on, off } = useSocket();
   const [callStatus, setCallStatus] = useState('Calling...');
-  const [playBeep, setPlayBeep] = useState(true);
+  const [playBeep, setPlayBeep] = useState(false);
   const [callAccepted, setCallAccepted] = useState(false);
 
   const params = route.params as unknown as OutgoingCallParams;
@@ -159,6 +159,7 @@ const OutgoingCall: React.FC = () => {
       const isForThisCall = !channelName || String(channelName) === String(params?.channelName);
       if (isFromCallee && isForThisCall && status) {
         setCallStatus(status);
+        setPlayBeep(String(status).toLowerCase().includes('ring'));
       }
     };
 
@@ -170,6 +171,7 @@ const OutgoingCall: React.FC = () => {
     return () => {
       off('call-accepted', handleAccepted);
       off(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
+      off(isAudio ? 'audio-call-rejected' : 'video-call-rejected', handleEnd);
       off('updated-call-status', handleUpdatedStatus);
     };
   }, [on, off, navigation, isAudio]);

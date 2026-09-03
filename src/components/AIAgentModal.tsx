@@ -100,6 +100,9 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [pendingActions, setPendingActions] = React.useState<
     AgentActionIntent[]
   >([]);
+  const knownFriendsRef = React.useRef<
+    Array<{ id: string; name: string; username?: string; bio?: string }>
+  >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
   const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] = React.useState(false);
   const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
@@ -144,6 +147,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     activeUser?: { id?: string; name?: string };
     activeProfile?: { id?: string; name?: string };
     activeConversation?: { userId?: string; name?: string };
+    knownFriends?: Array<{ id: string; name: string; username?: string; bio?: string }>;
   }>({});
   const listRef = React.useRef<FlatList<AgentMessage>>(null);
   const clearChat = React.useCallback(async () => {
@@ -153,43 +157,105 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const resolveUser = React.useCallback(async (query: string) => {
     const profileId = String((profile as Record<string, unknown> | null)?._id || '');
     if (!profileId) return null;
-    const response = await api.get('/search', { params: { input: query } });
-    const data: unknown = response.data;
-    const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
-    const friends = Array.isArray(dataRecord.users)
-      ? dataRecord.users
-      : [];
-    const needle = query.trim().toLowerCase();
-    const matches = friends.filter((friend: Record<string, unknown>) => {
+    const normalizedQuery = query.normalize('NFC').replace(/\u200c|\u200d/g, '').replace(/\s+/g, ' ').trim();
+    const searchQueries = Array.from(new Set([
+      normalizedQuery,
+      normalizedQuery.replace(/(কে|কো|এর|র|তে|কে)$/u, '').trim(),
+    ].filter(Boolean)));
+    const friendMap = new Map<string, Record<string, unknown>>();
+    for (const searchQuery of searchQueries) {
+      const response = await api.get('/search', { params: { input: searchQuery } });
+      const data: unknown = response.data;
+      const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+      const searchPayload = dataRecord.data && typeof dataRecord.data === 'object'
+        ? dataRecord.data as Record<string, unknown>
+        : dataRecord;
+      const users = Array.isArray(searchPayload.users) ? searchPayload.users : [];
+      users.forEach((user: Record<string, unknown>) => {
+        const userId = String(user._id || user.userId || '');
+        if (userId) friendMap.set(userId, user);
+      });
+    }
+    const friends = [...friendMap.values()];
+    const needle = normalizedQuery.toLowerCase();
+    const normalizedNeedle = searchQueries[searchQueries.length - 1].toLowerCase();
+    const scored = friends.map((friend: Record<string, unknown>) => {
       const nestedUser = friend.user && typeof friend.user === 'object'
         ? friend.user as Record<string, unknown>
         : {};
       const fields = [
-        friend.fullName, friend.username, friend.email, friend.name,
-        nestedUser.fullName, nestedUser.username, nestedUser.email, nestedUser.name,
+        friend.fullName, friend.displayName, friend.username, friend.nickname,
+        friend.banglaName, friend.email, friend.name,
+        nestedUser.fullName, nestedUser.displayName, nestedUser.username,
+        nestedUser.nickname, nestedUser.banglaName, nestedUser.email, nestedUser.name,
       ]
         .filter(value => typeof value === 'string')
         .map(value => String(value).toLowerCase());
-      return fields.some(value => value === needle || value.includes(needle));
-    });
-    if (matches.length !== 1) return null;
-    const match = matches[0] as Record<string, unknown>;
+      const score = fields.reduce((best, value) => Math.max(
+        best,
+        value === needle || value === normalizedNeedle ? 100 :
+          value.startsWith(needle) || value.startsWith(normalizedNeedle) ? 80 :
+            value.includes(needle) || value.includes(normalizedNeedle) ? 55 : 0,
+      ), 0);
+      return { friend, score };
+    }).filter(item => item.score > 0).sort((a, b) => b.score - a.score);
+    if (!scored.length) return null;
+    const bestScore = scored[0].score;
+    const matches = scored.filter(item => item.score === bestScore);
+    if (matches.length > 1) {
+      const names = matches.slice(0, 5).map(item => String(
+        item.friend.fullName || item.friend.username || item.friend.name || query,
+      ));
+      throw new Error(`I found multiple relevant people: ${names.join(', ')}. Which one should I use?`);
+    }
+    const match = matches[0].friend;
     const nestedUser = match.user && typeof match.user === 'object'
       ? match.user as Record<string, unknown>
       : {};
     const id = match._id || match.userId || nestedUser._id || nestedUser.id;
     if (!id) return null;
+    const displayName = match.fullName || match.displayName || match.name ||
+      nestedUser.fullName || nestedUser.displayName || nestedUser.name ||
+      match.username || nestedUser.username || match.nickname || nestedUser.nickname || query;
     return {
       id: String(id),
-      name: String(
-        match.fullName || match.username || match.name ||
-        nestedUser.fullName || nestedUser.username || nestedUser.name || query,
-      ),
+      name: String(displayName),
       profilePic: String(
         match.profilePic || match.profilePicture || nestedUser.profilePic ||
-          nestedUser.profilePicture || '',
+          nestedUser.profilePicture || nestedUser.avatar || '',
       ) || undefined,
     };
+  }, [profile]);
+
+  React.useEffect(() => {
+    const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+    if (!ownId) return;
+    api.get('/friend/getFriends', { params: { profile: ownId } })
+      .then(response => {
+        const raw = Array.isArray(response.data?.friends)
+          ? response.data.friends
+          : Array.isArray(response.data?.data?.friends)
+            ? response.data.data.friends
+            : [];
+        knownFriendsRef.current = raw.map((item: Record<string, unknown>) => {
+          const nested = item.user && typeof item.user === 'object'
+            ? item.user as Record<string, unknown>
+            : {};
+          const id = item._id || item.userId || nested._id || nested.id;
+          const name = item.fullName || item.name || nested.fullName || nested.name ||
+            item.username || nested.username;
+          return {
+            id: String(id || ''),
+            name: String(name || ''),
+            username: String(item.username || nested.username || '') || undefined,
+            bio: String(item.bio || nested.bio || '') || undefined,
+          };
+        }).filter(item => item.id && item.name);
+        agentMemoryRef.current.knownFriends = knownFriendsRef.current;
+      })
+      .catch(error => {
+        if (__DEV__) console.warn('[AI] Failed to load friend context:', error);
+      });
   }, [profile]);
 
   React.useEffect(() => {

@@ -18,6 +18,7 @@ const SYSTEM_PROMPT =
   'Never use markdown or add unknown fields. Only request actions that are available in the mobile app. ' +
   'Understand Bangla, Banglish, English, and mixed language. Resolve pronouns such as him/her/ওকে from the active context. ' +
   'For social actions, include targetName or userId and messageText/parameters.message when needed. ' +
+  'Use the supplied known friend profiles for name matching and basic friend details; prefer exact name or username matches. If several people are equally relevant, ask which person before acting. ' +
   'You can also have a supportive, natural conversation about the user’s personal matters without calling an action. ' +
   'Listen empathetically, answer in the user’s language, do not judge, do not invent personal facts, and suggest professional or emergency help when the situation calls for it.';
 const DEFAULT_PROVIDER: AIProvider = 'gemini';
@@ -81,6 +82,7 @@ export async function streamAgentReply(
       activeUser?: { id?: string; name?: string };
       activeProfile?: { id?: string; name?: string };
       activeConversation?: { userId?: string; name?: string };
+      knownFriends?: Array<{ id: string; name: string; username?: string; bio?: string }>;
     };
   },
 ): Promise<string> {
@@ -101,10 +103,15 @@ export async function streamAgentReply(
         providerOptions.memory,
       )}`
     : '';
+  const friendsContext = providerOptions?.memory?.knownFriends?.length
+    ? `\n\nKnown friend profiles (use only for matching and basic details; IDs are authoritative):\n${JSON.stringify(
+        providerOptions.memory.knownFriends.slice(0, 60),
+      )}`
+    : '';
   const payload = {
     provider: providerConfig.provider,
     model: providerConfig.model,
-    system: SYSTEM_PROMPT + profileContext + memoryContext,
+    system: SYSTEM_PROMPT + profileContext + memoryContext + friendsContext,
     messages: [
       ...toPayloadMessages(history),
       { role: 'user', content: message },
