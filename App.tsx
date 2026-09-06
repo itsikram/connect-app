@@ -1214,7 +1214,11 @@ function App() {
                               <ChessGameProvider>
                                 <HeaderVisibilityProvider>
                                   <WatchPipProvider>
-                                    <AppWithTopProgress />
+                                    <KeyboardSafeView
+                                      extraOffset={Platform.OS === 'ios' ? 8 : 0}
+                                    >
+                                      <AppWithTopProgress />
+                                    </KeyboardSafeView>
                                   </WatchPipProvider>
                                 </HeaderVisibilityProvider>
                               </ChessGameProvider>

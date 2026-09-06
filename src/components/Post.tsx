@@ -1644,9 +1644,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 </Text>
               ) : null}
             </TouchableOpacity>
-          ) : (
-            <View style={[styles.actionBarItem, styles.actionBarItemHalf]} />
-          )}
+          ) : null}
         </View>
         <View style={styles.commentsList}>
           {loadingComments ? (
@@ -2006,11 +2004,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderBottomWidth: 1,
     overflow: 'visible',
-    gap: 4,
+    gap: 8,
   },
   actionBarItem: {
     flex: 1,
-    width: '33%',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -2019,11 +2016,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   actionBarItemHalf: {
-    width: '50%',
+    flex: 1,
   },
   reactButtonsWrap: {
     flex: 1,
-    width: '33%',
     position: 'relative',
     zIndex: 20,
     overflow: 'visible',

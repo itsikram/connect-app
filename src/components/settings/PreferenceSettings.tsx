@@ -14,10 +14,22 @@ const THEME_OPTIONS = [
   { label: 'Default', value: 'default' },
   { label: 'Dark', value: 'dark' },
   { label: 'Light', value: 'light' },
+  { label: 'Blue', value: 'blue' },
+  { label: 'Green', value: 'green' },
+  { label: 'Purple', value: 'purple' },
 ];
 
 const toWebTheme = (mode?: string) => {
-  if (mode === 'light' || mode === 'dark' || mode === 'default') return mode;
+  if (
+    mode === 'light' ||
+    mode === 'dark' ||
+    mode === 'default' ||
+    mode === 'blue' ||
+    mode === 'green' ||
+    mode === 'purple'
+  ) {
+    return mode;
+  }
   return 'dark';
 };
 

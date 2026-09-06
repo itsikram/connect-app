@@ -23,7 +23,11 @@ import { useNavigation } from '@react-navigation/native';
 import { hideTabBarForChat } from '../lib/chatScreenChrome';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSocket } from '../contexts/SocketContext';
-import { fetchChatList, updateUnreadMessageCount, markMessagesAsRead } from '../reducers/chatReducer';
+import {
+  fetchChatList,
+  updateUnreadMessageCount,
+  markMessagesAsRead,
+} from '../reducers/chatReducer';
 import moment from 'moment';
 import ListItemSkeleton from '../components/skeleton/ListItemSkeleton';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -48,12 +52,25 @@ const isImageAttachment = (url?: string | boolean | null) => {
   return /\.(jpg|jpeg|png|gif|bmp|webp|svg)(\?|#|$)/i.test(url);
 };
 
-type PreviewKind = 'text' | 'photo' | 'voice' | 'video-call' | 'audio-call' | 'missed-video' | 'missed-audio' | 'attachment';
+type PreviewKind =
+  | 'text'
+  | 'photo'
+  | 'voice'
+  | 'video-call'
+  | 'audio-call'
+  | 'missed-video'
+  | 'missed-audio'
+  | 'attachment';
 
-function getLastMessagePreview(lastMessage: any): { text: string; kind: PreviewKind } {
+function getLastMessagePreview(lastMessage: any): {
+  text: string;
+  kind: PreviewKind;
+} {
   if (
     !lastMessage ||
-    (!lastMessage.message && !lastMessage.attachment && !lastMessage.messageType)
+    (!lastMessage.message &&
+      !lastMessage.attachment &&
+      !lastMessage.messageType)
   ) {
     return { text: 'Start a conversation', kind: 'text' };
   }
@@ -73,11 +90,16 @@ function getLastMessagePreview(lastMessage: any): { text: string; kind: PreviewK
     };
   }
 
-  if (lastMessage.messageType === 'audio' || isAudioAttachment(lastMessage.attachment)) {
+  if (
+    lastMessage.messageType === 'audio' ||
+    isAudioAttachment(lastMessage.attachment)
+  ) {
     return { text: 'Voice message', kind: 'voice' };
   }
 
-  const messageText = String(lastMessage?.message || lastMessage?.text || lastMessage?.content || '').trim();
+  const messageText = String(
+    lastMessage?.message || lastMessage?.text || lastMessage?.content || '',
+  ).trim();
   if (messageText) return { text: messageText, kind: 'text' };
 
   if (isImageAttachment(lastMessage.attachment) || lastMessage.attachment) {
@@ -119,7 +141,8 @@ function getShortTimeAgo(timestamp?: string | Date | null) {
 function countUnread(messages: any[] | undefined, myId?: string) {
   if (!myId || !Array.isArray(messages)) return 0;
   return messages.reduce((count, message) => {
-    if (message && idsMatch(message.receiverId, myId) && !message.isSeen) return count + 1;
+    if (message && idsMatch(message.receiverId, myId) && !message.isSeen)
+      return count + 1;
     return count;
   }, 0);
 }
@@ -166,118 +189,141 @@ const clearChatListFromStorage = async (userId: string) => {
 
 export { clearChatListFromStorage };
 
-const ConversationRow = React.memo(({
-  person,
-  last,
-  unreadCount,
-  isOnline,
-  showDivider,
-  myId,
-  colors,
-  onPress,
-}: {
-  person: any;
-  last?: any;
-  unreadCount: number;
-  isOnline: boolean;
-  showDivider: boolean;
-  myId?: string;
-  colors: any;
-  onPress: () => void;
-}) => {
-  const preview = getLastMessagePreview(last);
-  const isOutgoing = last && idsMatch(last.senderId, myId);
-  const isUnread = unreadCount > 0;
-  const previewIcon = PREVIEW_ICONS[preview.kind];
-  const previewColor = isUnread ? colors.text.primary : colors.text.secondary;
-  const nameColor = isUnread ? colors.text.primary : colors.text.primary;
-  const missed = preview.kind === 'missed-video' || preview.kind === 'missed-audio';
+const ConversationRow = React.memo(
+  ({
+    person,
+    last,
+    unreadCount,
+    isOnline,
+    showDivider,
+    myId,
+    colors,
+    onPress,
+  }: {
+    person: any;
+    last?: any;
+    unreadCount: number;
+    isOnline: boolean;
+    showDivider: boolean;
+    myId?: string;
+    colors: any;
+    onPress: () => void;
+  }) => {
+    const preview = getLastMessagePreview(last);
+    const isOutgoing = last && idsMatch(last.senderId, myId);
+    const isUnread = unreadCount > 0;
+    const previewIcon = PREVIEW_ICONS[preview.kind];
+    const previewColor = isUnread ? colors.text.primary : colors.text.secondary;
+    const nameColor = isUnread ? colors.text.primary : colors.text.primary;
+    const missed =
+      preview.kind === 'missed-video' || preview.kind === 'missed-audio';
 
-  return (
-    <Pressable
-      onPress={onPress}
-      android_ripple={{ color: colors.border.muted }}
-      accessibilityRole="button"
-      accessibilityLabel={`${person?.fullName || 'User'}${isOnline ? ', online' : ''}. ${isOutgoing ? 'You: ' : ''}${preview.text}. ${getShortTimeAgo(last?.timestamp)}${isUnread ? `. ${unreadCount} unread` : ''}`}
-      style={({ pressed }) => [
-        styles.conversationRow,
-        {
-          backgroundColor: pressed
-            ? colors.surface.secondary
-            : isUnread
+    return (
+      <Pressable
+        onPress={onPress}
+        android_ripple={{ color: colors.border.muted }}
+        accessibilityRole="button"
+        accessibilityLabel={`${person?.fullName || 'User'}${
+          isOnline ? ', online' : ''
+        }. ${isOutgoing ? 'You: ' : ''}${preview.text}. ${getShortTimeAgo(
+          last?.timestamp,
+        )}${isUnread ? `. ${unreadCount} unread` : ''}`}
+        style={({ pressed }) => [
+          styles.conversationRow,
+          {
+            backgroundColor: pressed
+              ? colors.surface.secondary
+              : isUnread
               ? getColorWithOpacity(colors.primary, 0.08)
               : 'transparent',
-        },
-      ]}
-    >
-      <UserPP image={person?.profilePic} isActive={isOnline} size={54} />
-      <View
-        style={[
-          styles.conversationBody,
-          showDivider && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: colors.border.secondary },
+          },
         ]}
       >
-        <View style={styles.conversationTop}>
-          <Text
-            style={[styles.conversationName, { color: nameColor, fontWeight: isUnread ? '700' : '600' }]}
-            numberOfLines={1}
-          >
-            {person?.fullName || 'User'}
-          </Text>
-          {last?.timestamp ? (
+        <UserPP image={person?.profilePic} isActive={isOnline} size={54} />
+        <View
+          style={[
+            styles.conversationBody,
+            showDivider && {
+              borderBottomWidth: StyleSheet.hairlineWidth,
+              borderBottomColor: colors.border.secondary,
+            },
+          ]}
+        >
+          <View style={styles.conversationTop}>
             <Text
               style={[
-                styles.conversationTime,
-                { color: isUnread ? colors.primary : colors.text.tertiary },
-              ]}
-            >
-              {getShortTimeAgo(last.timestamp)}
-            </Text>
-          ) : null}
-        </View>
-        <View style={styles.conversationBottom}>
-          <View style={styles.previewRow}>
-            {isOutgoing && last ? (
-              <Icon
-                name={last.isSeen ? 'done-all' : 'done'}
-                size={15}
-                color={last.isSeen ? colors.primary : colors.text.tertiary}
-                style={styles.previewStatus}
-              />
-            ) : null}
-            {previewIcon ? (
-              <Icon
-                name={previewIcon}
-                size={14}
-                color={missed ? colors.status.error : previewColor}
-                style={styles.previewStatus}
-              />
-            ) : null}
-            <Text
-              style={[
-                styles.previewText,
-                {
-                  color: missed ? colors.status.error : previewColor,
-                  fontWeight: isUnread ? '600' : '400',
-                },
+                styles.conversationName,
+                { color: nameColor, fontWeight: isUnread ? '700' : '600' },
               ]}
               numberOfLines={1}
             >
-              {isOutgoing ? `You: ${preview.text}` : preview.text}
+              {person?.fullName || 'User'}
             </Text>
+            {last?.timestamp ? (
+              <Text
+                style={[
+                  styles.conversationTime,
+                  { color: isUnread ? colors.primary : colors.text.tertiary },
+                ]}
+              >
+                {getShortTimeAgo(last.timestamp)}
+              </Text>
+            ) : null}
           </View>
-          {isUnread ? (
-            <View style={[styles.unreadBadge, { backgroundColor: colors.primary }]}>
-              <Text style={[styles.unreadBadgeText, { color: colors.text.inverse }]}>
-                {unreadCount > 99 ? '99+' : unreadCount}
+          <View style={styles.conversationBottom}>
+            <View style={styles.previewRow}>
+              {isOutgoing && last ? (
+                <Icon
+                  name={last.isSeen ? 'done-all' : 'done'}
+                  size={15}
+                  color={last.isSeen ? colors.primary : colors.text.tertiary}
+                  style={styles.previewStatus}
+                />
+              ) : null}
+              {previewIcon ? (
+                <Icon
+                  name={previewIcon}
+                  size={14}
+                  color={missed ? colors.status.error : previewColor}
+                  style={styles.previewStatus}
+                />
+              ) : null}
+              <Text
+                style={[
+                  styles.previewText,
+                  {
+                    color: missed ? colors.status.error : previewColor,
+                    fontWeight: isUnread ? '600' : '400',
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {isOutgoing ? `You: ${preview.text}` : preview.text}
               </Text>
             </View>
-          ) : null}
+            {isUnread ? (
+              <View
+                style={[
+                  styles.unreadBadge,
+                  { backgroundColor: colors.primary },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.unreadBadgeText,
+                    { color: colors.text.inverse },
+                  ]}
+                >
+                  {unreadCount > 99 ? '99+' : unreadCount}
+                </Text>
+              </View>
+            ) : null}
+          </View>
         </View>
-      </View>
-    </Pressable>
-  );
-});
+      </Pressable>
+    );
+  },
+);
 
 ConversationRow.displayName = 'ConversationRow';
 
@@ -285,18 +331,31 @@ const Message = React.memo(() => {
   const dispatch = useDispatch<AppDispatch>();
   const { colors: themeColors } = useTheme();
   const profileData = useSelector((state: RootState) => state.profile);
-  const unreadMessageCount = useSelector((state: RootState) => state.chat.unreadMessageCount);
+  const unreadMessageCount = useSelector(
+    (state: RootState) => state.chat.unreadMessageCount,
+  );
   const [isLoading, setIsLoading] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
-  const activeFriendsValue = useSelector((state: RootState) => state.presence.activeFriends);
-  const activeFriends = Array.isArray(activeFriendsValue) ? activeFriendsValue : [];
-  const { chats: rawChatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
-    chats: any[];
-    loading: boolean;
-    error: string | null;
-  });
+  const activeFriendsValue = useSelector(
+    (state: RootState) => state.presence.activeFriends,
+  );
+  const activeFriends = Array.isArray(activeFriendsValue)
+    ? activeFriendsValue
+    : [];
+  const {
+    chats: rawChatList,
+    loading: chatLoading,
+    error: chatError,
+  } = useSelector(
+    (state: RootState) =>
+      state.chat as {
+        chats: any[];
+        loading: boolean;
+        error: string | null;
+      },
+  );
   const chatList = Array.isArray(rawChatList) ? rawChatList : [];
 
   const { isConnected, checkUserActive } = useSocket();
@@ -304,7 +363,9 @@ const Message = React.memo(() => {
   const navigation = useNavigation();
 
   const sortedFriends = useMemo(() => {
-    const friendsList = Array.isArray(profileData?.friends) ? [...profileData.friends] : [];
+    const friendsList = Array.isArray(profileData?.friends)
+      ? [...profileData.friends]
+      : [];
     return friendsList.sort((a: any, b: any) => {
       const aActive = activeFriends.includes(a?._id) ? 1 : 0;
       const bActive = activeFriends.includes(b?._id) ? 1 : 0;
@@ -316,16 +377,22 @@ const Message = React.memo(() => {
   }, [profileData?.friends, activeFriends]);
 
   const onlineFriends = useMemo(
-    () => (sortedFriends || []).filter((friend: any) => activeFriends.includes(friend?._id)),
-    [sortedFriends, activeFriends]
+    () =>
+      (sortedFriends || []).filter((friend: any) =>
+        activeFriends.includes(friend?._id),
+      ),
+    [sortedFriends, activeFriends],
   );
 
-  const openChat = useCallback((friend: any) => {
-    if (!friend) return;
-    Keyboard.dismiss();
-    hideTabBarForChat(navigation);
-    (navigation as any).navigate('SingleMessage', { friend });
-  }, [navigation]);
+  const openChat = useCallback(
+    (friend: any) => {
+      if (!friend) return;
+      Keyboard.dismiss();
+      hideTabBarForChat(navigation);
+      (navigation as any).navigate('SingleMessage', { friend });
+    },
+    [navigation],
+  );
 
   useEffect(() => {
     const loadStoredChatList = async () => {
@@ -339,7 +406,10 @@ const Message = React.memo(() => {
   useEffect(() => {
     if (profileData?._id) {
       debugAuth().then(({ user, token }) => {
-        console.log('Auth debug result:', { hasUser: !!user, hasToken: !!token });
+        console.log('Auth debug result:', {
+          hasUser: !!user,
+          hasToken: !!token,
+        });
       });
       dispatch(fetchChatList(profileData._id)).then(() => {
         dispatch(updateUnreadMessageCount(profileData._id));
@@ -357,15 +427,16 @@ const Message = React.memo(() => {
   }, [chatList?.length, profileData?._id]);
 
   useEffect(() => {
-    if (!isConnected || !chatList || chatList.length === 0 || !profileData?._id) return;
-    chatList.forEach((contact) => {
+    if (!isConnected || !chatList || chatList.length === 0 || !profileData?._id)
+      return;
+    chatList.forEach(contact => {
       if (!contact?.person?._id) return;
       checkUserActive(contact.person._id, profileData._id);
     });
   }, [isConnected, chatList, profileData?._id, checkUserActive]);
 
   const sortedChatList = useMemo(() => {
-    const list = [...(chatList || [])].filter((item) => item?.person?._id);
+    const list = [...(chatList || [])].filter(item => item?.person?._id);
     return list.sort((a: any, b: any) => {
       const aTs = new Date(a?.messages?.[0]?.timestamp || 0).getTime();
       const bTs = new Date(b?.messages?.[0]?.timestamp || 0).getTime();
@@ -381,15 +452,23 @@ const Message = React.memo(() => {
       const person = item?.person || {};
       const name = (person.fullName || '').toLowerCase();
       const username = (person.username || person.nickname || '').toLowerCase();
-      const lastText = getLastMessagePreview(item?.messages?.[0]).text.toLowerCase();
-      return name.includes(normalizedQuery) || username.includes(normalizedQuery) || lastText.includes(normalizedQuery);
+      const lastText = getLastMessagePreview(
+        item?.messages?.[0],
+      ).text.toLowerCase();
+      return (
+        name.includes(normalizedQuery) ||
+        username.includes(normalizedQuery) ||
+        lastText.includes(normalizedQuery)
+      );
     });
   }, [sortedChatList, normalizedQuery]);
 
   const peopleStrip = useMemo(() => {
     if (normalizedQuery) {
       return (sortedFriends || [])
-        .filter((friend: any) => (friend.fullName || '').toLowerCase().includes(normalizedQuery))
+        .filter((friend: any) =>
+          (friend.fullName || '').toLowerCase().includes(normalizedQuery),
+        )
         .slice(0, 20);
     }
     if (onlineFriends.length > 0) return onlineFriends;
@@ -400,8 +479,8 @@ const Message = React.memo(() => {
   const peopleStripTitle = normalizedQuery
     ? 'People'
     : onlineFriends.length > 0
-      ? 'Active now'
-      : 'Friends';
+    ? 'Active now'
+    : 'Friends';
 
   const headerSubtitle = useMemo(() => {
     if (unreadMessageCount > 0 && onlineFriends.length > 0) {
@@ -410,7 +489,9 @@ const Message = React.memo(() => {
     if (unreadMessageCount > 0) return `${unreadMessageCount} unread`;
     if (onlineFriends.length > 0) return `${onlineFriends.length} online`;
     if (sortedChatList.length > 0) {
-      return `${sortedChatList.length} conversation${sortedChatList.length === 1 ? '' : 's'}`;
+      return `${sortedChatList.length} conversation${
+        sortedChatList.length === 1 ? '' : 's'
+      }`;
     }
     return 'Chats and calls with friends';
   }, [unreadMessageCount, onlineFriends.length, sortedChatList.length]);
@@ -444,7 +525,12 @@ const Message = React.memo(() => {
     if (!profileData?._id) return;
     (chatList || []).forEach((chat: any) => {
       if (chat?.person?._id) {
-        dispatch(markMessagesAsRead({ chatId: chat.person._id, currentUserId: profileData._id }));
+        dispatch(
+          markMessagesAsRead({
+            chatId: chat.person._id,
+            currentUserId: profileData._id,
+          }),
+        );
       }
     });
   }, [chatList, dispatch, profileData?._id]);
@@ -456,104 +542,163 @@ const Message = React.memo(() => {
         : null,
       {
         text: 'Message settings',
-        onPress: () => (navigation as any).navigate('Menu', { screen: 'Settings' }),
+        onPress: () =>
+          (navigation as any).navigate('Menu', { screen: 'Settings' }),
       },
       { text: 'Cancel', style: 'cancel' },
     ].filter(Boolean);
     Alert.alert('Messages', undefined, buttons);
   }, [markAllAsRead, navigation, unreadMessageCount]);
 
-  const renderMessageItem = useCallback(({ item, index }: { item: any; index: number }) => {
-    const last = item?.messages?.[0];
-    const unread = countUnread(item?.messages, profileData?._id);
-    return (
-      <ConversationRow
-        person={item?.person}
-        last={last}
-        unreadCount={unread}
-        isOnline={activeFriends.includes(item?.person?._id)}
-        showDivider={index !== filteredChatList.length - 1}
-        myId={profileData?._id}
-        colors={themeColors}
-        onPress={() => openChat(item?.person)}
-      />
-    );
-  }, [activeFriends, filteredChatList.length, openChat, profileData?._id, themeColors]);
+  const renderMessageItem = useCallback(
+    ({ item, index }: { item: any; index: number }) => {
+      const last = item?.messages?.[0];
+      const unread = countUnread(item?.messages, profileData?._id);
+      return (
+        <ConversationRow
+          person={item?.person}
+          last={last}
+          unreadCount={unread}
+          isOnline={activeFriends.includes(item?.person?._id)}
+          showDivider={index !== filteredChatList.length - 1}
+          myId={profileData?._id}
+          colors={themeColors}
+          onPress={() => openChat(item?.person)}
+        />
+      );
+    },
+    [
+      activeFriends,
+      filteredChatList.length,
+      openChat,
+      profileData?._id,
+      themeColors,
+    ],
+  );
 
-  const keyExtractor = useCallback((item: any, index: number) =>
-    String(item?.person?._id || item?.id || `chat-${index}`)
-  , []);
+  const keyExtractor = useCallback(
+    (item: any, index: number) =>
+      String(item?.person?._id || item?.id || `chat-${index}`),
+    [],
+  );
 
-  const listHeaderComponent = useMemo(() => (
-    <View>
-      {peopleStrip.length > 0 && (
-        <View style={styles.peopleSection}>
-          <View style={styles.sectionHeading}>
-            <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>
-              {peopleStripTitle}
-            </Text>
-            {peopleStripTitle === 'Active now' ? (
-              <View style={styles.onlineMeta}>
-                <View style={[styles.onlineDot, { backgroundColor: themeColors.status.success }]} />
-                <Text style={[styles.sectionCount, { color: themeColors.text.secondary }]}>
+  const listHeaderComponent = useMemo(
+    () => (
+      <View>
+        {peopleStrip.length > 0 && (
+          <View style={styles.peopleSection}>
+            <View style={styles.sectionHeading}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: themeColors.text.primary },
+                ]}
+              >
+                {peopleStripTitle}
+              </Text>
+              {peopleStripTitle === 'Active now' ? (
+                <View style={styles.onlineMeta}>
+                  <View
+                    style={[
+                      styles.onlineDot,
+                      { backgroundColor: themeColors.status.success },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.sectionCount,
+                      { color: themeColors.text.secondary },
+                    ]}
+                  >
+                    {peopleStrip.length}
+                  </Text>
+                </View>
+              ) : (
+                <Text
+                  style={[
+                    styles.sectionCount,
+                    { color: themeColors.text.secondary },
+                  ]}
+                >
                   {peopleStrip.length}
                 </Text>
-              </View>
-            ) : (
-              <Text style={[styles.sectionCount, { color: themeColors.text.secondary }]}>
-                {peopleStrip.length}
-              </Text>
-            )}
+              )}
+            </View>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.peopleScroll}
+              keyboardShouldPersistTaps="handled"
+            >
+              {peopleStrip.map((friend: any, index: number) => {
+                const friendKey =
+                  friend?._id ??
+                  friend?.id ??
+                  `${friend?.fullName || 'friend'}-${index}`;
+                const isOnline = activeFriends.includes(friend?._id);
+                return (
+                  <Pressable
+                    key={friendKey}
+                    style={({ pressed }) => [
+                      styles.personItem,
+                      pressed && { opacity: 0.72 },
+                    ]}
+                    onPress={() => openChat(friend)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Message ${
+                      friend.fullName || 'friend'
+                    }${isOnline ? ', online' : ''}`}
+                  >
+                    <UserPP
+                      image={friend.profilePic}
+                      isActive={isOnline}
+                      size={58}
+                    />
+                    <Text
+                      style={[
+                        styles.personName,
+                        { color: themeColors.text.secondary },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {firstName(friend.fullName)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
           </View>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.peopleScroll}
-            keyboardShouldPersistTaps="handled"
-          >
-            {peopleStrip.map((friend: any, index: number) => {
-              const friendKey = friend?._id ?? friend?.id ?? `${friend?.fullName || 'friend'}-${index}`;
-              const isOnline = activeFriends.includes(friend?._id);
-              return (
-                <Pressable
-                  key={friendKey}
-                  style={({ pressed }) => [styles.personItem, pressed && { opacity: 0.72 }]}
-                  onPress={() => openChat(friend)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Message ${friend.fullName || 'friend'}${isOnline ? ', online' : ''}`}
-                >
-                  <UserPP image={friend.profilePic} isActive={isOnline} size={58} />
-                  <Text style={[styles.personName, { color: themeColors.text.secondary }]} numberOfLines={1}>
-                    {firstName(friend.fullName)}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        </View>
-      )}
+        )}
 
-      <View style={styles.sectionHeading}>
-        <Text style={[styles.sectionTitle, { color: themeColors.text.primary }]}>Chats</Text>
-        <Text style={[styles.sectionCount, { color: themeColors.text.secondary }]}>
-          {normalizedQuery
-            ? `${filteredChatList.length}/${sortedChatList.length}`
-            : sortedChatList.length}
-        </Text>
+        <View style={styles.sectionHeading}>
+          <Text
+            style={[styles.sectionTitle, { color: themeColors.text.primary }]}
+          >
+            Chats
+          </Text>
+          <Text
+            style={[styles.sectionCount, { color: themeColors.text.secondary }]}
+          >
+            {normalizedQuery
+              ? `${filteredChatList.length}/${sortedChatList.length}`
+              : sortedChatList.length}
+          </Text>
+        </View>
       </View>
-    </View>
-  ), [
-    peopleStrip,
-    peopleStripTitle,
-    themeColors.text.primary,
-    themeColors.text.secondary,
-    themeColors.status.success,
-    activeFriends,
-    openChat,
-    normalizedQuery,
-    filteredChatList.length,
-    sortedChatList.length,
-  ]);
+    ),
+    [
+      peopleStrip,
+      peopleStripTitle,
+      themeColors.text.primary,
+      themeColors.text.secondary,
+      themeColors.status.success,
+      activeFriends,
+      openChat,
+      normalizedQuery,
+      filteredChatList.length,
+      sortedChatList.length,
+    ],
+  );
 
   const chatListEmptyComponent = useMemo(() => {
     if (chatLoading || isLoading) {
@@ -563,11 +708,31 @@ const Message = React.memo(() => {
     if (chatError) {
       return (
         <View style={styles.emptyState}>
-          <View style={[styles.emptyIconWrap, { backgroundColor: getColorWithOpacity(themeColors.status.error, 0.12) }]}>
-            <Icon name="error-outline" size={28} color={themeColors.status.error} />
+          <View
+            style={[
+              styles.emptyIconWrap,
+              {
+                backgroundColor: getColorWithOpacity(
+                  themeColors.status.error,
+                  0.12,
+                ),
+              },
+            ]}
+          >
+            <Icon
+              name="error-outline"
+              size={28}
+              color={themeColors.status.error}
+            />
           </View>
-          <Text style={[styles.emptyTitle, { color: themeColors.text.primary }]}>Couldn't load chats</Text>
-          <Text style={[styles.emptyCopy, { color: themeColors.text.secondary }]}>
+          <Text
+            style={[styles.emptyTitle, { color: themeColors.text.primary }]}
+          >
+            Couldn't load chats
+          </Text>
+          <Text
+            style={[styles.emptyCopy, { color: themeColors.text.secondary }]}
+          >
             Pull down to try again.
           </Text>
         </View>
@@ -577,23 +742,42 @@ const Message = React.memo(() => {
     if (normalizedQuery) {
       return (
         <View style={styles.emptyState}>
-          <View style={[styles.emptyIconWrap, { backgroundColor: themeColors.surface.secondary }]}>
+          <View
+            style={[
+              styles.emptyIconWrap,
+              { backgroundColor: themeColors.surface.secondary },
+            ]}
+          >
             <Icon name="search" size={28} color={themeColors.text.tertiary} />
           </View>
-          <Text style={[styles.emptyTitle, { color: themeColors.text.primary }]}>
+          <Text
+            style={[styles.emptyTitle, { color: themeColors.text.primary }]}
+          >
             No chats match “{searchQuery.trim()}”
           </Text>
-          <Text style={[styles.emptyCopy, { color: themeColors.text.secondary }]}>
+          <Text
+            style={[styles.emptyCopy, { color: themeColors.text.secondary }]}
+          >
             Try a different name, or start a new conversation from People above.
           </Text>
           <Pressable
             onPress={() => setSearchQuery('')}
             style={({ pressed }) => [
               styles.emptyAction,
-              { backgroundColor: themeColors.surface.secondary, opacity: pressed ? 0.8 : 1 },
+              {
+                backgroundColor: themeColors.surface.secondary,
+                opacity: pressed ? 0.8 : 1,
+              },
             ]}
           >
-            <Text style={[styles.emptyActionText, { color: themeColors.text.primary }]}>Clear search</Text>
+            <Text
+              style={[
+                styles.emptyActionText,
+                { color: themeColors.text.primary },
+              ]}
+            >
+              Clear search
+            </Text>
           </Pressable>
         </View>
       );
@@ -601,10 +785,21 @@ const Message = React.memo(() => {
 
     return (
       <View style={styles.emptyState}>
-        <View style={[styles.emptyIconWrap, { backgroundColor: getColorWithOpacity(themeColors.primary, 0.14) }]}>
-          <Icon name="chat-bubble-outline" size={28} color={themeColors.primary} />
+        <View
+          style={[
+            styles.emptyIconWrap,
+            { backgroundColor: getColorWithOpacity(themeColors.primary, 0.14) },
+          ]}
+        >
+          <Icon
+            name="chat-bubble-outline"
+            size={28}
+            color={themeColors.primary}
+          />
         </View>
-        <Text style={[styles.emptyTitle, { color: themeColors.text.primary }]}>No conversations yet</Text>
+        <Text style={[styles.emptyTitle, { color: themeColors.text.primary }]}>
+          No conversations yet
+        </Text>
         <Text style={[styles.emptyCopy, { color: themeColors.text.secondary }]}>
           Pick a friend above or find people to start chatting.
         </Text>
@@ -612,10 +807,20 @@ const Message = React.memo(() => {
           onPress={() => (navigation as any).navigate('Friends')}
           style={({ pressed }) => [
             styles.emptyAction,
-            { backgroundColor: themeColors.primary, opacity: pressed ? 0.88 : 1 },
+            {
+              backgroundColor: themeColors.primary,
+              opacity: pressed ? 0.88 : 1,
+            },
           ]}
         >
-          <Text style={[styles.emptyActionText, { color: themeColors.text.inverse }]}>Find friends</Text>
+          <Text
+            style={[
+              styles.emptyActionText,
+              { color: themeColors.text.inverse },
+            ]}
+          >
+            Find friends
+          </Text>
         </Pressable>
       </View>
     );
@@ -630,11 +835,22 @@ const Message = React.memo(() => {
   ]);
 
   return (
-    <View style={[styles.screen, { backgroundColor: themeColors.background.primary }]}>
+    <View
+      style={[
+        styles.screen,
+        { backgroundColor: themeColors.background.primary },
+      ]}
+    >
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <Text style={[styles.heading, { color: themeColors.text.primary }]}>Messages</Text>
-          <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>{headerSubtitle}</Text>
+          <Text style={[styles.heading, { color: themeColors.text.primary }]}>
+            Messages
+          </Text>
+          <Text
+            style={[styles.subtitle, { color: themeColors.text.secondary }]}
+          >
+            {headerSubtitle}
+          </Text>
         </View>
         <View style={styles.headerActions}>
           <Pressable
@@ -665,7 +881,11 @@ const Message = React.memo(() => {
               },
             ]}
           >
-            <Icon name="more-horiz" size={22} color={themeColors.text.primary} />
+            <Icon
+              name="more-horiz"
+              size={22}
+              color={themeColors.text.primary}
+            />
           </Pressable>
           <Pressable
             onPress={() => setAiAgentVisible(true)}
@@ -680,7 +900,11 @@ const Message = React.memo(() => {
               },
             ]}
           >
-            <Icon name="psychology" size={22} color={themeColors.text.primary} />
+            <Icon
+              name="psychology"
+              size={22}
+              color={themeColors.text.primary}
+            />
           </Pressable>
         </View>
       </View>
@@ -749,7 +973,10 @@ const Message = React.memo(() => {
           />
         }
       />
-      <AIAgentModal visible={aiAgentVisible} onClose={() => setAiAgentVisible(false)} />
+      <AIAgentModal
+        visible={aiAgentVisible}
+        onClose={() => setAiAgentVisible(false)}
+      />
     </View>
   );
 });
@@ -814,7 +1041,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   listContent: {
-    paddingBottom: 50,
+    paddingBottom: 100,
     flexGrow: 1,
   },
   peopleSection: {

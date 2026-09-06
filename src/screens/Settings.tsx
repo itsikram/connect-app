@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useMemo,
+  useRef,
   useState,
   Suspense,
   useTransition,
@@ -18,6 +19,7 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import KeyboardSafeView from '../components/KeyboardSafeView';
+import { SettingsScrollContext } from '../components/settings/settingsUi';
 
 const ProfileSettings = React.lazy(
   () => import('../components/settings/ProfileSettings'),
@@ -73,6 +75,7 @@ const Settings = () => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const [activeTab, setActiveTab] = useState('profile');
   const [isPending, startTransition] = useTransition();
+  const pageScrollRef = useRef<ScrollView>(null);
 
   const activeLabel = useMemo(
     () => SETTINGS_NAV.find(tab => tab.id === activeTab)?.title || 'Settings',
@@ -171,12 +174,12 @@ const Settings = () => {
           </View>
 
           <ScrollView
+            ref={pageScrollRef}
             style={styles.pageScroll}
             contentContainerStyle={styles.pageScrollContent}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
-            automaticallyAdjustKeyboardInsets
           >
             <View
               style={[
@@ -189,26 +192,28 @@ const Settings = () => {
               ]}
               accessibilityLabel={activeLabel}
             >
-              <Suspense
-                fallback={
-                  <View style={styles.suspenseFallback}>
-                    <ActivityIndicator
-                      size="small"
-                      color={themeColors.primary}
-                    />
-                    <Text
-                      style={{
-                        marginTop: 8,
-                        color: themeColors.text.secondary,
-                      }}
-                    >
-                      Loading {activeLabel} settings...
-                    </Text>
-                  </View>
-                }
-              >
-                <ActiveComponent />
-              </Suspense>
+              <SettingsScrollContext.Provider value={pageScrollRef}>
+                <Suspense
+                  fallback={
+                    <View style={styles.suspenseFallback}>
+                      <ActivityIndicator
+                        size="small"
+                        color={themeColors.primary}
+                      />
+                      <Text
+                        style={{
+                          marginTop: 8,
+                          color: themeColors.text.secondary,
+                        }}
+                      >
+                        Loading {activeLabel} settings...
+                      </Text>
+                    </View>
+                  }
+                >
+                  <ActiveComponent />
+                </Suspense>
+              </SettingsScrollContext.Provider>
             </View>
           </ScrollView>
         </View>
@@ -270,7 +275,7 @@ const styles = StyleSheet.create({
   },
   pageScrollContent: {
     flexGrow: 0,
-    paddingBottom: 24,
+    paddingBottom: 320,
   },
   contentPanel: {
     borderRadius: 16,

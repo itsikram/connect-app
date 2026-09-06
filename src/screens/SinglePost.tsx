@@ -15,6 +15,7 @@ import {
     StyleSheet,
     Pressable,
     DeviceEventEmitter,
+    Platform,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -223,39 +224,49 @@ const SinglePost = () => {
         header: {
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 12,
             borderBottomWidth: 1,
             borderBottomColor: themeColors.border.primary,
             backgroundColor: themeColors.surface.header,
-            elevation: 2,
+            elevation: 3,
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.1,
-            shadowRadius: 4,
+            shadowOpacity: 0.08,
+            shadowRadius: 6,
         },
         headerTitle: {
             color: themeColors.text.primary,
-            fontSize: 20,
-            fontWeight: '700',
-            marginLeft: 16,
+            fontSize: 18,
+            fontWeight: '800',
+            letterSpacing: 0.2,
+            marginLeft: 12,
         },
         backButton: {
-            padding: 8,
-            borderRadius: 20,
+            padding: 9,
+            borderRadius: 14,
             backgroundColor: themeColors.gray[100],
         },
         postContainer: {
             backgroundColor: themeColors.surface.primary,
-            marginBottom: 12,
-            borderRadius: 0,
-            overflow: 'visible',
+            marginHorizontal: 12,
+            marginTop: 12,
+            marginBottom: 8,
+            borderRadius: 20,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: themeColors.border.subtle || themeColors.border.primary,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: isDarkMode ? 0 : 0.06,
+            shadowRadius: 12,
+            elevation: 2,
         },
         authorSection: {
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 15,
         },
         authorInfo: {
             flex: 1,
@@ -263,8 +274,8 @@ const SinglePost = () => {
         },
         authorName: {
             color: themeColors.text.primary,
-            fontSize: 16,
-            fontWeight: '600',
+            fontSize: 15.5,
+            fontWeight: '700',
             marginBottom: 2,
         },
         metaInline: {
@@ -275,18 +286,18 @@ const SinglePost = () => {
             fontSize: 13,
         },
         moreButton: {
-            padding: 8,
-            borderRadius: 20,
+            padding: 9,
+            borderRadius: 14,
             backgroundColor: themeColors.gray[100],
         },
         contentSection: {
-            paddingHorizontal: 20,
-            paddingBottom: 16,
+            paddingHorizontal: 16,
+            paddingBottom: 14,
         },
         postContent: {
             color: themeColors.text.primary,
-            fontSize: 16,
-            lineHeight: 24,
+            fontSize: 16.5,
+            lineHeight: 25,
             marginBottom: 12,
         },
         readMoreButton: {
@@ -362,8 +373,8 @@ const SinglePost = () => {
         actionButtons: {
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 12,
-            paddingVertical: 6,
+            paddingHorizontal: 10,
+            paddingVertical: 8,
             borderTopWidth: 1,
             borderTopColor: themeColors.border.primary,
             overflow: 'visible',
@@ -374,9 +385,9 @@ const SinglePost = () => {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            paddingVertical: 9,
+            paddingVertical: 10,
             paddingHorizontal: 10,
-            borderRadius: 10,
+            borderRadius: 12,
         },
         actionButtonActive: {
             backgroundColor: themeColors.primary + '15',
@@ -394,8 +405,8 @@ const SinglePost = () => {
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
-            paddingHorizontal: 12,
-            paddingVertical: 10,
+            paddingHorizontal: 16,
+            paddingVertical: 11,
             borderTopWidth: 1,
             borderTopColor: themeColors.border.subtle || themeColors.border.primary,
             minHeight: 40,
@@ -461,19 +472,27 @@ const SinglePost = () => {
         },
         commentsSection: {
             backgroundColor: themeColors.surface.primary,
+            marginHorizontal: 12,
+            marginTop: 8,
+            marginBottom: 12,
+            borderRadius: 20,
+            paddingTop: 0,
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: themeColors.border.subtle || themeColors.border.primary,
             borderTopWidth: 1,
             borderTopColor: themeColors.border.primary,
         },
         commentsHeader: {
-            paddingHorizontal: 20,
-            paddingVertical: 16,
+            paddingHorizontal: 16,
+            paddingVertical: 15,
             borderBottomWidth: 1,
             borderBottomColor: themeColors.border.primary,
         },
         commentsTitle: {
             color: themeColors.text.primary,
-            fontSize: 18,
-            fontWeight: '700',
+            fontSize: 17,
+            fontWeight: '800',
         },
         commentItem: {
             paddingHorizontal: 20,
@@ -523,8 +542,8 @@ const SinglePost = () => {
         commentInput: {
             flexDirection: 'row',
             alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 16,
+            paddingHorizontal: 14,
+            paddingVertical: 10,
             borderTopWidth: 1,
             borderTopColor: themeColors.border.primary,
         },
@@ -532,11 +551,12 @@ const SinglePost = () => {
             flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
-            marginLeft: 12,
+            marginLeft: 10,
             backgroundColor: themeColors.gray[100],
-            borderRadius: 24,
-            paddingHorizontal: 16,
-            paddingVertical: 8,
+            borderRadius: 18,
+            paddingHorizontal: 14,
+            paddingVertical: 7,
+            minHeight: 40,
         },
         textInput: {
             flex: 1,
@@ -635,17 +655,18 @@ const SinglePost = () => {
         },
         // Image styles matching Post component
         attachmentContainer: {
-            marginTop: 10,
+            marginTop: 2,
+            marginBottom: 4,
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            gap: 10,
+            gap: 8,
         },
         postImage: {
             width: '100%',
-            aspectRatio: 1,
-            borderRadius: 10,
-            backgroundColor: '#eee',
+            aspectRatio: 1.05,
+            borderRadius: 0,
+            backgroundColor: themeColors.gray[100],
             resizeMode: 'contain',
             alignSelf: 'center',
         },
@@ -1337,7 +1358,10 @@ const SinglePost = () => {
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                 backgroundColor={themeColors.surface.header} 
             />
-            <KeyboardSafeView nested>
+            <KeyboardSafeView
+                nested
+                extraOffset={Platform.OS === 'ios' ? 8 : 0}
+            >
             
             {/* Header */}
             <View style={styles.header}>
@@ -1499,14 +1523,27 @@ const SinglePost = () => {
                     </View>
                 </View>
 
-                <View style={[styles.commentsSection, { paddingHorizontal: 12, paddingTop: 8 }]}>
+                <View style={styles.commentsSection}>
+                    <View style={styles.commentsHeader}>
+                        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
+                            <Text style={styles.commentsTitle}>Comments</Text>
+                            <Text style={styles.postTime}>
+                                {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
+                            </Text>
+                        </View>
+                    </View>
+                    <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
                     {comments.length > 0 ? (
                         comments.map(comment => renderComment(comment))
                     ) : (
-                        <Text style={{ color: themeColors.text.secondary, textAlign: 'center', marginVertical: 8, fontSize: 14 }}>
-                            No comments yet
-                        </Text>
+                        <View style={{ alignItems: 'center', paddingVertical: 18 }}>
+                            <Icon name="chat-bubble-outline" size={28} color={themeColors.text.secondary} />
+                            <Text style={{ color: themeColors.text.secondary, textAlign: 'center', marginTop: 8, fontSize: 14 }}>
+                                Be the first to share your thoughts
+                            </Text>
+                        </View>
                     )}
+                    </View>
                 </View>
             </ScrollView>
 

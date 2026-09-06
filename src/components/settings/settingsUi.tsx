@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { createContext, useContext, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  findNodeHandle,
+  ScrollView,
   StyleSheet,
   Switch,
   Text,
@@ -10,6 +12,8 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../contexts/ThemeContext';
 import VoiceTextInput from '../VoiceTextInput';
+
+export const SettingsScrollContext = createContext<React.RefObject<ScrollView | null> | null>(null);
 
 export const SettingsSectionHeader = ({
   title,
@@ -76,6 +80,32 @@ export const SettingsInput = ({
   autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
 }) => {
   const { colors } = useTheme();
+  const inputRef = useRef<React.ElementRef<typeof VoiceTextInput>>(null);
+  const settingsScrollRef = useContext(SettingsScrollContext);
+
+  const handleFocus = () => {
+    const input = inputRef.current;
+    const scrollView = settingsScrollRef?.current;
+    const inputNode = input ? findNodeHandle(input) : null;
+    if (!scrollView || !inputNode) return;
+
+    setTimeout(() => {
+      const activeScrollView = settingsScrollRef?.current as (ScrollView & {
+        scrollResponderScrollNativeHandleToKeyboard?: (
+          nodeHandle: number,
+          additionalOffset: number,
+          preventNegativeScrollOffset: boolean,
+        ) => void;
+      }) | null;
+      if (!activeScrollView || !inputNode) return;
+      activeScrollView.scrollResponderScrollNativeHandleToKeyboard?.(
+        inputNode,
+        80,
+        true,
+      );
+    }, 100);
+  };
+
   return (
     <View
       style={[
@@ -93,9 +123,11 @@ export const SettingsInput = ({
         <Icon name={icon} size={18} color={colors.gray[400]} style={styles.inputIcon} />
       ) : null}
       <VoiceTextInput
+        ref={inputRef}
         style={[styles.input, { color: colors.text.primary }]}
         value={value}
         onChangeText={onChangeText}
+        onFocus={handleFocus}
         placeholder={placeholder}
         placeholderTextColor={colors.gray[400]}
         secureTextEntry={secureTextEntry}

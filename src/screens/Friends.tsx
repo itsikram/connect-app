@@ -1,5 +1,12 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  ScrollView,
+  RefreshControl,
+} from 'react-native';
 import { DeviceEventEmitter } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
@@ -8,11 +15,13 @@ import { friendAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
 import FriendCardSkeleton from '../components/skeleton/FriendCardSkeleton';
 import ProfileImage from '../components/ProfileImage';
-import FriendCacheManager, { FRIEND_CACHE_EVENT } from '../utils/friendCacheManager';
+import FriendCacheManager, {
+  FRIEND_CACHE_EVENT,
+} from '../utils/friendCacheManager';
 
 const uniqueById = (items: any[]) => {
   const seen = new Set<string>();
-  return (Array.isArray(items) ? items : []).filter((item) => {
+  return (Array.isArray(items) ? items : []).filter(item => {
     const id = String(item?._id || '');
     if (!id || seen.has(id)) return false;
     seen.add(id);
@@ -40,14 +49,14 @@ const Friends = () => {
 
   const fetchFriendData = useCallback(async () => {
     if (!myProfile?._id) return;
-    
+
     try {
       setLoading(true);
       const [friendRequestsRes, friendSuggestionsRes] = await Promise.all([
         friendAPI.getFriendRequest(myProfile._id),
-        friendAPI.getFriendSuggestions(myProfile._id)
+        friendAPI.getFriendSuggestions(myProfile._id),
       ]);
-      
+
       const requests = uniqueById(friendRequestsRes.data);
       const suggestions = uniqueById(friendSuggestionsRes.data);
       setFriendRequests(requests);
@@ -85,11 +94,16 @@ const Friends = () => {
       await fetchFriendData();
     };
     loadFriendData();
-    const subscription = DeviceEventEmitter.addListener(FRIEND_CACHE_EVENT, (event) => {
-      if (!mounted || event?.profileId !== myProfile?._id) return;
-      if (event.list === 'requests') setFriendRequests(uniqueById(event.items));
-      if (event.list === 'suggestions') setFriendSuggestions(uniqueById(event.items));
-    });
+    const subscription = DeviceEventEmitter.addListener(
+      FRIEND_CACHE_EVENT,
+      event => {
+        if (!mounted || event?.profileId !== myProfile?._id) return;
+        if (event.list === 'requests')
+          setFriendRequests(uniqueById(event.items));
+        if (event.list === 'suggestions')
+          setFriendSuggestions(uniqueById(event.items));
+      },
+    );
     return () => {
       mounted = false;
       subscription.remove();
@@ -100,8 +114,13 @@ const Friends = () => {
     try {
       const res = await friendAPI.sendFriendRequest(friendId);
       console.log(res.data);
-      setFriendSuggestions((prev) => prev.filter((f: any) => f._id !== friendId));
-      if (myProfile?._id) await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
+      setFriendSuggestions(prev => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id)
+        await FriendCacheManager.removeProfile(
+          myProfile._id,
+          'suggestions',
+          friendId,
+        );
     } catch (error) {
       console.log(error);
     }
@@ -111,8 +130,13 @@ const Friends = () => {
       const res = await friendAPI.removeFriend(friendId);
       console.log(res.data);
       // Hide from suggestions if present
-      setFriendSuggestions((prev) => prev.filter((f: any) => f._id !== friendId));
-      if (myProfile?._id) await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
+      setFriendSuggestions(prev => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id)
+        await FriendCacheManager.removeProfile(
+          myProfile._id,
+          'suggestions',
+          friendId,
+        );
     } catch (error) {
       console.log(error);
     }
@@ -124,11 +148,15 @@ const Friends = () => {
       const res = await friendAPI.acceptFriendRequest(friendId);
       console.log(res.data);
       // Remove the accepted request from the list
-      setFriendRequests((prev) => prev.filter((f: any) => f._id !== friendId));
+      setFriendRequests(prev => prev.filter((f: any) => f._id !== friendId));
       if (myProfile?._id) {
         await Promise.all([
           FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId),
-          FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId),
+          FriendCacheManager.removeProfile(
+            myProfile._id,
+            'suggestions',
+            friendId,
+          ),
         ]);
       }
     } catch (error) {
@@ -141,22 +169,27 @@ const Friends = () => {
       const res = await friendAPI.deleteFriendRequest(friendId);
       console.log(res.data);
       // Remove the deleted request from the list
-      setFriendRequests((prev) => prev.filter((f: any) => f._id !== friendId));
-      if (myProfile?._id) await FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId);
+      setFriendRequests(prev => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id)
+        await FriendCacheManager.removeProfile(
+          myProfile._id,
+          'requests',
+          friendId,
+        );
     } catch (error) {
       console.log(error);
     }
   };
 
   const navigateToFriendProfile = (friend: any) => {
-    (navigation as any).navigate('FriendProfile', { 
-      friendId: friend._id, 
-      friendData: friend 
+    (navigation as any).navigate('FriendProfile', {
+      friendId: friend._id,
+      friendData: friend,
     });
   };
 
   return (
-    <ScrollView 
+    <ScrollView
       style={[styles.friendsContent, { backgroundColor }]}
       refreshControl={
         <RefreshControl
@@ -167,89 +200,170 @@ const Friends = () => {
         />
       }
     >
-
-      
-
       <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}>
         <View style={styles.headingRow}>
-          <Text style={[styles.headingTitle, { color: textColor }]}>Friend Requests</Text>
+          <Text style={[styles.headingTitle, { color: textColor }]}>
+            Friend Requests
+          </Text>
           <TouchableOpacity>
-            <Text style={[styles.viewMoreBtn, { color: themeColors.primary }]}>See All</Text>
+            <Text style={[styles.viewMoreBtn, { color: themeColors.primary }]}>
+              See All
+            </Text>
           </TouchableOpacity>
         </View>
         <View style={styles.friendGridContainer}>
-          {loading && (
-            <FriendCardSkeleton count={4} />
-          )}
-          {!loading && friendRequests.length > 0 && friendRequests.map((friend: any) => (
-            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
-              <View style={styles.profilePictureWrapper}>
-                <ProfileImage uri={friend.profilePic} pixelSize={200} style={styles.profilePicture} />
-              </View>
-              <View style={styles.gridBody}>
-                <View style={styles.profileNameContainer}>
-                  <Text
-                    style={[styles.profileName, { color: textColor }]}
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {friend.fullName}
-                  </Text>
+          {loading && <FriendCardSkeleton count={4} />}
+          {!loading &&
+            friendRequests.length > 0 &&
+            friendRequests.map((friend: any) => (
+              <TouchableOpacity
+                key={friend._id}
+                style={[styles.friendGridItem, { backgroundColor: cardBg }]}
+                onPress={() => navigateToFriendProfile(friend)}
+              >
+                <View style={styles.profilePictureWrapper}>
+                  <ProfileImage
+                    uri={friend.profilePic}
+                    pixelSize={200}
+                    style={styles.profilePicture}
+                  />
                 </View>
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleAcceptFriendRequest(friend._id); }}>
-                    <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Accept</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleDeleteFriendRequest(friend._id); }}>
-                    <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Delete</Text>
-                  </TouchableOpacity>
+                <View style={styles.gridBody}>
+                  <View style={styles.profileNameContainer}>
+                    <Text
+                      style={[styles.profileName, { color: textColor }]}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                    >
+                      {friend.fullName}
+                    </Text>
+                  </View>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.addFriendBtn,
+                        { backgroundColor: buttonBg },
+                      ]}
+                      onPress={() => {
+                        handleAcceptFriendRequest(friend._id);
+                      }}
+                    >
+                      <Text
+                        style={[styles.addFriendBtnText, { color: buttonText }]}
+                      >
+                        Accept
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.removeFriendBtn,
+                        { backgroundColor: removeBtnBg },
+                      ]}
+                      onPress={() => {
+                        handleDeleteFriendRequest(friend._id);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.removeFriendBtnText,
+                          { color: removeBtnText },
+                        ]}
+                      >
+                        Delete
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))}
           {!loading && friendRequests.length === 0 && (
-            <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Request to show</Text>
+            <Text style={[styles.dataNotFound, { color: subTextColor }]}>
+              You don't have any Friend Request to show
+            </Text>
           )}
         </View>
       </View>
 
-
-      <View style={[styles.sectionContainer, { marginBottom: 32, backgroundColor: cardBg }]}>
+      <View
+        style={[
+          styles.sectionContainer,
+          { marginBottom: 32, backgroundColor: cardBg },
+        ]}
+      >
         <View style={styles.headingRow}>
-          <Text style={[styles.headingTitle, { color: textColor }]}>People You May Know</Text>
+          <Text style={[styles.headingTitle, { color: textColor }]}>
+            People You May Know
+          </Text>
         </View>
         <View style={styles.friendGridContainer}>
-          {loading && (
-            <FriendCardSkeleton count={6} />
-          )}
-          {!loading && friendSuggestions.length > 0 && friendSuggestions.map((friend: any) => (
-            <TouchableOpacity key={friend._id} style={[styles.friendGridItem, { backgroundColor: cardBg }]} onPress={() => navigateToFriendProfile(friend)}>
-              <View style={styles.profilePictureWrapper}>
-                <ProfileImage uri={friend.profilePic} pixelSize={200} style={styles.profilePicture} />
-              </View>
-              <View style={styles.gridBody}>
-                <View style={styles.profileNameContainer}>
-                  <Text
-                    style={[styles.profileName, { color: textColor }]}
-                    numberOfLines={2}
-                    ellipsizeMode="tail"
-                  >
-                    {friend.fullName}
-                  </Text>
+          {loading && <FriendCardSkeleton count={6} />}
+          {!loading &&
+            friendSuggestions.length > 0 &&
+            friendSuggestions.map((friend: any) => (
+              <TouchableOpacity
+                key={friend._id}
+                style={[styles.friendGridItem, { backgroundColor: cardBg }]}
+                onPress={() => navigateToFriendProfile(friend)}
+              >
+                <View style={styles.profilePictureWrapper}>
+                  <ProfileImage
+                    uri={friend.profilePic}
+                    pixelSize={200}
+                    style={styles.profilePicture}
+                  />
                 </View>
-                <View style={styles.buttonRow}>
-                  <TouchableOpacity style={[styles.addFriendBtn, { backgroundColor: buttonBg }]} onPress={() => { handleSendFriendRequest(friend._id); }}>
-                    <Text style={[styles.addFriendBtnText, { color: buttonText }]}>Add Friend</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[styles.removeFriendBtn, { backgroundColor: removeBtnBg }]} onPress={() => { handleRemoveFriendRequest(friend._id); }}>
-                    <Text style={[styles.removeFriendBtnText, { color: removeBtnText }]}>Remove</Text>
-                  </TouchableOpacity>
+                <View style={styles.gridBody}>
+                  <View style={styles.profileNameContainer}>
+                    <Text
+                      style={[styles.profileName, { color: textColor }]}
+                      numberOfLines={2}
+                      ellipsizeMode="tail"
+                    >
+                      {friend.fullName}
+                    </Text>
+                  </View>
+                  <View style={styles.buttonRow}>
+                    <TouchableOpacity
+                      style={[
+                        styles.addFriendBtn,
+                        { backgroundColor: buttonBg },
+                      ]}
+                      onPress={() => {
+                        handleSendFriendRequest(friend._id);
+                      }}
+                    >
+                      <Text
+                        style={[styles.addFriendBtnText, { color: buttonText }]}
+                      >
+                        Add Friend
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.removeFriendBtn,
+                        { backgroundColor: removeBtnBg },
+                      ]}
+                      onPress={() => {
+                        handleRemoveFriendRequest(friend._id);
+                      }}
+                    >
+                      <Text
+                        style={[
+                          styles.removeFriendBtnText,
+                          { color: removeBtnText },
+                        ]}
+                      >
+                        Remove
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
-          ))}
+              </TouchableOpacity>
+            ))}
           {!loading && friendSuggestions.length === 0 && (
-            <Text style={[styles.dataNotFound, { color: subTextColor }]}>You don't have any Friend Suggestions to show</Text>
+            <Text style={[styles.dataNotFound, { color: subTextColor }]}>
+              You don't have any Friend Suggestions to show
+            </Text>
           )}
         </View>
       </View>
@@ -262,7 +376,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f7f7f7',
     padding: 12,
-    paddingBottom: 92,
+    paddingBottom: 130,
   },
   sectionContainer: {
     backgroundColor: '#fff',
@@ -337,7 +451,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderRadius: 6,
     padding: 8,
-
   },
   profileName: {
     fontSize: 18,
@@ -390,4 +503,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Friends; 
+export default Friends;
