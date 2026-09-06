@@ -979,6 +979,7 @@ function AppContent() {
 // Inner component that can use hooks
 function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isInitializing: boolean, isDarkMode: boolean }) {
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
+  const previousUserRef = React.useRef(user);
 
   // Debug user state changes
   React.useEffect(() => {
@@ -986,6 +987,25 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
     console.log('🔄 AppContentInner - Initialization state:', isInitializing);
     console.log('🔄 AppContentInner - Will render:', isInitializing ? 'LoadingScreen' : 'Main App');
   }, [user, isInitializing]);
+
+  React.useEffect(() => {
+    const wasAuthenticated = Boolean(previousUserRef.current);
+    previousUserRef.current = user;
+
+    if (wasAuthenticated && !user) {
+      // Wait for the unauthenticated navigator to mount before resetting to Login.
+      const resetTimeout = setTimeout(() => {
+        if (navigationRef.isReady()) {
+          navigationRef.reset({
+            index: 0,
+            routes: [{ name: 'Login' }],
+          });
+        }
+      }, 0);
+
+      return () => clearTimeout(resetTimeout);
+    }
+  }, [user]);
 
   // Always call hooks unconditionally; the hook internally no-ops without a valid id
   useProfileData(user?.profile || null);

@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   ImageBackground,
+  Image,
   TextInput,
   StatusBar,
 } from 'react-native';
@@ -225,7 +226,12 @@ const LoginScreen = () => {
                   disabled={isLoading}
                   activeOpacity={0.8}
                 >
-                  <Text style={styles.googleMark}>G</Text>
+                  <Image
+                    source={require('../assets/icons/google-logo.png')}
+                    style={styles.googleLogo}
+                    resizeMode="contain"
+                    accessibilityLabel="Google logo"
+                  />
                   <Text style={[styles.googleButtonText, { color: themeColors.text.primary }]}>Continue with Google</Text>
                 </TouchableOpacity>
               </>
@@ -393,10 +399,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 22,
   },
-  googleMark: {
-    color: '#4285F4',
-    fontSize: 28,
-    fontWeight: '800',
+  googleLogo: {
+    width: 28,
+    height: 28,
     marginRight: 16,
   },
   googleButtonText: {

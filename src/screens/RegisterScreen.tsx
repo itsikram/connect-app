@@ -1,5 +1,5 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, ImageBackground, TextInput, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, ImageBackground, Image, TextInput, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from 'react-native-paper';
@@ -405,7 +405,15 @@ const RegisterScreen = () => {
             )}
 
             <View style={styles.divider}><View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} /><Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text><View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} /></View>
-            <TouchableOpacity onPress={handleGoogleSignIn} disabled={isLoading} style={[styles.googleButton, { borderColor: themeColors.border.secondary, backgroundColor: isDarkMode ? 'rgba(30,31,32,0.75)' : 'rgba(255,255,255,0.56)' }]}><Text style={styles.googleMark}>G</Text><Text style={[styles.googleText, { color: themeColors.text.primary }]}>Sign up with Google</Text></TouchableOpacity>
+            <TouchableOpacity onPress={handleGoogleSignIn} disabled={isLoading} style={[styles.googleButton, { borderColor: themeColors.border.secondary, backgroundColor: isDarkMode ? 'rgba(30,31,32,0.75)' : 'rgba(255,255,255,0.56)' }]}>
+              <Image
+                source={require('../assets/icons/google-logo.png')}
+                style={styles.googleLogo}
+                resizeMode="contain"
+                accessibilityLabel="Google logo"
+              />
+              <Text style={[styles.googleText, { color: themeColors.text.primary }]}>Sign up with Google</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={isLoading} style={styles.loginLink}><Text style={{ color: themeColors.text.secondary }}>Already have an account? </Text><Text style={{ color: themeColors.primary, fontWeight: '700' }}>Login</Text></TouchableOpacity>
             <Toast />
           </View>
@@ -588,7 +596,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginBottom: 18,
   },
-  googleMark: { color: '#4285F4', fontSize: 28, fontWeight: '800', marginRight: 16 },
+  googleLogo: { width: 28, height: 28, marginRight: 16 },
   googleText: { fontSize: 17, fontWeight: '700' },
   loginLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
 });
