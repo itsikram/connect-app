@@ -222,14 +222,19 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
 
   useEffect(() => {
     if (!onPlaybackStatusUpdate) return undefined;
-    const subscription = player.addListener('statusChange', () => onPlaybackStatusUpdate({
-      isLoaded: player.status === 'readyToPlay',
-      isPlaying: player.playing,
-      positionMillis: player.currentTime * 1000,
-      durationMillis: player.duration * 1000,
-      isLooping: player.loop,
-      isMuted: player.muted,
-    }));
+    const subscription = player.addListener('statusChange', () => {
+      const duration = player.duration;
+      const position = player.currentTime;
+      onPlaybackStatusUpdate({
+        isLoaded: player.status === 'readyToPlay',
+        isPlaying: player.playing,
+        positionMillis: position * 1000,
+        durationMillis: duration * 1000,
+        isLooping: player.loop,
+        isMuted: player.muted,
+        didJustFinish: duration > 0 && position >= duration - 0.1 && !player.playing,
+      });
+    });
     return () => subscription.remove();
   }, [player, onPlaybackStatusUpdate]);
 

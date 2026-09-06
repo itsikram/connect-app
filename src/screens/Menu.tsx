@@ -22,6 +22,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import VoiceTextInput from '../components/VoiceTextInput';
 import AppGrid from '../components/AppGrid';
 import ProfileImage from '../components/ProfileImage';
+import AIAgentModal from '../components/AIAgentModal';
 import { sampleApps, AppItem } from '../data/appData';
 import LudoGameSVG from './LudoGameSVG';
 
@@ -55,6 +56,7 @@ const Menu = () => {
   const { isChessGameActive, setChessGameActive } = useChessGame();
   const [query, setQuery] = useState('');
   const [showComingSoon, setShowComingSoon] = useState(false);
+  const [aiAgentVisible, setAiAgentVisible] = useState(false);
 
   const friendsCount = Array.isArray(myProfile?.friends) ? myProfile.friends.length : 0;
   const normalizedQuery = query.trim().toLowerCase();
@@ -186,10 +188,27 @@ const Menu = () => {
         contentContainerStyle={styles.scrollContent}
       >
         <View style={styles.header}>
-          <Text style={[styles.title, { color: themeColors.text.primary }]}>Menu</Text>
-          <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
-            Profile, shortcuts, and apps
-          </Text>
+          <View style={styles.headerCopy}>
+            <Text style={[styles.title, { color: themeColors.text.primary }]}>Menu</Text>
+            <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
+              Profile, shortcuts, and apps
+            </Text>
+          </View>
+          <Pressable
+            onPress={() => setAiAgentVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open AI Agent"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.headerButton,
+              {
+                backgroundColor: themeColors.surface.secondary,
+                opacity: pressed ? 0.72 : 1,
+              },
+            ]}
+          >
+            <Icon name="psychology" size={22} color={themeColors.text.primary} />
+          </Pressable>
         </View>
 
         <View
@@ -400,6 +419,7 @@ const Menu = () => {
           </Pressable>
         )}
       </ScrollView>
+      <AIAgentModal visible={aiAgentVisible} onClose={() => setAiAgentVisible(false)} />
     </SafeAreaView>
   );
 };
@@ -412,13 +432,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingTop: 6,
     paddingBottom: 120,
   },
   header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
     marginBottom: 10,
     paddingHorizontal: 0,
+    gap: 12,
+  },
+  headerCopy: {
+    flex: 1,
+  },
+  headerButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   title: {
     fontSize: 28,
@@ -502,6 +536,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 16,
     padding: 12,
+    marginTop: 10,
     marginBottom: 12,
   },
   profileAvatarWrap: {

@@ -175,6 +175,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
+  const [minimized, setMinimized] = React.useState(false);
   const updateAutoActionRunning = React.useCallback((running: boolean) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAutoActionRunning(running);
@@ -531,6 +532,10 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
     return () => {
       active = false;
     };
+  }, [visible]);
+
+  React.useEffect(() => {
+    if (!visible) setMinimized(false);
   }, [visible]);
 
   const chooseProvider = React.useCallback((provider: AIProvider) => {
@@ -1143,7 +1148,8 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   };
 
   return (
-    <Modal visible={visible} animationType="slide" onRequestClose={close}>
+    <>
+    <Modal visible={visible && !minimized} animationType="slide" onRequestClose={close}>
       <SafeAreaView
         style={[styles.safe, { backgroundColor: colors.background.primary }]}
       >
@@ -1152,15 +1158,22 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             {...miniPanResponder.panHandlers}
             style={[styles.agentMini, { transform: miniPosition.getTranslateTransform(), backgroundColor: colors.surface.primary }]}
           >
-            <Icon name="psychology" size={22} color={colors.primary} />
-            <View style={styles.agentMiniText}>
-              <Text style={[styles.agentMiniTitle, { color: colors.text.primary }]}>
-                Connect AI
-              </Text>
-              <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
-                Running action...
-              </Text>
-            </View>
+            <Pressable
+              style={styles.agentMiniContent}
+              onPress={() => minimized && setMinimized(false)}
+              accessibilityRole={minimized ? 'button' : undefined}
+              accessibilityLabel={minimized ? 'Restore AI Agent' : undefined}
+            >
+              <Icon name="psychology" size={22} color={colors.primary} />
+              <View style={styles.agentMiniText}>
+                <Text style={[styles.agentMiniTitle, { color: colors.text.primary }]}>
+                  Connect AI
+                </Text>
+                <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
+                  {minimized ? 'Tap to restore' : 'Running action...'}
+                </Text>
+              </View>
+            </Pressable>
             <Pressable
               style={[styles.agentMiniMic, { backgroundColor: `${colors.primary}20` }]}
               onPress={toggleVoice}
@@ -1218,6 +1231,17 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               <Icon
                 name="delete-outline"
                 size={21}
+                color={colors.text.secondary}
+              />
+            </Pressable>
+            <Pressable
+              style={styles.headerButton}
+              onPress={() => setMinimized(true)}
+              accessibilityLabel="Minimize AI Agent"
+            >
+              <Icon
+                name="keyboard-arrow-down"
+                size={25}
                 color={colors.text.secondary}
               />
             </Pressable>
@@ -1499,6 +1523,37 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         )}
       </SafeAreaView>
     </Modal>
+    {visible && minimized && (
+      <Animated.View
+        {...miniPanResponder.panHandlers}
+        style={[styles.agentMini, { transform: miniPosition.getTranslateTransform(), backgroundColor: colors.surface.primary }]}
+      >
+        <Pressable
+          style={styles.agentMiniContent}
+          onPress={() => setMinimized(false)}
+          accessibilityRole="button"
+          accessibilityLabel="Restore AI Agent"
+        >
+          <Icon name="psychology" size={22} color={colors.primary} />
+          <View style={styles.agentMiniText}>
+            <Text style={[styles.agentMiniTitle, { color: colors.text.primary }]}>
+              Connect AI
+            </Text>
+            <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
+              Tap to restore
+            </Text>
+          </View>
+        </Pressable>
+        <Pressable
+          style={[styles.agentMiniMic, { backgroundColor: `${colors.primary}20` }]}
+          onPress={toggleVoice}
+          accessibilityLabel="Voice input"
+        >
+          <Icon name={transcribe.listening ? 'mic' : 'mic-none'} size={20} color={colors.primary} />
+        </Pressable>
+      </Animated.View>
+    )}
+    </>
   );
 };
 const styles = StyleSheet.create({
@@ -1591,6 +1646,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 3 },
+  },
+  agentMiniContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
   },
   agentMiniText: { flex: 1 },
   agentMiniTitle: { fontSize: 13, fontWeight: '700' },

@@ -10,9 +10,9 @@ buildscript {
         kotlinVersion = "2.1.20"
         // Use the Media3 DASH module instead of react-native-video's bundled classes.
         useExoplayerIMA = false
-        useExoplayerSmoothStreaming = false
+        useExoplayerSmoothStreaming = true
         useExoplayerDash = true
-        useExoplayerHls = false
+        useExoplayerHls = true
         useExoplayerRtsp = false
         buildFromMedia3Source = false
     }

@@ -18,6 +18,7 @@ import WebView from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useToast } from '../contexts/ToastContext';
 import {
   QUALITY_OPTIONS,
@@ -117,6 +118,7 @@ const YouTubeScreen = () => {
   // Downloads run in the background; there is no blocking progressState modal.
   const { colors: themeColors, isDarkMode } = useTheme();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { showSuccess, showError, showInfo } = useToast();
   const webViewRef = useRef<WebView>(null);
   const notifiedJobsRef = useRef<Set<string>>(new Set());
@@ -185,6 +187,10 @@ const YouTubeScreen = () => {
       webViewRef.current.injectJavaScript('window.location.href = "https://m.youtube.com"; true;');
     }
     setPageVideo({ url: 'https://m.youtube.com', videoId: null, title: '' });
+  };
+
+  const handleAppHome = () => {
+    (navigation as any).getParent()?.navigate('Home');
   };
 
   useEffect(() => {
@@ -260,7 +266,7 @@ const YouTubeScreen = () => {
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 8,
-          paddingTop: 0,
+          paddingTop: Platform.OS === 'android' ? insets.top : 0,
           paddingBottom: 8,
           backgroundColor: surface,
           borderBottomWidth: 1,
@@ -457,7 +463,7 @@ const YouTubeScreen = () => {
           paddingVertical: 6,
         },
       }),
-    [background, border, isDarkMode, primary, surface, textPrimary, textSecondary, themeColors],
+    [background, border, insets.top, isDarkMode, primary, surface, textPrimary, textSecondary, themeColors],
   );
 
   return (
@@ -482,6 +488,10 @@ const YouTubeScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.navButton} onPress={handleHome}>
+          <Icon name="public" size={24} color={textPrimary} />
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.navButton} onPress={handleAppHome}>
           <Icon name="home" size={24} color={textPrimary} />
         </TouchableOpacity>
 

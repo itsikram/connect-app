@@ -1,5 +1,5 @@
 import React, { useState, useContext, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Image, Modal, StyleSheet, ActivityIndicator, FlatList, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Pressable, Image, Modal, StyleSheet, ActivityIndicator, FlatList, ScrollView } from 'react-native';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -59,6 +59,16 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     { label: 'Grateful', value: 'grateful', emoji: '🥰' },
     { label: 'Bored', value: 'bored', emoji: '🥱' },
     { label: 'Tired', value: 'tired', emoji: '😴' },
+    { label: 'Calm', value: 'calm', emoji: '😌' },
+    { label: 'Confident', value: 'confident', emoji: '😎' },
+    { label: 'Curious', value: 'curious', emoji: '🤔' },
+    { label: 'Hopeful', value: 'hopeful', emoji: '🌟' },
+    { label: 'Proud', value: 'proud', emoji: '🦁' },
+    { label: 'Relaxed', value: 'relaxed', emoji: '😊' },
+    { label: 'Silly', value: 'silly', emoji: '🤪' },
+    { label: 'Surprised', value: 'surprised', emoji: '😮' },
+    { label: 'Worried', value: 'worried', emoji: '😟' },
+    { label: 'Motivated', value: 'motivated', emoji: '💪' },
   ];
 
   const audienceOptions: { label: string; value: number; icon: string }[] = [
@@ -312,8 +322,9 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         onRequestClose={closeModal}
       >
         <KeyboardSafeView force>
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeModal}>
-          <TouchableOpacity style={[styles.modalContent, { backgroundColor: modalBg }]} activeOpacity={1} onPress={(e) => e.stopPropagation()}>
+        <View style={styles.modalOverlay}>
+          <Pressable style={[StyleSheet.absoluteFill, styles.pickerBackdrop]} onPress={closeModal} />
+          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
             <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             <View style={[styles.modalHeader, { borderBottomColor: borderColor }]}>
               <Text style={[styles.modalTitle, { color: textColor }]} numberOfLines={1}>Create a Post</Text>
@@ -454,72 +465,60 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
               />
             </View>
             </ScrollView>
-          </TouchableOpacity>
-        </TouchableOpacity>
+          </View>
+          {isAudiencePickerVisible ? (
+            <View style={[StyleSheet.absoluteFill, styles.pickerOverlay]}>
+              <Pressable style={[StyleSheet.absoluteFill, styles.pickerBackdrop]} onPress={closeAudiencePicker} />
+              <View style={[styles.modalContent, styles.pickerContent, { backgroundColor: modalBg }]}>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Select Audience</Text>
+                <FlatList
+                  data={audienceOptions}
+                  keyExtractor={(item) => item.value.toString()}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => selectAudience(item.value)}
+                      style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center' }}
+                      activeOpacity={0.7}
+                    >
+                      <Icon name={item.icon} size={20} color={themeColors.primary} style={{ marginRight: 12 }} />
+                      <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
+                      {postData.audience === item.value && (
+                        <Icon name="check" size={20} color={themeColors.primary} style={{ marginLeft: 'auto' }} />
+                      )}
+                    </TouchableOpacity>
+                  )}
+                  ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
+                />
+              </View>
+            </View>
+          ) : null}
+          {isFeelingsPickerVisible ? (
+            <View style={[StyleSheet.absoluteFill, styles.pickerOverlay]}>
+              <Pressable style={[StyleSheet.absoluteFill, styles.pickerBackdrop]} onPress={closeFeelingsPicker} />
+              <View style={[styles.modalContent, styles.pickerContent, { backgroundColor: modalBg }]}>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Select Feeling</Text>
+                <FlatList
+                  data={defaultFeelings}
+                  keyExtractor={(item) => item.value}
+                  renderItem={({ item }) => (
+                    <TouchableOpacity
+                      onPress={() => selectFeeling(item.value)}
+                      style={{ paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
+                      activeOpacity={0.7}
+                    >
+                      {item.emoji ? <Text style={{ fontSize: 18, marginRight: 8 }}>{item.emoji}</Text> : null}
+                      <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
+                    </TouchableOpacity>
+                  )}
+                  ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
+                />
+              </View>
+            </View>
+          ) : null}
+        </View>
         </KeyboardSafeView>
       </Modal>
 
-      <Modal
-        visible={isFeelingsPickerVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={closeFeelingsPicker}
-      >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeFeelingsPicker}>
-          <View style={[styles.modalContent, { backgroundColor: modalBg }]}>
-            <Text style={[styles.modalTitle, { color: textColor }]}>Select Feeling</Text>
-            <FlatList
-              data={defaultFeelings}
-              keyExtractor={(item) => item.value}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => selectFeeling(item.value)}
-                  style={{ paddingVertical: 10, flexDirection: 'row', alignItems: 'center' }}
-                >
-                  {item.emoji ? <Text style={{ fontSize: 18, marginRight: 8 }}>{item.emoji}</Text> : null}
-                  <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
-                </TouchableOpacity>
-              )}
-              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
-
-      <Modal
-        visible={isAudiencePickerVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={closeAudiencePicker}
-      >
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={closeAudiencePicker}>
-          <View
-            style={[styles.modalContent, { backgroundColor: modalBg }]}
-            onStartShouldSetResponder={() => true}
-            onTouchEnd={(event) => event.stopPropagation()}
-          >
-            <Text style={[styles.modalTitle, { color: textColor }]}>Select Audience</Text>
-            <FlatList
-              data={audienceOptions}
-              keyExtractor={(item) => item.value.toString()}
-              renderItem={({ item }) => (
-                <TouchableOpacity
-                  onPress={() => selectAudience(item.value)}
-                  style={{ paddingVertical: 14, flexDirection: 'row', alignItems: 'center' }}
-                  activeOpacity={0.7}
-                >
-                  <Icon name={item.icon} size={20} color={themeColors.primary} style={{ marginRight: 12 }} />
-                  <Text style={{ color: textColor, fontSize: 16 }}>{item.label}</Text>
-                  {postData.audience === item.value && (
-                    <Icon name="check" size={20} color={themeColors.primary} style={{ marginLeft: 'auto' }} />
-                  )}
-                </TouchableOpacity>
-              )}
-              ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
-            />
-          </View>
-        </TouchableOpacity>
-      </Modal>
     </View>
   );
 };
@@ -611,6 +610,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
+  pickerOverlay: {
+    zIndex: 20,
+    elevation: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pickerBackdrop: {
+    zIndex: 0,
+  },
   modalContent: {
     width: '95%',
     backgroundColor: '#fff',
@@ -622,6 +630,11 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 6 },
+    zIndex: 1,
+  },
+  pickerContent: {
+    zIndex: 1,
+    elevation: 21,
   },
   modalHeader: {
     flexDirection: 'row',

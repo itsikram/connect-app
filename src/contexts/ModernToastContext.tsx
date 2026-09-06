@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { View, StyleSheet } from 'react-native';
+import { View, StyleSheet, Platform } from 'react-native';
 import { ModernNotification } from '../components/modern';
 
 interface Toast {
@@ -69,9 +69,10 @@ export const ModernToastProvider: React.FC<ModernToastProviderProps> = ({ childr
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: 52, // Header height (56px) + reduced gap (2px)
-    left: 0,
-    right: 0,
+    top: Platform.OS === 'web' ? 102 : 52,
+    left: Platform.OS === 'web' ? undefined : 0,
+    right: Platform.OS === 'web' ? 16 : 0,
+    width: Platform.OS === 'web' ? 380 : undefined,
     zIndex: 9999,
   },
 });

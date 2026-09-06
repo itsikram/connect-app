@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useState, Suspense, useTransition } from 'react';
+import React, {
+  useCallback,
+  useMemo,
+  useState,
+  Suspense,
+  useTransition,
+} from 'react';
 import {
   View,
   Text,
@@ -11,17 +17,37 @@ import {
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 
-const ProfileSettings = React.lazy(() => import('../components/settings/ProfileSettings'));
-const PrivacySettings = React.lazy(() => import('../components/settings/PrivacySettings'));
-const NotificationSettings = React.lazy(() => import('../components/settings/NotificationSettings'));
-const AccountSettings = React.lazy(() => import('../components/settings/AccountSettings'));
-const PreferenceSettings = React.lazy(() => import('../components/settings/PreferenceSettings'));
-const MessageSettings = React.lazy(() => import('../components/settings/MessageSettings'));
-const SoundSettings = React.lazy(() => import('../components/settings/SoundSettings'));
-const CacheSettings = React.lazy(() => import('../components/settings/CacheSettings'));
+const ProfileSettings = React.lazy(
+  () => import('../components/settings/ProfileSettings'),
+);
+const PrivacySettings = React.lazy(
+  () => import('../components/settings/PrivacySettings'),
+);
+const NotificationSettings = React.lazy(
+  () => import('../components/settings/NotificationSettings'),
+);
+const AccountSettings = React.lazy(
+  () => import('../components/settings/AccountSettings'),
+);
+const PreferenceSettings = React.lazy(
+  () => import('../components/settings/PreferenceSettings'),
+);
+const MessageSettings = React.lazy(
+  () => import('../components/settings/MessageSettings'),
+);
+const SoundSettings = React.lazy(
+  () => import('../components/settings/SoundSettings'),
+);
+const CacheSettings = React.lazy(
+  () => import('../components/settings/CacheSettings'),
+);
 
-const TAB_COMPONENTS: Record<string, React.LazyExoticComponent<React.ComponentType<any>>> = {
+const TAB_COMPONENTS: Record<
+  string,
+  React.LazyExoticComponent<React.ComponentType<any>>
+> = {
   profile: ProfileSettings,
   privacy: PrivacySettings,
   notification: NotificationSettings,
@@ -49,128 +75,144 @@ const Settings = () => {
   const [isPending, startTransition] = useTransition();
 
   const activeLabel = useMemo(
-    () => SETTINGS_NAV.find((tab) => tab.id === activeTab)?.title || 'Settings',
-    [activeTab]
+    () => SETTINGS_NAV.find(tab => tab.id === activeTab)?.title || 'Settings',
+    [activeTab],
   );
 
-  const handleTabPress = useCallback((tabId: string) => {
-    if (tabId === activeTab) return;
-    startTransition(() => setActiveTab(tabId));
-  }, [activeTab, startTransition]);
+  const handleTabPress = useCallback(
+    (tabId: string) => {
+      if (tabId === activeTab) return;
+      startTransition(() => setActiveTab(tabId));
+    },
+    [activeTab, startTransition],
+  );
 
   const ActiveComponent = TAB_COMPONENTS[activeTab] || ProfileSettings;
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
+    <SafeAreaView
+      style={[
+        styles.container,
+        { backgroundColor: themeColors.background.primary },
+      ]}
+    >
+      <KeyboardSafeView nested>
+        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
-      <View style={styles.shell}>
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: themeColors.text.primary }]}>
-            Settings
-          </Text>
-          <Text style={[styles.headerSubtitle, { color: themeColors.text.secondary }]}>
-            Manage your profile, privacy, notifications, and app preferences.
-          </Text>
-        </View>
-
-        <View
-          style={[
-            styles.navPanel,
-            {
-              backgroundColor: themeColors.surface.primary,
-              borderColor: themeColors.border.primary,
-            },
-          ]}
-        >
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.navContent}
-          >
-            {SETTINGS_NAV.map((tab) => {
-              const isActive = activeTab === tab.id;
-              return (
-                <TouchableOpacity
-                  key={tab.id}
-                  style={[
-                    styles.navItem,
-                    isActive && {
-                      backgroundColor: themeColors.primary + '1F',
-                    },
-                    isPending && isActive && { opacity: 0.6 },
-                  ]}
-                  onPress={() => handleTabPress(tab.id)}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: isActive }}
-                >
-                  <View
-                    style={[
-                      styles.navIcon,
-                      {
-                        backgroundColor: isActive
-                          ? themeColors.primary + '2E'
-                          : themeColors.surface.secondary,
-                      },
-                    ]}
-                  >
-                    <Icon
-                      name={tab.icon}
-                      size={16}
-                      color={isActive ? themeColors.primary : themeColors.text.secondary}
-                    />
-                  </View>
-                  <Text
-                    style={[
-                      styles.navLabel,
-                      {
-                        color: isActive ? themeColors.text.primary : themeColors.text.secondary,
-                        fontWeight: isActive ? '700' : '500',
-                      },
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {tab.title}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
-
-        <ScrollView
-          style={styles.pageScroll}
-          contentContainerStyle={styles.pageScrollContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-        >
+        <View style={styles.shell}>
           <View
             style={[
-              styles.contentPanel,
+              styles.navPanel,
               {
                 backgroundColor: themeColors.surface.primary,
                 borderColor: themeColors.border.primary,
-                opacity: isPending ? 0.85 : 1,
               },
             ]}
-            accessibilityLabel={activeLabel}
           >
-            <Suspense
-              fallback={
-                <View style={styles.suspenseFallback}>
-                  <ActivityIndicator size="small" color={themeColors.primary} />
-                  <Text style={{ marginTop: 8, color: themeColors.text.secondary }}>
-                    Loading {activeLabel} settings...
-                  </Text>
-                </View>
-              }
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.navContent}
             >
-              <ActiveComponent />
-            </Suspense>
+              {SETTINGS_NAV.map(tab => {
+                const isActive = activeTab === tab.id;
+                return (
+                  <TouchableOpacity
+                    key={tab.id}
+                    style={[
+                      styles.navItem,
+                      isActive && {
+                        backgroundColor: themeColors.primary + '1F',
+                      },
+                      isPending && isActive && { opacity: 0.6 },
+                    ]}
+                    onPress={() => handleTabPress(tab.id)}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: isActive }}
+                  >
+                    <View
+                      style={[
+                        styles.navIcon,
+                        {
+                          backgroundColor: isActive
+                            ? themeColors.primary + '2E'
+                            : themeColors.surface.secondary,
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name={tab.icon}
+                        size={16}
+                        color={
+                          isActive
+                            ? themeColors.primary
+                            : themeColors.text.secondary
+                        }
+                      />
+                    </View>
+                    <Text
+                      style={[
+                        styles.navLabel,
+                        {
+                          color: isActive
+                            ? themeColors.text.primary
+                            : themeColors.text.secondary,
+                          fontWeight: isActive ? '700' : '500',
+                        },
+                      ]}
+                      numberOfLines={1}
+                    >
+                      {tab.title}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
           </View>
-        </ScrollView>
-      </View>
+
+          <ScrollView
+            style={styles.pageScroll}
+            contentContainerStyle={styles.pageScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+            automaticallyAdjustKeyboardInsets
+          >
+            <View
+              style={[
+                styles.contentPanel,
+                {
+                  backgroundColor: themeColors.surface.primary,
+                  borderColor: themeColors.border.primary,
+                  opacity: isPending ? 0.85 : 1,
+                },
+              ]}
+              accessibilityLabel={activeLabel}
+            >
+              <Suspense
+                fallback={
+                  <View style={styles.suspenseFallback}>
+                    <ActivityIndicator
+                      size="small"
+                      color={themeColors.primary}
+                    />
+                    <Text
+                      style={{
+                        marginTop: 8,
+                        color: themeColors.text.secondary,
+                      }}
+                    >
+                      Loading {activeLabel} settings...
+                    </Text>
+                  </View>
+                }
+              >
+                <ActiveComponent />
+              </Suspense>
+            </View>
+          </ScrollView>
+        </View>
+      </KeyboardSafeView>
     </SafeAreaView>
   );
 };
@@ -192,12 +234,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 22,
     fontWeight: '700',
-    marginBottom: 4,
     letterSpacing: -0.3,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    lineHeight: 20,
   },
   navPanel: {
     borderRadius: 16,

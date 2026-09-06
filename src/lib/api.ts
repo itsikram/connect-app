@@ -5,7 +5,7 @@ import axios, {
   AxiosRequestConfig,
 } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import config from './config';
+import config, { API_ENDPOINTS } from './config';
 
 // Type definitions
 interface LoginData {
@@ -222,10 +222,10 @@ export const authAPI = {
     email: string,
     password: string,
   ): Promise<AxiosResponse<AuthResponse>> =>
-    api.post('/auth/login', { email, password }),
+    api.post(API_ENDPOINTS.AUTH.LOGIN, { email, password }),
 
   signup: (userData: SignupData): Promise<AxiosResponse<AuthResponse>> =>
-    api.post('/auth/signup', userData),
+    api.post(API_ENDPOINTS.AUTH.REGISTER, userData),
 
   googleSignIn: (
     googleData: GoogleSignInData,
@@ -346,6 +346,8 @@ export const friendAPI = {
     api.post(`/friend/reqAccept`, { profile: profileId }),
   deleteFriendRequest: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/friend/reqDelete`, { profile: profileId }),
+  cancelFriendRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.post(`/friend/removeRequest`, { profile: profileId }),
   removeFriend: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/friend/removeFriend?profileId=${profileId}`),
   blockUser: (friendId: string): Promise<AxiosResponse> =>

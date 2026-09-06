@@ -25,14 +25,21 @@ type Environment = 'development' | 'staging' | 'production';
 // EXPO_PUBLIC_API_URL always takes precedence, which is useful for a different
 // machine, tunnel, or deployed development server.
 const getDevServerUrl = (): string => {
-  const configuredUrl = process.env.EXPO_PUBLIC_API_URL;
+  const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
   // Development builds expose the host used by Metro. Reusing it lets both
   // physical devices and emulators reach the API without a machine-specific IP.
   const hostUri = Constants.expoConfig?.hostUri;
   const host = hostUri?.split(':')[0];
-  if (host && host !== 'localhost' && host !== '127.0.0.1' && host !== '[::1]' && /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) {
+  if (
+    host &&
+    host !== 'localhost' &&
+    host !== '127.0.0.1' &&
+    host !== '[::1]' &&
+    /^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)
+  ) {
     return `http://${host}:4000`;
   }
 
@@ -127,7 +134,8 @@ export const config: EnvironmentConfig = ENV[getEnvironment()];
 export const API_ENDPOINTS = {
   AUTH: {
     LOGIN: '/auth/login',
-    REGISTER: '/auth/register',
+    // The API exposes account creation at /signup (not /register).
+    REGISTER: '/auth/signup',
     LOGOUT: '/auth/logout',
     REFRESH: '/auth/refresh',
   },

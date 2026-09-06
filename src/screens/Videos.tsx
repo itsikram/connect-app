@@ -95,11 +95,13 @@ const VideoItem = ({
   isActive,
   containerHeight,
   onOpenPip,
+  onDeleted,
 }: {
   post: Video;
   isActive: boolean;
   containerHeight: number;
   onOpenPip?: (post: Video) => void;
+  onDeleted?: (watchId: string) => void;
 }) => {
   const t = useWatchTokens();
   const navigation =
@@ -153,7 +155,7 @@ const VideoItem = ({
     ),
   );
   const [followBusy, setFollowBusy] = useState(false);
-  const isOwnWatch = sameId(post?.author?._id, myId);
+  const isOwnWatch = sameId(post?.author?._id || post?.author, myId);
   const { pip: currentPip, isPipActive } = useWatchPip();
 
   const [isManuallyPaused, setIsManuallyPaused] = useState(false);
@@ -195,6 +197,31 @@ const VideoItem = ({
       showError(err?.message || 'Failed to download video');
     }
   }, [post, showError, showInfo, showSuccess]);
+
+  const handleDelete = useCallback(() => {
+    if (!isOwnWatch || !post?._id || !myId) return;
+    Alert.alert('Delete video', 'Are you sure you want to delete this video?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const res = await api.post('/watch/delete', {
+              watchId: post._id,
+              authorId: myId,
+            });
+            if (res.status === 200) {
+              onDeleted?.(post._id);
+              showSuccess('Video deleted');
+            }
+          } catch (err: any) {
+            showError(err?.response?.data?.message || 'Failed to delete video');
+          }
+        },
+      },
+    ]);
+  }, [isOwnWatch, myId, onDeleted, post._id, showError, showSuccess]);
 
   const handleReact = useCallback(async () => {
     if (!post?._id || !myId) return;
@@ -390,6 +417,23 @@ const VideoItem = ({
       )}
 
       <View style={styles.sideActions}>
+        {isOwnWatch ? (
+          <TouchableOpacity
+            onPress={handleDelete}
+            activeOpacity={0.8}
+            style={styles.sideAction}
+          >
+            <View
+              style={[
+                styles.sideBtn,
+                { backgroundColor: t.btnBg, borderColor: t.chipBorder },
+              ]}
+            >
+              <Icon name="trash-outline" size={20} color={t.error} />
+            </View>
+            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>Delete</Text>
+          </TouchableOpacity>
+        ) : null}
         <TouchableOpacity
           onPress={() =>
             navigation.navigate('SingleWatch', { watchId: post._id })
@@ -453,89 +497,50 @@ const VideoItem = ({
             </Text>
           )}
         </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setCommentOpen(true)}
-          activeOpacity={0.8}
-          style={styles.sideAction}
-        >
-          <View
-            style={[
-              styles.sideBtn,
-              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
-            ]}
-          >
-            <Icon name="chatbubble-ellipses" size={20} color={t.chromeText} />
-          </View>
-          {commentsCount > 0 ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-              {commentsCount}
-            </Text>
-          ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-              Comment
-            </Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setShareOpen(true)}
-          activeOpacity={0.8}
-          style={styles.sideAction}
-        >
-          <View
-            style={[
-              styles.sideBtn,
-              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
-            ]}
-          >
-            <Icon name="share-social" size={20} color={t.chromeText} />
-          </View>
-          {sharesCount > 0 ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-              {sharesCount}
-            </Text>
-          ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-              Share
-            </Text>
-          )}
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={handleDownload}
-          activeOpacity={0.8}
-          style={styles.sideAction}
-        >
-          <View
-            style={[
-              styles.sideBtn,
-              { backgroundColor: t.btnBg, borderColor: t.chipBorder },
-            ]}
-          >
-            {downloadJob?.status === 'downloading' ? (
-              <ActivityIndicator size="small" color={t.primary} />
-            ) : (
-              <Icon
-                name={
-                  downloadJob?.status === 'completed'
-                    ? 'checkmark'
-                    : 'download-outline'
-                }
-                size={20}
-                color={
-                  downloadJob?.status === 'completed' ? t.success : t.chromeText
-                }
-              />
-            )}
-          </View>
-          {downloadJob?.status === 'downloading' ? (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-              {Math.round(downloadJob.percent)}%
-            </Text>
-          ) : (
-            <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-              Save
-            </Text>
-          )}
-        </TouchableOpacity>
+        {!isOwnWatch ? (
+          <>
+            <TouchableOpacity
+              onPress={() => setCommentOpen(true)}
+              activeOpacity={0.8}
+              style={styles.sideAction}
+            >
+              <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+                <Icon name="chatbubble-ellipses" size={20} color={t.chromeText} />
+              </View>
+              <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+                {commentsCount > 0 ? commentsCount : 'Comment'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setShareOpen(true)}
+              activeOpacity={0.8}
+              style={styles.sideAction}
+            >
+              <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+                <Icon name="share-social" size={20} color={t.chromeText} />
+              </View>
+              <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+                {sharesCount > 0 ? sharesCount : 'Share'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDownload} activeOpacity={0.8} style={styles.sideAction}>
+              <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
+                {downloadJob?.status === 'downloading' ? (
+                  <ActivityIndicator size="small" color={t.primary} />
+                ) : (
+                  <Icon
+                    name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                    size={20}
+                    color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+                  />
+                )}
+              </View>
+              <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
+                {downloadJob?.status === 'downloading' ? `${Math.round(downloadJob.percent)}%` : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : null}
       </View>
 
       <View
@@ -747,6 +752,8 @@ const VideoItem = ({
   );
 };
 
+export { VideoItem };
+
 const Videos = () => {
   const t = useWatchTokens();
   const [videos, setVideos] = useState<Video[]>([]);
@@ -894,6 +901,9 @@ const Videos = () => {
             isActive={index === activeIndex && isScreenFocused && !isPipActive}
             containerHeight={listHeight}
             onOpenPip={openGlobalPip}
+            onDeleted={watchId =>
+              setVideos(prev => prev.filter(video => video._id !== watchId))
+            }
           />
         )}
         pagingEnabled

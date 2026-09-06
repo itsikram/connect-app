@@ -18,6 +18,7 @@ import { setProfile } from '../reducers/profileReducer';
 import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
 import VoiceTextInput from '../components/VoiceTextInput';
+import AIAgentModal from '../components/AIAgentModal';
 import { useNavigation } from '@react-navigation/native';
 import { hideTabBarForChat } from '../lib/chatScreenChrome';
 import { useTheme } from '../contexts/ThemeContext';
@@ -288,6 +289,7 @@ const Message = React.memo(() => {
   const [isLoading, setIsLoading] = React.useState(false);
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
+  const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
   const activeFriendsValue = useSelector((state: RootState) => state.presence.activeFriends);
   const activeFriends = Array.isArray(activeFriendsValue) ? activeFriendsValue : [];
   const { chats: rawChatList, loading: chatLoading, error: chatError } = useSelector((state: RootState) => state.chat as {
@@ -665,6 +667,21 @@ const Message = React.memo(() => {
           >
             <Icon name="more-horiz" size={22} color={themeColors.text.primary} />
           </Pressable>
+          <Pressable
+            onPress={() => setAiAgentVisible(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open AI Agent"
+            hitSlop={8}
+            style={({ pressed }) => [
+              styles.headerButton,
+              {
+                backgroundColor: themeColors.surface.secondary,
+                opacity: pressed ? 0.72 : 1,
+              },
+            ]}
+          >
+            <Icon name="psychology" size={22} color={themeColors.text.primary} />
+          </Pressable>
         </View>
       </View>
 
@@ -732,6 +749,7 @@ const Message = React.memo(() => {
           />
         }
       />
+      <AIAgentModal visible={aiAgentVisible} onClose={() => setAiAgentVisible(false)} />
     </View>
   );
 });
@@ -746,7 +764,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingTop: 6,
     paddingBottom: 10,
     gap: 12,
@@ -780,7 +798,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
-    marginHorizontal: 16,
+    marginHorizontal: 10,
     marginBottom: 8,
     borderWidth: 1,
     borderRadius: 14,
@@ -806,7 +824,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 16,
+    paddingHorizontal: 10,
     paddingTop: 8,
     paddingBottom: 8,
   },

@@ -1,15 +1,15 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, ImageBackground, TextInput, StatusBar } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { TextInput as PaperTextInput, Button, RadioButton } from 'react-native-paper';
+import { Button } from 'react-native-paper';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Logo from '../components/Logo';
 import { useTheme } from '../contexts/ThemeContext';
-import { authAPI } from '../lib/api';
 import Toast from 'react-native-toast-message';
 import { AuthContext } from '../contexts/AuthContext';
 import KeyboardSafeView from '../components/KeyboardSafeView';
+import Icon from 'react-native-vector-icons/Ionicons';
 
 const TABS = [
   { key: 'personal', label: 'Personal' },
@@ -18,6 +18,7 @@ const TABS = [
 ];
 
 type RootStackParamList = {
+  Home: undefined;
   Login: undefined;
   Register: undefined;
 };
@@ -40,10 +41,8 @@ const RegisterScreen = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
-  const { colors: themeColors } = useTheme();
-  const bottomBarBg = themeColors.surface.secondary;
-  const panelBg = themeColors.surface.elevated || themeColors.surface.primary;
-  const { googleSignIn } = useContext(AuthContext);
+  const { colors: themeColors, isDarkMode } = useTheme();
+  const { googleSignIn, register } = useContext(AuthContext);
 
   // Individual field validation
   const validateField = (fieldName: string, value: any) => {
@@ -240,16 +239,22 @@ const RegisterScreen = () => {
         password: formData.password,
       };
       
-      let signupResponse = await authAPI.signup(body);
-      console.log('Registration successful!', signupResponse);
-      
-      if (signupResponse?.status === 201) {
+      const result = await register(body);
+
+      if (result.success) {
         Toast.show({
           type: 'success',
           text1: 'Account created successfully!',
-          text2: 'Please sign in with your new account'
+          text2: 'Welcome to Connect',
         });
-        navigation.navigate('Login');
+      } else {
+        const errorMsg = result.error || 'Registration failed. Please try again.';
+        setError(errorMsg);
+        Toast.show({
+          type: 'error',
+          text1: 'Registration Failed',
+          text2: errorMsg,
+        });
       }
     } catch (e) {
       const err = e as any;
@@ -292,141 +297,85 @@ const RegisterScreen = () => {
     }
   };
 
+  const fieldStyle = (field: string) => [
+    styles.input,
+    { backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)', borderColor: fieldErrors[field] ? themeColors.status.error : themeColors.border.secondary },
+  ];
+  const textInputStyle = { color: themeColors.text.primary };
+
   return (
-    <KeyboardSafeView nested>
-      <ScrollView
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag"
-        contentContainerStyle={[styles.container, { backgroundColor: themeColors.background.primary }]}
+    <KeyboardSafeView>
+      <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
+      <ImageBackground
+        source={isDarkMode ? require('../assets/images/login-registrasion-bg-dark.png') : require('../assets/images/login-registrasion-bg.png')}
+        style={styles.background}
+        resizeMode="cover"
       >
-        <View style={[styles.shell, { backgroundColor: themeColors.background.primary }]}>
-          <View style={[styles.glow, { backgroundColor: `${themeColors.primary}26` }]} />
-          <View style={[styles.glowSecondary, { backgroundColor: `${themeColors.secondary}22` }]} />
+        <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={styles.container}>
+          <View style={styles.content}>
+            <Logo size="xlarge" />
+            <Text style={[styles.title, { color: themeColors.text.primary }]}>Create Your <Text style={{ color: themeColors.primary }}>Account</Text></Text>
+            <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>Join our community and start connecting{'\n'}with amazing people.</Text>
 
-          <View style={[styles.card, { backgroundColor: panelBg, borderColor: themeColors.border.primary }]}>
-            <View style={styles.topSection}>
-              <View style={[styles.brandWrap, { backgroundColor: `${themeColors.primary}18`, borderColor: `${themeColors.primary}44` }]}>
-                <Logo size="large" />
-              </View>
-              <Text style={[styles.eyebrow, { color: themeColors.primary }]}>Welcome aboard</Text>
-              <Text style={[styles.title, { color: themeColors.text.primary }]}>Create your account</Text>
-              <Text style={[styles.subtitle, { color: themeColors.text.secondary }]}>
-                Join in a few steps and get started with your profile.
-              </Text>
-            </View>
-
-            <View style={[styles.tabHeaderContainerOuter]}>
-              <View style={[styles.tabHeaderContainer, { backgroundColor: bottomBarBg, borderColor: themeColors.border.primary }]}>
-                {TABS.map((t, idx) => {
-                  const isActive = tab === idx;
-                  const isCompleted = isTabCompleted(idx);
-                  const pillStyle = [
-                    styles.tabHeaderPill,
-                    isActive && [styles.tabHeaderPillActive, { backgroundColor: themeColors.primary }],
-                    !isActive && isCompleted && [styles.tabHeaderPillCompleted, { backgroundColor: themeColors.status.success }],
-                  ];
-                  const textStyle = [
-                    styles.tabHeaderText,
-                    { color: isActive ? '#fff' : themeColors.text.secondary },
-                    (isActive || isCompleted) && styles.tabHeaderTextActive,
-                  ];
-
-                  return (
-                    <TouchableOpacity
-                      key={t.key}
-                      style={pillStyle}
-                      onPress={() => handleTabPress(idx)}
-                      activeOpacity={0.8}
-                    >
-                      <Text style={textStyle}>
-                        {isCompleted && !isActive ? '✓ ' : ''}
-                        {t.label}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+            <View style={[styles.tabs, { backgroundColor: isDarkMode ? 'rgba(30,31,32,0.78)' : 'rgba(255,255,255,0.6)' }]}>
+              {TABS.map((item, index) => (
+                <TouchableOpacity key={item.key} onPress={() => handleTabPress(index)} style={[styles.tab, tab === index && { backgroundColor: themeColors.primary }]} activeOpacity={0.85}>
+                  <Text style={[styles.tabText, { color: tab === index ? themeColors.text.inverse : themeColors.text.secondary }]}>{index + 1}. {item.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
             {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
-
             {tab === 0 && (
               <View style={styles.tabContent}>
-                <PaperTextInput
-                  mode="outlined"
-                  label="First Name"
-                  value={formData.firstName}
-                  onChangeText={(v) => handleFieldChange('firstName', v)}
-                  style={[styles.input, { backgroundColor: bottomBarBg }]}
-                  textColor={themeColors.text.primary}
-                  error={!!fieldErrors.firstName}
-                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-                  autoCapitalize="words"
-                />
-                {fieldErrors.firstName && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.firstName}</Text>}
-
-                <PaperTextInput
-                  mode="outlined"
-                  label="Surname"
-                  value={formData.surname}
-                  onChangeText={(v) => handleFieldChange('surname', v)}
-                  style={[styles.input, { backgroundColor: bottomBarBg }]}
-                  textColor={themeColors.text.primary}
-                  error={!!fieldErrors.surname}
-                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-                  autoCapitalize="words"
-                />
-                {fieldErrors.surname && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.surname}</Text>}
-
-                <Button
-                  mode="contained"
-                  onPress={handleNext}
-                  style={[styles.button, { backgroundColor: themeColors.primary }]}
-                  labelStyle={{ color: '#fff' }}
-                >
-                  <Text style={styles.buttonText}>Next</Text>
-                </Button>
+                <View style={styles.row}>
+                  {(['firstName', 'surname'] as const).map((field) => (
+                    <View key={field} style={[fieldStyle(field), styles.halfInput]}>
+                      <Icon name="person-outline" size={24} color={themeColors.primary} />
+                      <TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} autoCapitalize="words" placeholder={field === 'firstName' ? 'First name' : 'Surname'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} />
+                    </View>
+                  ))}
+                </View>
+                <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.firstName || fieldErrors.surname || ' '}</Text>
+                <TouchableOpacity onPress={handleNext} style={[styles.actionButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Next Step  →</Text></TouchableOpacity>
               </View>
             )}
-
             {tab === 1 && (
               <View style={styles.tabContent}>
-                <PaperTextInput
-                  mode="outlined"
-                  label="Email Address"
-                  value={formData.email}
-                  onChangeText={(v) => handleFieldChange('email', v)}
-                  autoCapitalize="none"
-                  keyboardType="email-address"
-                  style={[styles.input, { backgroundColor: bottomBarBg }]}
-                  textColor={themeColors.text.primary}
-                  error={!!fieldErrors.email}
-                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-                />
-                {fieldErrors.email && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.email}</Text>}
-
+                <View style={fieldStyle('email')}><Icon name="mail-outline" size={24} color={themeColors.primary} /><TextInput value={formData.email} onChangeText={(value) => handleFieldChange('email', value)} autoCapitalize="none" keyboardType="email-address" placeholder="Email address" placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /></View>
+                <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.email || ' '}</Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
                   style={[
-                    styles.datePickerButton,
+                    fieldStyle('DOB'),
                     {
-                      backgroundColor: bottomBarBg,
-                      borderColor: fieldErrors.DOB ? themeColors.status.error : themeColors.border.primary,
-                      borderWidth: fieldErrors.DOB ? 2 : 1,
+                      backgroundColor: isDarkMode
+                        ? 'rgba(10,10,11,0.72)'
+                        : 'rgba(255,255,255,0.42)',
                     },
                   ]}
                 >
-                  <Text style={[styles.datePickerText, { color: formData.DOB ? themeColors.text.primary : themeColors.text.secondary }]}>
-                    {formData.DOB ? formData.DOB.toLocaleDateString() : 'Select Date of Birth'}
+                  <Icon name="calendar-outline" size={24} color={themeColors.primary} />
+                  <Text
+                    style={[
+                      styles.dateText,
+                      {
+                        color: formData.DOB
+                          ? themeColors.text.primary
+                          : themeColors.text.tertiary,
+                      },
+                    ]}
+                  >
+                    {formData.DOB ? formData.DOB.toLocaleDateString() : 'Date of birth'}
                   </Text>
                 </TouchableOpacity>
-                {fieldErrors.DOB && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.DOB}</Text>}
-
                 {showDatePicker && (
                   <DateTimePicker
                     value={formData.DOB || new Date(2000, 0, 1)}
                     mode="date"
                     display="default"
+                    themeVariant={isDarkMode ? 'dark' : 'light'}
+                    accentColor={themeColors.primary}
                     onChange={(_, date) => {
                       setShowDatePicker(false);
                       if (date) handleFieldChange('DOB', date);
@@ -434,261 +383,107 @@ const RegisterScreen = () => {
                     maximumDate={new Date()}
                   />
                 )}
-
-                <View style={[styles.radioGroup, fieldErrors.gender && styles.radioGroupError]}>
-                  <Text style={[styles.radioLabel, { color: themeColors.text.primary }]}>Gender</Text>
-                  <RadioButton.Group onValueChange={(v) => handleFieldChange('gender', v)} value={formData.gender}>
-                    <View style={styles.radioRow}>
-                      <View style={styles.radioOption}>
-                        <RadioButton value="male" color={themeColors.primary} uncheckedColor={themeColors.border.primary} />
-                        <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Male</Text>
-                      </View>
-                      <View style={styles.radioOption}>
-                        <RadioButton value="female" color={themeColors.primary} uncheckedColor={themeColors.border.primary} />
-                        <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Female</Text>
-                      </View>
-                      <View style={styles.radioOption}>
-                        <RadioButton value="other" color={themeColors.primary} uncheckedColor={themeColors.border.primary} />
-                        <Text style={[styles.radioText, { color: themeColors.text.secondary }]}>Other</Text>
-                      </View>
-                    </View>
-                  </RadioButton.Group>
+                <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.DOB || ' '}</Text>
+                <View style={[styles.genderRow, fieldErrors.gender && { borderColor: themeColors.status.error }]}>
+                  <Icon name="male-female-outline" size={24} color={themeColors.primary} />
+                  {(['male', 'female', 'other'] as const).map((value) => <TouchableOpacity key={value} onPress={() => handleFieldChange('gender', value)} style={[styles.genderOption, formData.gender === value && { backgroundColor: `${themeColors.primary}22` }]}><Text style={{ color: themeColors.text.primary }}>{value[0].toUpperCase() + value.slice(1)}</Text></TouchableOpacity>)}
                 </View>
-                {fieldErrors.gender && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.gender}</Text>}
-
-                <View style={styles.actionRow}>
-                  <Button mode="text" onPress={handleBack} style={[styles.secondaryButton, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
-                    <Text style={{ color: themeColors.primary }}>Back</Text>
-                  </Button>
-                  <Button mode="contained" onPress={handleNext} style={[styles.primaryButton, { backgroundColor: themeColors.primary }]} labelStyle={{ color: '#fff' }}>
-                    <Text style={styles.buttonText}>Next</Text>
-                  </Button>
-                </View>
+                <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.gender || ' '}</Text>
+                <View style={styles.actionRow}><TouchableOpacity onPress={handleBack}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>← Back</Text></TouchableOpacity><TouchableOpacity onPress={handleNext} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Next Step  →</Text></TouchableOpacity></View>
               </View>
             )}
-
             {tab === 2 && (
               <View style={styles.tabContent}>
-                <PaperTextInput
-                  mode="outlined"
-                  label="Password"
-                  value={formData.password}
-                  onChangeText={(v) => handleFieldChange('password', v)}
-                  secureTextEntry={!showPassword}
-                  style={[styles.input, { backgroundColor: bottomBarBg }]}
-                  textColor={themeColors.text.primary}
-                  error={!!fieldErrors.password}
-                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-                  right={<PaperTextInput.Icon icon={showPassword ? 'eye-off' : 'eye'} onPress={() => setShowPassword((v) => !v)} />}
-                />
-                {fieldErrors.password && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.password}</Text>}
-
-                <PaperTextInput
-                  mode="outlined"
-                  label="Confirm Password"
-                  value={formData.confirmPassword}
-                  onChangeText={(v) => handleFieldChange('confirmPassword', v)}
-                  secureTextEntry={!showConfirmPassword}
-                  style={[styles.input, { backgroundColor: bottomBarBg }]}
-                  textColor={themeColors.text.primary}
-                  error={!!fieldErrors.confirmPassword}
-                  theme={{ colors: { primary: themeColors.primary, text: themeColors.text.primary, onSurface: themeColors.text.primary } }}
-                  right={<PaperTextInput.Icon icon={showConfirmPassword ? 'eye-off' : 'eye'} onPress={() => setShowConfirmPassword((v) => !v)} />}
-                />
-                {fieldErrors.confirmPassword && <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.confirmPassword}</Text>}
-
-                {formData.password && (
-                  <View style={[styles.passwordStrength, { backgroundColor: `${themeColors.primary}08`, borderColor: `${themeColors.primary}22` }]}>
-                    <Text style={[styles.passwordStrengthTitle, { color: themeColors.text.primary }]}>Password Requirements</Text>
-                    <View style={styles.passwordRequirements}>
-                      <Text style={[styles.passwordRequirement, { color: formData.password.length >= 8 ? themeColors.status.success : themeColors.text.secondary }]}>
-                        ✓ At least 8 characters
-                      </Text>
-                      <Text style={[styles.passwordRequirement, { color: /[A-Za-z]/.test(formData.password) ? themeColors.status.success : themeColors.text.secondary }]}>
-                        ✓ Contains letters
-                      </Text>
-                      <Text style={[styles.passwordRequirement, { color: /[0-9]/.test(formData.password) ? themeColors.status.success : themeColors.text.secondary }]}>
-                        ✓ Contains numbers
-                      </Text>
-                      <Text style={[styles.passwordRequirement, { color: /[!@#$%^&*(),.?":{}|<>]/.test(formData.password) ? themeColors.status.success : themeColors.text.secondary }]}>
-                        ✓ Contains special characters
-                      </Text>
-                    </View>
-                  </View>
-                )}
-
-                <View style={[styles.divider, !formData.password && styles.dividerCompact]}>
-                 <View style={[styles.dividerLine, { backgroundColor: themeColors.border.primary }]} />
-                 <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text>
-                 <View style={[styles.dividerLine, { backgroundColor: themeColors.border.primary }]} />
-                </View>
-
-                <Button
-                  mode="contained"
-                  onPress={handleRegister}
-                  loading={isLoading}
-                  disabled={isLoading}
-                  style={[styles.button, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]}
-                  labelStyle={{ color: '#fff' }}
-                >
-                  <Text style={styles.buttonText}>{isLoading ? 'Creating Account...' : 'Create account'}</Text>
-                </Button>
-
-                <Button mode="text" onPress={handleBack} disabled={isLoading} style={[styles.secondaryButton, { backgroundColor: 'transparent' }]} labelStyle={{ color: themeColors.primary }}>
-                  <Text style={{ color: themeColors.primary }}>Back</Text>
-                </Button>
+                {(['password', 'confirmPassword'] as const).map((field) => (
+                  <React.Fragment key={field}>
+                    <View style={fieldStyle(field)}><Icon name="lock-closed-outline" size={24} color={themeColors.primary} /><TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} secureTextEntry={field === 'password' ? !showPassword : !showConfirmPassword} placeholder={field === 'password' ? 'Password' : 'Confirm password'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /><TouchableOpacity onPress={() => field === 'password' ? setShowPassword(value => !value) : setShowConfirmPassword(value => !value)}><Icon name={(field === 'password' ? showPassword : showConfirmPassword) ? 'eye-off-outline' : 'eye-outline'} size={26} color={themeColors.text.secondary} /></TouchableOpacity></View>
+                    <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors[field] || ' '}</Text>
+                  </React.Fragment>
+                ))}
+                <View style={styles.actionRow}><TouchableOpacity onPress={handleBack} disabled={isLoading}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>← Back</Text></TouchableOpacity><TouchableOpacity onPress={handleRegister} disabled={isLoading} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]}>{isLoading ? <View style={styles.loadingContent}><ActivityIndicator size="small" color={themeColors.text.inverse} /><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Signing up...</Text></View> : <Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Create Account  →</Text>}</TouchableOpacity></View>
               </View>
             )}
 
-            <Button mode="text" onPress={() => navigation.navigate('Login')} style={styles.link} labelStyle={{ color: themeColors.text.secondary }}>
-              <Text style={{ color: themeColors.text.secondary }}>Already have an account? </Text>
-              <Text style={{ color: themeColors.primary, fontWeight: '700' }}>Sign in</Text>
-            </Button>
+            <View style={styles.divider}><View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} /><Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text><View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} /></View>
+            <TouchableOpacity onPress={handleGoogleSignIn} disabled={isLoading} style={[styles.googleButton, { borderColor: themeColors.border.secondary, backgroundColor: isDarkMode ? 'rgba(30,31,32,0.75)' : 'rgba(255,255,255,0.56)' }]}><Text style={styles.googleMark}>G</Text><Text style={[styles.googleText, { color: themeColors.text.primary }]}>Sign up with Google</Text></TouchableOpacity>
+            <TouchableOpacity onPress={() => navigation.navigate('Login')} disabled={isLoading} style={styles.loginLink}><Text style={{ color: themeColors.text.secondary }}>Already have an account? </Text><Text style={{ color: themeColors.primary, fontWeight: '700' }}>Login</Text></TouchableOpacity>
             <Toast />
           </View>
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </ImageBackground>
     </KeyboardSafeView>
   );
 };
 
 const styles = StyleSheet.create({
+  background: { flex: 1 },
   container: {
     flexGrow: 1,
-    paddingTop: 12,
-    paddingBottom: 10,
-    paddingHorizontal: 18,
     justifyContent: 'center',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
   },
-  shell: {
+  content: {
     width: '100%',
     alignItems: 'center',
-    justifyContent: 'flex-start',
-    position: 'relative',
-    minHeight: '100%',
-    paddingTop: 4,
-  },
-  glow: {
-    position: 'absolute',
-    width: 220,
-    height: 220,
-    borderRadius: 110,
-    top: '12%',
-    left: '-8%',
-    opacity: 0.9,
-  },
-  glowSecondary: {
-    position: 'absolute',
-    width: 180,
-    height: 180,
-    borderRadius: 90,
-    right: '-8%',
-    bottom: '18%',
-    opacity: 0.9,
-  },
-  card: {
-    width: '100%',
-    maxWidth: 440,
-    borderRadius: 24,
-    borderWidth: 1,
-    paddingTop: 10,
-    paddingBottom: 12,
-    paddingHorizontal: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.14,
-    shadowRadius: 16,
-    elevation: 8,
-    zIndex: 1,
-  },
-  topSection: {
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  brandWrap: {
-    width: 80,
-    height: 80,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    marginBottom: 8,
-  },
-  eyebrow: {
-    fontSize: 11,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    fontWeight: '700',
-    marginBottom: 4,
+    maxWidth: 650,
+    alignSelf: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 32,
     fontWeight: '800',
     textAlign: 'center',
+    marginTop: 8,
     marginBottom: 4,
   },
   subtitle: {
-    fontSize: 13,
+    fontSize: 15,
     textAlign: 'center',
-    lineHeight: 18,
-    maxWidth: 280,
+    lineHeight: 21,
+    marginBottom: 18,
   },
-  tabHeaderContainerOuter: {
-    width: '100%',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  tabHeaderContainer: {
+  tabs: {
     width: '100%',
     flexDirection: 'row',
-    backgroundColor: '#f0f0f0',
-    borderRadius: 18,
+    borderRadius: 22,
     padding: 4,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
+    marginBottom: 16,
   },
-  tabHeaderPill: {
+  tab: {
     flex: 1,
-    paddingHorizontal: 6,
-    paddingVertical: 8,
-    borderRadius: 14,
-    minHeight: 38,
+    minHeight: 44,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  tabHeaderPillActive: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  tabHeaderPillCompleted: {
-    opacity: 0.9,
-  },
-  tabHeaderText: {
-    fontSize: 11,
+  tabText: {
+    fontSize: 12,
     fontWeight: '700',
     textAlign: 'center',
-    letterSpacing: 0.1,
-  },
-  tabHeaderTextActive: {
-    color: '#fff',
   },
   tabContent: {
     width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
+  row: { flexDirection: 'row', gap: 10 },
   input: {
     width: '100%',
-    marginBottom: 8,
-    backgroundColor: 'transparent',
+    height: 58,
+    borderWidth: 2,
+    borderRadius: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 6,
   },
+  halfInput: { flex: 1 },
+  nativeInput: { flex: 1, fontSize: 16, marginLeft: 12, paddingVertical: 0 },
+  dateText: { flex: 1, fontSize: 16, marginLeft: 12 },
+  genderRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: 'transparent', borderRadius: 18, minHeight: 58, paddingHorizontal: 14, gap: 6 },
+  genderOption: { paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12 },
+  actionButton: { width: '100%', minHeight: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  nextButton: { flex: 1, marginTop: 0 },
+  actionText: { fontSize: 17, fontWeight: '700' },
+  secondaryAction: { fontSize: 16, fontWeight: '700', paddingHorizontal: 8 },
   button: {
     width: '100%',
     marginTop: 8,
@@ -715,9 +510,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
-  link: {
-    marginTop: 18,
-    alignSelf: 'center',
+  loadingContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
   error: {
     marginBottom: 12,
@@ -726,58 +523,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   fieldError: {
-    fontSize: 12,
-    marginBottom: 10,
-    marginTop: -2,
+    fontSize: 11,
+    minHeight: 15,
+    marginBottom: 3,
     width: '100%',
     textAlign: 'left',
     fontWeight: '500',
-  },
-  datePickerButton: {
-    width: '100%',
-    minHeight: 56,
-    borderRadius: 14,
-    borderWidth: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    marginBottom: 8,
-  },
-  datePickerText: {
-    fontSize: 16,
-    fontWeight: '500',
-  },
-  radioGroup: {
-    width: '100%',
-    marginBottom: 8,
-    paddingVertical: 8,
-  },
-  radioGroupError: {
-    borderColor: '#FF3B30',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 8,
-  },
-  radioRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 8,
-    gap: 8,
-  },
-  radioOption: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    minHeight: 28,
-  },
-  radioLabel: {
-    fontSize: 15,
-    marginBottom: 4,
-    fontWeight: '600',
-  },
-  radioText: {
-    fontSize: 14,
-    marginLeft: 2,
   },
   actionRow: {
     width: '100%',
@@ -785,7 +536,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: 12,
-    marginTop: 12,
+    marginTop: 6,
   },
   passwordStrength: {
     width: '100%',
@@ -809,7 +560,7 @@ const styles = StyleSheet.create({
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginVertical: 12,
+    marginVertical: 16,
     width: '100%',
   },
   dividerCompact: {
@@ -829,9 +580,17 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     width: '100%',
-    height: 48,
-    marginBottom: 12,
+    height: 58,
+    borderRadius: 18,
+    borderWidth: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
   },
+  googleMark: { color: '#4285F4', fontSize: 28, fontWeight: '800', marginRight: 16 },
+  googleText: { fontSize: 17, fontWeight: '700' },
+  loginLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
 });
 
 export default RegisterScreen;

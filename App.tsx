@@ -78,7 +78,8 @@ import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
 import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
 import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/reducers/presenceReducer';
-import api, { userAPI } from './src/lib/api';
+import api, { friendAPI, userAPI } from './src/lib/api';
+import FriendCacheManager from './src/utils/friendCacheManager';
 import FloatingButton from './src/components/FloatingButton';
 // Background services removed for Expo compatibility
 import UpdateModal from './src/components/UpdateModal';
@@ -798,6 +799,23 @@ function AppContent() {
     };
     on('friend_location_update', handleFriendLocationUpdate);
 
+    const handleFriendCacheUpdate = async (data: any) => {
+      if (!myProfile?._id || String(data?.profileId) !== String(myProfile._id)) return;
+      const list = data?.list === 'requests' || data?.list === 'suggestions' ? data.list : null;
+      if (!list) return;
+      if (data.action === 'remove' && data.targetProfileId) {
+        await FriendCacheManager.removeProfile(myProfile._id, list, data.targetProfileId);
+        return;
+      }
+      if (data.action === 'refresh') {
+        const response = list === 'requests'
+          ? await friendAPI.getFriendRequest(myProfile._id)
+          : await friendAPI.getFriendSuggestions(myProfile._id);
+        await FriendCacheManager.setCached(myProfile._id, list, response.data);
+      }
+    };
+    on('friendCacheUpdate', handleFriendCacheUpdate);
+
     let handleNewMessage = (data: any, allowToast = false) => {
       let {updatedMessage, senderName, senderPP, friendProfile} = data || {};
       updatedMessage = updatedMessage || data;
@@ -902,6 +920,7 @@ function AppContent() {
       off('friend_offline', handleFriendOffline)
       off('is_active', handleIsActive)
       off('friend_location_update', handleFriendLocationUpdate)
+      off('friendCacheUpdate', handleFriendCacheUpdate)
     }
   }, [isConnected, on, off, myProfile?._id])
 
@@ -927,10 +946,10 @@ function AppContent() {
         if (!ctx) {
           return null;
         }
-        const { user, isLoading } = ctx;
+        const { user, isInitializing } = ctx;
         return (
           <>
-            <AppContentInner user={user} isLoading={isLoading} isDarkMode={isDarkMode} />
+            <AppContentInner user={user} isInitializing={isInitializing} isDarkMode={isDarkMode} />
             {/* Initialize notifications */}
             <ExpoGoSafeNotificationSetup />
             {/* Request required permissions on app start */}
@@ -958,26 +977,30 @@ function AppContent() {
 }
 
 // Inner component that can use hooks
-function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading: boolean, isDarkMode: boolean }) {
+function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isInitializing: boolean, isDarkMode: boolean }) {
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
+
   // Debug user state changes
   React.useEffect(() => {
     console.log('🔄 AppContentInner - User state changed:', user ? 'User logged in' : 'No user');
-    console.log('🔄 AppContentInner - Loading state:', isLoading);
-    console.log('🔄 AppContentInner - Will render:', isLoading ? 'LoadingScreen' : 'Main App');
-  }, [user, isLoading]);
+    console.log('🔄 AppContentInner - Initialization state:', isInitializing);
+    console.log('🔄 AppContentInner - Will render:', isInitializing ? 'LoadingScreen' : 'Main App');
+  }, [user, isInitializing]);
 
   // Always call hooks unconditionally; the hook internally no-ops without a valid id
   useProfileData(user?.profile || null);
 
   const deepestRoute = useNavigationState((state) => (state ? getDeepestRouteName(state) : ''));
+  const isAuthScreen = deepestRoute === 'Login' || deepestRoute === 'Register';
   const chatScreenActive = useChatScreenChrome();
   const isChatThread = deepestRoute === 'SingleMessage' || chatScreenActive;
   const isMessageInbox = deepestRoute === 'MessageList';
   const isChatPage = isChatThread || isMessageInbox;
   // Never pad the app shell at the bottom — the tab bar and chat composer
   // handle that themselves. Inbox keeps top inset for the status bar only.
-  const appSafeAreaEdges = isChatThread
+  const appSafeAreaEdges = isAuthScreen
+    ? []
+    : isChatThread
     ? []
     : isMessageInbox
       ? (Platform.OS === 'ios' ? (['top'] as const) : [])
@@ -999,19 +1022,24 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
         >
             <StatusBar 
               barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'}
-              backgroundColor={themeColors.background.primary}
-              translucent={false}
+              backgroundColor={isAuthScreen ? 'transparent' : themeColors.background.primary}
+              translucent={isAuthScreen}
             />
-            {isLoading ? (
+            {isInitializing ? (
               <LoadingScreen message="Initializing app..." />
             ) : (
               <Tab.Navigator
+                key={user ? 'authenticated' : 'anonymous'}
                 initialRouteName={user ? 'Home' : 'Login'}
                 tabBar={(props) => <TabBarWithLudoCheck {...props} user={user} />}
                 safeAreaInsets={isChatPage ? { top: 0, right: 0, bottom: 0, left: 0 } : undefined}
                 screenOptions={({ route }) => ({
-                  headerShown: route.name === 'Home',
-                  header: route.name === 'Home'
+                  tabBarStyle:
+                    route.name === 'Login' || route.name === 'Register'
+                      ? { display: 'none', height: 0 }
+                      : undefined,
+                  headerShown: route.name === 'Home' || route.name === 'Friends' || route.name === 'Videos',
+                  header: route.name === 'Home' || route.name === 'Friends' || route.name === 'Videos'
                     ? () => <FacebookHeader onOpenAIAgent={() => setAiAgentVisible(true)} />
                     : undefined,
                 })}
@@ -1030,7 +1058,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                       component={FriendsStack}
                       options={{
                         tabBarLabel: 'Friends',
-                        headerShown: false,
+                        headerShown: true,
                       }}
                     />
                     <Tab.Screen
@@ -1038,7 +1066,7 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                       component={VideosStack}
                       options={{
                         tabBarLabel: 'Videos',
-                        headerShown: false,
+                        headerShown: true,
                       }}
                     />
                     <Tab.Screen
@@ -1063,9 +1091,17 @@ function AppContentInner({ user, isLoading, isDarkMode }: { user: any, isLoading
                     <Tab.Screen
                       name="Menu"
                       component={MenuStack}
-                      options={{
-                        tabBarLabel: 'Menu',
-                        headerShown: false,
+                      options={({ route }) => {
+                        const nested = getFocusedRouteNameFromRoute(route) ?? 'MenuHome';
+                        const showHeader = nested === 'Settings';
+
+                        return {
+                          tabBarLabel: 'Menu',
+                          headerShown: showHeader,
+                          header: showHeader
+                            ? () => <FacebookHeader onOpenAIAgent={() => setAiAgentVisible(true)} />
+                            : undefined,
+                        };
                       }}
                     />
                   </>

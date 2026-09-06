@@ -308,7 +308,8 @@ const SingleMessage = () => {
     const chatThemeRef = useRef(chatTheme);
     const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
     const CHAT_BG_STORAGE_KEY = '@chat_background_image';
-    const getMessagesStorageKey = (friendId: string) => `@chat_messages_${friendId}`;
+    const getMessagesStorageKey = (profileId: string, friendId: string) =>
+        `@chat_messages_${profileId}_${friendId}`;
 
     useEffect(() => {
         chatThemeRef.current = chatTheme;
@@ -847,9 +848,9 @@ const SingleMessage = () => {
     const [hasMoreMessages, setHasMoreMessages] = useState(true);
 
     // Helper function to save messages to AsyncStorage
-    const saveMessagesToStorage = async (friendId: string, messagesToSave: Message[]) => {
+    const saveMessagesToStorage = async (profileId: string, friendId: string, messagesToSave: Message[]) => {
         try {
-            if (!friendId || !messagesToSave || messagesToSave.length === 0) return;
+            if (!profileId || !friendId || !messagesToSave || messagesToSave.length === 0) return;
             
             // Serialize messages - convert Date objects to ISO strings
             const serializedMessages = messagesToSave
@@ -860,7 +861,7 @@ const SingleMessage = () => {
                 }));
             if (serializedMessages.length === 0) return;
             
-            const storageKey = getMessagesStorageKey(friendId);
+            const storageKey = getMessagesStorageKey(profileId, friendId);
             await AsyncStorage.setItem(storageKey, JSON.stringify(serializedMessages));
             console.log(`Saved ${serializedMessages.length} messages to storage for friend ${friendId}`);
         } catch (error) {
@@ -869,11 +870,11 @@ const SingleMessage = () => {
     };
 
     // Helper function to load messages from AsyncStorage
-    const loadMessagesFromStorage = async (friendId: string): Promise<Message[]> => {
+    const loadMessagesFromStorage = async (profileId: string, friendId: string): Promise<Message[]> => {
         try {
-            if (!friendId) return [];
+            if (!profileId || !friendId) return [];
             
-            const storageKey = getMessagesStorageKey(friendId);
+            const storageKey = getMessagesStorageKey(profileId, friendId);
             const storedData = await AsyncStorage.getItem(storageKey);
             
             if (!storedData) {
@@ -899,12 +900,12 @@ const SingleMessage = () => {
 
     // Debounce save to avoid too many writes
     const saveTimeoutRef = useRef<any>(null);
-    const debouncedSaveMessages = (friendId: string, messagesToSave: Message[]) => {
+    const debouncedSaveMessages = (profileId: string, friendId: string, messagesToSave: Message[]) => {
         if (saveTimeoutRef.current) {
             clearTimeout(saveTimeoutRef.current);
         }
         saveTimeoutRef.current = setTimeout(() => {
-            saveMessagesToStorage(friendId, messagesToSave);
+            saveMessagesToStorage(profileId, friendId, messagesToSave);
         }, 500); // Save after 500ms of no changes
     };
 
@@ -1127,7 +1128,7 @@ const SingleMessage = () => {
     }, [isInitialLoading]);
 
     // Load cached latest page immediately, then fetch the same window the web chat uses.
-    useEffect(() => {
+    useFocusEffect(React.useCallback(() => {
         if (!friend?._id || !myProfile?._id) return;
 
         let cancelled = false;
@@ -1148,7 +1149,7 @@ const SingleMessage = () => {
 
         const loadAndFetchMessages = async () => {
             try {
-                const storedMessages = await loadMessagesFromStorage(friend._id);
+                const storedMessages = await loadMessagesFromStorage(myProfile._id, friend._id);
                 if (cancelled) return;
 
                 if (storedMessages.length > 0) {
@@ -1188,19 +1189,18 @@ const SingleMessage = () => {
         return () => {
             cancelled = true;
         };
-    }, [friend?._id, myProfile?._id, fetchChatHistory]);
+    }, [friend?._id, myProfile?._id, fetchChatHistory]));
 
     // Keep the cache warm for live messages and call-event messages as well as HTTP loads.
     useEffect(() => {
         if (!friend?._id || messages.length === 0) return;
-        debouncedSaveMessages(friend._id, messages);
+        debouncedSaveMessages(myProfile?._id, friend._id, messages);
         return () => {
             if (saveTimeoutRef.current) {
                 clearTimeout(saveTimeoutRef.current);
-                saveMessagesToStorage(friend._id, messages);
             }
         };
-    }, [messages, friend?._id]);
+    }, [messages, friend?._id, myProfile?._id]);
 
     // Listen for incoming messages via socket
     useEffect(() => {
@@ -1263,7 +1263,7 @@ const SingleMessage = () => {
             messagesRef.current = nextMessages;
             setMessages(nextMessages);
             // Persist live data immediately so the next screen mount can render it before HTTP returns.
-            void saveMessagesToStorage(friend._id, nextMessages);
+            void saveMessagesToStorage(myProfile?._id, friend._id, nextMessages);
 
             if (newMessage.tempId) {
                 setPendingMessages(prev => prev.filter(msg => msg.tempId !== newMessage.tempId));
@@ -3553,13 +3553,19 @@ const SingleMessage = () => {
                     }
                 }}
             >
-                <Pressable onLongPress={(event) => handleMessageLongPress(item, event)} delayLongPress={250}>
+                <Pressable
+                    onLongPress={(event) => handleMessageLongPress(item, event)}
+                    delayLongPress={250}
+                    style={{ overflow: 'visible' }}
+                >
                     <View style={{
+                        marginTop: Array.isArray(item.reacts) && item.reacts.length > 0 ? 18 : 0,
                         marginBottom: Array.isArray(item.reacts) && item.reacts.length > 0 ? 16 : 8,
                         marginHorizontal: 12,
                         flexDirection: 'row',
                         alignItems: 'flex-end',
                         justifyContent: isMyMessage ? 'flex-end' : 'flex-start',
+                        overflow: 'visible',
                         zIndex: Array.isArray(item.reacts) && item.reacts.length > 0 ? 10 : 0,
                         elevation: Array.isArray(item.reacts) && item.reacts.length > 0 ? 10 : 0,
                     }}>
@@ -3585,6 +3591,7 @@ const SingleMessage = () => {
                                     ? chatTheme.colors.accent
                                     : (isMyMessage ? chatTheme.colors.sentBorder : chatTheme.colors.recvBorder),
                                 position: 'relative',
+                                overflow: 'visible',
                                 zIndex: Array.isArray(item.reacts) && item.reacts.length > 0 ? 11 : 0,
                                 elevation: Array.isArray(item.reacts) && item.reacts.length > 0 ? 11 : 0,
                             }}>
@@ -3763,6 +3770,7 @@ const SingleMessage = () => {
                                         shadowColor: '#000',
                                         shadowOpacity: 0.18,
                                         shadowRadius: 4,
+                                        overflow: 'visible',
                                         zIndex: 20,
                                         elevation: 20,
                                     }}>
@@ -3770,7 +3778,7 @@ const SingleMessage = () => {
                                             counts[reaction.type] = (counts[reaction.type] || 0) + 1;
                                             return counts;
                                         }, {})).slice(0, 4).map(([emoji, count]) => (
-                                            <Text key={emoji} style={{ fontSize: 14, marginHorizontal: 2 }}>
+                                            <Text key={emoji} style={{ fontSize: 14, lineHeight: 18, marginHorizontal: 2 }}>
                                                 {emoji}{count > 1 ? <Text style={{ fontSize: 10, color: themeColors.text.secondary }}> {count}</Text> : null}
                                             </Text>
                                         ))}

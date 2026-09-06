@@ -17,6 +17,26 @@ const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
 const storiesCacheKey = (profileId?: string | null) =>
   `homeStories_${profileId || 'guest'}`;
 
+const isAppCacheKey = (key: string) =>
+  key === CACHE_KEYS.HOME_POSTS ||
+  key === CACHE_KEYS.HOME_POSTS_TIMESTAMP ||
+  key === CACHE_KEYS.CACHE_VERSION ||
+  key === 'friend_cache_version' ||
+  key === 'cached_video_player_saved' ||
+  key === 'cached_video_player_watches' ||
+  key === 'fcmToken' ||
+  key === 'headerRecentSearches' ||
+  key === '@watch_saved_meta' ||
+  key === '@pending_incoming_call' ||
+  key.startsWith('homeStories_') ||
+  key.startsWith('@chat_messages_') ||
+  key.startsWith('cached_friend_') ||
+  key.startsWith('connect.friendChatSettings.') ||
+  key.startsWith('@connect/ai-auto-replies/') ||
+  key.startsWith('chat_list_') ||
+  key.startsWith('friend_requests_timestamp_') ||
+  key.startsWith('friend_suggestions_timestamp_');
+
 type CachedPost = Record<string, any> & { _id?: string };
 
 class CacheManager {
@@ -94,6 +114,14 @@ class CacheManager {
       ]);
     } catch (error) {
       console.error('Error clearing cache:', error);
+    }
+  }
+
+  static async clearAllCaches() {
+    const keys = await AsyncStorage.getAllKeys();
+    const cacheKeys = keys.filter(isAppCacheKey);
+    if (cacheKeys.length > 0) {
+      await AsyncStorage.multiRemove(cacheKeys);
     }
   }
 

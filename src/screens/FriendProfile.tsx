@@ -4,6 +4,7 @@ import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
 import { useTheme } from '../contexts/ThemeContext'
+import { useSocket } from '../contexts/SocketContext'
 import api, { friendAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
@@ -12,6 +13,7 @@ import ProfileImage from '../components/ProfileImage'
 import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
 import PostSkeleton from '../components/skeleton/PostSkeleton'
 import { POST_UPDATED_EVENT } from '../utils/postEvents'
+import FriendCacheManager from '../utils/friendCacheManager'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -50,7 +52,8 @@ const FriendProfile = () => {
     const [friendData, setFriendData] = React.useState<any>(initialFriendData || {})
     const [isLoading, setIsLoading] = React.useState<boolean>(!initialFriendData)
     const [isFriend, setIsFriend] = React.useState<boolean>(false)
-    const [friendStatus, setFriendStatus] = React.useState<'none' | 'pending' | 'friends'>('none')
+    const [friendStatus, setFriendStatus] = React.useState<'none' | 'incoming' | 'outgoing' | 'friends'>('none')
+    const { on, off } = useSocket();
     const [refreshing, setRefreshing] = React.useState<boolean>(false)
 
     const friendsCount = Array.isArray(friendData?.friends) ? friendData.friends.length : 0
@@ -87,9 +90,11 @@ const FriendProfile = () => {
                 setFriendData(profileRes.data);
                 // Check if this friend is in my friends list
                 if (myProfile?.friends) {
-                    const isInFriendsList = myProfile.friends.some((f: any) => f._id === friendId);
+                    const isInFriendsList = myProfile.friends.some((f: any) =>
+                        String(f?._id || f) === String(friendId),
+                    );
                     setIsFriend(isInFriendsList);
-                    setFriendStatus(isInFriendsList ? 'friends' : 'none');
+                    if (isInFriendsList) setFriendStatus('friends');
                 }
             }
             
@@ -157,22 +162,52 @@ const FriendProfile = () => {
         
         if (!friendId || !myProfile?._id) return;
         
-        // Check if there's a pending friend request
-        friendAPI.getFriendRequest(myProfile._id)
-            .then(res => {
-                if (isMounted && res.status === 200 && Array.isArray(res.data)) {
-                    const hasPendingRequest = res.data.some((req: any) => req._id === friendId);
-                    if (hasPendingRequest) {
-                        setFriendStatus('pending');
-                    }
-                }
-            })
-            .catch(() => {});
+        const updateStatus = async () => {
+            try {
+                const [incomingRes, profileRes] = await Promise.all([
+                    friendAPI.getFriendRequest(myProfile._id),
+                    api.get('/profile', { params: { profileId: friendId } }),
+                ]);
+                if (!isMounted) return;
+                const incoming = Array.isArray(incomingRes.data) &&
+                    incomingRes.data.some((req: any) => String(req?._id) === String(friendId));
+                const targetProfile = profileRes.data;
+                const outgoing = Array.isArray(targetProfile?.friendReqs) &&
+                    targetProfile.friendReqs.some((id: any) => String(id?._id || id) === String(myProfile._id));
+                const isInFriendsList = Array.isArray(myProfile.friends) &&
+                    myProfile.friends.some((f: any) => String(f?._id || f) === String(friendId));
+                setIsFriend(isInFriendsList);
+                setFriendStatus(isInFriendsList ? 'friends' : incoming ? 'incoming' : outgoing ? 'outgoing' : 'none');
+            } catch (error) {
+                console.error('Error checking friend request status:', error);
+            }
+        };
+        updateStatus();
             
         return () => {
             isMounted = false;
         };
     }, [friendId, myProfile?._id]);
+
+    React.useEffect(() => {
+        const handleRelationshipUpdate = (data: any) => {
+            if (
+                String(data?.targetId) !== String(friendId) &&
+                String(data?.actorId) !== String(friendId)
+            ) return;
+            if (data.status === 'friends') {
+                setIsFriend(true);
+                setFriendStatus('friends');
+            } else if (data.status === 'incoming') {
+                setFriendStatus(String(data.actorId) === String(myProfile?._id) ? 'outgoing' : 'incoming');
+            } else if (data.status === 'none') {
+                setIsFriend(false);
+                setFriendStatus('none');
+            }
+        };
+        on('friendRelationshipUpdate', handleRelationshipUpdate);
+        return () => off('friendRelationshipUpdate', handleRelationshipUpdate);
+    }, [friendId, myProfile?._id, on, off]);
 
     // Fetch images directly from profile endpoint
     React.useEffect(() => {
@@ -217,7 +252,8 @@ const FriendProfile = () => {
         
         try {
             await friendAPI.sendFriendRequest(friendId);
-            setFriendStatus('pending');
+            setFriendStatus('outgoing');
+            await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
         } catch (error) {
             console.error('Error sending friend request:', error);
         }
@@ -230,8 +266,23 @@ const FriendProfile = () => {
             await friendAPI.acceptFriendRequest(friendId);
             setFriendStatus('friends');
             setIsFriend(true);
+            await Promise.all([
+                FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId),
+                FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId),
+            ]);
         } catch (error) {
             console.error('Error accepting friend request:', error);
+        }
+    };
+
+    const handleCancelFriendRequest = async () => {
+        if (!friendId || !myProfile?._id) return;
+        try {
+            await friendAPI.cancelFriendRequest(friendId);
+            setFriendStatus('none');
+            await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
+        } catch (error) {
+            console.error('Error cancelling friend request:', error);
         }
     };
 
@@ -242,6 +293,7 @@ const FriendProfile = () => {
             await friendAPI.removeFriend(friendId);
             setFriendStatus('none');
             setIsFriend(false);
+            await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
         } catch (error) {
             console.error('Error removing friend:', error);
         }
@@ -256,11 +308,18 @@ const FriendProfile = () => {
                         <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Friend</Text>
                     </Pressable>
                 );
-            case 'pending':
+            case 'incoming':
                 return (
                     <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptFriendRequest}>
                         <Icon name="check" size={18} color={themeColors.text.inverse} />
                         <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Accept Request</Text>
+                    </Pressable>
+                );
+            case 'outgoing':
+                return (
+                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleCancelFriendRequest}>
+                        <Icon name="cancel" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Cancel Request</Text>
                     </Pressable>
                 );
             default:

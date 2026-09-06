@@ -1,4 +1,5 @@
 import { ImageURISource, Platform } from 'react-native';
+import config from './config';
 
 export const DEFAULT_PROFILE_ASSET = require('../assets/images/default-profile-pic.png');
 
@@ -9,12 +10,19 @@ export const sanitizeProfileImageUrl = (url?: string | null, size?: number) => {
   if (!url || typeof url !== 'string') return url || '';
   const trimmed = url.trim();
   if (!trimmed) return '';
-  if (!isGoogleHostedImage(trimmed)) return trimmed;
+  const absoluteUrl =
+    trimmed.startsWith('/') && config.SOCKET_BASE_URL
+      ? `${config.SOCKET_BASE_URL.replace(/\/$/, '')}${trimmed}`
+      : trimmed;
+  if (!isGoogleHostedImage(absoluteUrl)) return absoluteUrl;
 
-  let next = trimmed.split('#')[0].split('?')[0];
+  let next = absoluteUrl.split('#')[0].split('?')[0];
   if (size) {
     if (/=s\d+/i.test(next)) {
-      next = next.replace(/=s\d+(-[a-z]+)?/i, (_match, suffix) => `=s${size}${suffix || ''}`);
+      next = next.replace(
+        /=s\d+(-[a-z]+)?/i,
+        (_match, suffix) => `=s${size}${suffix || ''}`,
+      );
     } else {
       next = `${next}=s${size}-c`;
     }
@@ -22,7 +30,10 @@ export const sanitizeProfileImageUrl = (url?: string | null, size?: number) => {
   return next;
 };
 
-export const getProfileImageSource = (url?: string | null, size?: number): ImageURISource | undefined => {
+export const getProfileImageSource = (
+  url?: string | null,
+  size?: number,
+): ImageURISource | undefined => {
   const uri = sanitizeProfileImageUrl(url, size);
   if (!uri) return undefined;
 

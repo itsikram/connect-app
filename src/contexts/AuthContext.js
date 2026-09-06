@@ -3,12 +3,21 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authAPI, userAPI, clearTokenCache } from '../lib/api';
 import { registerTokenWithServer, unregisterTokenWithServer, listenForegroundMessages, listenTokenRefresh } from '../lib/push';
 import { googleAuthService } from '../services/googleAuth';
+import CacheManager from '../utils/cacheManager';
+import store from '../store';
+import { setPosts } from '../reducers/postsReducer';
+import { clearProfile } from '../reducers/profileReducer';
+import { clearChatList } from '../reducers/chatReducer';
+import { clearNotifications } from '../reducers/notificationReducer';
+import { clearPresence } from '../reducers/presenceReducer';
+import socketService from '../services/socketService';
 
 export const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   const persistAuthResponse = async (responseData) => {
     const token = responseData?.accessToken;
@@ -127,19 +136,15 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoading(true);
       const response = await authAPI.signup(userData);
-      const { user: newUser, token } = response.data;
-      
-      // Store user data and token
-      await AsyncStorage.multiSet([
-        ['user', JSON.stringify(newUser)],
-        ['authToken', token]
-      ]);
-      
-      setUser(newUser);
+      const newUser = await persistAuthResponse(response.data);
       
       // Fetch fresh profile data after registration
-      if (newUser.user_id) {
-        await fetchProfileData(newUser.user_id);
+      const profileId =
+        typeof newUser.profile === 'string'
+          ? newUser.profile
+          : newUser.profile?._id;
+      if (profileId) {
+        await fetchProfileData(profileId);
       }
       
       return { success: true, user: newUser };
@@ -222,7 +227,18 @@ export const AuthProvider = ({ children }) => {
       } catch (e) {}
       // Clear stored data regardless of API call success
       clearTokenCache(); // Clear token cache
+      socketService.disconnect();
+      try {
+        await CacheManager.clearAllCaches();
+      } catch (error) {
+        console.error('Failed to clear app caches during logout:', error);
+      }
       await AsyncStorage.multiRemove(['user', 'authToken']);
+      store.dispatch(setPosts([]));
+      store.dispatch(clearProfile());
+      store.dispatch(clearChatList());
+      store.dispatch(clearNotifications());
+      store.dispatch(clearPresence());
       setUser(null);
     }
   };
@@ -242,10 +258,8 @@ export const AuthProvider = ({ children }) => {
         setUser(parsedUser);
         console.log('✅ User state set successfully');
         
-        // Set loading to false immediately after setting user
-        console.log('🔄 Setting isLoading to false (user found)...');
-        setIsLoading(false);
-        console.log('✅ isLoading set to false (user found)');
+        console.log('🔄 Auth initialization completed (user found)');
+        setIsInitializing(false);
         
         // Do async operations in background without blocking
         Promise.all([
@@ -278,15 +292,15 @@ export const AuthProvider = ({ children }) => {
         });
       } else {
         console.log('ℹ️ No existing user session found');
-        console.log('🔄 Setting isLoading to false (no user)...');
-        setIsLoading(false);
-        console.log('✅ isLoading set to false (no user)');
+        console.log('🔄 Auth initialization completed (no user)');
+        setIsInitializing(false);
       }
     } catch (error) {
       console.error('❌ Error checking user:', error);
-      console.log('🔄 Setting isLoading to false (error)...');
+      setIsInitializing(false);
+    } finally {
       setIsLoading(false);
-      console.log('✅ isLoading set to false (error)');
+      setIsInitializing(false);
     }
   };
 
@@ -306,6 +320,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     user,
     isLoading,
+    isInitializing,
     login,
     faceLogin,
     register,

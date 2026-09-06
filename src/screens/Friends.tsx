@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, RefreshControl } from 'react-native';
+import { DeviceEventEmitter } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -7,6 +8,7 @@ import { friendAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
 import FriendCardSkeleton from '../components/skeleton/FriendCardSkeleton';
 import ProfileImage from '../components/ProfileImage';
+import FriendCacheManager, { FRIEND_CACHE_EVENT } from '../utils/friendCacheManager';
 
 const uniqueById = (items: any[]) => {
   const seen = new Set<string>();
@@ -46,8 +48,14 @@ const Friends = () => {
         friendAPI.getFriendSuggestions(myProfile._id)
       ]);
       
-      setFriendRequests(uniqueById(friendRequestsRes.data));
-      setFriendSuggestions(uniqueById(friendSuggestionsRes.data));
+      const requests = uniqueById(friendRequestsRes.data);
+      const suggestions = uniqueById(friendSuggestionsRes.data);
+      setFriendRequests(requests);
+      setFriendSuggestions(suggestions);
+      await Promise.all([
+        FriendCacheManager.setCached(myProfile._id, 'requests', requests),
+        FriendCacheManager.setCached(myProfile._id, 'suggestions', suggestions),
+      ]);
     } catch (error) {
       console.error('Error fetching friend data:', error);
     } finally {
@@ -62,7 +70,30 @@ const Friends = () => {
   }, [fetchFriendData]);
 
   useEffect(() => {
-    fetchFriendData();
+    let mounted = true;
+    const loadFriendData = async () => {
+      if (!myProfile?._id) return;
+      const [cachedRequests, cachedSuggestions] = await Promise.all([
+        FriendCacheManager.getCached(myProfile._id, 'requests'),
+        FriendCacheManager.getCached(myProfile._id, 'suggestions'),
+      ]);
+      if (mounted && cachedRequests && cachedSuggestions) {
+        setFriendRequests(cachedRequests);
+        setFriendSuggestions(cachedSuggestions);
+        setLoading(false);
+      }
+      await fetchFriendData();
+    };
+    loadFriendData();
+    const subscription = DeviceEventEmitter.addListener(FRIEND_CACHE_EVENT, (event) => {
+      if (!mounted || event?.profileId !== myProfile?._id) return;
+      if (event.list === 'requests') setFriendRequests(uniqueById(event.items));
+      if (event.list === 'suggestions') setFriendSuggestions(uniqueById(event.items));
+    });
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
   }, [fetchFriendData]);
 
   const handleSendFriendRequest = async (friendId: string) => {
@@ -70,6 +101,7 @@ const Friends = () => {
       const res = await friendAPI.sendFriendRequest(friendId);
       console.log(res.data);
       setFriendSuggestions((prev) => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id) await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
     } catch (error) {
       console.log(error);
     }
@@ -80,6 +112,7 @@ const Friends = () => {
       console.log(res.data);
       // Hide from suggestions if present
       setFriendSuggestions((prev) => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id) await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
     } catch (error) {
       console.log(error);
     }
@@ -92,6 +125,12 @@ const Friends = () => {
       console.log(res.data);
       // Remove the accepted request from the list
       setFriendRequests((prev) => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id) {
+        await Promise.all([
+          FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId),
+          FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId),
+        ]);
+      }
     } catch (error) {
       console.log(error);
     }
@@ -103,6 +142,7 @@ const Friends = () => {
       console.log(res.data);
       // Remove the deleted request from the list
       setFriendRequests((prev) => prev.filter((f: any) => f._id !== friendId));
+      if (myProfile?._id) await FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId);
     } catch (error) {
       console.log(error);
     }

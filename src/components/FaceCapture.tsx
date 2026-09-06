@@ -1,10 +1,12 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import * as Speech from 'expo-speech';
 import { Button } from 'react-native-paper';
 
 const FRAME_COUNT = 20;
 const MIN_FRAMES_TO_SEND = 20;
+const CAPTURE_PROMPT_BN = 'আপনার মুখ ফ্রেমের মাঝখানে রাখুন এবং চোখ পিটপিট করুন।';
 
 type FaceCaptureProps = {
   onCapture: (frames: string[]) => Promise<void> | void;
@@ -18,6 +20,10 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
   const [capturing, setCapturing] = useState(false);
   const [status, setStatus] = useState('');
   const [progress, setProgress] = useState(0);
+
+  useEffect(() => () => {
+    Speech.stop();
+  }, []);
 
   const startCamera = async () => {
     setStatus('');
@@ -36,9 +42,12 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
     if (!cameraRef.current || !cameraReady || capturing) return;
     setCapturing(true);
     setProgress(0);
-    setStatus(
-      'Look at the camera and blink naturally. The server will verify liveness...',
-    );
+    setStatus(CAPTURE_PROMPT_BN);
+    Speech.stop();
+    Speech.speak(CAPTURE_PROMPT_BN, {
+      language: 'bn-BD',
+      rate: 0.9,
+    });
 
     try {
       const frames: string[] = [];
@@ -47,6 +56,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
           base64: true,
           quality: 0.7,
           skipProcessing: true,
+          shutterSound: false,
         });
         if (!photo?.base64 || !photo.uri) continue;
 
@@ -97,6 +107,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
         ref={cameraRef}
         style={styles.camera}
         facing="front"
+        flash="on"
         mode="picture"
         active={!disabled}
         pictureSize="640x480"

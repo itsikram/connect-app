@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Image, StyleSheet } from 'react-native';
 
 interface LogoProps {
-  size?: 'small' | 'medium' | 'large';
+  size?: 'small' | 'medium' | 'large' | 'xlarge';
   color?: string;
 }
 
@@ -13,6 +13,8 @@ const Logo: React.FC<LogoProps> = ({ size = 'medium' }) => {
         return { width: 40, height: 40 };
       case 'large':
         return { width: 80, height: 80 };
+      case 'xlarge':
+        return { width: 104, height: 104 };
       default:
         return { width: 60, height: 60 };
     }

@@ -6,6 +6,7 @@ import {
   Animated,
   TouchableOpacity,
   Image,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from '../theme/colors';
@@ -139,7 +140,7 @@ const UserToast: React.FC<UserToastProps> = ({
   // Calculate position below header with reduced gap
   const headerHeight = 50; // FacebookHeader height
   const gap = 2; // Reduced gap below header for closer positioning
-  const toastTopPosition = headerHeight + gap;
+  const toastTopPosition = headerHeight + gap + (Platform.OS === 'web' ? 50 : 0);
 
   const ToastContent = () => (
     <View style={styles.content}>
@@ -224,8 +225,9 @@ const UserToast: React.FC<UserToastProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 16,
+    left: Platform.OS === 'web' ? undefined : 16,
     right: 16,
+    width: Platform.OS === 'web' ? 380 : undefined,
     zIndex: 9999,
     borderRadius: 16,
     borderWidth: 1,

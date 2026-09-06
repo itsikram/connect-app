@@ -120,7 +120,7 @@ const SingleWatch = () => {
 
   const videoBox = fitWatchContainSize(naturalSize.width, naturalSize.height, SCREEN_WIDTH - 2, PLAYER_MAX_H);
   const sourceUri = watch?.videoUrl || watch?.photos || '';
-  const authorId = watch?.author?._id;
+  const authorId = watch?.author?._id || (watch?.author as unknown as string);
   const isOwn = authorId && myProfile?._id && String(authorId) === String(myProfile._id);
 
   const fetchWatch = useCallback(async () => {
@@ -300,6 +300,31 @@ const SingleWatch = () => {
     }
   };
 
+  const handleDelete = () => {
+    if (!watch?._id || !myProfile?._id || !isOwn) return;
+    Alert.alert('Delete video', 'Are you sure you want to delete this video?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const res = await api.post('/watch/delete', {
+              watchId: watch._id,
+              authorId: myProfile._id,
+            });
+            if (res.status === 200) {
+              showSuccess('Video deleted');
+              navigation.goBack();
+            }
+          } catch (err: any) {
+            showError(err?.response?.data?.message || 'Failed to delete video');
+          }
+        },
+      },
+    ]);
+  };
+
   const openAuthor = () => {
     if (!authorId) return;
     navigation.navigate('FriendProfile', { friendId: authorId });
@@ -380,17 +405,24 @@ const SingleWatch = () => {
             <Icon name="arrow-back" size={24} color={t.chromeText} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: t.chromeText }]}>Watch</Text>
-          <TouchableOpacity onPress={handleDownload} style={styles.headerBtn}>
-            {downloadJob?.status === 'downloading' ? (
-              <ActivityIndicator size="small" color={t.primary} />
-            ) : (
-              <Icon
-                name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
-                size={22}
-                color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
-              />
-            )}
-          </TouchableOpacity>
+          {!isOwn ? (
+            <TouchableOpacity onPress={handleDownload} style={styles.headerBtn}>
+              {downloadJob?.status === 'downloading' ? (
+                <ActivityIndicator size="small" color={t.primary} />
+              ) : (
+                <Icon
+                  name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                  size={22}
+                  color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+                />
+              )}
+            </TouchableOpacity>
+          ) : null}
+          {isOwn ? (
+            <TouchableOpacity onPress={handleDelete} style={styles.headerBtn}>
+              <Icon name="trash-outline" size={22} color={t.error} />
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         <ScrollView
@@ -504,34 +536,38 @@ const SingleWatch = () => {
                 </View>
                 <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>{liked ? 'Liked' : 'Like'}</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.action} onPress={focusComposer}>
-                <View style={chromeBtn}>
-                  <Icon name="chatbubble-outline" size={20} color={t.chromeText} />
-                </View>
-                <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>Comment</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => setShareOpen(true)} style={styles.action}>
-                <View style={chromeBtn}>
-                  <Icon name="share-outline" size={20} color={t.chromeText} />
-                </View>
-                <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>Share</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={handleDownload} style={styles.action}>
-                <View style={chromeBtn}>
-                  {downloadJob?.status === 'downloading' ? (
-                    <ActivityIndicator size="small" color={t.primary} />
-                  ) : (
-                    <Icon
-                      name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
-                      size={20}
-                      color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
-                    />
-                  )}
-                </View>
-                <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>
-                  {downloadJob?.status === 'downloading' ? `${Math.round(downloadJob.percent)}%` : 'Save'}
-                </Text>
-              </TouchableOpacity>
+              {!isOwn ? (
+                <>
+                  <TouchableOpacity style={styles.action} onPress={focusComposer}>
+                    <View style={chromeBtn}>
+                      <Icon name="chatbubble-outline" size={20} color={t.chromeText} />
+                    </View>
+                    <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>Comment</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setShareOpen(true)} style={styles.action}>
+                    <View style={chromeBtn}>
+                      <Icon name="share-outline" size={20} color={t.chromeText} />
+                    </View>
+                    <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>Share</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={handleDownload} style={styles.action}>
+                    <View style={chromeBtn}>
+                      {downloadJob?.status === 'downloading' ? (
+                        <ActivityIndicator size="small" color={t.primary} />
+                      ) : (
+                        <Icon
+                          name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                          size={20}
+                          color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+                        />
+                      )}
+                    </View>
+                    <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>
+                      {downloadJob?.status === 'downloading' ? `${Math.round(downloadJob.percent)}%` : 'Save'}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              ) : null}
               <TouchableOpacity onPress={handleOpenPip} style={styles.action}>
                 <View style={chromeBtn}>
                   <Icon name="tv-outline" size={20} color={t.chromeText} />

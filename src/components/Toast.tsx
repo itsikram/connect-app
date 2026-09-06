@@ -7,6 +7,7 @@ import {
   Dimensions,
   TouchableOpacity,
   StatusBar,
+  Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { colors } from '../theme/colors';
@@ -135,7 +136,7 @@ const Toast: React.FC<ToastProps> = ({
   const statusBarHeight = StatusBar.currentHeight || 0;
   const headerHeight = 50; // FacebookHeader height
   const gap = 2; // Reduced gap below header for closer positioning
-  const toastTopPosition = statusBarHeight + headerHeight + gap;
+  const toastTopPosition = statusBarHeight + headerHeight + gap + (Platform.OS === 'web' ? 50 : 0);
 
   return (
     <Animated.View
@@ -190,8 +191,9 @@ const Toast: React.FC<ToastProps> = ({
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    left: 16,
+    left: Platform.OS === 'web' ? undefined : 16,
     right: 16,
+    width: Platform.OS === 'web' ? 380 : undefined,
     zIndex: 9999,
     borderRadius: 12,
     shadowColor: colors.black,

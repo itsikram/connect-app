@@ -1,5 +1,17 @@
 import React, { useState, useEffect, memo, useRef } from 'react';
-import { View, Text, Image, TouchableOpacity, Pressable, StyleSheet, Modal, TextInput, ActivityIndicator, Dimensions, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  Pressable,
+  StyleSheet,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  Dimensions,
+  Alert,
+} from 'react-native';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
@@ -30,7 +42,8 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const POST_IMAGE_MAX_HEIGHT = 620;
 const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
 
-const sameId = (a: any, b: any) => String(a?._id || a || '') === String(b?._id || b || '');
+const sameId = (a: any, b: any) =>
+  String(a?._id || a || '') === String(b?._id || b || '');
 
 const uniqueReactTypes = (reacts: any[] = []) => uniquePlacedReacts(reacts);
 
@@ -41,7 +54,7 @@ const commentHasMyReact = (comment: any, myId: any) => {
 
 const uniqueReactCount = (reacts: any[] = []) => {
   const seen = new Set<string>();
-  reacts.forEach((react) => {
+  reacts.forEach(react => {
     const id = String(react?.profile?._id || react?.profile || '');
     if (id) seen.add(id);
   });
@@ -60,7 +73,10 @@ const normalizeComments = (list: any) =>
 const commentAuthorName = (comment: any) =>
   comment?.author?.fullName ||
   comment?.author?.displayName ||
-  [comment?.author?.user?.firstName, comment?.author?.user?.surname].filter(Boolean).join(' ').trim() ||
+  [comment?.author?.user?.firstName, comment?.author?.user?.surname]
+    .filter(Boolean)
+    .join(' ')
+    .trim() ||
   'User';
 // Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
@@ -86,22 +102,31 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const post = data || {};
   const myProfile = useSelector((state: any) => state.profile);
   const myProfileId = myProfile?._id;
-  const [totalReacts, setTotalReacts] = useState<number>(uniqueReactCount(post.reacts));
-  const [totalShares, setTotalShares] = useState<number>(post.shares?.length || 0);
+  const [totalReacts, setTotalReacts] = useState<number>(
+    uniqueReactCount(post.reacts),
+  );
+  const [totalShares, setTotalShares] = useState<number>(
+    post.shares?.length || 0,
+  );
   const [totalComments, setTotalComments] = useState<number>(
     Array.isArray(post.comments) ? post.comments.length : 0,
   );
   const [reactType, setReactType] = useState<string | false>(false);
   const [isReacted, setIsReacted] = useState<boolean>(false);
   const [shareCap, setShareCap] = useState<string>('');
-  const [placedReacts, setPlacedReacts] = useState<string[]>(uniqueReactTypes(post.reacts));
+  const [placedReacts, setPlacedReacts] = useState<string[]>(
+    uniqueReactTypes(post.reacts),
+  );
   const [isShareModal, setIsShareModal] = useState<boolean>(false);
   const [isSharing, setIsSharing] = useState<boolean>(false);
   const [isPostOption, setIsPostOption] = useState<boolean>(false);
-  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState<boolean>(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] =
+    useState<boolean>(false);
   const [showReactions, setShowReactions] = useState<boolean>(false);
   const [commentText, setCommentText] = useState<string>('');
-  const [comments, setComments] = useState<any[]>(() => normalizeComments(post.comments));
+  const [comments, setComments] = useState<any[]>(() =>
+    normalizeComments(post.comments),
+  );
   const [loadingComments, setLoadingComments] = useState<boolean>(false);
   const [type, setType] = useState<string>(post.type || 'post');
   const [replyingTo, setReplyingTo] = useState<any>(null);
@@ -115,16 +140,21 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [captionHasMore, setCaptionHasMore] = useState<boolean>(false);
   const [showAllComments, setShowAllComments] = useState<boolean>(false);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
-  const [imageHeight, setImageHeight] = useState<number>(Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH));
+  const [imageHeight, setImageHeight] = useState<number>(
+    Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH),
+  );
   const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
-  const [selectedAudience, setSelectedAudience] = useState<number>(Number(data?.audience) || 3);
+  const [selectedAudience, setSelectedAudience] = useState<number>(
+    Number(data?.audience) || 3,
+  );
   const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
 
   const reactLockRef = useRef(false);
   const commentsFetchedRef = useRef<string | null>(null);
   const commentInputRef = useRef<TextInput>(null);
 
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const { showToast } = useModernToast();
   const { colors: themeColors, isDarkMode } = useTheme();
   const feed = useFeedTokens();
@@ -151,17 +181,36 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const isValidImageUrl = (url?: string | string[]): boolean => {
     if (!url) return false;
     const imageUrl = typeof url === 'string' ? url : url[0];
-    if (!imageUrl || imageUrl.trim() === '' || imageUrl === 'null' || imageUrl === 'undefined') return false;
+    if (
+      !imageUrl ||
+      imageUrl.trim() === '' ||
+      imageUrl === 'null' ||
+      imageUrl === 'undefined'
+    )
+      return false;
     // Check if it's a valid URL format
     const trimmedUrl = imageUrl.trim();
-    return trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') || (trimmedUrl.startsWith('/') && trimmedUrl.length > 1);
+    return (
+      trimmedUrl.startsWith('http://') ||
+      trimmedUrl.startsWith('https://') ||
+      (trimmedUrl.startsWith('/') && trimmedUrl.length > 1)
+    );
   };
 
   // Safety check for required post data
   if (!post._id || !post.author) {
     console.warn('Post component received invalid data:', post);
     return (
-      <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor, shadowOpacity: feed.shadowOpacity }]}>
+      <View
+        style={[
+          styles.postContainer,
+          {
+            backgroundColor: cardBg,
+            borderColor,
+            shadowOpacity: feed.shadowOpacity,
+          },
+        ]}
+      >
         <Text style={[styles.caption, { color: textColor }]}>
           Invalid post data
         </Text>
@@ -175,7 +224,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     const reacts = Array.isArray(post.reacts) ? post.reacts : [];
     setPlacedReacts(uniqueReactTypes(reacts));
     setTotalReacts(uniqueReactCount(reacts));
-    const mine = reacts.find((react: any) => sameId(react?.profile, myProfileId));
+    const mine = reacts.find((react: any) =>
+      sameId(react?.profile, myProfileId),
+    );
     if (mine?.type) {
       setReactType(mine.type);
       setIsReacted(true);
@@ -190,12 +241,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     setShowAllComments(false);
     const next = normalizeComments(post.comments);
     setComments(next);
-    setTotalComments(Array.isArray(post.comments) ? post.comments.length : next.length);
+    setTotalComments(
+      Array.isArray(post.comments) ? post.comments.length : next.length,
+    );
   }, [post._id]);
 
   useEffect(() => {
     const next = normalizeComments(post.comments);
-    setTotalComments(Array.isArray(post.comments) ? post.comments.length : next.length);
+    setTotalComments(
+      Array.isArray(post.comments) ? post.comments.length : next.length,
+    );
     if (next.length > 0) {
       setComments(next);
       commentsFetchedRef.current = post._id;
@@ -223,7 +278,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     setLoadingComments(true);
     api
       .get('/post/single', { params: { postId: post._id } })
-      .then((res) => {
+      .then(res => {
         if (cancelled) return;
         const data = res.data?.comments || res.data?.post?.comments || [];
         setComments(normalizeComments(data));
@@ -259,11 +314,15 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     reactLockRef.current = true;
     const prevType = reactType;
     const prevCount = totalReacts;
-    setTotalReacts((state) => Math.max(0, state - 1));
+    setTotalReacts(state => Math.max(0, state - 1));
     setReactType(false);
     setIsReacted(false);
     try {
-      const res = await api.post('/react/removeReact', { id: post._id, postType: 'post', reactor: myProfileId });
+      const res = await api.post('/react/removeReact', {
+        id: post._id,
+        postType: 'post',
+        reactor: myProfileId,
+      });
       if (res.status === 200 && Array.isArray(res.data?.reacts)) {
         setTotalReacts(uniqueReactCount(res.data.reacts));
         setPlacedReacts(uniqueReactTypes(res.data.reacts));
@@ -289,19 +348,25 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     const prevType = reactType;
     const prevCount = totalReacts;
     const alreadyReacted = isReacted;
-    if (!alreadyReacted) setTotalReacts((state) => state + 1);
-    setPlacedReacts((prev) => {
-      const withoutPrev = prev.filter((item) => item !== prevType);
+    if (!alreadyReacted) setTotalReacts(state => state + 1);
+    setPlacedReacts(prev => {
+      const withoutPrev = prev.filter(item => item !== prevType);
       return withoutPrev.includes(type) ? withoutPrev : [...withoutPrev, type];
     });
     setReactType(type);
     setIsReacted(true);
     try {
-      const res = await api.post('/react/addReact', { id: post._id, postType: 'post', reactType: type });
+      const res = await api.post('/react/addReact', {
+        id: post._id,
+        postType: 'post',
+        reactType: type,
+      });
       if (res.status === 200 && Array.isArray(res.data?.reacts)) {
         setTotalReacts(uniqueReactCount(res.data.reacts));
         setPlacedReacts(uniqueReactTypes(res.data.reacts));
-        const mine = res.data.reacts.find((react: any) => sameId(react?.profile, myProfileId));
+        const mine = res.data.reacts.find((react: any) =>
+          sameId(react?.profile, myProfileId),
+        );
         if (mine?.type) setReactType(mine.type);
         return true;
       }
@@ -424,13 +489,18 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         audience: selectedAudience,
       });
       if (res.status === 200) {
-        const updatedPost = res.data?.post || { ...post, audience: selectedAudience };
+        const updatedPost = res.data?.post || {
+          ...post,
+          audience: selectedAudience,
+        };
         applyPostUpdate(updatedPost);
         setIsEditAudienceModal(false);
         showToast({
           type: 'success',
           title: 'Audience updated',
-          message: `This post is now visible to ${getAudienceOption(selectedAudience).label.toLowerCase()}.`,
+          message: `This post is now visible to ${getAudienceOption(
+            selectedAudience,
+          ).label.toLowerCase()}.`,
         });
       }
     } catch (error: any) {
@@ -448,7 +518,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   // Handle post deletion
   const handleDeletePost = async () => {
     try {
-      const res = await api.post(`/post/delete`, { postId: post._id, authorId: post.author._id });
+      const res = await api.post(`/post/delete`, {
+        postId: post._id,
+        authorId: post.author._id,
+      });
       if (res.status === 200) {
         // Close the modals
         setIsPostOption(false);
@@ -518,14 +591,14 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           author: {
             fullName: myProfile?.fullName || 'You',
             profilePic: myProfile?.profilePic || default_pp_src,
-            _id: myProfile?._id
+            _id: myProfile?._id,
           },
           text: res.data.text || res.data.body || commentText,
-          createdAt: res.data.createdAt || new Date().toISOString()
+          createdAt: res.data.createdAt || new Date().toISOString(),
         };
         console.log('Processed comment:', newComment);
-        setComments((prev) => [newComment, ...normalizeComments(prev)]);
-        setTotalComments((count) => count + 1);
+        setComments(prev => [newComment, ...normalizeComments(prev)]);
+        setTotalComments(count => count + 1);
         setCommentText('');
       }
     } catch (e) {
@@ -543,7 +616,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
 
   // Handle posting a reply
   const handlePostReply = async () => {
-    if (!replyText.trim() || !replyingTo || isPostingReply || !myProfileId) return;
+    if (!replyText.trim() || !replyingTo || isPostingReply || !myProfileId)
+      return;
     setIsPostingReply(true);
     try {
       const res = await api.post('/comment/addReply', {
@@ -563,19 +637,25 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           createdAt: res.data.createdAt || new Date().toISOString(),
         };
 
-        setComments((prev) => prev.map((comment) => {
-          if (sameId(comment._id, replyingTo._id)) {
-            const existing = Array.isArray(comment.replies) ? comment.replies : [];
-            if (existing.some((reply: any) => sameId(reply?._id, newReply._id))) {
-              return comment;
+        setComments(prev =>
+          prev.map(comment => {
+            if (sameId(comment._id, replyingTo._id)) {
+              const existing = Array.isArray(comment.replies)
+                ? comment.replies
+                : [];
+              if (
+                existing.some((reply: any) => sameId(reply?._id, newReply._id))
+              ) {
+                return comment;
+              }
+              return {
+                ...comment,
+                replies: [...existing, newReply],
+              };
             }
-            return {
-              ...comment,
-              replies: [...existing, newReply],
-            };
-          }
-          return comment;
-        }));
+            return comment;
+          }),
+        );
 
         setReplyText('');
         setReplyingTo(null);
@@ -602,8 +682,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               postId: post._id,
             });
             if (res.status === 200) {
-              setComments((prev) => prev.filter((item) => !sameId(item._id, comment._id)));
-              setTotalComments((count) => Math.max(0, count - 1));
+              setComments(prev =>
+                prev.filter(item => !sameId(item._id, comment._id)),
+              );
+              setTotalComments(count => Math.max(0, count - 1));
               if (sameId(replyingTo?._id, comment._id)) {
                 cancelReply();
               }
@@ -628,15 +710,21 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         onPress: async () => {
           setDeletingId(reply._id);
           try {
-            const res = await api.post('/comment/deleteReply', { replyId: reply._id });
+            const res = await api.post('/comment/deleteReply', {
+              replyId: reply._id,
+            });
             if (res.status === 200) {
-              setComments((prev) => prev.map((comment) => {
-                if (!sameId(comment._id, commentId)) return comment;
-                return {
-                  ...comment,
-                  replies: (comment.replies || []).filter((item: any) => !sameId(item?._id, reply._id)),
-                };
-              }));
+              setComments(prev =>
+                prev.map(comment => {
+                  if (!sameId(comment._id, commentId)) return comment;
+                  return {
+                    ...comment,
+                    replies: (comment.replies || []).filter(
+                      (item: any) => !sameId(item?._id, reply._id),
+                    ),
+                  };
+                }),
+              );
             }
           } catch (e) {
             console.log(e);
@@ -654,15 +742,25 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     setLikingCommentId(comment._id);
     try {
       const endpoint = already ? '/comment/removeReact' : '/comment/addReact';
-      const res = await api.post(endpoint, { commentId: comment._id, reactorId: myProfileId });
+      const res = await api.post(endpoint, {
+        commentId: comment._id,
+        reactorId: myProfileId,
+      });
       if (res.status === 200) {
         const nextReacts = Array.isArray(res.data?.reacts)
           ? res.data.reacts
           : already
-            ? (comment.reacts || []).filter((r: any) => !sameId(r, myProfileId) && !sameId(r?._id, myProfileId))
-            : [...(comment.reacts || []), myProfileId];
-        setComments((prev) =>
-          prev.map((item) => (sameId(item._id, comment._id) ? { ...item, reacts: nextReacts } : item)),
+          ? (comment.reacts || []).filter(
+              (r: any) =>
+                !sameId(r, myProfileId) && !sameId(r?._id, myProfileId),
+            )
+          : [...(comment.reacts || []), myProfileId];
+        setComments(prev =>
+          prev.map(item =>
+            sameId(item._id, comment._id)
+              ? { ...item, reacts: nextReacts }
+              : item,
+          ),
         );
       }
     } catch (e) {
@@ -681,14 +779,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     const body = c.text || c.body || c.content || c.message || '';
     const liked = commentHasMyReact(c, myProfileId);
     const reactCount = Array.isArray(c.reacts) ? c.reacts.length : 0;
-    const replies = Array.isArray(c.replies) ? c.replies.filter(isPopulatedComment) : [];
+    const replies = Array.isArray(c.replies)
+      ? c.replies.filter(isPopulatedComment)
+      : [];
     const isMine = sameId(c.author, myProfileId);
     const menuOpen = commentMenuId === c._id;
     const attachment = c.image || c.photo || c.attachment;
     const isReplyingHere = !isReply && sameId(replyingTo?._id, c._id);
 
     return (
-      <View key={c._id || Math.random()} style={[styles.fbCommentRow, isReply && styles.fbReplyRow]}>
+      <View
+        key={c._id || Math.random()}
+        style={[styles.fbCommentRow, isReply && styles.fbReplyRow]}
+      >
         <UserPP
           image={c.author?.profilePic || default_pp_src}
           isActive={false}
@@ -696,10 +799,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         />
         <View style={styles.fbCommentInfo}>
           <View style={styles.fbCommentBox}>
-            <View style={[styles.fbNameComment, { backgroundColor: commentBubbleBg }]}>
-              <Text style={[styles.fbAuthorName, { color: textColor }]}>{commentAuthorName(c)}</Text>
+            <View
+              style={[
+                styles.fbNameComment,
+                { backgroundColor: commentBubbleBg },
+              ]}
+            >
+              <Text style={[styles.fbAuthorName, { color: textColor }]}>
+                {commentAuthorName(c)}
+              </Text>
               {!!body.trim() && (
-                <Text style={[styles.fbCommentText, { color: textColor }]}>{body}</Text>
+                <Text style={[styles.fbCommentText, { color: textColor }]}>
+                  {body}
+                </Text>
               )}
             </View>
             {isMine ? (
@@ -709,10 +821,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   hitSlop={8}
                   style={styles.fbOptionsBtn}
                 >
-                  <FAIcon name="ellipsis-h" size={12} color={commentActionColor} />
+                  <FAIcon
+                    name="ellipsis-h"
+                    size={12}
+                    color={commentActionColor}
+                  />
                 </TouchableOpacity>
                 {menuOpen ? (
-                  <View style={[styles.fbOptionsMenu, { backgroundColor: cardBg, borderColor }]}>
+                  <View
+                    style={[
+                      styles.fbOptionsMenu,
+                      { backgroundColor: cardBg, borderColor },
+                    ]}
+                  >
                     <TouchableOpacity
                       onPress={() => {
                         setCommentMenuId(null);
@@ -721,8 +842,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                       }}
                       disabled={deletingId === c._id}
                     >
-                      <Text style={[styles.fbOptionsDanger, { color: themeColors.status?.error || '#FF4444' }]}>
-                        {deletingId === c._id ? 'Deleting...' : isReply ? 'Delete Reply' : 'Delete Comment'}
+                      <Text
+                        style={[
+                          styles.fbOptionsDanger,
+                          { color: themeColors.status?.error || '#FF4444' },
+                        ]}
+                      >
+                        {deletingId === c._id
+                          ? 'Deleting...'
+                          : isReply
+                          ? 'Delete Reply'
+                          : 'Delete Comment'}
                       </Text>
                     </TouchableOpacity>
                   </View>
@@ -739,22 +869,39 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           ) : null}
           <View style={styles.fbCommentReact}>
             {!isReply ? (
-              <TouchableOpacity onPress={() => handleCommentLike(c)} disabled={likingCommentId === c._id}>
-                <Text style={[styles.fbReactLink, { color: liked ? accentColor : commentActionColor }, liked && { fontWeight: '700' }]}>
-                  {likingCommentId === c._id ? '…' : `Like${reactCount > 0 ? ` · ${reactCount}` : ''}`}
+              <TouchableOpacity
+                onPress={() => handleCommentLike(c)}
+                disabled={likingCommentId === c._id}
+              >
+                <Text
+                  style={[
+                    styles.fbReactLink,
+                    { color: liked ? accentColor : commentActionColor },
+                    liked && { fontWeight: '700' },
+                  ]}
+                >
+                  {likingCommentId === c._id
+                    ? '…'
+                    : `Like${reactCount > 0 ? ` · ${reactCount}` : ''}`}
                 </Text>
               </TouchableOpacity>
             ) : null}
             {!isReply ? (
               <TouchableOpacity onPress={() => handleReplyPress(c)}>
-                <Text style={[styles.fbReactLink, { color: commentActionColor }]}>Reply</Text>
+                <Text
+                  style={[styles.fbReactLink, { color: commentActionColor }]}
+                >
+                  Reply
+                </Text>
               </TouchableOpacity>
             ) : null}
             <Text style={[styles.fbCommentTime, { color: commentTimeColor }]}>
               {c.createdAt ? moment(c.createdAt).fromNow() : ''}
             </Text>
             {!isReply && replies.length > 0 ? (
-              <Text style={[styles.fbReplyCount, { color: commentActionColor }]}>
+              <Text
+                style={[styles.fbReplyCount, { color: commentActionColor }]}
+              >
                 · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
               </Text>
             ) : null}
@@ -762,17 +909,35 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           {isReplyingHere ? (
             <View style={styles.fbNewReply}>
               <View style={styles.fbReplyingToRow}>
-                <Text style={[styles.fbReplyingToLabel, { color: subTextColor }]}>
-                  Replying to <Text style={{ fontWeight: '700', color: textColor }}>{commentAuthorName(c)}</Text>
+                <Text
+                  style={[styles.fbReplyingToLabel, { color: subTextColor }]}
+                >
+                  Replying to{' '}
+                  <Text style={{ fontWeight: '700', color: textColor }}>
+                    {commentAuthorName(c)}
+                  </Text>
                 </Text>
                 <TouchableOpacity onPress={cancelReply} hitSlop={8}>
                   <Icon name="close" size={14} color={subTextColor} />
                 </TouchableOpacity>
               </View>
-              <View style={[styles.fbCommentField, { backgroundColor: inputBg, borderColor }]}>
+              <View
+                style={[
+                  styles.fbCommentField,
+                  { backgroundColor: inputBg, borderColor },
+                ]}
+              >
                 <VoiceTextInput
-                  style={[styles.fbFieldText, { color: inputText }, isPostingReply ? { opacity: 0.6 } : null]}
-                  placeholder={isPostingReply ? 'Posting reply...' : `Reply to ${commentAuthorName(c)}`}
+                  style={[
+                    styles.fbFieldText,
+                    { color: inputText },
+                    isPostingReply ? { opacity: 0.6 } : null,
+                  ]}
+                  placeholder={
+                    isPostingReply
+                      ? 'Posting reply...'
+                      : `Reply to ${commentAuthorName(c)}`
+                  }
                   placeholderTextColor={subTextColor}
                   value={replyText}
                   onChangeText={setReplyText}
@@ -780,19 +945,39 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   returnKeyType="send"
                   onSubmitEditing={handlePostReply}
                 />
-                <TouchableOpacity onPress={handlePostReply} disabled={isPostingReply} style={styles.fbFieldSend}>
+                <TouchableOpacity
+                  onPress={handlePostReply}
+                  disabled={isPostingReply}
+                  style={styles.fbFieldSend}
+                >
                   {isPostingReply ? (
                     <ActivityIndicator size="small" color={accentColor} />
                   ) : (
-                    <FAIcon name="paper-plane" size={14} color={accentColor} solid={false} />
+                    <FAIcon
+                      name="paper-plane"
+                      size={14}
+                      color={accentColor}
+                      solid={false}
+                    />
                   )}
                 </TouchableOpacity>
               </View>
             </View>
           ) : null}
           {!isReply && replies.length > 0 ? (
-            <View style={[styles.fbRepliesThread, { borderLeftColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-              {replies.map((reply: any) => renderCommentThread(reply, true, c._id))}
+            <View
+              style={[
+                styles.fbRepliesThread,
+                {
+                  borderLeftColor: isDarkMode
+                    ? 'rgba(255,255,255,0.1)'
+                    : 'rgba(0,0,0,0.08)',
+                },
+              ]}
+            >
+              {replies.map((reply: any) =>
+                renderCommentThread(reply, true, c._id),
+              )}
             </View>
           ) : null}
         </View>
@@ -802,13 +987,31 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
 
   // Render
   return (
-    <View style={[styles.postContainer, { backgroundColor: cardBg, borderColor, shadowOpacity: feed.shadowOpacity }]}>
+    <View
+      style={[
+        styles.postContainer,
+        {
+          backgroundColor: cardBg,
+          borderColor,
+          shadowOpacity: feed.shadowOpacity,
+        },
+      ]}
+    >
       <View style={styles.header}>
         {postType === 'profilePic' && (
-          <View style={[styles.reasonRow, { borderBottomColor: feed.postDivider }]}>
-            <View style={[styles.reasonBadge, { backgroundColor: feed.postAccentSoft }]}>
+          <View
+            style={[styles.reasonRow, { borderBottomColor: feed.postDivider }]}
+          >
+            <View
+              style={[
+                styles.reasonBadge,
+                { backgroundColor: feed.postAccentSoft },
+              ]}
+            >
               <Icon name="photo-camera" size={12} color={accentColor} />
-              <Text style={[styles.reasonBadgeText, { color: textColor }]}>Updated profile picture</Text>
+              <Text style={[styles.reasonBadgeText, { color: textColor }]}>
+                Updated profile picture
+              </Text>
             </View>
           </View>
         )}
@@ -816,43 +1019,72 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           <TouchableOpacity
             onPress={() => {
               if (post.author?._id && post.author._id !== myProfileId) {
-                (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
+                (navigation as any).navigate('FriendProfile', {
+                  friendId: post.author._id,
+                });
               }
             }}
           >
-            <UserPP image={post.author?.profilePic || default_pp_src} isActive={post.author?.isActive} size={40} />
+            <UserPP
+              image={post.author?.profilePic || default_pp_src}
+              isActive={post.author?.isActive}
+              size={40}
+            />
           </TouchableOpacity>
           <View style={styles.headerInfo}>
             <TouchableOpacity
               onPress={() => {
                 if (post.author?._id && post.author._id !== myProfileId) {
-                  (navigation as any).navigate('FriendProfile', { friendId: post.author._id });
+                  (navigation as any).navigate('FriendProfile', {
+                    friendId: post.author._id,
+                  });
                 }
               }}
               style={styles.authorNameRow}
             >
-              <Text style={[styles.authorName, { color: textColor }]} numberOfLines={2}>
+              <Text
+                style={[styles.authorName, { color: textColor }]}
+                numberOfLines={2}
+              >
                 {post.author?.fullName || 'Unknown User'}
               </Text>
               {post.author?.isOfficial ? (
-                <View style={[styles.officialBadge, { backgroundColor: feed.postAccentSoft }]}>
+                <View
+                  style={[
+                    styles.officialBadge,
+                    { backgroundColor: feed.postAccentSoft },
+                  ]}
+                >
                   <Icon name="check" size={9} color="#7ce7ff" />
                 </View>
               ) : null}
               {post.feelings ? (
                 <Text style={[styles.feelingsLabel, { color: subTextColor }]}>
-                  {' '}is feeling <Text style={[styles.feelingsValue, { color: textColor }]}>{post.feelings}</Text>
+                  {' '}
+                  is feeling{' '}
+                  <Text style={[styles.feelingsValue, { color: textColor }]}>
+                    {post.feelings}
+                  </Text>
                 </Text>
               ) : null}
               {post.location ? (
                 <Text style={[styles.feelingsLabel, { color: subTextColor }]}>
-                  {' '}at <Text style={[styles.feelingsValue, { color: textColor }]}>{post.location}</Text>
+                  {' '}
+                  at{' '}
+                  <Text style={[styles.feelingsValue, { color: textColor }]}>
+                    {post.location}
+                  </Text>
                 </Text>
               ) : null}
             </TouchableOpacity>
-            <TouchableOpacity onPress={openSinglePost} style={styles.timeContainer}>
+            <TouchableOpacity
+              onPress={openSinglePost}
+              style={styles.timeContainer}
+            >
               <Text style={[styles.time, { color: subTextColor }]}>
-                {post.createdAt ? moment(post.createdAt).fromNow() : 'Unknown time'}
+                {post.createdAt
+                  ? moment(post.createdAt).fromNow()
+                  : 'Unknown time'}
               </Text>
               <Icon
                 name={getAudienceOption(post.audience).icon}
@@ -863,10 +1095,18 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             </TouchableOpacity>
           </View>
           <View style={styles.headerRight}>
-            <TouchableOpacity onPress={postOptionClick} style={styles.headerIconBtn} hitSlop={8}>
+            <TouchableOpacity
+              onPress={postOptionClick}
+              style={styles.headerIconBtn}
+              hitSlop={8}
+            >
               <Icon name="more-horiz" size={22} color={subTextColor} />
             </TouchableOpacity>
-            <TouchableOpacity onPress={handleHidePost} style={styles.headerIconBtn} hitSlop={8}>
+            <TouchableOpacity
+              onPress={handleHidePost}
+              style={styles.headerIconBtn}
+              hitSlop={8}
+            >
               <Icon name="close" size={20} color={subTextColor} />
             </TouchableOpacity>
           </View>
@@ -877,37 +1117,89 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             onPress={() => setIsPostOption(false)}
             activeOpacity={1}
           >
-            <View style={[styles.optionMenu, { backgroundColor: cardBg, borderColor }]}>
+            <View
+              style={[
+                styles.optionMenu,
+                { backgroundColor: cardBg, borderColor },
+              ]}
+            >
               <View style={styles.optionMenuHeader}>
-                <View style={[styles.optionMenuHandle, { backgroundColor: borderColor }]} />
+                <View
+                  style={[
+                    styles.optionMenuHandle,
+                    { backgroundColor: borderColor },
+                  ]}
+                />
               </View>
 
               {post.author?._id === myProfileId && (
                 <>
                   <TouchableOpacity
-                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    style={[
+                      styles.optionMenuItem,
+                      { borderBottomColor: borderColor },
+                    ]}
                     onPress={openEditPost}
                   >
-                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
+                    <View
+                      style={[
+                        styles.optionMenuIcon,
+                        { backgroundColor: themeColors.primary + '15' },
+                      ]}
+                    >
                       <Icon name="edit" size={20} color={themeColors.primary} />
                     </View>
                     <View style={styles.optionMenuContent}>
-                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Edit Post</Text>
-                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>Make changes to your post</Text>
+                      <Text
+                        style={[styles.optionMenuTitle, { color: textColor }]}
+                      >
+                        Edit Post
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionMenuSubtitle,
+                          { color: subTextColor },
+                        ]}
+                      >
+                        Make changes to your post
+                      </Text>
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    style={[
+                      styles.optionMenuItem,
+                      { borderBottomColor: borderColor },
+                    ]}
                     onPress={openEditAudience}
                   >
-                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
-                      <Icon name="people" size={20} color={themeColors.primary} />
+                    <View
+                      style={[
+                        styles.optionMenuIcon,
+                        { backgroundColor: themeColors.primary + '15' },
+                      ]}
+                    >
+                      <Icon
+                        name="people"
+                        size={20}
+                        color={themeColors.primary}
+                      />
                     </View>
                     <View style={styles.optionMenuContent}>
-                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Edit Audience</Text>
-                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>Change who can see this post</Text>
+                      <Text
+                        style={[styles.optionMenuTitle, { color: textColor }]}
+                      >
+                        Edit Audience
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionMenuSubtitle,
+                          { color: subTextColor },
+                        ]}
+                      >
+                        Change who can see this post
+                      </Text>
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
@@ -916,14 +1208,41 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                     style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
                     onPress={showDeleteConfirm}
                   >
-                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
-                      <Icon name="delete" size={20} color={themeColors.status.error} />
+                    <View
+                      style={[
+                        styles.optionMenuIcon,
+                        { backgroundColor: themeColors.status.error + '15' },
+                      ]}
+                    >
+                      <Icon
+                        name="delete"
+                        size={20}
+                        color={themeColors.status.error}
+                      />
                     </View>
                     <View style={styles.optionMenuContent}>
-                      <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Delete Post</Text>
-                      <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Remove this post permanently</Text>
+                      <Text
+                        style={[
+                          styles.optionMenuTitle,
+                          { color: themeColors.status.error },
+                        ]}
+                      >
+                        Delete Post
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionMenuSubtitle,
+                          { color: themeColors.status.error + '80' },
+                        ]}
+                      >
+                        Remove this post permanently
+                      </Text>
                     </View>
-                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
+                    <Icon
+                      name="chevron-right"
+                      size={20}
+                      color={themeColors.status.error}
+                    />
                   </TouchableOpacity>
                 </>
               )}
@@ -931,33 +1250,75 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               {post.author?._id !== myProfileId && (
                 <>
                   <TouchableOpacity
-                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    style={[
+                      styles.optionMenuItem,
+                      { borderBottomColor: borderColor },
+                    ]}
                     onPress={() => {
                       setIsPostOption(false);
                     }}
                   >
-                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
-                      <Icon name="bookmark" size={20} color={themeColors.primary} />
+                    <View
+                      style={[
+                        styles.optionMenuIcon,
+                        { backgroundColor: themeColors.primary + '15' },
+                      ]}
+                    >
+                      <Icon
+                        name="bookmark"
+                        size={20}
+                        color={themeColors.primary}
+                      />
                     </View>
                     <View style={styles.optionMenuContent}>
-                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Save Post</Text>
-                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>Add this to your saved items</Text>
+                      <Text
+                        style={[styles.optionMenuTitle, { color: textColor }]}
+                      >
+                        Save Post
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionMenuSubtitle,
+                          { color: subTextColor },
+                        ]}
+                      >
+                        Add this to your saved items
+                      </Text>
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
 
                   <TouchableOpacity
-                    style={[styles.optionMenuItem, { borderBottomColor: borderColor }]}
+                    style={[
+                      styles.optionMenuItem,
+                      { borderBottomColor: borderColor },
+                    ]}
                     onPress={() => {
                       setIsPostOption(false);
                     }}
                   >
-                    <View style={[styles.optionMenuIcon, { backgroundColor: '#FFA50015' }]}>
+                    <View
+                      style={[
+                        styles.optionMenuIcon,
+                        { backgroundColor: '#FFA50015' },
+                      ]}
+                    >
                       <Icon name="visibility-off" size={20} color="#FFA500" />
                     </View>
                     <View style={styles.optionMenuContent}>
-                      <Text style={[styles.optionMenuTitle, { color: textColor }]}>Hide Post</Text>
-                      <Text style={[styles.optionMenuSubtitle, { color: subTextColor }]}>See fewer posts like this</Text>
+                      <Text
+                        style={[styles.optionMenuTitle, { color: textColor }]}
+                      >
+                        Hide Post
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionMenuSubtitle,
+                          { color: subTextColor },
+                        ]}
+                      >
+                        See fewer posts like this
+                      </Text>
                     </View>
                     <Icon name="chevron-right" size={20} color={subTextColor} />
                   </TouchableOpacity>
@@ -968,14 +1329,41 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                       setIsPostOption(false);
                     }}
                   >
-                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
-                      <Icon name="flag" size={20} color={themeColors.status.error} />
+                    <View
+                      style={[
+                        styles.optionMenuIcon,
+                        { backgroundColor: themeColors.status.error + '15' },
+                      ]}
+                    >
+                      <Icon
+                        name="flag"
+                        size={20}
+                        color={themeColors.status.error}
+                      />
                     </View>
                     <View style={styles.optionMenuContent}>
-                      <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Report Post</Text>
-                      <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Report inappropriate content</Text>
+                      <Text
+                        style={[
+                          styles.optionMenuTitle,
+                          { color: themeColors.status.error },
+                        ]}
+                      >
+                        Report Post
+                      </Text>
+                      <Text
+                        style={[
+                          styles.optionMenuSubtitle,
+                          { color: themeColors.status.error + '80' },
+                        ]}
+                      >
+                        Report inappropriate content
+                      </Text>
                     </View>
-                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
+                    <Icon
+                      name="chevron-right"
+                      size={20}
+                      color={themeColors.status.error}
+                    />
                   </TouchableOpacity>
                 </>
               )}
@@ -983,36 +1371,76 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           </TouchableOpacity>
         </Modal>
 
-        <Modal visible={showDeleteConfirmation} transparent animationType="fade">
+        <Modal
+          visible={showDeleteConfirmation}
+          transparent
+          animationType="fade"
+        >
           <TouchableOpacity
             style={[styles.modalOverlay, { justifyContent: 'center' }]}
             onPress={() => setShowDeleteConfirmation(false)}
             activeOpacity={1}
           >
-            <View style={[styles.deleteConfirmModal, { backgroundColor: cardBg, borderColor }]}>
+            <View
+              style={[
+                styles.deleteConfirmModal,
+                { backgroundColor: cardBg, borderColor },
+              ]}
+            >
               <View style={styles.deleteConfirmHeader}>
-                <View style={[styles.deleteConfirmIcon, { backgroundColor: themeColors.status.error + '15' }]}>
-                  <Icon name="delete" size={28} color={themeColors.status.error} />
+                <View
+                  style={[
+                    styles.deleteConfirmIcon,
+                    { backgroundColor: themeColors.status.error + '15' },
+                  ]}
+                >
+                  <Icon
+                    name="delete"
+                    size={28}
+                    color={themeColors.status.error}
+                  />
                 </View>
-                <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>Delete Post</Text>
-                <Text style={[styles.deleteConfirmMessage, { color: subTextColor }]}>
-                  Are you sure you want to delete this post? This action cannot be undone and the post will be permanently removed.
+                <Text style={[styles.deleteConfirmTitle, { color: textColor }]}>
+                  Delete Post
+                </Text>
+                <Text
+                  style={[styles.deleteConfirmMessage, { color: subTextColor }]}
+                >
+                  Are you sure you want to delete this post? This action cannot
+                  be undone and the post will be permanently removed.
                 </Text>
               </View>
 
               <View style={styles.deleteConfirmButtons}>
                 <TouchableOpacity
-                  style={[styles.deleteConfirmBtn, styles.cancelBtn, { borderColor }]}
+                  style={[
+                    styles.deleteConfirmBtn,
+                    styles.cancelBtn,
+                    { borderColor },
+                  ]}
                   onPress={() => setShowDeleteConfirmation(false)}
                 >
-                  <Text style={[styles.deleteConfirmBtnText, { color: textColor }]}>Cancel</Text>
+                  <Text
+                    style={[styles.deleteConfirmBtnText, { color: textColor }]}
+                  >
+                    Cancel
+                  </Text>
                 </TouchableOpacity>
                 <TouchableOpacity
                   style={[styles.deleteConfirmBtn, styles.deleteBtn]}
                   onPress={handleDeletePost}
                 >
-                  <Icon name="delete" size={18} color="#fff" style={{ marginRight: 8 }} />
-                  <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>Delete Post</Text>
+                  <Icon
+                    name="delete"
+                    size={18}
+                    color="#fff"
+                    style={{ marginRight: 8 }}
+                  />
+                  <Text
+                    style={[styles.deleteConfirmBtnText, { color: '#fff' }]}
+                  >
+                    Delete Post
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -1026,7 +1454,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               <Text
                 style={[styles.caption, { color: textColor }]}
                 numberOfLines={showFullCaption ? undefined : 2}
-                onTextLayout={(event) => {
+                onTextLayout={event => {
                   if (!showFullCaption) {
                     setCaptionHasMore(event.nativeEvent.lines.length > 2);
                   }
@@ -1037,7 +1465,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             </TouchableOpacity>
             {captionHasMore || showFullCaption ? (
               <TouchableOpacity
-                onPress={() => setShowFullCaption((expanded) => !expanded)}
+                onPress={() => setShowFullCaption(expanded => !expanded)}
                 style={styles.seeMoreButton}
               >
                 <Text style={[styles.seeMoreText, { color: accentColor }]}>
@@ -1059,8 +1487,21 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             ]}
           >
             <Image
-              source={{ uri: getAssetUrl(typeof post.photos === 'string' ? post.photos : post.photos[0]) }}
-              style={postType === 'profilePic' ? [styles.postProfilePic, { borderColor: feed.postBorder }] : [styles.postImage, { height: imageHeight, backgroundColor: feed.mediaBg }]}
+              source={{
+                uri: getAssetUrl(
+                  typeof post.photos === 'string'
+                    ? post.photos
+                    : post.photos[0],
+                ),
+              }}
+              style={
+                postType === 'profilePic'
+                  ? [styles.postProfilePic, { borderColor: feed.postBorder }]
+                  : [
+                      styles.postImage,
+                      { height: imageHeight, backgroundColor: feed.mediaBg },
+                    ]
+              }
               resizeMode="cover"
               onError={() => {
                 setImageLoadError(true);
@@ -1075,26 +1516,57 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         {showReactions ? (
           <Pressable style={styles.reactDismiss} onPress={handleOutsidePress} />
         ) : null}
-        <View style={[styles.countsRow, { borderBottomColor: feed.postDivider }]}>
-          <TouchableOpacity style={styles.reactsCountLeft} onPress={openSinglePost} activeOpacity={0.7}>
+        <View
+          style={[styles.countsRow, { borderBottomColor: feed.postDivider }]}
+        >
+          <TouchableOpacity
+            style={styles.reactsCountLeft}
+            onPress={openSinglePost}
+            activeOpacity={0.7}
+          >
             <PlacedReactIcons placedReacts={placedReacts} />
             <Text style={[styles.countText, { color: subTextColor }]}>
-              {post.reacts ? totalReacts : ''} {totalReacts > 1 ? 'Reacts' : 'React'}
+              {post.reacts ? totalReacts : ''}{' '}
+              {totalReacts > 1 ? 'Reacts' : 'React'}
             </Text>
           </TouchableOpacity>
           <View style={styles.countsRight}>
-            <TouchableOpacity style={styles.countItem} onPress={openSinglePost} activeOpacity={0.7}>
-              <Text style={[styles.countText, { color: subTextColor }]}>{post.comments ? totalComments : ''}</Text>
-              <FAIcon name="comment" size={13} color={subTextColor} solid={false} />
+            <TouchableOpacity
+              style={styles.countItem}
+              onPress={openSinglePost}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.countText, { color: subTextColor }]}>
+                {post.comments ? totalComments : ''}
+              </Text>
+              <FAIcon
+                name="comment"
+                size={13}
+                color={subTextColor}
+                solid={false}
+              />
             </TouchableOpacity>
-            <TouchableOpacity style={styles.countItem} onPress={openSinglePost} activeOpacity={0.7}>
-              <Text style={[styles.countText, { color: subTextColor }]}>{post.shares ? totalShares : ''}</Text>
+            <TouchableOpacity
+              style={styles.countItem}
+              onPress={openSinglePost}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.countText, { color: subTextColor }]}>
+                {post.shares ? totalShares : ''}
+              </Text>
               <FAIcon name="share" size={13} color={subTextColor} />
             </TouchableOpacity>
           </View>
         </View>
-        <View style={[styles.actionBar, { borderBottomColor: feed.postDivider }]}>
-          <View style={styles.reactButtonsWrap}>
+        <View
+          style={[styles.actionBar, { borderBottomColor: feed.postDivider }]}
+        >
+          <View
+            style={[
+              styles.reactButtonsWrap,
+              isAuth && styles.actionBarItemHalf,
+            ]}
+          >
             <TouchableOpacity
               onPress={handleLikePress}
               onLongPress={handleLikeLongPress}
@@ -1110,14 +1582,22 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   <CurrentReactIcon reactType={reactType} size={18} />
                 </View>
                 {SHOW_ACTION_LABELS ? (
-                  <Text style={[styles.actionLabel, { color: reactType ? accentColor : subTextColor }]}>
+                  <Text
+                    style={[
+                      styles.actionLabel,
+                      { color: reactType ? accentColor : subTextColor },
+                    ]}
+                  >
                     {getReactLabel(reactType)}
                   </Text>
                 ) : null}
               </View>
             </TouchableOpacity>
             {showReactions ? (
-              <View style={styles.reactionPopupWrapper} pointerEvents="box-none">
+              <View
+                style={styles.reactionPopupWrapper}
+                pointerEvents="box-none"
+              >
                 <ReactPicker
                   reactType={reactType}
                   onSelect={handleSelectReaction}
@@ -1127,33 +1607,66 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               </View>
             ) : null}
           </View>
-          <TouchableOpacity onPress={handleCommentPress} style={[styles.actionButton, styles.actionBarItem]}>
-            <FAIcon name="comment" size={16} color={subTextColor} solid={false} />
+          <TouchableOpacity
+            onPress={handleCommentPress}
+            style={[
+              styles.actionButton,
+              styles.actionBarItem,
+              isAuth && styles.actionBarItemHalf,
+            ]}
+          >
+            <FAIcon
+              name="comment"
+              size={16}
+              color={subTextColor}
+              solid={false}
+            />
             {SHOW_ACTION_LABELS ? (
-              <Text style={[styles.actionLabel, { color: subTextColor }]}>Comment</Text>
+              <Text style={[styles.actionLabel, { color: subTextColor }]}>
+                Comment
+              </Text>
             ) : null}
           </TouchableOpacity>
           {!isAuth ? (
-            <TouchableOpacity onPress={() => setIsShareModal(true)} style={[styles.actionButton, styles.actionBarItem]}>
-              <FAIcon name="share" size={16} color={subTextColor} solid={false} />
+            <TouchableOpacity
+              onPress={() => setIsShareModal(true)}
+              style={[styles.actionButton, styles.actionBarItem]}
+            >
+              <FAIcon
+                name="share"
+                size={16}
+                color={subTextColor}
+                solid={false}
+              />
               {SHOW_ACTION_LABELS ? (
-                <Text style={[styles.actionLabel, { color: subTextColor }]}>Share</Text>
+                <Text style={[styles.actionLabel, { color: subTextColor }]}>
+                  Share
+                </Text>
               ) : null}
             </TouchableOpacity>
           ) : (
-            <View style={[styles.actionBarItem, { width: '33%' }]} />
+            <View style={[styles.actionBarItem, styles.actionBarItemHalf]} />
           )}
         </View>
         <View style={styles.commentsList}>
           {loadingComments ? (
-            <Text style={[styles.noCommentsText, { color: subTextColor }]}>Loading comments…</Text>
+            <Text style={[styles.noCommentsText, { color: subTextColor }]}>
+              Loading comments…
+            </Text>
           ) : comments.length === 0 ? (
-            <Text style={[styles.noCommentsText, { color: subTextColor }]}>No comments yet</Text>
+            <Text style={[styles.noCommentsText, { color: subTextColor }]}>
+              No comments yet
+            </Text>
           ) : (
-            (showAllComments ? comments : comments.slice(0, 2)).map((c) => renderCommentThread(c))
+            (showAllComments ? comments : comments.slice(0, 2)).map(c =>
+              renderCommentThread(c),
+            )
           )}
           {comments.length > 2 ? (
-            <TouchableOpacity onPress={() => setShowAllComments((expanded) => !expanded)} style={styles.moreCommentsBtn}>
+            <TouchableOpacity
+              onPress={() => setShowAllComments(expanded => !expanded)}
+              style={styles.moreCommentsBtn}
+            >
               <Text style={[styles.moreCommentsText, { color: accentColor }]}>
                 {showAllComments ? 'See less comments' : 'See more comments'}
               </Text>
@@ -1162,12 +1675,30 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         </View>
         <View style={styles.commentBoxContainer}>
           <View style={styles.commentInputRow}>
-            <UserPP image={myProfile?.profilePic || default_pp_src} isActive={false} size={34} />
-            <View style={[styles.fbCommentField, styles.fbComposerField, { backgroundColor: inputBg, borderColor }]}>
+            <UserPP
+              image={myProfile?.profilePic || default_pp_src}
+              isActive={false}
+              size={34}
+            />
+            <View
+              style={[
+                styles.fbCommentField,
+                styles.fbComposerField,
+                { backgroundColor: inputBg, borderColor },
+              ]}
+            >
               <VoiceTextInput
                 ref={commentInputRef}
-                style={[styles.fbFieldText, { color: inputText }, isPostingComment ? { opacity: 0.6 } : null]}
-                placeholder={isPostingComment ? 'Posting comment...' : 'Write a public comment…'}
+                style={[
+                  styles.fbFieldText,
+                  { color: inputText },
+                  isPostingComment ? { opacity: 0.6 } : null,
+                ]}
+                placeholder={
+                  isPostingComment
+                    ? 'Posting comment...'
+                    : 'Write a public comment…'
+                }
                 placeholderTextColor={subTextColor}
                 value={commentText}
                 onChangeText={setCommentText}
@@ -1183,7 +1714,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 {isPostingComment ? (
                   <ActivityIndicator size="small" color={accentColor} />
                 ) : (
-                  <FAIcon name="paper-plane" size={15} color={accentColor} solid={false} />
+                  <FAIcon
+                    name="paper-plane"
+                    size={15}
+                    color={accentColor}
+                    solid={false}
+                  />
                 )}
               </TouchableOpacity>
             </View>
@@ -1207,54 +1743,68 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             }}
           >
             <TouchableOpacity
-              style={[styles.shareModal, { backgroundColor: cardBg, borderColor }]}
+              style={[
+                styles.shareModal,
+                { backgroundColor: cardBg, borderColor },
+              ]}
               activeOpacity={1}
-              onPress={(event) => event.stopPropagation()}
+              onPress={event => event.stopPropagation()}
             >
-            <View style={styles.shareHeader}>
-              <Text style={[styles.shareTitle, { color: textColor }]}>Share post</Text>
+              <View style={styles.shareHeader}>
+                <Text style={[styles.shareTitle, { color: textColor }]}>
+                  Share post
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setIsShareModal(false)}
+                  disabled={isSharing}
+                  accessibilityLabel="Close share dialog"
+                >
+                  <Icon name="close" size={22} color={subTextColor} />
+                </TouchableOpacity>
+              </View>
+              <Text style={[styles.shareSubtitle, { color: subTextColor }]}>
+                Add a message before sharing this post to your feed.
+              </Text>
+              <VoiceTextInput
+                style={[
+                  styles.shareInput,
+                  { backgroundColor: inputBg, color: inputText, borderColor },
+                ]}
+                placeholder="Say something about this post…"
+                placeholderTextColor={subTextColor}
+                value={shareCap}
+                onChangeText={setShareCap}
+                editable={!isSharing}
+                multiline
+                maxLength={500}
+              />
+              <Text style={[styles.shareCounter, { color: subTextColor }]}>
+                {shareCap.length}/500
+              </Text>
+              <TouchableOpacity
+                onPress={onClickShareNow}
+                disabled={isSharing}
+                style={[
+                  styles.sharePrimaryButton,
+                  {
+                    backgroundColor: themeColors.primary,
+                    opacity: isSharing ? 0.6 : 1,
+                  },
+                ]}
+              >
+                {isSharing ? (
+                  <ActivityIndicator color="#FFFFFF" />
+                ) : (
+                  <Text style={styles.sharePrimaryText}>Share now</Text>
+                )}
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setIsShareModal(false)}
                 disabled={isSharing}
-                accessibilityLabel="Close share dialog"
+                style={styles.shareCancelButton}
               >
-                <Icon name="close" size={22} color={subTextColor} />
+                <Text style={{ color: subTextColor }}>Cancel</Text>
               </TouchableOpacity>
-            </View>
-            <Text style={[styles.shareSubtitle, { color: subTextColor }]}>
-              Add a message before sharing this post to your feed.
-            </Text>
-            <VoiceTextInput
-              style={[styles.shareInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
-              placeholder="Say something about this post…"
-              placeholderTextColor={subTextColor}
-              value={shareCap}
-              onChangeText={setShareCap}
-              editable={!isSharing}
-              multiline
-              maxLength={500}
-            />
-            <Text style={[styles.shareCounter, { color: subTextColor }]}>
-              {shareCap.length}/500
-            </Text>
-            <TouchableOpacity
-              onPress={onClickShareNow}
-              disabled={isSharing}
-              style={[styles.sharePrimaryButton, { backgroundColor: themeColors.primary, opacity: isSharing ? 0.6 : 1 }]}
-            >
-              {isSharing ? (
-                <ActivityIndicator color="#FFFFFF" />
-              ) : (
-                <Text style={styles.sharePrimaryText}>Share now</Text>
-              )}
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setIsShareModal(false)}
-              disabled={isSharing}
-              style={styles.shareCancelButton}
-            >
-              <Text style={{ color: subTextColor }}>Cancel</Text>
-            </TouchableOpacity>
             </TouchableOpacity>
           </TouchableOpacity>
         </KeyboardSafeView>
@@ -1447,7 +1997,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginTop: 8,
-    gap: 5
+    gap: 5,
   },
   actionBar: {
     flexDirection: 'row',
@@ -1467,6 +2017,9 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     paddingHorizontal: 10,
     borderRadius: 10,
+  },
+  actionBarItemHalf: {
+    width: '50%',
   },
   reactButtonsWrap: {
     flex: 1,

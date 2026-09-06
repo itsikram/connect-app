@@ -163,6 +163,9 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   };
 
   return (
+    descriptors[state.routes[state.index].key]?.options?.tabBarStyle?.display === 'none'
+      ? null
+      :
     <View
       style={[
         styles.container,
