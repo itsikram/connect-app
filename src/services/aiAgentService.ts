@@ -60,7 +60,7 @@ const DEFAULT_MODELS: Record<AIProvider, string> = {
   cursor: 'composer-2.5',
   grok: 'grok-3-mini',
   groq: 'openai/gpt-oss-20b',
-  ollama: 'llama3.2',
+  ollama: 'llama3.1:8b',
 };
 
 const PRIVATE_PROFILE_KEYS = new Set([

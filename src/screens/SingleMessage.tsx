@@ -1679,8 +1679,12 @@ const SingleMessage = () => {
           return;
         }
         if (typeof payload === 'object') {
-          const display =
-            payload.emoji || payload.emotionText || payload.emotion || '';
+          const emotion = String(payload.emotion || '').trim();
+          const emotionText = String(payload.emotionText || '').trim();
+          const emoji = String(payload.emoji || '').trim() || emotion.split(' ')[0];
+          const display = emotionText
+            ? `${emoji} ${emotionText}`.trim()
+            : emotion || emoji;
           setFriendEmotion(display || '');
           // Also store expression if available
           if (payload.expression) {
@@ -5370,18 +5374,6 @@ const SingleMessage = () => {
               >
                 {friend?.fullName || 'Friend'}
               </Text>
-              {friendExpression && friendExpression !== 'none' ? (
-                <Text
-                  style={{
-                    fontSize: 12,
-                    color: 'rgba(255,255,255,0.82)',
-                    marginTop: 1,
-                  }}
-                  numberOfLines={1}
-                >
-                  {friendExpression}
-                </Text>
-              ) : null}
               <View style={{ marginTop: 1 }}>
                 {isTyping ? (
                   <Text
@@ -5401,6 +5393,9 @@ const SingleMessage = () => {
                       {friendEmotion.split(' ')[0]}
                     </Text>{' '}
                     {friendEmotion.split(' ').slice(1).join(' ')}
+                    {friendExpression && friendExpression !== 'none'
+                      ? `  •  ${friendExpression}`
+                      : ''}
                     {formatHeaderLastSeen(friendLastSeenIso)
                       ? `  |  Last Seen: ${formatHeaderLastSeen(
                           friendLastSeenIso,
