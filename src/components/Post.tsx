@@ -1048,6 +1048,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               >
                 {post.author?.fullName || 'Unknown User'}
               </Text>
+              {post.author?.isVerified ? (
+                <Icon name="check-circle" size={15} color="#16a34a" style={styles.verifiedBadge} />
+              ) : null}
               {post.author?.isOfficial ? (
                 <View
                   style={[
@@ -1734,7 +1737,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
       >
         <KeyboardSafeView force>
           <TouchableOpacity
-            style={styles.modalOverlay}
+            style={styles.shareOverlay}
             activeOpacity={1}
             onPress={() => {
               if (!isSharing) setIsShareModal(false);
@@ -1748,22 +1751,19 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               activeOpacity={1}
               onPress={event => event.stopPropagation()}
             >
-              <View style={styles.shareHeader}>
-                <Text style={[styles.shareTitle, { color: textColor }]}>
-                  Share post
-                </Text>
-                <TouchableOpacity
-                  onPress={() => setIsShareModal(false)}
-                  disabled={isSharing}
-                  accessibilityLabel="Close share dialog"
-                >
-                  <Icon name="close" size={22} color={subTextColor} />
-                </TouchableOpacity>
+              <View style={styles.shareHandleWrap}>
+                <View
+                  style={[styles.shareHandle, { backgroundColor: borderColor }]}
+                />
               </View>
+              <Text style={[styles.shareTitle, { color: textColor }]}>
+                Share Post
+              </Text>
               <Text style={[styles.shareSubtitle, { color: subTextColor }]}>
                 Add a message before sharing this post to your feed.
               </Text>
               <VoiceTextInput
+                voiceEnabled={false}
                 style={[
                   styles.shareInput,
                   { backgroundColor: inputBg, color: inputText, borderColor },
@@ -1779,30 +1779,39 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               <Text style={[styles.shareCounter, { color: subTextColor }]}>
                 {shareCap.length}/500
               </Text>
-              <TouchableOpacity
-                onPress={onClickShareNow}
-                disabled={isSharing}
-                style={[
-                  styles.sharePrimaryButton,
-                  {
-                    backgroundColor: themeColors.primary,
-                    opacity: isSharing ? 0.6 : 1,
-                  },
-                ]}
-              >
-                {isSharing ? (
-                  <ActivityIndicator color="#FFFFFF" />
-                ) : (
-                  <Text style={styles.sharePrimaryText}>Share now</Text>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={() => setIsShareModal(false)}
-                disabled={isSharing}
-                style={styles.shareCancelButton}
-              >
-                <Text style={{ color: subTextColor }}>Cancel</Text>
-              </TouchableOpacity>
+              <View style={styles.shareActions}>
+                <TouchableOpacity
+                  onPress={() => setIsShareModal(false)}
+                  disabled={isSharing}
+                  style={[
+                    styles.shareActionButton,
+                    styles.shareCancelButton,
+                    { borderColor },
+                  ]}
+                >
+                  <Text style={[styles.shareActionText, { color: textColor }]}>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={onClickShareNow}
+                  disabled={isSharing}
+                  style={[
+                    styles.shareActionButton,
+                    styles.sharePrimaryButton,
+                    {
+                      backgroundColor: themeColors.primary,
+                      opacity: isSharing ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  {isSharing ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.sharePrimaryText}>Share</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
             </TouchableOpacity>
           </TouchableOpacity>
         </KeyboardSafeView>
@@ -1888,6 +1897,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  verifiedBadge: {
+    marginLeft: 5,
   },
   feelingsLabel: {
     fontSize: 13,
@@ -2122,61 +2134,81 @@ const styles = StyleSheet.create({
     opacity: 0.8,
   },
   shareModal: {
-    padding: 20,
-    borderRadius: 20,
-    width: '95%',
+    width: '100%',
     maxHeight: '90%',
-    elevation: 5,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 6 },
+    paddingHorizontal: 20,
+    paddingBottom: 28,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
     borderWidth: 1,
+    borderBottomWidth: 0,
   },
-  shareHeader: {
-    flexDirection: 'row',
+  shareOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  shareHandleWrap: {
     alignItems: 'center',
-    justifyContent: 'space-between',
+    paddingVertical: 12,
+  },
+  shareHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
   },
   shareTitle: {
     fontSize: 20,
     fontWeight: '700',
+    marginBottom: 4,
+    lineHeight: 26,
   },
   shareSubtitle: {
-    fontSize: 13,
-    lineHeight: 18,
-    marginTop: 6,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
   },
   shareInput: {
     borderWidth: 1,
     borderRadius: 12,
-    marginTop: 16,
-    minHeight: 96,
-    maxHeight: 140,
-    padding: 12,
+    minHeight: 112,
+    maxHeight: 160,
+    paddingHorizontal: 14,
+    paddingVertical: 13,
     textAlignVertical: 'top',
+    fontSize: 15,
+    lineHeight: 21,
   },
   shareCounter: {
     alignSelf: 'flex-end',
     fontSize: 12,
-    marginTop: 5,
+    marginTop: 6,
+  },
+  shareActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 18,
+  },
+  shareActionButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   sharePrimaryButton: {
-    alignItems: 'center',
-    borderRadius: 12,
-    justifyContent: 'center',
-    minHeight: 46,
-    marginTop: 16,
   },
   sharePrimaryText: {
     color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '600',
   },
   shareCancelButton: {
-    alignItems: 'center',
-    minHeight: 42,
-    justifyContent: 'center',
+    borderWidth: 1,
+  },
+  shareActionText: {
+    fontSize: 16,
+    fontWeight: '600',
   },
   reactionPopup: {
     flexDirection: 'row',

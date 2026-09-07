@@ -196,6 +196,99 @@ export const fetchAIProviderStatus = async (): Promise<AIProviderStatus> => {
   };
 };
 
+const fallbackPostCaption = (userRequest = '') => {
+  const request = String(userRequest || '').trim().toLowerCase();
+  if (request.includes('funny') || request.includes('witty')) {
+    return 'Good vibes, great stories, and a little chaos 😄';
+  }
+  if (request.includes('video')) {
+    return 'Moments like this deserve a replay. 🎬';
+  }
+  if (request.includes('photo') || request.includes('image')) {
+    return 'Some moments are just too good not to keep. ✨';
+  }
+  if (request.includes('improve') || request.includes('finish')) {
+    return 'A little extra sparkle for this moment ✨';
+  }
+  return 'Little moments, big memories. ✨';
+};
+
+const extractCaptionText = (value: string) => {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+
+  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const parsedText = fenced?.[1] || raw;
+  const start = parsedText.indexOf('{');
+  const end = parsedText.lastIndexOf('}');
+
+  if (start !== -1 && end !== -1 && end > start) {
+    try {
+      const parsed = JSON.parse(parsedText.slice(start, end + 1)) as Record<string, unknown>;
+      const candidate =
+        typeof parsed.message === 'string' && parsed.message.trim()
+          ? parsed.message
+          : typeof parsed.reply === 'string' && parsed.reply.trim()
+            ? parsed.reply
+            : typeof parsed.caption === 'string' && parsed.caption.trim()
+              ? parsed.caption
+              : typeof parsed.text === 'string' && parsed.text.trim()
+                ? parsed.text
+                : typeof parsed.content === 'string' && parsed.content.trim()
+                  ? parsed.content
+                  : '';
+      if (candidate) return candidate;
+    } catch {
+      // Ignore invalid JSON content and continue with the raw text.
+    }
+  }
+
+  return raw
+    .replace(/^here(?:'s| is)[^.:\n]*[:\-]\s*/i, '')
+    .replace(/^['"‘’“”]+/, '')
+    .replace(/['"‘’“”]+$/, '')
+    .trim();
+};
+
+export const generatePostCaption = async (
+  userRequest = '',
+  signal?: AbortSignal,
+): Promise<string> => {
+  const request = String(userRequest || '').trim();
+  const providerStatus = await fetchAIProviderStatus().catch(() => null);
+  const hasConfiguredProvider = Object.values(providerStatus?.configured ?? {}).some(
+    value => Boolean(value),
+  );
+
+  if (!providerStatus || !hasConfiguredProvider) {
+    return fallbackPostCaption(request);
+  }
+
+  try {
+    const prompt = request
+      ? `Write one original social-media caption for Connect. Match the user's language and keep it engaging. Use this request as your guide: ${request}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`
+      : 'Write one original social-media caption for Connect. Match the user\'s language and keep it engaging. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.';
+
+    const response = await streamAgentReply(
+      prompt,
+      [{
+        id: `caption-${Date.now()}`,
+        type: 'user',
+        content: prompt,
+        timestamp: new Date().toISOString(),
+      }],
+      () => undefined,
+      signal,
+    );
+
+    const caption = extractCaptionText(response);
+    return caption ? caption.slice(0, 500) : fallbackPostCaption(request);
+  } catch (error) {
+    console.warn('Caption generation failed, using fallback caption:', error);
+    return fallbackPostCaption(request);
+  }
+};
+
 export const fetchLatestAgentChat = async () =>
   (await api.get('/ai-chat/latest')).data;
 export const saveAgentChat = async (messages: AgentMessage[]) =>

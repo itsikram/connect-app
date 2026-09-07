@@ -69,6 +69,7 @@ interface Post {
         fullName: string;
         profilePic?: string;
         isActive?: boolean;
+        isVerified?: boolean;
     };
     reacts?: Array<{
         profile: string;
@@ -204,6 +205,9 @@ const SinglePost = () => {
     const [totalReacts, setTotalReacts] = useState(0);
     const [totalComments, setTotalComments] = useState(0);
     const [totalShares, setTotalShares] = useState(0);
+    const [shareCap, setShareCap] = useState('');
+    const [isShareModal, setIsShareModal] = useState(false);
+    const [isSharing, setIsSharing] = useState(false);
     const [showImageModal, setShowImageModal] = useState(false);
     const [selectedImage, setSelectedImage] = useState<string>('');
     const [showFullContent, setShowFullContent] = useState(false);
@@ -752,6 +756,83 @@ const SinglePost = () => {
             lineHeight: 16,
             opacity: 0.8,
         },
+        shareModal: {
+            width: '100%',
+            maxHeight: '90%',
+            paddingHorizontal: 20,
+            paddingBottom: 28,
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            borderWidth: 1,
+            borderBottomWidth: 0,
+        },
+        shareOverlay: {
+            flex: 1,
+            backgroundColor: 'rgba(0,0,0,0.4)',
+            justifyContent: 'flex-end',
+        },
+        shareHandleWrap: {
+            alignItems: 'center',
+            paddingVertical: 12,
+        },
+        shareHandle: {
+            width: 40,
+            height: 4,
+            borderRadius: 2,
+        },
+        shareTitle: {
+            fontSize: 20,
+            fontWeight: '700',
+            marginBottom: 4,
+            lineHeight: 26,
+        },
+        shareSubtitle: {
+            fontSize: 14,
+            lineHeight: 20,
+            marginBottom: 16,
+        },
+        shareInput: {
+            borderWidth: 1,
+            borderRadius: 12,
+            minHeight: 112,
+            maxHeight: 160,
+            paddingHorizontal: 14,
+            paddingVertical: 13,
+            textAlignVertical: 'top',
+            fontSize: 15,
+            lineHeight: 21,
+        },
+        shareCounter: {
+            alignSelf: 'flex-end',
+            fontSize: 12,
+            marginTop: 6,
+        },
+        shareActions: {
+            flexDirection: 'row',
+            gap: 10,
+            marginTop: 18,
+        },
+        shareActionButton: {
+            flex: 1,
+            height: 46,
+            borderRadius: 12,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        sharePrimaryButton: {
+        },
+        sharePrimaryText: {
+            color: '#FFFFFF',
+            fontSize: 16,
+            fontWeight: '600',
+        },
+        shareCancelButton: {
+            borderWidth: 1,
+        },
+        shareActionText: {
+            fontSize: 16,
+            fontWeight: '600',
+        },
         // Delete confirmation modal styles
         deleteConfirmModal: {
             backgroundColor: '#fff',
@@ -1094,17 +1175,37 @@ const SinglePost = () => {
         ]);
     };
 
-    const handleShare = async () => {
-        if (!post || !myProfile?._id) return;
+    const handleShare = () => {
+        if (!post || !myProfile?._id || isSharing) return;
+        setIsShareModal(true);
+    };
 
+    const onClickShareNow = async () => {
+        if (!post || isSharing) return;
+        setIsSharing(true);
         try {
-            return Alert.alert('Success', 'Post shared successfully');
-
-            await api.post(`/post/share`);
-            setTotalShares(prev => prev + 1);
-        } catch (err) {
-            console.error('Error sharing post:', err);
-            Alert.alert('Error', 'Failed to share post');
+            const res = await api.post('/post/share', {
+                postId: post._id,
+                caption: shareCap.trim(),
+            });
+            if (res.status === 200) {
+                setTotalShares(state => state + 1);
+                setIsShareModal(false);
+                setShareCap('');
+                showToast({
+                    type: 'success',
+                    title: 'Post shared',
+                    message: 'The post was shared to your feed.',
+                });
+            }
+        } catch (error: any) {
+            showToast({
+                type: 'error',
+                title: 'Could not share post',
+                message: error?.response?.data?.message || 'Please try again.',
+            });
+        } finally {
+            setIsSharing(false);
         }
     };
 
@@ -1306,7 +1407,7 @@ const SinglePost = () => {
 
     if (loading || !myProfile) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <StatusBar 
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
@@ -1329,7 +1430,7 @@ const SinglePost = () => {
 
     if (error || !post) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <StatusBar 
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
@@ -1353,7 +1454,7 @@ const SinglePost = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StatusBar 
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                 backgroundColor={themeColors.surface.header} 
@@ -1400,18 +1501,24 @@ const SinglePost = () => {
                             isActive={post.author?.isActive || false}
                         />
                         <View style={styles.authorInfo}>
-                            <Text style={styles.authorName}>
-                                {post.author?.fullName || 'Unknown User'}
-                                {post.feelings ? (
-                                    <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}> is feeling {post.feelings}</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Text style={styles.authorName}>
+                                    {post.author?.fullName || 'Unknown User'}
+                                    {post.feelings ? (
+                                        <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
+                                            {' '}is feeling {post.feelings}
+                                        </Text>
+                                    ) : null}
+                                    {post.location ? (
+                                        <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
+                                            {post.feelings ? ' · ' : ' '}at {post.location}
+                                        </Text>
+                                    ) : null}
+                                </Text>
+                                {post.author?.isVerified ? (
+                                    <Icon name="check-circle" size={15} color="#16a34a" style={{ marginLeft: 5 }} />
                                 ) : null}
-                                {post.location ? (
-                                    <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
-                                        {post.feelings ? ' · ' : ' '}
-                                        at {post.location}
-                                    </Text>
-                                ) : null}
-                            </Text>
+                            </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                                 <Text style={styles.postTime}>
                                     {moment(post.createdAt).format('MMM DD, YYYY • hh:mm A')}
@@ -1621,6 +1728,106 @@ const SinglePost = () => {
                 </View>
             )}
             </KeyboardSafeView>
+
+            <Modal
+                visible={isShareModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => {
+                    if (!isSharing) setIsShareModal(false);
+                }}
+            >
+                <KeyboardSafeView force>
+                    <TouchableOpacity
+                        style={styles.shareOverlay}
+                        activeOpacity={1}
+                        onPress={() => {
+                            if (!isSharing) setIsShareModal(false);
+                        }}
+                    >
+                        <TouchableOpacity
+                            style={[
+                                styles.shareModal,
+                                {
+                                    backgroundColor: themeColors.surface.primary,
+                                    borderColor: themeColors.border.primary,
+                                },
+                            ]}
+                            activeOpacity={1}
+                            onPress={event => event.stopPropagation()}
+                        >
+                            <View style={styles.shareHandleWrap}>
+                                <View
+                                    style={[
+                                        styles.shareHandle,
+                                        { backgroundColor: themeColors.border.primary },
+                                    ]}
+                                />
+                            </View>
+                            <Text style={[styles.shareTitle, { color: themeColors.text.primary }]}>
+                                Share Post
+                            </Text>
+                            <Text style={[styles.shareSubtitle, { color: themeColors.text.secondary }]}>
+                                Add a message before sharing this post to your feed.
+                            </Text>
+                            <VoiceTextInput
+                                voiceEnabled={false}
+                                style={[
+                                    styles.shareInput,
+                                    {
+                                        backgroundColor: themeColors.gray[100],
+                                        color: themeColors.text.primary,
+                                        borderColor: themeColors.border.primary,
+                                    },
+                                ]}
+                                placeholder="Say something about this post…"
+                                placeholderTextColor={themeColors.text.secondary}
+                                value={shareCap}
+                                onChangeText={setShareCap}
+                                editable={!isSharing}
+                                multiline
+                                maxLength={500}
+                            />
+                            <Text style={[styles.shareCounter, { color: themeColors.text.secondary }]}>
+                                {shareCap.length}/500
+                            </Text>
+                            <View style={styles.shareActions}>
+                                <TouchableOpacity
+                                    onPress={() => setIsShareModal(false)}
+                                    disabled={isSharing}
+                                    style={[
+                                        styles.shareActionButton,
+                                        styles.shareCancelButton,
+                                        { borderColor: themeColors.border.primary },
+                                    ]}
+                                >
+                                    <Text style={[styles.shareActionText, { color: themeColors.text.primary }]}>
+                                        Cancel
+                                    </Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    onPress={onClickShareNow}
+                                    disabled={isSharing}
+                                    style={[
+                                        styles.shareActionButton,
+                                        styles.sharePrimaryButton,
+                                        {
+                                            backgroundColor: themeColors.primary,
+                                            opacity: isSharing ? 0.6 : 1,
+                                        },
+                                    ]}
+                                >
+                                    {isSharing ? (
+                                        <ActivityIndicator color="#FFFFFF" />
+                                    ) : (
+                                        <Text style={styles.sharePrimaryText}>Share</Text>
+                                    )}
+                                </TouchableOpacity>
+                            </View>
+                        </TouchableOpacity>
+                    </TouchableOpacity>
+                </KeyboardSafeView>
+            </Modal>
 
             {/* Image Modal */}
             <Modal

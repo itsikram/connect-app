@@ -31,6 +31,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import ImageCropModal from '../components/ImageCropModal';
 import ProfileImage from '../components/ProfileImage';
+import VerifiedName from '../components/VerifiedName';
 import ProfileSkeleton, {
   ProfileFriendsSkeleton,
   ProfileMediaSkeleton,
@@ -53,69 +54,106 @@ function formatMonthYear(dateInput: any): string {
 }
 
 const ProfileVideoCard = ({
-    video,
-    profileId,
-    onDeleted,
-    onOpen,
-  }: {
-    video: any;
-    profileId: string;
-    onDeleted: (watchId: string) => void;
-    onOpen: () => void;
-  }) => {
-    const { colors: themeColors } = useTheme();
-    const sourceUri = video?.videoUrl || video?.photos;
+  video,
+  profileId,
+  onDeleted,
+  onOpen,
+}: {
+  video: any;
+  profileId: string;
+  onDeleted: (watchId: string) => void;
+  onOpen: () => void;
+}) => {
+  const { colors: themeColors } = useTheme();
+  const sourceUri = video?.videoUrl || video?.photos;
 
-    const handleDelete = () => {
-      Alert.alert('Delete video', 'Are you sure you want to delete this video?', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const response = await api.post('/watch/delete', {
-                watchId: video._id,
-                authorId: profileId,
-              });
-              if (response.status === 200) onDeleted(video._id);
-            } catch (error: any) {
-              Alert.alert('Error', error?.response?.data?.message || 'Failed to delete video');
-            }
-          },
+  const handleDelete = () => {
+    Alert.alert('Delete video', 'Are you sure you want to delete this video?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            const response = await api.post('/watch/delete', {
+              watchId: video._id,
+              authorId: profileId,
+            });
+            if (response.status === 200) onDeleted(video._id);
+          } catch (error: any) {
+            Alert.alert(
+              'Error',
+              error?.response?.data?.message || 'Failed to delete video',
+            );
+          }
         },
-      ]);
-    };
-
-    return (
-      <View style={[styles.profileVideoCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
-        <TouchableOpacity activeOpacity={0.9} onPress={onOpen} style={styles.profileVideoPreview}>
-          {sourceUri ? (
-            <ExpoVideo
-              source={{ uri: sourceUri }}
-              style={styles.profileVideo}
-              resizeMode={ResizeMode.CONTAIN}
-              useNativeControls
-              isLooping
-            />
-          ) : (
-            <View style={[styles.profileVideoUnavailable, { backgroundColor: themeColors.gray[200] }]}>
-              <Icon name="videocam-off" size={32} color={themeColors.text.secondary} />
-              <Text style={{ color: themeColors.text.secondary }}>Video unavailable</Text>
-            </View>
-          )}
-        </TouchableOpacity>
-        <View style={styles.profileVideoFooter}>
-          <Text style={[styles.profileVideoCaption, { color: themeColors.text.primary }]} numberOfLines={2}>
-            {video?.caption || 'Video'}
-          </Text>
-          <TouchableOpacity onPress={handleDelete} hitSlop={10}>
-            <Icon name="delete-outline" size={22} color={themeColors.status.error} />
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+      },
+    ]);
   };
+
+  return (
+    <View
+      style={[
+        styles.profileVideoCard,
+        {
+          backgroundColor: themeColors.surface.secondary,
+          borderColor: themeColors.border.secondary,
+          marginBottom: 10,
+        },
+      ]}
+    >
+      <TouchableOpacity
+        activeOpacity={0.9}
+        onPress={onOpen}
+        style={styles.profileVideoPreview}
+      >
+        {sourceUri ? (
+          <ExpoVideo
+            source={{ uri: sourceUri }}
+            style={styles.profileVideo}
+            resizeMode={ResizeMode.CONTAIN}
+            useNativeControls
+            isLooping
+          />
+        ) : (
+          <View
+            style={[
+              styles.profileVideoUnavailable,
+              { backgroundColor: themeColors.gray[200] },
+            ]}
+          >
+            <Icon
+              name="videocam-off"
+              size={32}
+              color={themeColors.text.secondary}
+            />
+            <Text style={{ color: themeColors.text.secondary }}>
+              Video unavailable
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+      <View style={styles.profileVideoFooter}>
+        <Text
+          style={[
+            styles.profileVideoCaption,
+            { color: themeColors.text.primary },
+          ]}
+          numberOfLines={2}
+        >
+          {video?.caption || 'Video'}
+        </Text>
+        <TouchableOpacity onPress={handleDelete} hitSlop={10}>
+          <Icon
+            name="delete-outline"
+            size={22}
+            color={themeColors.status.error}
+          />
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+};
 
 type TabKey = 'Posts' | 'About' | 'Friends' | 'Images' | 'Videos';
 
@@ -206,8 +244,10 @@ const MyProfile = () => {
           const data = res.data.watchs || res.data || [];
           setVideos(
             Array.isArray(data)
-              ? data.filter((video: any) =>
-                  String(video?.author?._id || video?.author || '') === profileId,
+              ? data.filter(
+                  (video: any) =>
+                    String(video?.author?._id || video?.author || '') ===
+                    profileId,
                 )
               : [],
           );
@@ -859,7 +899,9 @@ const MyProfile = () => {
                       })
                     }
                     onDeleted={watchId =>
-                      setVideos(prev => prev.filter(video => video._id !== watchId))
+                      setVideos(prev =>
+                        prev.filter(video => video._id !== watchId),
+                      )
                     }
                   />
                 );
@@ -1092,7 +1134,16 @@ const MyProfile = () => {
                 ]}
                 numberOfLines={2}
               >
-                {myProfile?.fullName || 'My Profile'}
+                <VerifiedName
+                  name={myProfile?.fullName || 'My Profile'}
+                  verified={myProfile?.isVerified}
+                  textStyle={[
+                    styles.fullName,
+                    isSmall ? { fontSize: 20 } : null,
+                    { color: themeColors.text.primary },
+                  ]}
+                  numberOfLines={2}
+                />
               </Text>
               {friendsCount > 0 ? (
                 <Text

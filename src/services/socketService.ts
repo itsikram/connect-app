@@ -85,6 +85,15 @@ class SocketService {
 
   emit(event: string, data: any, ack?: (...args: any[]) => void): void {
     if (this.socket && this.socket.connected) {
+      if (event === 'emotion_change') {
+        console.log('[SocketService] 📡 Sending emotion_change on connected socket', {
+          socketId: this.socket.id,
+          profileId: data?.profileId,
+          friendId: data?.friendId,
+          emotion: data?.emotion,
+          expression: data?.expression,
+        });
+      }
       if (typeof ack === 'function') {
         this.socket.emit(event, data, ack);
       } else {
@@ -94,6 +103,17 @@ class SocketService {
     }
 
     // Queue the emit and attempt to flush on next connect
+    if (event === 'emotion_change') {
+      console.warn('[SocketService] ⏳ Queuing emotion_change because application socket is disconnected', {
+        hasSocket: Boolean(this.socket),
+        socketId: this.socket?.id,
+        profileId: data?.profileId,
+        friendId: data?.friendId,
+        emotion: data?.emotion,
+        expression: data?.expression,
+        queuedEvents: this.pendingEmits.length + 1,
+      });
+    }
     this.pendingEmits.push({ event, data, ack });
     if (this.socket) {
       this.socket.once('connect', () => {

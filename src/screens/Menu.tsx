@@ -22,6 +22,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import VoiceTextInput from '../components/VoiceTextInput';
 import AppGrid from '../components/AppGrid';
 import ProfileImage from '../components/ProfileImage';
+import VerifiedName from '../components/VerifiedName';
 import AIAgentModal from '../components/AIAgentModal';
 import { sampleApps, AppItem } from '../data/appData';
 import LudoGameSVG from './LudoGameSVG';
@@ -174,6 +175,7 @@ const Menu = () => {
     { id: 'messages', label: 'Messages', hint: 'Chats & calls', icon: 'chat', color: '#9C27B0', onPress: () => (navigation as any).navigate('Message') },
     { id: 'downloads', label: 'Downloads', hint: 'Saved videos', icon: 'download', color: '#009688', onPress: () => (navigation as any).navigate('Menu', { screen: 'Downloads' }) },
     { id: 'tasks', label: 'Tasks', hint: 'Keep track of work', icon: 'checklist', color: '#10B981', onPress: () => (navigation as any).navigate('Menu', { screen: 'Tasks' }) },
+    { id: 'notes', label: 'Notes', hint: 'Capture ideas and thoughts', icon: 'edit-note', color: '#6366F1', onPress: () => (navigation as any).navigate('Menu', { screen: 'Notes' }) },
   ];
 
   const showComingSoonSection = comingSoonApps.length > 0 && (showComingSoon || Boolean(normalizedQuery));
@@ -305,7 +307,12 @@ const Menu = () => {
               </View>
               <View style={styles.profileBody}>
                 <Text style={[styles.profileName, { color: themeColors.text.primary }]} numberOfLines={1}>
-                  {myProfile?.fullName || 'My Profile'}
+                  <VerifiedName
+                    name={myProfile?.fullName || 'My Profile'}
+                    verified={myProfile?.isVerified}
+                    textStyle={[styles.profileName, { color: themeColors.text.primary }]}
+                    numberOfLines={1}
+                  />
                 </Text>
                 <Text style={[styles.profileHint, { color: themeColors.text.secondary }]}>
                   {friendsCount > 0 ? `See your profile · ${friendsCount} friends` : 'See your profile'}

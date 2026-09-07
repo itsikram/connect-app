@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter, Alert } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -14,6 +14,8 @@ import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '.
 import PostSkeleton from '../components/skeleton/PostSkeleton'
 import { POST_UPDATED_EVENT } from '../utils/postEvents'
 import FriendCacheManager from '../utils/friendCacheManager'
+import VerifiedName from '../components/VerifiedName'
+import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -26,6 +28,88 @@ function formatMonthYear(dateInput: any): string {
         return 'Unknown'
     }
 }
+
+const ProfileVideoCard = ({
+    video,
+    profileId,
+    onDeleted,
+    onOpen,
+}: {
+    video: any;
+    profileId?: string;
+    onDeleted: (watchId: string) => void;
+    onOpen: () => void;
+}) => {
+    const { colors: themeColors } = useTheme();
+    const sourceUri = video?.videoUrl || video?.photos;
+    const authorId = String(video?.author?._id || video?.author || '');
+    const canDelete = Boolean(profileId && authorId === String(profileId));
+
+    const handleDelete = () => {
+        if (!profileId) return;
+        Alert.alert('Delete video', 'Are you sure you want to delete this video?', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                    try {
+                        const response = await api.post('/watch/delete', {
+                            watchId: video._id,
+                            authorId: profileId,
+                        });
+                        if (response.status === 200) onDeleted(video._id);
+                    } catch (error: any) {
+                        Alert.alert(
+                            'Error',
+                            error?.response?.data?.message || 'Failed to delete video',
+                        );
+                    }
+                },
+            },
+        ]);
+    };
+
+    return (
+        <View style={[
+            styles.profileVideoCard,
+            {
+                backgroundColor: themeColors.surface.secondary,
+                borderColor: themeColors.border.secondary,
+            },
+        ]}>
+            <TouchableOpacity activeOpacity={0.9} onPress={onOpen} style={styles.profileVideoPreview}>
+                {sourceUri ? (
+                    <ExpoVideo
+                        source={{ uri: sourceUri }}
+                        style={styles.profileVideo}
+                        resizeMode={ResizeMode.CONTAIN}
+                        useNativeControls
+                        isLooping
+                    />
+                ) : (
+                    <View style={[styles.profileVideoUnavailable, { backgroundColor: themeColors.gray[200] }]}>
+                        <Icon name="videocam-off" size={32} color={themeColors.text.secondary} />
+                        <Text style={{ color: themeColors.text.secondary }}>Video unavailable</Text>
+                    </View>
+                )}
+            </TouchableOpacity>
+            <View style={styles.profileVideoFooter}>
+                <Text
+                    style={[styles.profileVideoCaption, { color: themeColors.text.primary }]}
+                    numberOfLines={2}
+                >
+                    {video?.caption || 'Video'}
+                </Text>
+                {canDelete && (
+                    <TouchableOpacity onPress={handleDelete} hitSlop={10}>
+                        <Icon name="delete-outline" size={22} color={themeColors.status.error} />
+                    </TouchableOpacity>
+                )}
+            </View>
+        </View>
+    );
+};
 
 type TabKey = 'Posts' | 'About' | 'Friends' | 'Images' | 'Videos'
 
@@ -69,14 +153,19 @@ const FriendProfile = () => {
     const [videos, setVideos] = React.useState<any[]>([])
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
     const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
+    const fetchRequestRef = React.useRef(0);
 
     const fetchFriendData = React.useCallback(async () => {
         if (!friendId) return;
+        const requestId = ++fetchRequestRef.current;
         
         setIsLoading(true);
         setPostsLoading(true);
         setFriendsLoading(true);
         setVideosLoading(true);
+        setPosts([]);
+        setFriends([]);
+        setVideos([]);
         
         try {
             const [profileRes, postsRes, friendsRes, videosRes] = await Promise.all([
@@ -85,6 +174,7 @@ const FriendProfile = () => {
                 api.get('/friend/getFriends', { params: { profile: friendId } }),
                 api.get('/watch/profileWatch', { params: { profile: friendId, pageNumber: 1 } })
             ]);
+            if (requestId !== fetchRequestRef.current) return;
             
             if (profileRes.status === 200) {
                 setFriendData(profileRes.data);
@@ -109,11 +199,24 @@ const FriendProfile = () => {
             
             if (videosRes.status === 200) {
                 const data = videosRes.data.watchs || videosRes.data || [];
-                setVideos(Array.isArray(data) ? data : []);
+                const targetId = String(friendId);
+                setVideos(
+                    Array.isArray(data)
+                        ? data.filter(
+                            (video: any) =>
+                                String(video?.author?._id || video?.author || '') === targetId,
+                        )
+                        : [],
+                );
             }
         } catch (err) {
+            if (requestId !== fetchRequestRef.current) return;
             console.error('Error fetching friend data:', err);
+            setPosts([]);
+            setFriends([]);
+            setVideos([]);
         } finally {
+            if (requestId !== fetchRequestRef.current) return;
             setIsLoading(false);
             setPostsLoading(false);
             setFriendsLoading(false);
@@ -137,6 +240,25 @@ const FriendProfile = () => {
             prev.map((post) => (post?._id === updatedPost._id ? { ...post, ...updatedPost } : post)),
         );
     }, []);
+
+    const renderPosts = () => (
+        <View style={{ gap: 10 }}>
+            {postsLoading && <PostSkeleton count={2} />}
+            {!postsLoading && posts.length === 0 && (
+                <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
+                    <Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text>
+                </View>
+            )}
+            {!postsLoading && posts.map((post: any) => (
+                <PostItem
+                    key={post._id}
+                    data={post}
+                    onPostDeleted={handlePostDeleted}
+                    onPostUpdated={handlePostUpdated}
+                />
+            ))}
+        </View>
+    );
 
     React.useEffect(() => {
         const sub = DeviceEventEmitter.addListener(POST_UPDATED_EVENT, handlePostUpdated);
@@ -337,7 +459,8 @@ const FriendProfile = () => {
             key: 'About',
             label: 'About',
             render: () => (
-                <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
+                <>
+                    <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary, marginBottom: 10 }]}>
 
                     {friendData?.bio && (
                         <View style={styles.detailsItem}>
@@ -397,26 +520,16 @@ const FriendProfile = () => {
                             Joined <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{formatMonthYear(friendData?.user?.createdAt || friendData?.createdAt)}</Text>
                         </Text>
                     </View>
-                </View>
+                    </View>
+                    {renderPosts()}
+                </>
             )
         },
         {
             key: 'Posts',
             label: 'Posts',
             count: posts.length || undefined,
-            render: () => (
-                <View style={{ gap: 10 }}>
-                    {postsLoading && (
-                        <PostSkeleton count={2} />
-                    )}
-                    {!postsLoading && posts.length === 0 && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No posts yet.</Text></View>
-                    )}
-                    {!postsLoading && posts.map((p: any) => (
-                        <PostItem key={p._id} data={p} onPostDeleted={handlePostDeleted} onPostUpdated={handlePostUpdated} />
-                    ))}
-                </View>
-            )
+            render: renderPosts
         },
         {
             key: 'Friends',
@@ -518,20 +631,15 @@ const FriendProfile = () => {
                     )}
                     {!videosLoading && videos.length > 0 && (
                         <View>
-                            {videos.map((v: any) => {
-                                const thumb = v.thumbnail || v.photos || v.videoUrl
-                                return (
-                                    <TouchableOpacity
-                                        key={v._id}
-                                        activeOpacity={0.85}
-                                        onPress={() => (navigation as any).navigate('SingleWatch', { watchId: v._id })}
-                                        style={[styles.mediaCard, { position: 'relative', backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
-                                    >
-                                        <Image source={{ uri: thumb }} style={styles.mediaImage} />
-                                        <View style={[styles.playBadge, { right: 12, bottom: 12 }]}><Icon name="play-arrow" size={22} color={themeColors.text.secondary} /></View>
-                                    </TouchableOpacity>
-                                )
-                            })}
+                            {videos.map((video: any) => (
+                                <ProfileVideoCard
+                                    key={video._id}
+                                    video={video}
+                                    profileId={myProfile?._id}
+                                    onOpen={() => (navigation as any).navigate('SingleWatch', { watchId: video._id })}
+                                    onDeleted={watchId => setVideos(prev => prev.filter(item => item._id !== watchId))}
+                                />
+                            ))}
                         </View>
                     )}
                 </View>
@@ -597,7 +705,12 @@ const FriendProfile = () => {
                     <View style={styles.profileInfo}>
                         <View style={styles.profileNameBlock}>
                             <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]} numberOfLines={2}>
-                                {friendData?.fullName || 'Friend Profile'}
+                                <VerifiedName
+                                    name={friendData?.fullName || 'Friend Profile'}
+                                    verified={friendData?.isVerified}
+                                    textStyle={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]}
+                                    numberOfLines={2}
+                                />
                             </Text>
                             {friendsCount > 0 ? (
                                 <Text style={[styles.friendsCount, { color: themeColors.text.secondary }]}>{friendsCount} friends</Text>
@@ -848,8 +961,8 @@ const styles = StyleSheet.create({
         borderRadius: 6,
     },
     profileContentContainer: {
-        padding: 16,
-        gap: 10,
+        padding: 8,
+        gap: 0,
     },
     placeholderCard: {
         borderRadius: 10,
@@ -921,6 +1034,41 @@ const styles = StyleSheet.create({
         width: '100%',
         aspectRatio: 1,
         backgroundColor: '#000',
+    },
+    profileVideoCard: {
+        borderRadius: 10,
+        borderWidth: 1,
+        marginBottom: 12,
+        overflow: 'hidden',
+    },
+    profileVideoPreview: {
+        width: '100%',
+        aspectRatio: 16 / 9,
+        backgroundColor: '#000',
+    },
+    profileVideo: {
+        width: '100%',
+        height: '100%',
+    },
+    profileVideoUnavailable: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 6,
+    },
+    profileVideoFooter: {
+        minHeight: 52,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        gap: 10,
+    },
+    profileVideoCaption: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '600',
     },
     viewerOverlay: {
         flex: 1,

@@ -38,6 +38,7 @@ interface ChatMessage {
   timestamp: string;
   __v: number;
   messageType?: 'text' | 'call' | 'audio';
+  duration?: number;
   callType?: 'audio' | 'video';
   callEvent?: 'missed' | 'ended' | 'declined' | 'started';
 }

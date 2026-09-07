@@ -7,6 +7,7 @@ interface EnvironmentConfig {
   SOCKET_BASE_URL: string;
   API_TIMEOUT: number;
   MEDIAPIPE_BASE_URL: string;
+  FACE_SERVICE_URL: string;
   LOGO_URL: string;
   DEFAULT_PROFILE_URL: string;
   DEFAULT_COVER_URL: string;
@@ -50,14 +51,8 @@ const getDevServerUrl = (): string => {
   return 'http://127.0.0.1:4000';
 };
 
-const getDevMediapipeServerUrl = (): string => {
-  if (Platform.OS === 'android') {
-    // For Android emulator: use 10.0.2.2
-    // For physical Android device: change to your local IP (e.g., "http://192.168.0.101:5000")
-    return 'https://emotion-detection-z1b2.onrender.com';
-  }
-  return 'https://emotion-detection-z1b2.onrender.com';
-};
+const getDevMediapipeServerUrl = (): string =>
+  process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || 'http://192.168.1.102:5001';
 
 // Development server URLs (local network)
 const devServerUrl = getDevServerUrl();
@@ -65,7 +60,7 @@ const devMediapipeServerUrl = getDevMediapipeServerUrl();
 
 // Production server URLs
 const prodServerUrl = 'https://connect-server-7h7d.onrender.com';
-const prodMediapipeServerUrl = 'https://emotion-detection-z1b2.onrender.com'; // Keep local for now, update if needed
+const prodMediapipeServerUrl = process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || '';
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
@@ -73,6 +68,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     SOCKET_BASE_URL: devServerUrl,
     API_TIMEOUT: 15000,
     MEDIAPIPE_BASE_URL: devMediapipeServerUrl,
+    FACE_SERVICE_URL: process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || devMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
@@ -89,6 +85,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     SOCKET_BASE_URL: prodServerUrl,
     API_TIMEOUT: 15000,
     MEDIAPIPE_BASE_URL: prodMediapipeServerUrl,
+    FACE_SERVICE_URL: process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || prodMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',
@@ -105,6 +102,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     SOCKET_BASE_URL: prodServerUrl,
     API_TIMEOUT: 20000,
     MEDIAPIPE_BASE_URL: prodMediapipeServerUrl,
+    FACE_SERVICE_URL: process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || prodMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
     DEFAULT_COVER_URL: '/assets/images/default-cover.png',

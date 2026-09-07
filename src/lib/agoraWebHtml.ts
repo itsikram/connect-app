@@ -19,13 +19,21 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       touch-action: none; user-select: none; -webkit-user-select: none;
       will-change: transform; cursor: grab;
     }
-    #local.hidden, #remote.audio-only { display: none; }
+    #local.hidden { display: none; }
+    /*
+     * Keep the remote host mounted for audio-only calls. Some Android WebView
+     * versions stop media elements under display:none, which makes Agora's
+     * remote audio track appear subscribed but remain silent.
+     */
+    #remote.audio-only { width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
+    #audio-host { position: absolute; width: 1px; height: 1px; opacity: 0.01; overflow: hidden; pointer-events: none; }
     video { object-fit: cover; width: 100%; height: 100%; }
   </style>
   <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.24.0.js"></script>
 </head>
 <body>
   <div id="remote"></div>
+  <div id="audio-host"></div>
   <div id="local"></div>
   <script>
     (function () {
@@ -41,13 +49,34 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       var joinedChannel = '';
       var joinedUid = null;
 
+      function playRemoteAudioTrack(track) {
+        if (!track) return;
+        try {
+          track.play('audio-host');
+        } catch (e) {
+          try { track.play(); } catch (fallbackError) {}
+        }
+      }
+
       function playAllRemoteAudio() {
         if (!client) return;
         var remotes = client.remoteUsers || [];
         for (var i = 0; i < remotes.length; i++) {
           var user = remotes[i];
           try {
-            if (user.audioTrack) user.audioTrack.play();
+            if (user.audioTrack) {
+              playRemoteAudioTrack(user.audioTrack);
+              /*
+               * Calling play again after the WebView has joined is intentional:
+               * Android can reject the first play while the media session is
+               * being established.
+               */
+              setTimeout(function (track) {
+                return function () {
+                  playRemoteAudioTrack(track);
+                };
+              }(user.audioTrack), 250);
+            }
           } catch (e) {}
         }
       }
@@ -129,7 +158,12 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           try {
             await c.subscribe(user, mediaType);
             if (mediaType === 'audio' && user.audioTrack) {
-              user.audioTrack.play();
+              playRemoteAudioTrack(user.audioTrack);
+              setTimeout(function (track) {
+                return function () {
+                  playRemoteAudioTrack(track);
+                };
+              }(user.audioTrack), 250);
             }
             if (mediaType === 'video' && user.videoTrack) {
               user.videoTrack.play('remote', { fit: 'cover' });
@@ -212,7 +246,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             try {
               if (user.hasAudio) {
                 await client.subscribe(user, 'audio');
-                if (user.audioTrack) user.audioTrack.play();
+                if (user.audioTrack) playRemoteAudioTrack(user.audioTrack);
               }
               if (!isAudio && user.hasVideo) {
                 await client.subscribe(user, 'video');
@@ -258,6 +292,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         post({ type: 'audio-enabled' });
       }
 
+      function resumeAudio() {
+        playAllRemoteAudio();
+        try {
+          var media = document.querySelectorAll('audio, video');
+          for (var i = 0; i < media.length; i++) {
+            var promise = media[i].play && media[i].play();
+            if (promise && promise.catch) promise.catch(function () {});
+          }
+        } catch (e) {}
+      }
+
       async function muteVideo(muted) {
         var track = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
         if (track) {
@@ -294,6 +339,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           else if (cmd.type === 'leave') await leave();
           else if (cmd.type === 'muteAudio') await muteAudio(!!cmd.muted);
           else if (cmd.type === 'enableAudio') await enableAudio();
+          else if (cmd.type === 'resumeAudio') resumeAudio();
           else if (cmd.type === 'muteVideo') await muteVideo(!!cmd.muted);
           else if (cmd.type === 'switchCamera') await switchCamera();
         else if (cmd.type === 'republish') {

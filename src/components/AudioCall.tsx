@@ -487,6 +487,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (event.type === 'user-left' && callAcceptedRef.current) {
       cleanupAudioCall();
     }
+    if (event.type === 'joined' || event.type === 'user-published') {
+      engineRef.current?.resumeAudio();
+    }
     if (event.type === 'error') {
       console.warn('AudioCall media error', event.message);
     }

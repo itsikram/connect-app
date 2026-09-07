@@ -30,6 +30,7 @@ import Menu from './src/screens/Menu';
 import YouTubeScreen from './src/screens/YouTubeScreen';
 import Settings from './src/screens/Settings';
 import Tasks from './src/screens/Tasks';
+import Notes from './src/screens/Notes';
 import MyProfile from './src/screens/MyProfile';
 import Friends from './src/screens/Friends';
 // Redux Provider and store
@@ -70,7 +71,6 @@ import TopNavigationProgress, { TopNavigationProgressRef } from './src/component
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
 import ExpoGoFallback from './src/components/ExpoGoFallback';
-import KeyboardSafeView from './src/components/KeyboardSafeView';
 import { isAndroidExpoGo } from './src/lib/expoGo';
 
 import * as Speech from 'expo-speech';
@@ -265,6 +265,7 @@ function MenuStack() {
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="Tasks" component={Tasks} />
+      <Stack.Screen name="Notes" component={Notes} />
       <Stack.Screen name="VideoLibrary">
         {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
       </Stack.Screen>
@@ -1214,11 +1215,7 @@ function App() {
                               <ChessGameProvider>
                                 <HeaderVisibilityProvider>
                                   <WatchPipProvider>
-                                    <KeyboardSafeView
-                                      extraOffset={Platform.OS === 'ios' ? 8 : 0}
-                                    >
-                                      <AppWithTopProgress />
-                                    </KeyboardSafeView>
+                                    <AppWithTopProgress />
                                   </WatchPipProvider>
                                 </HeaderVisibilityProvider>
                               </ChessGameProvider>

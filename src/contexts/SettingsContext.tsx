@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import api from '../lib/api';
 import { persistRingtonePreference } from '../lib/ringtoneAssets';
@@ -74,6 +74,25 @@ interface SettingsContextType {
   resetSettings: () => Promise<void>;
 }
 
+const normalizeBoolean = (value: unknown, fallback = false): boolean => {
+  if (typeof value === 'boolean') return value;
+  if (typeof value === 'number') return value === 1;
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true' || normalized === '1') return true;
+    if (normalized === 'false' || normalized === '0') return false;
+  }
+  return fallback;
+};
+
+const normalizeSettings = (value: Record<string, any>): Record<string, any> => ({
+  ...value,
+  isShareEmotion:
+    normalizeBoolean(value.isShareEmotion) ||
+    normalizeBoolean(value.isShareFaceMode) ||
+    normalizeBoolean(value.shareFaceMode),
+});
+
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 const SETTINGS_STORAGE_KEY = '@app_settings';
@@ -132,16 +151,20 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     volumeLevel: 80,
   });
   const [loading, setLoading] = useState(false);
+  const settingsRevisionRef = useRef(0);
 
   // Load settings from server and local storage
   const loadSettings = async () => {
+    const loadRevision = settingsRevisionRef.current;
     try {
       setLoading(true);
       
       // Load from local storage first
       const localSettings = await AsyncStorage.getItem(SETTINGS_STORAGE_KEY);
+      let localNormalizedSettings: Record<string, any> | null = null;
       if (localSettings) {
-        const parsedSettings = JSON.parse(localSettings);
+        const parsedSettings = normalizeSettings(JSON.parse(localSettings));
+        localNormalizedSettings = parsedSettings;
         setSettings(prev => ({ ...prev, ...parsedSettings }));
         if (parsedSettings?.ringtone != null) {
           persistRingtonePreference(parsedSettings.ringtone).catch(() => {});
@@ -152,19 +175,36 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       if (profile?._id) {
         const response = await api.get(`/setting?profileId=${profile._id}`);
         if (response.status === 200 && response.data) {
-          const serverSettings = response.data;
+          const serverSettings = normalizeSettings(response.data);
           if (serverSettings.showIsTyping !== undefined && serverSettings.showTyping === undefined) {
             serverSettings.showTyping = serverSettings.showIsTyping;
           }
           if (serverSettings.showTyping !== undefined && serverSettings.showIsTyping === undefined) {
             serverSettings.showIsTyping = serverSettings.showTyping;
           }
-          setSettings(prev => ({ ...prev, ...serverSettings }));
+          // Do not let a stale load response overwrite a toggle changed while
+          // this request was in flight.
+          if (settingsRevisionRef.current !== loadRevision) {
+            console.log('[Settings] Ignoring stale server settings response after local update');
+            return;
+          }
+          const mergedSettings = {
+            ...serverSettings,
+            // Keep a locally enabled face-mode preference when an older server
+            // record still reports the legacy/default false value.
+            isShareEmotion:
+              localNormalizedSettings?.isShareEmotion === true ||
+              serverSettings.isShareEmotion === true,
+          };
+          setSettings(prev => ({ ...prev, ...mergedSettings }));
           if (serverSettings.ringtone != null) {
             persistRingtonePreference(serverSettings.ringtone).catch(() => {});
           }
           // Update local storage with server data
-          await AsyncStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify({ ...settings, ...serverSettings }));
+          await AsyncStorage.setItem(
+            SETTINGS_STORAGE_KEY,
+            JSON.stringify({ ...settings, ...mergedSettings }),
+          );
         }
       }
     } catch (error) {
@@ -177,7 +217,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // Update a single setting
   const updateSetting = async (key: string, value: any): Promise<boolean> => {
     try {
-      const newSettings = { ...settings, [key]: value };
+      const normalizedValue = key === 'isShareEmotion'
+        ? normalizeBoolean(value)
+        : value;
+      const newSettings = { ...settings, [key]: normalizedValue };
       setSettings(newSettings);
 
       // Save to local storage immediately
@@ -188,7 +231,7 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
 
       // Save to server if profile is available
       if (profile?._id) {
-        const response = await api.post('/setting/update', { [key]: value });
+        const response = await api.post('/setting/update', { [key]: normalizedValue });
         if (response.status === 200) {
           return true;
         }
@@ -203,7 +246,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   // Update multiple settings
   const updateSettings = async (newSettings: Partial<SettingsData>): Promise<boolean> => {
     try {
-      const syncedSettings = { ...newSettings };
+      settingsRevisionRef.current += 1;
+      const syncedSettings = normalizeSettings({ ...newSettings });
       if (syncedSettings.showIsTyping !== undefined) {
         syncedSettings.showTyping = syncedSettings.showIsTyping;
       } else if (syncedSettings.showTyping !== undefined) {
@@ -222,6 +266,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       if (profile?._id) {
         const response = await api.post('/setting/update', syncedSettings);
         if (response.status === 200) {
+          console.log('[Settings] Persisted settings update:', {
+            profileId: profile._id,
+            isShareEmotion: syncedSettings.isShareEmotion,
+          });
           return true;
         }
       }

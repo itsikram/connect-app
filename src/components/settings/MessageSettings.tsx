@@ -26,12 +26,10 @@ const MessageSettings = () => {
   const [isUpdating, setIsUpdating] = useState(false);
   const [isUploadingBackground, setIsUploadingBackground] = useState(false);
   const [showIsTyping, setShowIsTyping] = useState(settings.showIsTyping ?? settings.showTyping ?? true);
-  const [isShareEmotion, setIsShareEmotion] = useState(settings.isShareEmotion ?? false);
   const [chatBackground, setChatBackground] = useState<string | null>(settings.chatBackground ?? null);
 
   useEffect(() => {
     setShowIsTyping(settings.showIsTyping ?? settings.showTyping ?? true);
-    setIsShareEmotion(settings.isShareEmotion ?? false);
     setChatBackground(settings.chatBackground ?? null);
   }, [settings]);
 
@@ -58,8 +56,7 @@ const MessageSettings = () => {
   };
 
   const handleShareFaceModeChange = async (value: boolean) => {
-    setIsShareEmotion(value);
-    await persistToggle({ isShareEmotion: value });
+    await persistToggle({ isShareEmotion: Boolean(value) });
   };
 
   const handleBackgroundChange = async () => {
@@ -141,7 +138,7 @@ const MessageSettings = () => {
       <SettingsSwitchRow
         label="Share Face Mode"
         help="Allow Connect to use your camera to recognize your mood during calls"
-        value={isShareEmotion}
+        value={settings.isShareEmotion === true}
         onValueChange={handleShareFaceModeChange}
         disabled={isUpdating}
       />

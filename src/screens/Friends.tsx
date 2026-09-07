@@ -18,6 +18,8 @@ import ProfileImage from '../components/ProfileImage';
 import FriendCacheManager, {
   FRIEND_CACHE_EVENT,
 } from '../utils/friendCacheManager';
+import VerifiedName from '../components/VerifiedName';
+import { profileDisplayName } from '../utils/reactTypes';
 
 const uniqueById = (items: any[]) => {
   const seen = new Set<string>();
@@ -230,13 +232,13 @@ const Friends = () => {
                 </View>
                 <View style={styles.gridBody}>
                   <View style={styles.profileNameContainer}>
-                    <Text
-                      style={[styles.profileName, { color: textColor }]}
+                    <VerifiedName
+                      name={profileDisplayName(friend)}
+                      verified={friend.isVerified}
+                      textStyle={[styles.profileName, { color: textColor }]}
                       numberOfLines={2}
-                      ellipsizeMode="tail"
-                    >
-                      {friend.fullName}
-                    </Text>
+                      style={styles.profileNameRow}
+                    />
                   </View>
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
@@ -314,13 +316,13 @@ const Friends = () => {
                 </View>
                 <View style={styles.gridBody}>
                   <View style={styles.profileNameContainer}>
-                    <Text
-                      style={[styles.profileName, { color: textColor }]}
+                    <VerifiedName
+                      name={profileDisplayName(friend)}
+                      verified={friend.isVerified}
+                      textStyle={[styles.profileName, { color: textColor }]}
                       numberOfLines={2}
-                      ellipsizeMode="tail"
-                    >
-                      {friend.fullName}
-                    </Text>
+                      style={styles.profileNameRow}
+                    />
                   </View>
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
@@ -463,6 +465,9 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     marginBottom: 8,
+  },
+  profileNameRow: {
+    justifyContent: 'center',
   },
   buttonRow: {
     flexDirection: 'column',

@@ -12,6 +12,7 @@ import ProfileImage from './ProfileImage';
 import { useFeedTokens } from '../theme/feedTokens';
 import KeyboardSafeView from './KeyboardSafeView';
 import VoiceTextInput from './VoiceTextInput';
+import { generatePostCaption } from '../services/aiAgentService';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -35,6 +36,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isWritingCaption, setIsWritingCaption] = useState(false);
   // uploadProgress is a number between 0 and 1 while uploading, null otherwise
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isFeelingsPickerVisible, setIsFeelingsPickerVisible] = useState(false);
@@ -93,6 +95,35 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const handleLocationChange = (text: string) => setPostData((prev) => ({ ...prev, location: text }));
   const handleFeelingsChange = (value: string) => setPostData((prev) => ({ ...prev, feelings: value }));
   const handleAudienceChange = (value: number) => setPostData((prev) => ({ ...prev, audience: value }));
+
+  const handleWriteCaption = useCallback(async () => {
+    if (isWritingCaption || isUploading) return;
+
+    setIsWritingCaption(true);
+    try {
+      const hint = postData.caption
+        ? `Improve or finish this caption: ${postData.caption}`
+        : postData.type === 'image'
+          ? 'Write a warm caption for a photo I just uploaded.'
+          : postData.type === 'video'
+            ? 'Write a short caption for a video I just uploaded.'
+            : 'Write a short natural caption for Connect.';
+
+      const caption = await generatePostCaption(hint);
+      if (caption) {
+        setPostData((prev) => ({ ...prev, caption }));
+      }
+    } catch (error) {
+      console.warn('Caption generation failed:', error);
+      showToast({
+        type: 'error',
+        title: 'Caption not ready',
+        message: 'We could not generate a caption right now, so the draft stayed as-is.',
+      });
+    } finally {
+      setIsWritingCaption(false);
+    }
+  }, [isUploading, isWritingCaption, postData.caption, postData.type, showToast]);
   const openFeelingsPicker = () => setIsFeelingsPickerVisible(true);
   const closeFeelingsPicker = () => setIsFeelingsPickerVisible(false);
   const openAudiencePicker = () => setIsAudiencePickerVisible(true);
@@ -385,6 +416,18 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   </Text>
                 </TouchableOpacity>
               </View>
+              <View style={styles.captionActionRow}>
+                <Text style={[styles.label, { color: textColor }]}>Caption:</Text>
+                <ModernButton
+                  title={isWritingCaption ? 'Writing...' : 'Write caption with AI'}
+                  onPress={handleWriteCaption}
+                  disabled={isWritingCaption || isUploading}
+                  variant="glass"
+                  size="small"
+                  icon={<Icon name="auto-awesome" size={18} color={themeColors.primary} />}
+                  style={{ flex: 1, marginLeft: 8 }}
+                />
+              </View>
               <VoiceTextInput
                 style={[styles.captionInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder={textInputPlaceholder}
@@ -663,6 +706,11 @@ const styles = StyleSheet.create({
   },
   feelingsLocationRow: {
     flexDirection: 'row',
+    marginBottom: 8,
+  },
+  captionActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: 8,
   },
   feelingsContainer: {

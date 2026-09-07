@@ -13,7 +13,7 @@ import {
   TouchableOpacity,
   DeviceEventEmitter,
 } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation, useRoute } from '@react-navigation/native';
 import CreatePost from '../components/CreatePost';
 import api from '../lib/api';
 import Post from '../components/Post';
@@ -63,8 +63,10 @@ const Home = () => {
   const [newPostsCount, setNewPostsCount] = useState(0);
   const [storiesRefreshKey, setStoriesRefreshKey] = useState(0);
   const [composerSeed, setComposerSeed] = useState({ caption: '', nonce: 0 });
+  const route = useRoute<any>();
 
   const isFocused = useIsFocused();
+  const navigation = useNavigation();
   const { colors: themeColors, isDarkMode } = useTheme();
   const feed = useFeedTokens();
   const myProfile = useSelector((state: RootState) => state.profile);
@@ -190,6 +192,13 @@ const Home = () => {
     }
     hasFocusedOnceRef.current = true;
   }, [isFocused, refreshFeed]);
+
+  useEffect(() => {
+    const caption = route.params?.composerCaption;
+    if (typeof caption !== 'string') return;
+    setComposerSeed({ caption, nonce: Date.now() });
+    (navigation as any).setParams({ composerCaption: undefined });
+  }, [navigation, route.params?.composerCaption]);
 
   useEffect(() => {
     if (!showNewPostsNotification) return;
