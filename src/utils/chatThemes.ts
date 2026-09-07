@@ -257,7 +257,7 @@ export const DEFAULT_FRIEND_CHAT_SETTINGS: FriendChatSettings = {
   wallpaperSource: 'global',
   customBackground: null,
   actionEmoji: DEFAULT_ACTION_EMOJI,
-  showBackgroundOverlay: true,
+  showBackgroundOverlay: false,
 };
 
 export const CHAT_THEMES: ChatTheme[] = [

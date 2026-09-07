@@ -22,18 +22,28 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-// Get the appropriate development server URL based on platform.
-// EXPO_PUBLIC_API_URL always takes precedence, which is useful for a different
-// machine, tunnel, or deployed development server.
+const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
+
+const isExpoTunnelHost = (host: string): boolean =>
+  host.endsWith('.exp.direct') ||
+  host.endsWith('.ngrok.io') ||
+  host.endsWith('.ngrok-free.app') ||
+  host.endsWith('.loca.lt');
+
+// Tunnel development uses the public server; LAN/localhost development uses
+// the local API so local changes remain available without a tunnel.
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
-  // Development builds expose the host used by Metro. Reusing it lets both
-  // physical devices and emulators reach the API without a machine-specific IP.
   const hostUri = Constants.expoConfig?.hostUri;
   const host = hostUri?.split(':')[0];
+
+  if (host && isExpoTunnelHost(host)) {
+    return liveServerUrl;
+  }
+
   if (
     host &&
     host !== 'localhost' &&
@@ -45,9 +55,9 @@ const getDevServerUrl = (): string => {
   }
 
   if (Platform.OS === 'android') {
-    // 10.0.2.2 maps to the host machine's localhost from an Android emulator.
     return 'http://10.0.2.2:4000';
   }
+
   return 'http://127.0.0.1:4000';
 };
 
@@ -59,7 +69,7 @@ const devServerUrl = getDevServerUrl();
 const devMediapipeServerUrl = getDevMediapipeServerUrl();
 
 // Production server URLs
-const prodServerUrl = 'https://connect-server-7h7d.onrender.com';
+const prodServerUrl = liveServerUrl;
 const prodMediapipeServerUrl = process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || '';
 
 const ENV: Record<Environment, EnvironmentConfig> = {

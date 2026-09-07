@@ -2562,7 +2562,7 @@ const SingleMessage = () => {
         const photoPromise = cameraRef.current.takePictureAsync({
           // FER and the server detector resize frames before inference;
           // avoid uploading multi-megapixel JPEGs from the phone.
-          quality: 0.2,
+          quality: 0.8,
           skipProcessing: true,
           shutterSound: false,
         });
@@ -5197,12 +5197,6 @@ const SingleMessage = () => {
               gap: 8,
             }}
           >
-            {typeof friendEmotion === 'string' && friendEmotion.length > 0 ? (
-              <Text style={{ fontSize: 22, marginRight: 2 }}>
-                {friendEmotion.split(' ')[0]}
-              </Text>
-            ) : null}
-
             <UserPP
               image={friend?.profilePic}
               isActive={isFriendOnline}
@@ -5221,6 +5215,18 @@ const SingleMessage = () => {
               >
                 {friend?.fullName || 'Friend'}
               </Text>
+              {friendExpression && friendExpression !== 'none' ? (
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: 'rgba(255,255,255,0.82)',
+                    marginTop: 1,
+                  }}
+                  numberOfLines={1}
+                >
+                  {friendExpression}
+                </Text>
+              ) : null}
               <View style={{ marginTop: 1 }}>
                 {isTyping ? (
                   <Text
@@ -5236,10 +5242,10 @@ const SingleMessage = () => {
                     style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}
                     numberOfLines={1}
                   >
+                    <Text style={{ fontSize: 18 }}>
+                      {friendEmotion.split(' ')[0]}
+                    </Text>{' '}
                     {friendEmotion.split(' ').slice(1).join(' ')}
-                    {friendExpression && friendExpression !== 'none'
-                      ? ` • ${friendExpression}`
-                      : ''}
                     {formatHeaderLastSeen(friendLastSeenIso)
                       ? `  |  Last Seen: ${formatHeaderLastSeen(
                           friendLastSeenIso,
@@ -5465,9 +5471,23 @@ const SingleMessage = () => {
         </TouchableOpacity>
       </Pressable>
 
-      <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+      <View
+        style={{
+          flex: 1,
+          minHeight: 0,
+          overflow: 'hidden',
+          backgroundColor: chatTheme.colors.headerBg,
+        }}
+      >
         {isInitialLoading ? (
-          <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <View
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              backgroundColor: chatTheme.colors.headerBg,
+            }}
+          >
             {wallpaper.type === 'image' ? (
               <ImageBackground
                 source={{ uri: wallpaper.value }}
@@ -5509,7 +5529,14 @@ const SingleMessage = () => {
             <ChatBubblesSkeleton count={14} theme={chatTheme.colors} />
           </View>
         ) : (
-          <View style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+          <View
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflow: 'hidden',
+              backgroundColor: chatTheme.colors.headerBg,
+            }}
+          >
             {wallpaper.type === 'image' ? (
               <ImageBackground
                 source={{ uri: wallpaper.value }}
