@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   Audio,
   Video as ExpoVideo,
@@ -33,6 +34,24 @@ import {
 
 const EDGE_PAD = 8;
 const CLOSE_LONG_PRESS_MS = 500;
+
+const colorFromSeed = (seed: string, offset: number) => {
+  let hash = offset;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 31 + seed.charCodeAt(index)) | 0;
+  }
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue}, 58%, 24%)`;
+};
+
+const getGradientColors = (seed: string, progress = 0) => {
+  const phase = Math.floor(progress * 24);
+  return [
+    colorFromSeed(seed, 17 + phase),
+    colorFromSeed(seed, 43 + phase),
+    colorFromSeed(seed, 89 + phase),
+  ] as [string, string, string];
+};
 
 type Dock = 'left' | 'right' | 'top' | 'bottom';
 
@@ -103,6 +122,9 @@ const WatchPipPlayer = () => {
   const [dock, setDock] = useState<Dock>('right');
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [mediaReady, setMediaReady] = useState(false);
+  const [gradientColors, setGradientColors] = useState<[string, string, string]>(() =>
+    getGradientColors('watch-pip'),
+  );
   const dragOrigin = useRef({ x: 0, y: 0, moved: false });
   const sizeRef = useRef({ width: 280, height: 220 });
   const posRef = useRef<{ x: number; y: number } | null>(null);
@@ -132,12 +154,13 @@ const WatchPipPlayer = () => {
     resumeAppliedRef.current = '';
     endedKeyRef.current = '';
     setPaused(pip?.playing === false);
+    setGradientColors(getGradientColors(pip?.thumbnail || pipTrackKey || 'watch-pip'));
   }, [pipTrackKey]);
 
   const expandedWidth = Math.min(winW - 24, isLibrary ? 420 : 240);
   const videoHeight = isLibrary
     ? Math.min(expandedWidth * (9 / 16), winH * 0.4)
-    : Math.min(expandedWidth * (16 / 9), winH * 0.46);
+    : Math.min(expandedWidth * (16 / 9), winH * 0.46, 360);
   const miniVertical = dock === 'left' || dock === 'right';
   const playerWidth = minimized ? (miniVertical ? 64 : Math.min(winW - 24, 280)) : expandedWidth;
   const playerHeight = minimized ? (miniVertical ? 220 : 56) : videoHeight + 88;
@@ -525,6 +548,11 @@ const WatchPipPlayer = () => {
     if (!bgActiveRef.current) {
       currentTimeRef.current = (status.positionMillis || 0) / 1000;
     }
+    const duration = Number(status.durationMillis) || 0;
+    const progress = duration > 0
+      ? Math.min(1, Math.max(0, (status.positionMillis || 0) / duration))
+      : 0;
+    setGradientColors(getGradientColors(pip?.thumbnail || pipTrackKey || 'watch-pip', progress));
     if (status.didJustFinish && !bgActiveRef.current && endedKeyRef.current !== pipTrackKey) {
       endedKeyRef.current = pipTrackKey;
       handleEndedRef.current();
@@ -631,18 +659,27 @@ const WatchPipPlayer = () => {
         <View
           style={[
             styles.videoWrap,
-            !isLibrary && !minimized && styles.videoWrapWatch,
+            { height: videoHeight },
             minimized && styles.videoHidden,
           ]}
           pointerEvents={minimized ? 'none' : 'auto'}
         >
+          {!minimized ? (
+            <LinearGradient
+              colors={gradientColors}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.videoBackground}
+              pointerEvents="none"
+            />
+          ) : null}
           <ExpoVideo
             ref={(node) => {
               videoRef.current = node;
             }}
             source={pipSource}
             style={styles.video}
-            resizeMode={ResizeMode.COVER}
+            resizeMode={ResizeMode.CONTAIN}
             shouldPlay={pip.playing !== false && !bgActive}
             isMuted={!!pip.muted}
             isLooping={false}
@@ -744,13 +781,11 @@ const styles = StyleSheet.create({
   thumbImg: { width: '100%', height: '100%' },
   videoWrap: {
     width: '100%',
-    aspectRatio: 16 / 9,
-    backgroundColor: '#000',
+    backgroundColor: 'transparent',
     position: 'relative',
   },
-  videoWrapWatch: {
-    aspectRatio: 9 / 16,
-    maxHeight: 360,
+  videoBackground: {
+    ...StyleSheet.absoluteFill,
   },
   videoHidden: {
     position: 'absolute',
@@ -758,7 +793,7 @@ const styles = StyleSheet.create({
     height: 1,
     opacity: 0,
   },
-  video: { width: '100%', height: '100%', backgroundColor: '#000' },
+  video: { width: '100%', height: '100%', backgroundColor: 'transparent' },
   cover: {
     ...StyleSheet.absoluteFill,
     backgroundColor: '#000',

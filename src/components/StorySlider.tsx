@@ -19,9 +19,9 @@ import UserPP from './UserPP';
 import CacheManager from '../utils/cacheManager';
 import { RootState } from '../store';
 
-const STORY_WIDTH = 150;
-const STORY_HEIGHT = 230;
-const STORY_GAP = 10;
+const STORY_WIDTH = 116;
+const STORY_HEIGHT = 176;
+const STORY_GAP = 8;
 const SCROLL_STEP = STORY_WIDTH + STORY_GAP;
 
 interface Story {
@@ -208,7 +208,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
                     <UserPP
                       image={story.author?.profilePic}
                       isActive={!!story.author?.isActive}
-                      size={40}
+                      size={32}
                       hasStory
                     />
                   </View>
@@ -269,8 +269,8 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 8,
+    marginBottom: 8,
   },
   storyContainer: {
     position: 'relative',
@@ -291,62 +291,53 @@ const styles = StyleSheet.create({
   storyCard: {
     width: STORY_WIDTH,
     height: STORY_HEIGHT,
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: 'hidden',
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.18,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
   },
   storyImageContainer: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+    paddingHorizontal: 0,
   },
   storyImage: {
-    width: '95%',
+    width: '100%',
     height: '100%',
   },
   profilePicContainer: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 8,
+    left: 8,
     zIndex: 2,
   },
   arrow: {
     position: 'absolute',
-    top: '40%',
-    marginTop: -25,
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    top: '50%',
+    marginTop: -18,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.2,
-        shadowRadius: 4,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: 0.12,
+        shadowRadius: 2,
       },
       android: {
-        elevation: 6,
+        elevation: 2,
       },
     }),
   },
   arrowLeft: {
-    left: 10,
+    left: 6,
   },
   arrowRight: {
-    right: 10,
+    right: 6,
   },
 });
 

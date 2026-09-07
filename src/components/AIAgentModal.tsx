@@ -50,6 +50,11 @@ import { RootState } from '../store';
 import api, { friendAPI, profileAPI } from '../lib/api';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 import { navigate as navigateWithQueue } from '../lib/navigationService';
+import {
+  extractYouTubeVideoId,
+  toWatchUrl,
+} from '../lib/ytDownload';
+import { startBackgroundYoutubeDownload } from '../lib/ytDownloadManager';
 
 interface Props {
   visible: boolean;
@@ -70,6 +75,7 @@ const providerLabels: Record<AIProvider, string> = {
   cursor: 'Cursor',
   grok: 'Grok',
   groq: 'Groq Cloud',
+  ollama: 'Ollama (Local)',
 };
 
 const normalizeFriendName = (value: unknown) =>
@@ -172,7 +178,9 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [voiceConversation, setVoiceConversation] = React.useState(false);
   const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] = React.useState(false);
   const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
-  const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
+  const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>(
+    __DEV__ ? 'ollama' : 'gemini',
+  );
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
@@ -401,6 +409,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       return resolveUser(query);
     },
     startAudioCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
+      setMinimized(true);
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
        emitStartAudioCall({
@@ -412,6 +421,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       startAudioCall(userId, effectiveChannel);
     },
     startVideoCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
+      setMinimized(true);
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
       emitStartVideoCall({
@@ -469,7 +479,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       autoReplyRulesRef.current = rules;
       await AsyncStorage.setItem(`@connect/ai-auto-replies/${ownId}`, JSON.stringify(rules));
     },
-  }), [profile, resolveUser, startAudioCall, startVideoCall, socketSendMessage]);
+  }), [onClose, profile, resolveUser, startAudioCall, startVideoCall, socketSendMessage]);
 
   React.useEffect(() => {
     const handleIncomingMessage = (payload: unknown) => {
@@ -515,11 +525,20 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         if (!active) return;
         setProviderStatus(status);
         const savedProvider = saved as AIProvider | null;
+        const developmentProvider =
+          __DEV__ &&
+          status.enabled.ollama !== false &&
+          status.configured.ollama
+            ? 'ollama'
+            : null;
         const available = (Object.keys(providerLabels) as AIProvider[]).find(
           provider => status.enabled[provider] !== false && status.configured[provider],
         );
-        const next = savedProvider && status.enabled[savedProvider] !== false &&
-          status.configured[savedProvider] ? savedProvider : (available || status.defaultProvider);
+        const savedIsAvailable = savedProvider &&
+          status.enabled[savedProvider] !== false &&
+          status.configured[savedProvider];
+        const next = developmentProvider ||
+          (savedIsAvailable ? savedProvider : available || status.defaultProvider);
         setSelectedProvider(next);
       })
       .catch(error => console.warn('Failed to load AI providers', error));
@@ -688,6 +707,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             }
           },
           navigate: (route, params) => {
+            setMinimized(true);
             const routeAliases: Record<string, string> = {
               messages: 'Message',
               message: 'Message',
@@ -721,21 +741,75 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             }
             return navigateWithQueue(normalizedRoute, normalizedParams);
           },
-          playVideo: videoId =>
-            navigateWithQueue('Videos', {
+          playVideo: videoId => {
+            setMinimized(true);
+            return navigateWithQueue('Videos', {
               screen: 'SingleWatch',
               params: { watchId: videoId },
-            }),
+            });
+          },
           searchVideo: async (query: string) => {
             const response = await api.get('/search', { params: { input: query } });
             const data = response.data as { videos?: Array<Record<string, unknown>> };
             const video = Array.isArray(data?.videos) ? data.videos[0] : null;
             const videoId = String(video?._id || video?.id || '');
             if (!videoId) throw new Error('I could not find a matching video.');
+            setMinimized(true);
             await navigateWithQueue('Videos', {
               screen: 'SingleWatch',
               params: { watchId: videoId },
             });
+          },
+          searchYoutube: async (query: string) => {
+            setMinimized(true);
+            await navigateWithQueue('Menu', {
+              screen: 'MediaPlayer',
+              params: { searchQuery: query },
+            });
+          },
+          downloadYoutube: async (options: {
+            query?: string;
+            url?: string;
+            videoId?: string;
+            title?: string;
+            thumbnail?: string;
+            quality?: number;
+            audioOnly?: boolean;
+          }) => {
+            setMinimized(true);
+            let url = options.url || (options.videoId ? toWatchUrl(options.videoId) : null);
+            let title = options.title;
+            let thumbnail = options.thumbnail;
+            if (!url && options.query) {
+              const response = await api.get('/yt-download/youtube/search', {
+                params: { q: options.query, maxResults: 1, _ts: Date.now() },
+              });
+              const result = Array.isArray(response.data?.items)
+                ? response.data.items[0]
+                : null;
+              url = String(result?.url || '').trim() || null;
+              title = title || String(result?.title || '').trim() || undefined;
+              thumbnail = thumbnail || String(result?.thumbnail || '').trim() || undefined;
+            }
+            if (!url || !extractYouTubeVideoId(url)) {
+              throw new Error('I could not find a downloadable YouTube video.');
+            }
+            const job = startBackgroundYoutubeDownload({
+              url,
+              title: title || `YouTube ${extractYouTubeVideoId(url)}`,
+              quality: options.quality || 1080,
+              audioOnly: options.audioOnly,
+            });
+            await navigateWithQueue('Menu', {
+              screen: 'MediaPlayer',
+              params: {
+                playUrl: url,
+                playTitle: title,
+                playPoster: thumbnail,
+                autoplay: true,
+              },
+            });
+            if (!job) throw new Error('Could not start the YouTube download.');
           },
           startLudo: () => setLudoGameActive(true),
           startChess: () => setChessGameActive(true),
@@ -840,9 +914,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         if (startsCall && failed.length) {
           updateAutoActionRunning(false);
         } else if (startsCall && autoMode && completed.length) {
-          // Native call modals must not be presented behind the AI modal.
           updateAutoActionRunning(false);
-          onClose();
         }
         const outcome = failed.length
           ? failed.map(result => result.message).join(' ')
@@ -1153,36 +1225,6 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       <SafeAreaView
         style={[styles.safe, { backgroundColor: colors.background.primary }]}
       >
-        {autoActionRunning && autoMode ? (
-          <Animated.View
-            {...miniPanResponder.panHandlers}
-            style={[styles.agentMini, { transform: miniPosition.getTranslateTransform(), backgroundColor: colors.surface.primary }]}
-          >
-            <Pressable
-              style={styles.agentMiniContent}
-              onPress={() => minimized && setMinimized(false)}
-              accessibilityRole={minimized ? 'button' : undefined}
-              accessibilityLabel={minimized ? 'Restore AI Agent' : undefined}
-            >
-              <Icon name="psychology" size={22} color={colors.primary} />
-              <View style={styles.agentMiniText}>
-                <Text style={[styles.agentMiniTitle, { color: colors.text.primary }]}>
-                  Connect AI
-                </Text>
-                <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
-                  {minimized ? 'Tap to restore' : 'Running action...'}
-                </Text>
-              </View>
-            </Pressable>
-            <Pressable
-              style={[styles.agentMiniMic, { backgroundColor: `${colors.primary}20` }]}
-              onPress={toggleVoice}
-              accessibilityLabel="Voice input"
-            >
-              <Icon name={transcribe.listening ? 'mic' : 'mic-none'} size={20} color={colors.primary} />
-            </Pressable>
-          </Animated.View>
-        ) : (
         <KeyboardAvoidingView
           style={styles.flex}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1231,17 +1273,6 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               <Icon
                 name="delete-outline"
                 size={21}
-                color={colors.text.secondary}
-              />
-            </Pressable>
-            <Pressable
-              style={styles.headerButton}
-              onPress={() => setMinimized(true)}
-              accessibilityLabel="Minimize AI Agent"
-            >
-              <Icon
-                name="keyboard-arrow-down"
-                size={25}
                 color={colors.text.secondary}
               />
             </Pressable>
@@ -1520,7 +1551,6 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
             </Pressable>
           </View>
         </KeyboardAvoidingView>
-        )}
       </SafeAreaView>
     </Modal>
     {visible && minimized && (
@@ -1540,7 +1570,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               Connect AI
             </Text>
             <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
-              Tap to restore
+              {autoActionRunning ? 'Running action...' : 'Tap to restore'}
             </Text>
           </View>
         </Pressable>
@@ -1632,8 +1662,8 @@ const styles = StyleSheet.create({
   },
   agentMini: {
     position: 'absolute',
-    right: 18,
-    bottom: 28,
+    left: 18,
+    top: '45%',
     minWidth: 210,
     borderRadius: 18,
     paddingHorizontal: 14,

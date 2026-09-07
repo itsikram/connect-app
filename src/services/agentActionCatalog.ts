@@ -11,6 +11,8 @@ export type AgentActionName =
   | 'END_CALL'
   | 'SEARCH_VIDEO'
   | 'PLAY_VIDEO'
+  | 'SEARCH_YOUTUBE'
+  | 'DOWNLOAD_YOUTUBE'
   | 'FOLLOW_USER'
   | 'UNFOLLOW_USER'
   | 'BLOCK_USER'
@@ -95,6 +97,8 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['END_CALL', 'End call', true],
   ['SEARCH_VIDEO', 'Search videos'],
   ['PLAY_VIDEO', 'Play video'],
+  ['SEARCH_YOUTUBE', 'Search YouTube'],
+  ['DOWNLOAD_YOUTUBE', 'Download YouTube video', true],
   ['FOLLOW_USER', 'Follow user', true],
   ['UNFOLLOW_USER', 'Unfollow user', true],
   ['BLOCK_USER', 'Block user', true],
@@ -170,6 +174,10 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   EDIT_TASK: 'UPDATE_TASK',
   COMPLETE_TASK: 'UPDATE_TASK',
   AUTO_REPLY: 'CREATE_AUTO_REPLY_RULE',
+  SEARCH_YT: 'SEARCH_YOUTUBE',
+  YOUTUBE_SEARCH: 'SEARCH_YOUTUBE',
+  DOWNLOAD_YT: 'DOWNLOAD_YOUTUBE',
+  YOUTUBE_DOWNLOAD: 'DOWNLOAD_YOUTUBE',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -218,8 +226,9 @@ const optionalText = (
 };
 
 /**
- * Parse the only machine-readable format accepted from the model.
- * Markdown fences, unknown keys and unknown actions are deliberately rejected.
+ * Parse the model's machine-readable intent while retaining strict schema and
+ * action validation. Providers sometimes wrap otherwise valid JSON in fences
+ * or a short preamble, so extract only the outer JSON object before validating.
  */
 export function parseAgentIntent(value: string): ParseAgentIntentResult {
   if (typeof value !== 'string' || !value.trim()) {
@@ -228,9 +237,15 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(value.trim());
+    const source = value.trim();
+    const fenced = source.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    const candidate = (fenced ? fenced[1] : source).trim();
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start < 0 || end <= start) throw new Error('missing JSON object');
+    parsed = JSON.parse(candidate.slice(start, end + 1));
   } catch {
-    return { ok: false, error: 'Intent is not strict JSON.' };
+    return { ok: false, error: 'Intent does not contain valid JSON.' };
   }
   if (!isRecord(parsed) || !hasOnlyKeys(parsed, allowedIntentKeys)) {
     return { ok: false, error: 'Intent contains unsupported fields.' };
@@ -366,6 +381,16 @@ export type MobileAgentActionAdapter = {
   startVideoCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
   playVideo?: (videoId: string) => void | Promise<void>;
   searchVideo?: (query: string) => void | Promise<void>;
+  searchYoutube?: (query: string) => void | Promise<void>;
+  downloadYoutube?: (options: {
+    query?: string;
+    url?: string;
+    videoId?: string;
+    title?: string;
+    thumbnail?: string;
+    quality?: number;
+    audioOnly?: boolean;
+  }) => void | Promise<void>;
   followUser?: (userId: string) => void | Promise<void>;
   unfollowUser?: (userId: string) => void | Promise<void>;
   blockUser?: (userId: string) => void | Promise<void>;
@@ -565,6 +590,26 @@ export async function executeAgentActions(
         if (!query) throw new Error('Tell me what video to search for.');
         if (!adapter.searchVideo) throw new Error('Video search is unavailable.');
         await adapter.searchVideo(query);
+      } else if (action.action === 'SEARCH_YOUTUBE') {
+        const query = String(parameters.query || action.searchQuery || '').trim();
+        if (!query) throw new Error('Tell me what YouTube video to search for.');
+        if (!adapter.searchYoutube) throw new Error('YouTube search is unavailable.');
+        await adapter.searchYoutube(query);
+      } else if (action.action === 'DOWNLOAD_YOUTUBE') {
+        const downloadOptions = {
+          query: String(parameters.query || action.searchQuery || '').trim() || undefined,
+          url: String(parameters.url || '').trim() || undefined,
+          videoId: String(parameters.videoId || parameters.youtubeId || '').trim() || undefined,
+          title: String(parameters.title || action.targetName || '').trim() || undefined,
+          thumbnail: String(parameters.thumbnail || '').trim() || undefined,
+          quality: parameters.quality === undefined ? undefined : Number(parameters.quality),
+          audioOnly: parameters.audioOnly === undefined ? undefined : Boolean(parameters.audioOnly),
+        };
+        if (!downloadOptions.query && !downloadOptions.url && !downloadOptions.videoId) {
+          throw new Error('Tell me the YouTube video name or link to download.');
+        }
+        if (!adapter.downloadYoutube) throw new Error('YouTube download is unavailable.');
+        await adapter.downloadYoutube(downloadOptions);
       } else if (action.action === 'CREATE_TASK') {
         const text = String(parameters.text || parameters.taskText || action.messageText || '').trim();
         if (!text) throw new Error('Tell me what the task should say.');

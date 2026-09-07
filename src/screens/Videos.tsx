@@ -13,7 +13,6 @@ import {
   Modal,
   NativeSyntheticEvent,
   NativeScrollEvent,
-  Pressable,
   RefreshControl,
   StyleSheet,
   StatusBar,
@@ -135,17 +134,9 @@ const VideoItem = ({
       ? post.likesCount
       : initialReacts.length,
   );
-  const [commentsCount, setCommentsCount] = useState(
-    typeof post?.commentsCount === 'number'
-      ? post.commentsCount
-      : post?.comments?.length || 0,
-  );
   const [sharesCount, setSharesCount] = useState(
     Array.isArray(post?.shares) ? post.shares.length : 0,
   );
-  const [commentOpen, setCommentOpen] = useState(false);
-  const [commentText, setCommentText] = useState('');
-  const [postingComment, setPostingComment] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareCap, setShareCap] = useState('');
   const [sharing, setSharing] = useState(false);
@@ -255,27 +246,6 @@ const VideoItem = ({
     }
   }, [liked, myId, post._id]);
 
-  const handleComment = useCallback(async () => {
-    if (!commentText.trim() || !post?._id || postingComment) return;
-    setPostingComment(true);
-    try {
-      const res = await api.post('/comment/addComment', {
-        body: commentText.trim(),
-        watch: post._id,
-      });
-      if (res.status === 200) {
-        setCommentsCount(n => n + 1);
-        setCommentText('');
-        setCommentOpen(false);
-        showSuccess('Comment posted');
-      }
-    } catch (err) {
-      Alert.alert('Error', 'Failed to add comment');
-    } finally {
-      setPostingComment(false);
-    }
-  }, [commentText, post._id, postingComment, showSuccess]);
-
   const handleShareNow = useCallback(async () => {
     if (!post?._id || sharing) return;
     setSharing(true);
@@ -371,7 +341,7 @@ const VideoItem = ({
               isLooping
               isMuted={!!currentPip?.muted}
               useNativeControls={true}
-              onReadyForDisplay={event => {
+              onReadyForDisplay={(event: any) => {
                 const size = event?.naturalSize;
                 if (size?.width && size?.height) {
                   setNaturalSize({ width: size.width, height: size.height });
@@ -500,18 +470,6 @@ const VideoItem = ({
         {!isOwnWatch ? (
           <>
             <TouchableOpacity
-              onPress={() => setCommentOpen(true)}
-              activeOpacity={0.8}
-              style={styles.sideAction}
-            >
-              <View style={[styles.sideBtn, { backgroundColor: t.btnBg, borderColor: t.chipBorder }]}>
-                <Icon name="chatbubble-ellipses" size={20} color={t.chromeText} />
-              </View>
-              <Text style={[styles.sideCount, { color: t.chromeMuted }]}>
-                {commentsCount > 0 ? commentsCount : 'Comment'}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
               onPress={() => setShareOpen(true)}
               activeOpacity={0.8}
               style={styles.sideAction}
@@ -601,77 +559,6 @@ const VideoItem = ({
           </Text>
         )}
       </View>
-
-      <Modal
-        visible={commentOpen}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setCommentOpen(false)}
-      >
-        <KeyboardSafeView force style={styles.modalBackdrop}>
-          <Pressable
-            style={StyleSheet.absoluteFill}
-            onPress={() => setCommentOpen(false)}
-          />
-          <View
-            style={[
-              styles.sheet,
-              { backgroundColor: t.surface, borderColor: t.chipBorder },
-            ]}
-          >
-            <Text style={[styles.sheetTitle, { color: t.chromeText }]}>
-              Comment
-            </Text>
-            <VoiceTextInput
-              value={commentText}
-              onChangeText={setCommentText}
-              placeholder="Write a comment…"
-              placeholderTextColor={t.placeholder}
-              autoFocus
-              multiline
-              style={[
-                styles.sheetInput,
-                {
-                  backgroundColor: t.inputBg,
-                  color: t.chromeText,
-                  borderColor: t.chipBorder,
-                },
-              ]}
-            />
-            <View style={styles.sheetRow}>
-              <TouchableOpacity
-                onPress={() => {
-                  setCommentOpen(false);
-                  navigation.navigate('SingleWatch', { watchId: post._id });
-                }}
-              >
-                <Text style={{ color: t.primary, fontWeight: '700' }}>
-                  View all comments
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleComment}
-                disabled={!commentText.trim() || postingComment}
-                style={[
-                  styles.sheetCta,
-                  {
-                    backgroundColor: t.primary,
-                    opacity: commentText.trim() && !postingComment ? 1 : 0.5,
-                  },
-                ]}
-              >
-                {postingComment ? (
-                  <ActivityIndicator color={t.ctaText} />
-                ) : (
-                  <Text style={{ color: t.ctaText, fontWeight: '700' }}>
-                    Post
-                  </Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardSafeView>
-      </Modal>
 
       <Modal
         visible={shareOpen}

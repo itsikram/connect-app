@@ -7,8 +7,8 @@ interface StorySliderSkeletonProps {
   count?: number;
 }
 
-const STORY_WIDTH = 150;
-const STORY_HEIGHT = 230;
+const STORY_WIDTH = 116;
+const STORY_HEIGHT = 176;
 
 const StorySliderSkeleton: React.FC<StorySliderSkeletonProps> = ({ count = 7 }) => {
   const { colors: themeColors } = useTheme();
@@ -24,10 +24,10 @@ const StorySliderSkeleton: React.FC<StorySliderSkeletonProps> = ({ count = 7 }) 
           <View key={index} style={styles.storyItem}>
             <View style={[styles.storyCard, { backgroundColor: themeColors.surface.secondary }]}>
               <View style={styles.profilePicContainer}>
-                <SkeletonBlock width={40} height={40} borderRadius={20} />
+                <SkeletonBlock width={32} height={32} borderRadius={16} />
               </View>
               <View style={styles.imageArea}>
-                <SkeletonBlock width={'90%'} height={150} borderRadius={8} />
+                <SkeletonBlock width={'90%'} height={120} borderRadius={8} />
               </View>
             </View>
           </View>
@@ -39,8 +39,8 @@ const StorySliderSkeleton: React.FC<StorySliderSkeletonProps> = ({ count = 7 }) 
 
 const styles = StyleSheet.create({
   container: {
-    marginTop: 10,
-    marginBottom: 10,
+    marginTop: 8,
+    marginBottom: 8,
     minHeight: STORY_HEIGHT,
   },
   scrollContent: {
@@ -49,18 +49,18 @@ const styles = StyleSheet.create({
   storyItem: {
     width: STORY_WIDTH,
     height: STORY_HEIGHT,
-    marginRight: 10,
+    marginRight: 8,
   },
   storyCard: {
     width: STORY_WIDTH,
     height: STORY_HEIGHT,
-    borderRadius: 10,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   profilePicContainer: {
     position: 'absolute',
-    top: 10,
-    left: 10,
+    top: 8,
+    left: 8,
     zIndex: 2,
   },
   imageArea: {

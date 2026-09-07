@@ -30,8 +30,8 @@ const isExpoTunnelHost = (host: string): boolean =>
   host.endsWith('.ngrok-free.app') ||
   host.endsWith('.loca.lt');
 
-// Tunnel development uses the public server; LAN/localhost development uses
-// the local API so local changes remain available without a tunnel.
+// Tunnel development can still use the local API, which is required for local
+// Ollama. Set EXPO_PUBLIC_LOCAL_API_URL when the computer's LAN address differs.
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
 
@@ -41,7 +41,10 @@ const getDevServerUrl = (): string => {
   const host = hostUri?.split(':')[0];
 
   if (host && isExpoTunnelHost(host)) {
-    return liveServerUrl;
+    return (
+      process.env.EXPO_PUBLIC_LOCAL_API_URL?.trim() ||
+      'http://192.168.1.102:4000'
+    ).replace(/\/$/, '');
   }
 
   if (

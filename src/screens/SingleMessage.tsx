@@ -239,6 +239,30 @@ const mergeCommittedTranscript = (previous = '', incoming = '') => {
   return `${prev} ${next}`.trim();
 };
 
+const clampUploadProgress = (value: number | null | undefined) => {
+  if (!Number.isFinite(value as number)) return 0;
+  return Math.min(100, Math.max(0, Number(value)));
+};
+
+const updateUploadProgressState = (
+  progressEvent: any,
+  setProgress: React.Dispatch<React.SetStateAction<number | null>>,
+) => {
+  const loaded = Number(progressEvent?.loaded ?? 0);
+  const total = Number(progressEvent?.total ?? 0);
+  if (loaded <= 0 && total <= 0) return;
+
+  const progress =
+    total > 0
+      ? clampUploadProgress((loaded / total) * 100)
+      : clampUploadProgress(loaded > 0 ? 50 : 0);
+
+  setProgress(prev => {
+    const previous = typeof prev === 'number' ? prev : 0;
+    return Math.max(previous, progress);
+  });
+};
+
 const VOICE_MESSAGE_RECORDING: Audio.RecordingOptions = {
   ...Audio.RecordingOptionsPresets.HIGH_QUALITY,
   isMeteringEnabled: true,
@@ -449,6 +473,11 @@ const SingleMessage = () => {
   const [highlightedMessageId, setHighlightedMessageId] = useState<
     string | null
   >(null);
+  const [isSearchMode, setIsSearchMode] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResultIds, setSearchResultIds] = useState<string[]>([]);
+  const [searchResultIndex, setSearchResultIndex] = useState(0);
+  const searchInputRef = useRef<TextInput | null>(null);
   const swipeableRefs = useRef<Map<string, any>>(new Map());
   const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
 
@@ -512,8 +541,7 @@ const SingleMessage = () => {
   const isFocused = useIsFocused();
   const [appState, setAppState] = useState(AppState.currentState);
   const isAppActive = appState === 'active';
-  const shouldUseCamera =
-    shareFaceModeEnabled && isFocused && isAppActive;
+  const shouldUseCamera = shareFaceModeEnabled && isFocused && isAppActive;
 
   useLayoutEffect(() => {
     if (!isFocused) {
@@ -937,6 +965,9 @@ const SingleMessage = () => {
   };
   const [isBlocking, setIsBlocking] = useState<boolean>(false);
   const [isBlockedByFriend, setIsBlockedByFriend] = useState<boolean>(false);
+  const [expandedMessageIds, setExpandedMessageIds] = useState<
+    Record<string, boolean>
+  >({});
   const profileRef = useRef(myProfile);
 
   useEffect(() => {
@@ -1903,20 +1934,17 @@ const SingleMessage = () => {
         // In a local development build, the phone must reach the
         // computer over the LAN rather than through localhost or a
         // tunnel. Production builds continue using the live config.
-        let pythonServerUrl = __DEV__
-          ? (config.FACE_SERVICE_URL || '').trim()
-          : '';
+        let pythonServerUrl = '';
         let faceServiceSocketToken =
           process.env.EXPO_PUBLIC_FACE_SERVICE_KEY || '';
         try {
           const faceServiceResponse = await api.get('/face-service-config', {
             timeout: 10000,
           });
-          if (!__DEV__ || !pythonServerUrl) {
-            pythonServerUrl = String(
-              faceServiceResponse.data?.url || '',
-            ).trim();
-          }
+          // Match the web client: the app server is the source of truth for
+          // the currently active face-login service, including LAN/tunnel
+          // changes made after the bundle was built.
+          pythonServerUrl = String(faceServiceResponse.data?.url || '').trim();
           faceServiceSocketToken = String(
             faceServiceResponse.data?.socketToken || faceServiceSocketToken,
           ).trim();
@@ -1947,18 +1975,23 @@ const SingleMessage = () => {
           hasSocketToken: Boolean(faceServiceSocketToken),
         });
 
+        if (emotionServerSocketRef.current) {
+          emotionServerSocketRef.current.removeAllListeners();
+          emotionServerSocketRef.current.disconnect();
+          emotionServerSocketRef.current = null;
+        }
+
         emotionServerSocketRef.current = io(`${pythonServerUrl}/expressions`, {
-          // Keep mobile development on polling. WebSocket upgrades
-          // through a LAN/tunnel can close while FER is processing.
-          transports: ['polling'],
+          // Use the same transport fallback as the working web client.
+          // Socket.IO will use WebSocket when available and fall back to
+          // polling on networks that block upgrades.
+          transports: ['websocket', 'polling'],
           path: '/socket.io',
           reconnection: true,
           reconnectionDelay: 3000,
           reconnectionAttempts: 15,
           timeout: 60000, // Increased timeout to 60s for Render.com cold starts
           forceNew: true,
-          upgrade: false,
-          rememberUpgrade: false,
           // Add additional options for better connection handling
           autoConnect: true,
           // Handle Render.com's potential slow cold starts
@@ -2065,36 +2098,51 @@ const SingleMessage = () => {
     ) => {
       const profileId = String(payload.profileId || '');
       if (!profileId) {
-        console.warn('[SingleMessage] ⚠️ Cannot send detection: missing profileId', context);
+        console.warn(
+          '[SingleMessage] ⚠️ Cannot send detection: missing profileId',
+          context,
+        );
         return;
       }
 
       try {
         if (!isConnectedRef.current) {
-          console.warn('[SingleMessage] 🔌 Main socket disconnected; reconnecting before detection emit', {
-            profileId,
-            ...context,
-          });
+          console.warn(
+            '[SingleMessage] 🔌 Main socket disconnected; reconnecting before detection emit',
+            {
+              profileId,
+              ...context,
+            },
+          );
           await connect(profileId);
         }
 
-        console.log('[SingleMessage] 📡 Sending detection to application server', {
-          connected: isConnectedRef.current,
-          ...payload,
-          ...context,
-        });
-        emit('emotion_change', payload, (result: any) => {
-          console.log('[SingleMessage] 📡 Application server detection acknowledgement:', {
-            result,
+        console.log(
+          '[SingleMessage] 📡 Sending detection to application server',
+          {
+            connected: isConnectedRef.current,
+            ...payload,
             ...context,
-          });
+          },
+        );
+        emit('emotion_change', payload, (result: any) => {
+          console.log(
+            '[SingleMessage] 📡 Application server detection acknowledgement:',
+            {
+              result,
+              ...context,
+            },
+          );
         });
       } catch (error) {
-        console.error('[SingleMessage] ❌ Failed to send detection to application server:', {
-          error,
-          ...payload,
-          ...context,
-        });
+        console.error(
+          '[SingleMessage] ❌ Failed to send detection to application server:',
+          {
+            error,
+            ...payload,
+            ...context,
+          },
+        );
       }
     };
 
@@ -2157,11 +2205,7 @@ const SingleMessage = () => {
             confidence,
           });
           const profileId = myProfile?._id;
-          if (
-            shareFaceModeEnabledRef.current &&
-            profileId &&
-            currentFriendId
-          ) {
+          if (shareFaceModeEnabledRef.current && profileId && currentFriendId) {
             console.log('[SingleMessage] 📤 Forwarding expression to friend', {
               profileId,
               friendId: currentFriendId,
@@ -2170,28 +2214,34 @@ const SingleMessage = () => {
               confidence,
               appSocketConnected: isConnectedRef.current,
             });
-            void sendRealtimeEmotion({
-              profileId,
-              emotion: `${emoji} ${label}`,
-              emotionText: label,
-              emoji,
-              friendId: currentFriendId,
-              confidence,
-              quality: confidence,
-              expression: action,
-            }, {
-              friendId: currentFriendId,
-              expression: action,
-            });
+            void sendRealtimeEmotion(
+              {
+                profileId,
+                emotion: `${emoji} ${label}`,
+                emotionText: label,
+                emoji,
+                friendId: currentFriendId,
+                confidence,
+                quality: confidence,
+                expression: action,
+              },
+              {
+                friendId: currentFriendId,
+                expression: action,
+              },
+            );
           } else {
-            console.warn('[SingleMessage] ⏭️ Detection not sent to application server:', {
-              reason: !shareFaceModeEnabledRef.current
-                ? 'emotion sharing disabled'
-                : !profileId
+            console.warn(
+              '[SingleMessage] ⏭️ Detection not sent to application server:',
+              {
+                reason: !shareFaceModeEnabledRef.current
+                  ? 'emotion sharing disabled'
+                  : !profileId
                   ? 'missing profileId'
                   : 'missing friendId',
-              label,
-            });
+                label,
+              },
+            );
           }
         }
         return;
@@ -2318,31 +2368,34 @@ const SingleMessage = () => {
               } → ${emoji} ${label} | Emitting immediately`,
             );
 
-            void sendRealtimeEmotion({
-              profileId: currentProfileId,
-              emotion: `${emoji} ${label}`,
-              emotionText: label,
-              emoji,
-              friendId: currentFriendId,
-              confidence: Math.round(confidence * 100) / 100, // Use current frame confidence for immediate emission
-              quality: Math.round(confidence * 100) / 100,
-              // Include expression data
-              expression: latestExpressionData.dominantExpression || 'none',
-              expressionData: {
-                dominant: latestExpressionData.dominantExpression || 'none',
-                intensity: latestExpressionData.expressionIntensity || 0,
-                score: latestExpressionData.expressionScore || 0,
-                allExpressions: latestExpressionData.allExpressions || {},
+            void sendRealtimeEmotion(
+              {
+                profileId: currentProfileId,
+                emotion: `${emoji} ${label}`,
+                emotionText: label,
+                emoji,
+                friendId: currentFriendId,
+                confidence: Math.round(confidence * 100) / 100, // Use current frame confidence for immediate emission
+                quality: Math.round(confidence * 100) / 100,
+                // Include expression data
+                expression: latestExpressionData.dominantExpression || 'none',
+                expressionData: {
+                  dominant: latestExpressionData.dominantExpression || 'none',
+                  intensity: latestExpressionData.expressionIntensity || 0,
+                  score: latestExpressionData.expressionScore || 0,
+                  allExpressions: latestExpressionData.allExpressions || {},
+                },
+                // Include all detected expressions
+                detectedExpressions:
+                  latestExpressionData.detectedExpressions || [],
+                // Include all emotion scores
+                emotionScores: latestExpressionData.allEmotions || {},
               },
-              // Include all detected expressions
-              detectedExpressions:
-                latestExpressionData.detectedExpressions || [],
-              // Include all emotion scores
-              emotionScores: latestExpressionData.allEmotions || {},
-            }, {
-              friendId: currentFriendId,
-              expression: latestExpressionData.dominantExpression || 'none',
-            });
+              {
+                friendId: currentFriendId,
+                expression: latestExpressionData.dominantExpression || 'none',
+              },
+            );
             console.log(
               `[SingleMessage] 📤 ⚡ FAST Emotion & Expression emitted immediately to friendId: ${currentFriendId}`,
               {
@@ -2360,14 +2413,17 @@ const SingleMessage = () => {
             );
           }
         } else {
-          console.warn('[SingleMessage] ⏭️ Detection not sent to application server:', {
-            reason: !shareFaceModeEnabledRef.current
-              ? 'emotion sharing disabled'
-              : !currentProfileId
+          console.warn(
+            '[SingleMessage] ⏭️ Detection not sent to application server:',
+            {
+              reason: !shareFaceModeEnabledRef.current
+                ? 'emotion sharing disabled'
+                : !currentProfileId
                 ? 'missing profileId'
                 : 'missing friendId',
-            label,
-          });
+              label,
+            },
+          );
         }
 
         lastEmotionTimestampRef.current = Date.now();
@@ -2440,9 +2496,9 @@ const SingleMessage = () => {
 
       // Ensure socket is connected
       if (!emotionServerSocketRef.current?.connected) {
-        initializeEmotionServerSocket();
-        // Wait a bit for connection (same as web version - 500ms)
-        await new Promise<void>(resolve => setTimeout(() => resolve(), 500));
+        // Await initialization so the first frame cannot race the socket
+        // creation. This is especially important on mobile after a cold start.
+        await initializeEmotionServerSocket();
         if (!emotionServerSocketRef.current?.connected) {
           console.warn(
             '[SingleMessage] Emotion server not connected, skipping frame',
@@ -2562,9 +2618,11 @@ const SingleMessage = () => {
         const photoPromise = cameraRef.current.takePictureAsync({
           // FER and the server detector resize frames before inference;
           // avoid uploading multi-megapixel JPEGs from the phone.
-          quality: 0.8,
+          base64: true,
+          quality: 0.4,
+          // Avoid Expo's Android image-processing pipeline hanging between
+          // capture and delivery when frames are taken repeatedly.
           skipProcessing: true,
-          shutterSound: false,
         });
 
         const timeoutPromise = new Promise((_, reject) =>
@@ -2589,10 +2647,14 @@ const SingleMessage = () => {
         detectionStatsRef.current.captureSuccesses += 1;
         logDetectionProgress('capture_success', { reqId });
 
-        // RNFS replaced with Expo FileSystem for compatibility
-        const base64 = await FileSystem.readAsStringAsync(photo.uri, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
+        // Prefer Expo Camera's native base64 result. Reading the temporary
+        // URI separately can fail on Android after the camera closes it.
+        const base64 =
+          typeof photo.base64 === 'string' && photo.base64.length > 0
+            ? photo.base64
+            : await FileSystem.readAsStringAsync(photo.uri, {
+                encoding: FileSystem.EncodingType.Base64,
+              });
         const imageData = `data:image/jpeg;base64,${base64}`;
 
         console.log(
@@ -4062,11 +4124,7 @@ const SingleMessage = () => {
       const uploadRes = await api.post('/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent: any) => {
-          const total = progressEvent.total;
-          const loaded = progressEvent.loaded || 0;
-          if (total) {
-            setUploadProgress(Math.floor((loaded / total) * 100));
-          }
+          updateUploadProgressState(progressEvent, setUploadProgress);
         },
       } as any);
 
@@ -4083,7 +4141,9 @@ const SingleMessage = () => {
       setPendingAttachmentLocal(null);
     } finally {
       setIsUploading(false);
-      setUploadProgress(null);
+      setTimeout(() => {
+        setUploadProgress(prev => (prev === 100 ? null : prev));
+      }, 250);
     }
   };
 
@@ -4304,6 +4364,71 @@ const SingleMessage = () => {
     }
   };
 
+  const findConversationSearchMatches = useCallback(
+    (rawQuery: string) => {
+      const normalizedQuery = rawQuery.trim().toLowerCase();
+      if (!normalizedQuery) {
+        return [] as string[];
+      }
+
+      return messages
+        .filter(message => {
+          const searchableChunks = [
+            message.message,
+            message.attachment,
+            message.parent?.message,
+            message.parent?.attachment,
+            message.senderId,
+          ]
+            .filter(Boolean)
+            .map(value => String(value).toLowerCase());
+
+          return searchableChunks.some(chunk =>
+            chunk.includes(normalizedQuery),
+          );
+        })
+        .map(message => String(message._id));
+    },
+    [messages],
+  );
+
+  const runConversationSearch = useCallback(
+    (nextQuery?: string, shouldFocusFirst = true) => {
+      const trimmedQuery = (nextQuery ?? searchQuery).trim();
+      if (!trimmedQuery) {
+        setSearchResultIds([]);
+        setSearchResultIndex(0);
+        return;
+      }
+
+      const matches = findConversationSearchMatches(trimmedQuery);
+      setSearchResultIds(matches);
+      if (!matches.length) {
+        setSearchResultIndex(0);
+        Alert.alert('No matches', `No messages match “${trimmedQuery}”.`);
+        return;
+      }
+
+      const targetIndex = shouldFocusFirst ? 0 : searchResultIndex;
+      const safeIndex = Math.min(targetIndex, matches.length - 1);
+      setSearchResultIndex(safeIndex);
+      scrollToMessage(matches[safeIndex]);
+    },
+    [findConversationSearchMatches, searchQuery, searchResultIndex],
+  );
+
+  const moveToNextSearchResult = useCallback(
+    (direction: 1 | -1) => {
+      if (!searchResultIds.length) return;
+      const nextIndex =
+        (searchResultIndex + direction + searchResultIds.length) %
+        searchResultIds.length;
+      setSearchResultIndex(nextIndex);
+      scrollToMessage(searchResultIds[nextIndex]);
+    },
+    [searchResultIds, searchResultIndex],
+  );
+
   const loadOldMessages = useCallback(async () => {
     if (!friend?._id || !myProfile?._id) return;
     if (!hasMoreMessagesRef.current) return;
@@ -4507,6 +4632,9 @@ const SingleMessage = () => {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isMyMessage = item.senderId === myProfile?._id;
+    const hasLongText =
+      typeof item.message === 'string' && item.message.trim().length > 200;
+    const isExpanded = Boolean(expandedMessageIds[item._id]);
 
     return (
       <Swipeable
@@ -4786,17 +4914,44 @@ const SingleMessage = () => {
                   </View>
                 ) : (
                   /* Text messages */
-                  <Text
-                    style={{
-                      color: isMyMessage
-                        ? chatTheme.colors.sentText
-                        : chatTheme.colors.recvText,
-                      fontSize: 15,
-                      lineHeight: 20,
-                    }}
-                  >
-                    {item.message}
-                  </Text>
+                  <View>
+                    <Text
+                      style={{
+                        color: isMyMessage
+                          ? chatTheme.colors.sentText
+                          : chatTheme.colors.recvText,
+                        fontSize: 15,
+                        lineHeight: 20,
+                      }}
+                      numberOfLines={hasLongText && !isExpanded ? 5 : undefined}
+                    >
+                      {item.message}
+                    </Text>
+                    {hasLongText ? (
+                      <TouchableOpacity
+                        onPress={() =>
+                          setExpandedMessageIds(prev => ({
+                            ...prev,
+                            [item._id]: !Boolean(prev[item._id]),
+                          }))
+                        }
+                        activeOpacity={0.8}
+                        style={{ marginTop: 6, alignSelf: 'flex-start' }}
+                      >
+                        <Text
+                          style={{
+                            color: isMyMessage
+                              ? 'rgba(255,255,255,0.82)'
+                              : chatTheme.colors.accent,
+                            fontSize: 12,
+                            fontWeight: '600',
+                          }}
+                        >
+                          {isExpanded ? 'Show less' : 'Show more'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
                 )}
 
                 {/* Images */}
@@ -4809,7 +4964,7 @@ const SingleMessage = () => {
                         width: 220,
                         height: 220,
                         borderRadius: 12,
-                        marginTop: 6,
+                        marginTop: item.message || item.parent ? 3 : 0,
                       }}
                       resizeMode="cover"
                     />
@@ -5578,6 +5733,146 @@ const SingleMessage = () => {
             {chatTheme.loveRain ? (
               <LoveEmojiRain burstId={loveRainBurst} />
             ) : null}
+            {isSearchMode ? (
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  paddingHorizontal: 10,
+                  paddingTop: 10,
+                  paddingBottom: 8,
+                  backgroundColor: themeColors.surface.primary,
+                  borderBottomWidth: 1,
+                  borderBottomColor: themeColors.border.primary,
+                  zIndex: 4,
+                }}
+              >
+                <View
+                  style={{
+                    flex: 1,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    backgroundColor: isDarkMode
+                      ? 'rgba(255,255,255,0.05)'
+                      : 'rgba(0,0,0,0.04)',
+                    borderRadius: 12,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                  }}
+                >
+                  <Icon
+                    name="search"
+                    size={18}
+                    color={themeColors.text.secondary}
+                  />
+                  <TextInput
+                    ref={searchInputRef}
+                    value={searchQuery}
+                    onChangeText={value => setSearchQuery(value)}
+                    onSubmitEditing={() => runConversationSearch(searchQuery)}
+                    placeholder="Search messages"
+                    placeholderTextColor={themeColors.text.secondary}
+                    style={{
+                      flex: 1,
+                      marginLeft: 8,
+                      color: themeColors.text.primary,
+                      fontSize: 15,
+                      paddingVertical: 0,
+                    }}
+                    returnKeyType="search"
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                  {searchQuery ? (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setSearchQuery('');
+                        setSearchResultIds([]);
+                        setSearchResultIndex(0);
+                      }}
+                      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                    >
+                      <Icon
+                        name="close"
+                        size={18}
+                        color={themeColors.text.secondary}
+                      />
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
+
+                <TouchableOpacity
+                  onPress={() => runConversationSearch(searchQuery)}
+                  style={{
+                    marginLeft: 8,
+                    paddingHorizontal: 10,
+                    paddingVertical: 8,
+                    borderRadius: 10,
+                    backgroundColor: chatTheme.colors.accent,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: '#041018',
+                      fontWeight: '700',
+                      fontSize: 12,
+                    }}
+                  >
+                    Search
+                  </Text>
+                </TouchableOpacity>
+
+                {searchResultIds.length > 0 ? (
+                  <TouchableOpacity
+                    onPress={() => moveToNextSearchResult(1)}
+                    style={{
+                      marginLeft: 6,
+                      width: 34,
+                      height: 34,
+                      borderRadius: 10,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: isDarkMode
+                        ? 'rgba(255,255,255,0.06)'
+                        : 'rgba(0,0,0,0.04)',
+                    }}
+                  >
+                    <Icon
+                      name="keyboard-arrow-down"
+                      size={22}
+                      color={themeColors.text.primary}
+                    />
+                  </TouchableOpacity>
+                ) : null}
+
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsSearchMode(false);
+                    setSearchQuery('');
+                    setSearchResultIds([]);
+                    setSearchResultIndex(0);
+                    setHighlightedMessageId(null);
+                  }}
+                  style={{
+                    marginLeft: 6,
+                    width: 34,
+                    height: 34,
+                    borderRadius: 10,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    backgroundColor: isDarkMode
+                      ? 'rgba(255,255,255,0.06)'
+                      : 'rgba(0,0,0,0.04)',
+                  }}
+                >
+                  <Icon
+                    name="close"
+                    size={20}
+                    color={themeColors.text.primary}
+                  />
+                </TouchableOpacity>
+              </View>
+            ) : null}
             <FlatList
               ref={flatListRef}
               data={listData}
@@ -6344,9 +6639,12 @@ const SingleMessage = () => {
                   }}
                   onPress={() => {
                     setOptionMenuVisible(false);
-                    Alert.alert(
-                      'Search',
-                      'Search in conversation feature coming soon!',
+                    setSearchQuery('');
+                    setSearchResultIds([]);
+                    setSearchResultIndex(0);
+                    setIsSearchMode(true);
+                    requestAnimationFrame(() =>
+                      searchInputRef.current?.focus(),
                     );
                   }}
                 >
@@ -8112,9 +8410,7 @@ const SingleMessage = () => {
       />
 
       {/* Hidden camera for emotion detection - keep mounted and active while on page */}
-      {cameraDevice &&
-        shouldUseCamera &&
-        isCameraPermissionGranted && (
+      {cameraDevice && shouldUseCamera && isCameraPermissionGranted && (
         <View
           style={{
             position: 'absolute',

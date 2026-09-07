@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import KeyboardSafeView from './KeyboardSafeView';
 import { useNavigation } from '@react-navigation/native';
@@ -30,6 +31,15 @@ import {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const ACCENT = '#00D4FF';
+const STORY_FALLBACK_GRADIENT = ['#242526', '#1a1c1e'];
+
+const parseStoryGradient = (bg?: string, fallback: string[] = STORY_FALLBACK_GRADIENT) => {
+  if (!bg) return fallback;
+  const matches = bg.match(/rgba?\([^)]+\)|#[0-9a-fA-F]{3,8}/g);
+  if (matches && matches.length >= 2) return matches.slice(0, 2);
+  if (matches && matches.length === 1) return [matches[0], matches[0]];
+  return fallback;
+};
 
 interface Story {
   _id: string;
@@ -306,6 +316,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
   if (!visible || !activeStory) return null;
 
   const authorName = profileDisplayName(activeStory.author);
+  const gradientColors = parseStoryGradient(activeStory.bgColor);
 
   return (
     <Modal
@@ -375,7 +386,12 @@ const StoryModal: React.FC<StoryModalProps> = ({
             </View>
           </View>
 
-          <View style={[styles.contentContainer, panel ? styles.contentWithPanel : null]}>
+          <LinearGradient
+            colors={gradientColors as [string, string, ...string[]]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={[styles.contentContainer, panel ? styles.contentWithPanel : null]}
+          >
             {imageLoading && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="white" />
@@ -426,7 +442,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
                 )}
               </>
             )}
-          </View>
+          </LinearGradient>
 
           <View style={[styles.footer, !panel && { paddingBottom: Math.max(insets.bottom, 10) }]}>
             <View style={styles.reactRow}>

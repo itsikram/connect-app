@@ -205,6 +205,13 @@ const MediaPlayer = ({ route, navigation }: any) => {
     };
   }, [searchQuery]);
 
+  useEffect(() => {
+    const requestedQuery = String(params.searchQuery || '').trim();
+    if (requestedQuery && requestedQuery !== searchQuery) {
+      setSearchQuery(requestedQuery);
+    }
+  }, [params.searchQuery, searchQuery]);
+
   const videoRef = useRef<any | null>(null);
   const playUrlHandledRef = useRef('');
   const skipPipOnUnmount = useRef(false);
@@ -441,7 +448,11 @@ const MediaPlayer = ({ route, navigation }: any) => {
     if (libraryLoading) return;
     if (playUrlHandledRef.current === playUrl) return;
     playUrlHandledRef.current = playUrl;
-    ingestPlayable(playUrl, params.playTitle || paramsSource?.title, paramsSource?.poster);
+    ingestPlayable(
+      playUrl,
+      params.playTitle || paramsSource?.title,
+      params.playPoster || paramsSource?.poster,
+    );
   }, [
     params.playUrl,
     params.playTitle,
