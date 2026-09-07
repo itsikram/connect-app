@@ -5,6 +5,7 @@ let notifee: any = null;
 let AndroidImportance: any = null;
 let AndroidVisibility: any = null;
 
+if (!isExpoGo()) {
 try {
   const notifeeModule = require('@notifee/react-native');
   notifee = notifeeModule.default;
@@ -13,9 +14,11 @@ try {
 } catch (error) {
   console.log('Notifee not available in pushBackgroundService - using fallback');
 }
+}
 // Firebase messaging removed for Expo compatibility
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import { isExpoGo } from './expoGo';
 
 // Background socket state (module-scoped to persist during service lifetime)
 let backgroundSocket: any = null;

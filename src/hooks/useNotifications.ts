@@ -10,7 +10,7 @@ import {
 import { configureIncomingCallChannels } from '../lib/incomingCallAlerts';
 import { handleIncomingCallNotificationAction, expoActionId, notifeeActionId } from '../lib/callNotificationActions';
 import { consumePendingIncomingCall, dispatchPendingIncomingCall } from '../lib/pendingIncomingCall';
-import { isAndroidExpoGo } from '../lib/expoGo';
+import { isAndroidExpoGo, isExpoGo } from '../lib/expoGo';
 
 interface UseNotificationsProps {
   navigate: (screen: string, params?: any) => void;
@@ -107,6 +107,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
           () => nativeSub.remove(),
         ];
 
+        if (!isExpoGo()) {
         try {
           const notifeeModule = require('@notifee/react-native');
           const notifee = notifeeModule.default;
@@ -133,6 +134,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
             );
           }
         } catch (_) {}
+        }
 
         const pending = await consumePendingIncomingCall();
         if (pending) {

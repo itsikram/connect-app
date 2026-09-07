@@ -443,7 +443,7 @@ const navigationTargets: Partial<
   navigate_media_player: ['Menu', { screen: 'MediaPlayer' }],
   navigate_facebook: ['Menu', { screen: 'Facebook' }],
   navigate_youtube: ['Menu', { screen: 'YouTube' }],
-  navigate_vpn_browser: ['Menu', { screen: 'VpnBrowser' }],
+  navigate_vpn_browser: ['VpnBrowser'],
   navigate_cricbuzz: ['Menu', { screen: 'Cricbuzz' }],
   navigate_maps: ['Menu', { screen: 'GoogleMaps' }],
   navigate_contacts: ['Menu', { screen: 'GoogleContacts' }],
@@ -662,9 +662,12 @@ export async function executeAgentActions(
             : { screen: 'SingleMessage', friendId: resolvedUserId, profileId: resolvedUserId },
         );
       } else if (action.action === 'speak_text') {
-        if (!adapter.speakText || !action.messageText)
+        const text = String(
+          parameters.messageText || action.messageText || '',
+        ).trim();
+        if (!adapter.speakText || !text)
           throw new Error('No text was provided to read.');
-        await adapter.speakText(action.messageText);
+        await adapter.speakText(text);
       } else {
         const handler = {
           start_ludo: adapter.startLudo,

@@ -7,7 +7,7 @@ import { callNotificationService } from './callNotificationService';
 import { emitIncomingCallFromPush, emitRejectCallFromPush } from './callEvents';
 import { getNativeOrExpoPushToken, PUSH_TOKEN_STORAGE_KEY } from './pushToken';
 import config from './config';
-import { isAndroidExpoGo } from './expoGo';
+import { isAndroidExpoGo, isExpoGo } from './expoGo';
 // Background TTS service removed for Expo compatibility
 
 // Import Notifee types and functions - made optional for Expo Go compatibility
@@ -56,6 +56,7 @@ function rejectIncomingCallFromNotification(data: any) {
   });
 }
 
+if (!isExpoGo()) {
 try {
   const notifeeModule = require('@notifee/react-native');
   Notifee = notifeeModule.default;
@@ -64,6 +65,7 @@ try {
   EventType = notifeeModule.EventType;
 } catch (error) {
   console.log('Notifee not available - using expo-notifications only');
+}
 }
 
 // Suppress Firebase deprecation warnings

@@ -157,20 +157,21 @@ const StoryModal: React.FC<StoryModalProps> = ({
 
     const timer = setInterval(() => {
       setProgress((prev) => {
-        if (prev >= 100) {
-          if (hasNext && onNext) {
-            onNext();
-            return 0;
-          }
-          onClose();
-          return 0;
-        }
-        return prev + 2;
+        return Math.min(100, prev + 2);
       });
     }, 100);
 
     return () => clearInterval(timer);
-  }, [visible, story?._id, paused, hasNext, onNext, onClose]);
+  }, [visible, story?._id, paused]);
+
+  useEffect(() => {
+    if (!visible || paused || progress < 100) return;
+    if (hasNext && onNext) {
+      onNext();
+    } else {
+      onClose();
+    }
+  }, [visible, paused, progress, hasNext, onNext, onClose]);
 
   useEffect(() => {
     setProgress(0);

@@ -195,6 +195,7 @@ try {
 import App from './App';
 import { registerRootComponent } from 'expo';
 
+if (!isExpoGo) {
 try {
   const notifeeModule = require('@notifee/react-native');
   const notifee = notifeeModule.default;
@@ -238,5 +239,6 @@ try {
     });
   }
 } catch (_) {}
+}
 
 registerRootComponent(App);

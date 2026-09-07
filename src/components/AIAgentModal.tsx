@@ -59,6 +59,7 @@ import { startBackgroundYoutubeDownload } from '../lib/ytDownloadManager';
 interface Props {
   visible: boolean;
   onClose: () => void;
+  autoStartVoiceLanguage?: AgentSpeechLanguage | null;
 }
 const id = () => `${Date.now()}-${Math.random()}`;
 const welcome = (): AgentMessage => ({
@@ -141,7 +142,11 @@ const getFriendDisplayName = (friend: Record<string, unknown>) => {
   );
 };
 
-const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
+const AIAgentModal: React.FC<Props> = ({
+  visible,
+  onClose,
+  autoStartVoiceLanguage,
+}) => {
   const { colors } = useTheme();
   const { logout, user } = React.useContext(AuthContext);
   const profile = useSelector((state: RootState) => state.profile);
@@ -178,9 +183,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   const [voiceConversation, setVoiceConversation] = React.useState(false);
   const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] = React.useState(false);
   const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
-  const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>(
-    __DEV__ ? 'ollama' : 'gemini',
-  );
+  const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
@@ -505,14 +508,31 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       socketOff('newMessage', handleIncomingMessage);
     };
   }, [profile, socketOff, socketOn, socketSendMessage]);
+  const voiceAutoSendTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearVoiceAutoSend = React.useCallback(() => {
+    if (voiceAutoSendTimerRef.current) {
+      clearTimeout(voiceAutoSendTimerRef.current);
+      voiceAutoSendTimerRef.current = null;
+    }
+  }, []);
+
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
       setInput(text);
       setInterimInput('');
-      if (voiceConversation) setTimeout(() => sendRef.current(), 0);
+      if (!voiceConversation) return;
+      clearVoiceAutoSend();
+      voiceAutoSendTimerRef.current = setTimeout(() => {
+        voiceAutoSendTimerRef.current = null;
+        sendRef.current();
+      }, 1200);
     },
     onInterim: setInterimInput,
   });
+
+  React.useEffect(() => {
+    return () => clearVoiceAutoSend();
+  }, [clearVoiceAutoSend]);
 
   React.useEffect(() => {
     if (!visible) return;
@@ -525,20 +545,15 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         if (!active) return;
         setProviderStatus(status);
         const savedProvider = saved as AIProvider | null;
-        const developmentProvider =
-          __DEV__ &&
-          status.enabled.ollama !== false &&
-          status.configured.ollama
-            ? 'ollama'
-            : null;
         const available = (Object.keys(providerLabels) as AIProvider[]).find(
           provider => status.enabled[provider] !== false && status.configured[provider],
         );
         const savedIsAvailable = savedProvider &&
           status.enabled[savedProvider] !== false &&
           status.configured[savedProvider];
-        const next = developmentProvider ||
-          (savedIsAvailable ? savedProvider : available || status.defaultProvider);
+        const next = savedIsAvailable
+          ? savedProvider
+          : available || status.defaultProvider || 'gemini';
         setSelectedProvider(next);
       })
       .catch(error => console.warn('Failed to load AI providers', error));
@@ -590,6 +605,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
 
   const close = () => {
     generationRef.current += 1;
+    clearVoiceAutoSend();
     requestRef.current?.abort();
     transcribe.stop({ discard: true }).catch(() => {});
     speechControllerRef.current?.stop().catch(() => {});
@@ -598,6 +614,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
   };
 
   const send = async () => {
+    clearVoiceAutoSend();
     const text = input.trim();
     if (!text || loading) return;
     transcribe.stop({ discard: true }).catch(() => {});
@@ -682,7 +699,9 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           };
         }
         const visibleReply = intent.actions?.length
-          ? 'ঠিক আছে, কাজটি করছি।'
+          ? language === 'bn-BD'
+            ? 'ঠিক আছে, কাজটি করছি।'
+            : 'Got it. I’m taking care of that now.'
           : intent.reply || intent.ask?.question || '';
         if (visibleReply) {
           setMessages(previous =>
@@ -860,7 +879,10 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           });
         }
         const results = await executeAgentActions(intent.actions, adapter, {
-          skipConfirmation: autoMode,
+          // Sensitive actions always require an explicit confirmation, including
+          // hands-free mode. This prevents an accidental transcript from sending
+          // messages, starting calls, logging out, or deleting chat history.
+          skipConfirmation: false,
           onResolvedUser: resolved => {
             agentMemoryRef.current = {
               ...agentMemoryRef.current,
@@ -921,6 +943,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           : completed.length
             ? completed.map(result => result.message).join(' ')
             : '';
+        if (shouldSpeak && outcome) speechController.update(outcome, language);
         if (failed.length) {
           setMessages(previous =>
             previous.map(item =>
@@ -975,6 +998,12 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
           ),
         );
       }
+      if (shouldSpeak) {
+        speechController.update(
+          error?.message || 'Sorry, the AI Agent is unavailable.',
+          language,
+        );
+      }
     } finally {
       updateAutoActionRunning(false);
       if (generation === generationRef.current) setLoading(false);
@@ -1004,6 +1033,36 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         },
       },
     ]);
+  const selectVoiceLanguage = React.useCallback(async (nextLanguage: AgentSpeechLanguage) => {
+    setLanguage(nextLanguage);
+    setVoiceLanguageMenuOpen(false);
+    if (!transcribe.supported) {
+      setVoiceConversation(false);
+      Alert.alert('Microphone unavailable', 'Allow microphone access and try again.');
+      return;
+    }
+    setVoiceConversation(true);
+    const started = await transcribe.start(
+      nextLanguage === 'auto' ? undefined : nextLanguage,
+    );
+    if (!started) {
+      setVoiceConversation(false);
+      Alert.alert(
+        'Microphone unavailable',
+        'Allow microphone access and try again.',
+      );
+    }
+  }, [transcribe]);
+
+  React.useEffect(() => {
+    if (!visible || !autoStartVoiceLanguage) return;
+    setLanguage(autoStartVoiceLanguage);
+    setMinimized(true);
+    setVoiceConversation(true);
+    setVoiceLanguageMenuOpen(false);
+    void selectVoiceLanguage(autoStartVoiceLanguage);
+  }, [autoStartVoiceLanguage, selectVoiceLanguage, visible]);
+
   const toggleVoice = async () => {
     if (transcribe.listening) {
       setVoiceConversation(false);
@@ -1161,7 +1220,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
       );
     }
     const results = await executeAgentActions([action], adapter, {
-      skipConfirmation: autoMode,
+      skipConfirmation: false,
       confirm: definition =>
         new Promise<boolean>(resolve => {
           Alert.alert(
@@ -1261,7 +1320,13 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
                 <Text
                   style={[styles.statusText, { color: colors.text.secondary }]}
                 >
-                  {loading ? 'Thinking...' : 'Ready to help'}
+                  {loading
+                    ? 'Thinking...'
+                    : transcribe.listening
+                      ? 'Listening for your command'
+                      : voiceConversation
+                        ? 'Hands-free voice mode'
+                        : 'Ready to help'}
                 </Text>
               </View>
             </View>
@@ -1468,8 +1533,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
                 <Pressable
                   key={option}
                   onPress={() => {
-                    setLanguage(option);
-                    setVoiceLanguageMenuOpen(false);
+                    void selectVoiceLanguage(option);
                   }}
                   style={[styles.voiceLanguageOption, {
                     backgroundColor: language === option ? `${colors.primary}20` : colors.surface.secondary,
@@ -1504,7 +1568,9 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
                 onPress={toggleVoice}
                 disabled={loading || !transcribe.supported}
                 accessibilityLabel={
-                  transcribe.listening ? 'Stop voice input' : 'Start voice input'
+                  transcribe.listening
+                    ? 'Stop hands-free voice commands'
+                    : 'Start hands-free voice commands'
                 }
               >
                 <Icon
@@ -1522,7 +1588,7 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
               value={input}
               onChangeText={setInput}
               multiline
-              placeholder="Message Connect AI..."
+              placeholder="Speak or type a command..."
               placeholderTextColor={colors.text.tertiary}
               style={[
                 styles.input,
@@ -1576,11 +1642,30 @@ const AIAgentModal: React.FC<Props> = ({ visible, onClose }) => {
         </Pressable>
         <Pressable
           style={[styles.agentMiniMic, { backgroundColor: `${colors.primary}20` }]}
+          onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
           onPress={toggleVoice}
           accessibilityLabel="Voice input"
         >
           <Icon name={transcribe.listening ? 'mic' : 'mic-none'} size={20} color={colors.primary} />
         </Pressable>
+        {voiceLanguageMenuOpen && minimized && (
+          <View style={[styles.agentMiniLanguageMenu, { backgroundColor: colors.surface.primary, borderColor: colors.border.primary }]}>
+            {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
+              <Pressable
+                key={`mini-${option}`}
+                onPress={() => {
+                  setVoiceLanguageMenuOpen(false);
+                  void selectVoiceLanguage(option);
+                }}
+                style={[styles.agentMiniMenuOption, { backgroundColor: language === option ? `${colors.primary}20` : colors.surface.secondary }]}
+              >
+                <Text style={[styles.language, { color: language === option ? colors.primary : colors.text.secondary }]}>
+                  {option === 'bn-BD' ? 'বাংলা' : option === 'en-US' ? 'English' : 'Auto'}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
       </Animated.View>
     )}
     </>
@@ -1692,6 +1777,26 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  agentMiniLanguageMenu: {
+    position: 'absolute',
+    right: 0,
+    top: 48,
+    minWidth: 118,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 6,
+    gap: 4,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
+  },
+  agentMiniMenuOption: {
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
   },
   providerOption: { paddingHorizontal: 12, paddingVertical: 10 },
   providerOptionText: { fontSize: 13 },

@@ -65,12 +65,11 @@ export async function requestChatMicPermission(): Promise<boolean> {
   }
 }
 
-const toDeepgramLang = (langCode?: string) =>
-  String(langCode || '')
-    .toLowerCase()
-    .startsWith('bn')
-    ? 'bn'
-    : 'en-US';
+const toDeepgramLang = (langCode?: string) => {
+  const normalized = String(langCode || '').trim();
+  if (!normalized || normalized.toLowerCase() === 'auto') return 'auto';
+  return normalized.toLowerCase().startsWith('bn') ? 'bn' : 'en-US';
+};
 
 const usePcmStream = () => Platform.OS === 'ios';
 
@@ -266,7 +265,7 @@ export default function useComposerLiveTranscribe({
   const pingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const ignoreResultsRef = useRef(false);
   const usedStreamRef = useRef(false);
-  const languageRef = useRef('en-US');
+  const languageRef = useRef('auto');
   const lastPartialRef = useRef('');
   const lastFinalRef = useRef('');
 
@@ -354,6 +353,26 @@ export default function useComposerLiveTranscribe({
     }
   }, [clearPing]);
 
+  const isTerminalSpeechResult = useCallback((payload: any) => {
+    if (payload?.type === 'utterance-end') return true;
+    if (payload?.type !== 'final') return false;
+
+    const explicitFlag =
+      payload.isFinal ??
+      payload.is_final ??
+      payload.final ??
+      payload.speechFinal ??
+      payload.speech_final;
+    if (typeof explicitFlag === 'boolean') return explicitFlag;
+
+    const reason = String(payload.reason || payload.status || '').toLowerCase();
+    if (reason.includes('utterance') || reason.includes('final') || reason.includes('end')) {
+      return true;
+    }
+
+    return false;
+  }, []);
+
   const handleSocketMessage = useCallback((event: any) => {
     let payload: any;
     try {
@@ -386,17 +405,16 @@ export default function useComposerLiveTranscribe({
       const partial = normalizeSpeechText(payload.text || '');
       if (!partial) return;
       lastPartialRef.current = partial;
-      if (payload.isFinal) {
-        emitFinal(partial);
-      } else {
-        onInterimRef.current?.(partial);
-      }
+      // Partial transcripts are for live feedback only. We wait for an
+      // explicit utterance-end or final flag before committing the transcript.
+      onInterimRef.current?.(partial);
       return;
     }
     if (payload?.type === 'final' || payload?.type === 'utterance-end') {
+      if (payload?.type === 'final' && !isTerminalSpeechResult(payload)) return;
       emitFinal(payload.text || lastPartialRef.current);
     }
-  }, []);
+  }, [isTerminalSpeechResult]);
 
   const waitForReady = useCallback(async () => {
     await Promise.race([

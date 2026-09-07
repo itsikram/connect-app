@@ -7,6 +7,7 @@ import { emitIncomingCallFromPush, emitRejectCallFromPush } from './callEvents';
 import { notifyCallerRinging } from './callStatus';
 import { persistPendingIncomingCall } from './pendingIncomingCall';
 import api from './api';
+import { isExpoGo } from './expoGo';
 
 export function isDeclineAction(actionId?: string | null): boolean {
   const id = String(actionId || '');
@@ -61,10 +62,12 @@ export async function handleIncomingCallNotificationAction(
     await stopIncomingCallAlert(parsed.channelName);
     await rejectIncomingCallViaApi(parsed);
     emitRejectCallFromPush(parsed);
+    if (!isExpoGo()) {
     try {
       const notifeeModule = require('@notifee/react-native');
       await notifeeModule.default?.stopForegroundService?.();
     } catch (_) {}
+    }
     return;
   }
 

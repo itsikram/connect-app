@@ -1,5 +1,6 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS, AVPlaybackStatus } from './avCompat';
+import { isExpoGo } from './expoGo';
 
 const PLAYBACK_CHANNEL = 'pip-playback';
 const PLAYBACK_NOTIFICATION_ID = 'pip-playback';
@@ -9,6 +10,7 @@ let AndroidImportance: any = null;
 let AndroidCategory: any = null;
 let AndroidForegroundServiceType: any = null;
 
+if (!isExpoGo()) {
 try {
   const notifeeModule = require('@notifee/react-native');
   notifee = notifeeModule.default;
@@ -16,6 +18,7 @@ try {
   AndroidCategory = notifeeModule.AndroidCategory;
   AndroidForegroundServiceType = notifeeModule.AndroidForegroundServiceType;
 } catch (_) {}
+}
 
 export const configurePipAudioMode = async () => {
   try {

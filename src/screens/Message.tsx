@@ -19,6 +19,7 @@ import { RootState, AppDispatch } from '../store';
 import UserPP from '../components/UserPP';
 import VoiceTextInput from '../components/VoiceTextInput';
 import AIAgentModal from '../components/AIAgentModal';
+import { type AgentSpeechLanguage } from '../services/agentSpeechService';
 import { useNavigation } from '@react-navigation/native';
 import { hideTabBarForChat } from '../lib/chatScreenChrome';
 import { useTheme } from '../contexts/ThemeContext';
@@ -338,6 +339,7 @@ const Message = React.memo(() => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
+  const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = React.useState<AgentSpeechLanguage | null>(null);
   const activeFriendsValue = useSelector(
     (state: RootState) => state.presence.activeFriends,
   );
@@ -549,6 +551,20 @@ const Message = React.memo(() => {
     ].filter(Boolean);
     Alert.alert('Messages', undefined, buttons);
   }, [markAllAsRead, navigation, unreadMessageCount]);
+
+  const openAiAgentWithVoice = useCallback((voiceLanguage: AgentSpeechLanguage | null = null) => {
+    setPendingAiVoiceLanguage(voiceLanguage);
+    setAiAgentVisible(true);
+  }, []);
+
+  const chooseAiVoiceLanguage = useCallback(() => {
+    Alert.alert('Voice input language', 'Choose your voice language', [
+      { text: 'Auto', onPress: () => openAiAgentWithVoice('auto') },
+      { text: 'বাংলা', onPress: () => openAiAgentWithVoice('bn-BD') },
+      { text: 'English', onPress: () => openAiAgentWithVoice('en-US') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  }, [openAiAgentWithVoice]);
 
   const renderMessageItem = useCallback(
     ({ item, index }: { item: any; index: number }) => {
@@ -888,7 +904,8 @@ const Message = React.memo(() => {
             />
           </Pressable>
           <Pressable
-            onPress={() => setAiAgentVisible(true)}
+            onPress={() => openAiAgentWithVoice()}
+            onLongPress={chooseAiVoiceLanguage}
             accessibilityRole="button"
             accessibilityLabel="Open AI Agent"
             hitSlop={8}
@@ -975,7 +992,11 @@ const Message = React.memo(() => {
       />
       <AIAgentModal
         visible={aiAgentVisible}
-        onClose={() => setAiAgentVisible(false)}
+        autoStartVoiceLanguage={pendingAiVoiceLanguage}
+        onClose={() => {
+          setAiAgentVisible(false);
+          setPendingAiVoiceLanguage(null);
+        }}
       />
     </View>
   );

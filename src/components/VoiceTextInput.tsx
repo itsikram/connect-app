@@ -29,6 +29,7 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
   const [language, setLanguage] = useState<'bn-BD' | 'en-US'>('en-US');
   const baseTextRef = useRef(String(value || ''));
   const transcriptUpdateRef = useRef(false);
+  const pendingVoiceTextRef = useRef('');
 
   const applyText = useCallback((text: string) => {
     baseTextRef.current = text;
@@ -37,18 +38,25 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
 
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
-      const next = [baseTextRef.current.trim(), text.trim()].filter(Boolean).join(' ');
-      transcriptUpdateRef.current = true;
-      applyText(next);
+      pendingVoiceTextRef.current = [
+        pendingVoiceTextRef.current.trim(),
+        text.trim(),
+      ].filter(Boolean).join(' ');
     },
-    onInterim: text => {
-      const next = [baseTextRef.current.trim(), text.trim()].filter(Boolean).join(' ');
-      transcriptUpdateRef.current = true;
-      onChangeText?.(next);
-    },
+    onInterim: () => undefined,
   });
 
   useEffect(() => {
+    if (!transcribe.listening && pendingVoiceTextRef.current) {
+      const next = [
+        baseTextRef.current.trim(),
+        pendingVoiceTextRef.current.trim(),
+      ].filter(Boolean).join(' ');
+      pendingVoiceTextRef.current = '';
+      transcriptUpdateRef.current = true;
+      applyText(next);
+      return;
+    }
     if (transcriptUpdateRef.current) {
       transcriptUpdateRef.current = false;
       return;
@@ -91,6 +99,7 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(({
         value={value}
         onChangeText={text => {
           transcriptUpdateRef.current = false;
+          pendingVoiceTextRef.current = '';
           baseTextRef.current = text;
           onChangeText?.(text);
         }}

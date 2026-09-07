@@ -11,6 +11,7 @@ import {
   MAX_RINGTONE_ID,
   normalizeRingtoneId,
 } from './ringtoneAssets';
+import { isExpoGo } from './expoGo';
 
 let notifee: any = null;
 let AndroidImportance: any = null;
@@ -18,6 +19,7 @@ let AndroidVisibility: any = null;
 let AndroidCategory: any = null;
 let AndroidForegroundServiceType: any = null;
 
+if (!isExpoGo()) {
 try {
   const notifeeModule = require('@notifee/react-native');
   notifee = notifeeModule.default;
@@ -27,6 +29,7 @@ try {
   AndroidForegroundServiceType = notifeeModule.AndroidForegroundServiceType;
 } catch (error) {
   console.log('Notifee not available in callNotificationService - using fallback');
+}
 }
 
 export class CallNotificationService {

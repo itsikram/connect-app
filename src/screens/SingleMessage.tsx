@@ -2627,6 +2627,7 @@ const SingleMessage = () => {
           // Avoid Expo's Android image-processing pipeline hanging between
           // capture and delivery when frames are taken repeatedly.
           skipProcessing: true,
+          shutterSound: false,
         });
 
         const timeoutPromise = new Promise((_, reject) =>

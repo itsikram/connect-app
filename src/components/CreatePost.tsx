@@ -23,6 +23,7 @@ type PostData = {
   caption: string;
   urls: string | null;
   type: 'image' | 'video' | null;
+  imageDataUrl?: string;
   location: string;
   feelings: string;
   audience: number;
@@ -45,6 +46,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     caption: '',
     urls: null,
     type: null,
+    imageDataUrl: undefined,
     location: '',
     feelings: '',
     audience: 3, // Default: Only Me
@@ -88,7 +90,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const closeModal = () => {
     if (isUploading) return;
     setModalVisible(false);
-    setPostData({ caption: '', urls: null, type: null, location: '', feelings: '', audience: 3 });
+    setPostData({ caption: '', urls: null, type: null, imageDataUrl: undefined, location: '', feelings: '', audience: 3 });
   };
 
   const handleCaptionChange = (text: string) => setPostData((prev) => ({ ...prev, caption: text }));
@@ -109,7 +111,11 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
             ? 'Write a short caption for a video I just uploaded.'
             : 'Write a short natural caption for Connect.';
 
-      const caption = await generatePostCaption(hint);
+        const caption = await generatePostCaption(
+          hint,
+          undefined,
+          postData.type === 'image' ? postData.imageDataUrl : undefined,
+        );
       if (caption) {
         setPostData((prev) => ({ ...prev, caption }));
       }
@@ -123,7 +129,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     } finally {
       setIsWritingCaption(false);
     }
-  }, [isUploading, isWritingCaption, postData.caption, postData.type, showToast]);
+  }, [isUploading, isWritingCaption, postData.caption, postData.imageDataUrl, postData.type, showToast]);
   const openFeelingsPicker = () => setIsFeelingsPickerVisible(true);
   const closeFeelingsPicker = () => setIsFeelingsPickerVisible(false);
   const openAudiencePicker = () => setIsAudiencePickerVisible(true);
@@ -161,18 +167,22 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           ? ImagePicker.MediaTypeOptions.Images 
           : ImagePicker.MediaTypeOptions.Videos,
         quality: 0.7,
+        base64: mediaType === 'image',
         allowsEditing: true,
       });
       
       if (!result.canceled && result.assets && result.assets[0]) {
         const asset = result.assets[0];
         if (asset.uri) {
-          // When selecting a video, clear any existing images
-          if (mediaType === 'video') {
-            setPostData((prev) => ({ ...prev, urls: asset.uri, type: mediaType }));
-          } else {
-            setPostData((prev) => ({ ...prev, urls: asset.uri, type: mediaType }));
-          }
+          setPostData((prev) => ({
+            ...prev,
+            urls: asset.uri,
+            type: mediaType,
+            imageDataUrl:
+              mediaType === 'image' && asset.base64
+                ? `data:image/jpeg;base64,${asset.base64}`
+                : undefined,
+          }));
         }
       }
     } catch (error) {

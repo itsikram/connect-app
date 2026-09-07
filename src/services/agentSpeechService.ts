@@ -29,6 +29,7 @@ const chooseVoice = (voices: Speech.Voice[], language: string) => {
       const name = `${voice.name || ''} ${voice.identifier || ''}`.toLowerCase();
       return (
         (voiceLanguage === wanted ? 100 : 0) +
+        (prefix === 'bn' && voiceLanguage === 'bn-in' ? 25 : 0) +
         (details.quality?.toLowerCase() === 'enhanced' ? 30 : 0) +
         (name.includes('neural') || name.includes('natural') || name.includes('premium') ? 20 : 0)
       );
@@ -39,7 +40,7 @@ const chooseVoice = (voices: Speech.Voice[], language: string) => {
 
 const speak = (
   text: string,
-  language: Exclude<AgentSpeechLanguage, 'auto'>,
+  language: string,
   generation: number,
   current: () => number,
   voice?: string,
@@ -114,9 +115,16 @@ export function createAgentSpeechController(
         }
         const voices = availableVoices;
         const voice = chooseVoice(voices, resolvedLanguage);
+        // Device TTS engines often expose Bangla as bn-IN rather than bn-BD.
+        // Passing the installed voice's locale improves pronunciation and
+        // avoids silently falling back to an English voice.
+        const spokenLanguage =
+          voice?.language && voice.language.toLowerCase().startsWith('bn')
+            ? voice.language
+            : resolvedLanguage;
         await speak(
           chunk,
-          resolvedLanguage,
+          spokenLanguage as any,
           drainGeneration,
           currentGeneration,
           voice?.identifier,

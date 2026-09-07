@@ -27,6 +27,15 @@ PRIORITIES
 5. Protect user control: set requires_confirmation to true for sensitive or irreversible actions
    when confirmation is appropriate, and never bypass ambiguity or authorization.
 
+REAL-LIFE COMMUNICATION
+- Sound like a thoughtful, emotionally intelligent professional, not a chatbot.
+- For messages the user may send to another person, be warm, clear, tactful, and appropriately
+  brief. Preserve the user's meaning while avoiding pressure, blame, slang, or overpromising.
+- Match the relationship and situation: use a respectful tone for new contacts or work matters,
+  and a warmer tone only when the context supports it. Never claim to be the user.
+- If the user asks for a reply, provide a ready-to-send message. If the intent or recipient is
+  unclear, ask one focused question instead of guessing.
+
 ACTION RULES
 - Return only actions available in the mobile app and use the exact action name in the "action"
   field (not "type"). Give every action a unique id and status "pending".
@@ -51,9 +60,9 @@ Set speak to true when the wording is natural for voice playback. Keep message s
 for a mobile screen. If clarification is needed, ask exactly one specific question and return
 type "question" with no actions.
 `.trim();
-// Development builds use the local Ollama instance by default. Production
-// keeps the server-configured cloud provider behavior.
-const DEFAULT_PROVIDER: AIProvider = __DEV__ ? 'ollama' : 'gemini';
+// Gemini is the cloud default; the provider selector still allows local or
+// other configured providers when needed.
+const DEFAULT_PROVIDER: AIProvider = 'gemini';
 const DEFAULT_MODELS: Record<AIProvider, string> = {
   gemini: 'gemini-2.0-flash',
   openai: 'gpt-4o-mini',
@@ -92,6 +101,12 @@ const toPayloadMessages = (messages: AgentMessage[]) =>
     content: message.content,
   }));
 
+type ImageMessagePart = {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: { url: string };
+};
+
 const parseEvent = (value: string): AgentStreamEvent | null => {
   const line = value.replace(/^data:\s*/i, '').trim();
   if (!line || line === '[DONE]') return { done: true };
@@ -118,13 +133,12 @@ export async function streamAgentReply(
       knownFriends?: Array<{ id: string; name: string; username?: string; bio?: string }>;
     };
   },
+  imageDataUrl?: string,
 ): Promise<string> {
   let providerConfig = providerOptions;
   if (!providerConfig) {
     const providers = (await api.get('/ai-chat/providers')).data;
-    const provider = (__DEV__
-      ? 'ollama'
-      : providers.defaultProvider || DEFAULT_PROVIDER) as AIProvider;
+    const provider = (providers.defaultProvider || DEFAULT_PROVIDER) as AIProvider;
     const model = providers.models?.[provider] || DEFAULT_MODELS[provider];
     providerConfig = { provider, model };
   }
@@ -143,16 +157,40 @@ export async function streamAgentReply(
         providerOptions.memory.knownFriends.slice(0, 60),
       )}`
     : '';
+  const isOllama = providerConfig.provider === 'ollama';
+  const ollamaMemory = providerOptions?.memory
+    ? {
+        activeUser: providerOptions.memory.activeUser,
+        activeProfile: providerOptions.memory.activeProfile,
+        activeConversation: providerOptions.memory.activeConversation,
+      }
+    : undefined;
+  const ollamaMemoryContext = ollamaMemory
+    ? `\n\nActive conversation context:\n${JSON.stringify(ollamaMemory)}`
+    : '';
+  const userContent: string | ImageMessagePart[] = imageDataUrl
+    ? [
+        { type: 'text', text: message },
+        { type: 'image_url', image_url: { url: imageDataUrl } },
+      ]
+    : message;
   const payload = {
     provider: providerConfig.provider,
     model: providerConfig.model,
-    system: SYSTEM_PROMPT + profileContext + memoryContext + friendsContext,
+    system: isOllama
+      ? `${SYSTEM_PROMPT}${ollamaMemoryContext}`.slice(0, 5000)
+      : SYSTEM_PROMPT + profileContext + memoryContext + friendsContext,
     messages: [
-      ...toPayloadMessages(history),
-      { role: 'user', content: message },
+      ...(isOllama
+        ? toPayloadMessages(history.slice(-4)).map(item => ({
+            ...item,
+            content: item.content.slice(-1200),
+          }))
+        : toPayloadMessages(history)),
+      { role: 'user', content: userContent },
     ],
     temperature: 0.25,
-    maxTokens: 400,
+    maxTokens: isOllama ? 220 : 400,
     json: true,
   };
   const token = await getAuthToken();
@@ -288,6 +326,7 @@ const extractCaptionText = (value: string) => {
 export const generatePostCaption = async (
   userRequest = '',
   signal?: AbortSignal,
+  imageDataUrl?: string,
 ): Promise<string> => {
   const request = String(userRequest || '').trim();
   const providerStatus = await fetchAIProviderStatus().catch(() => null);
@@ -314,6 +353,9 @@ export const generatePostCaption = async (
       }],
       () => undefined,
       signal,
+      undefined,
+      undefined,
+      imageDataUrl,
     );
 
     const caption = extractCaptionText(response);

@@ -24,6 +24,7 @@ import AppGrid from '../components/AppGrid';
 import ProfileImage from '../components/ProfileImage';
 import VerifiedName from '../components/VerifiedName';
 import AIAgentModal from '../components/AIAgentModal';
+import { type AgentSpeechLanguage } from '../services/agentSpeechService';
 import { sampleApps, AppItem } from '../data/appData';
 import LudoGameSVG from './LudoGameSVG';
 
@@ -58,6 +59,7 @@ const Menu = () => {
   const [query, setQuery] = useState('');
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [aiAgentVisible, setAiAgentVisible] = useState(false);
+  const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = useState<AgentSpeechLanguage | null>(null);
 
   const friendsCount = Array.isArray(myProfile?.friends) ? myProfile.friends.length : 0;
   const normalizedQuery = query.trim().toLowerCase();
@@ -160,6 +162,20 @@ const Menu = () => {
     ]);
   };
 
+  const openAiAgentWithVoice = (voiceLanguage: AgentSpeechLanguage | null = null) => {
+    setPendingAiVoiceLanguage(voiceLanguage);
+    setAiAgentVisible(true);
+  };
+
+  const chooseAiVoiceLanguage = () => {
+    Alert.alert('Voice input language', 'Choose your voice language', [
+      { text: 'Auto', onPress: () => openAiAgentWithVoice('auto') },
+      { text: 'বাংলা', onPress: () => openAiAgentWithVoice('bn-BD') },
+      { text: 'English', onPress: () => openAiAgentWithVoice('en-US') },
+      { text: 'Cancel', style: 'cancel' },
+    ]);
+  };
+
   if (isLudoGameActive) {
     return <LudoGameSVG />;
   }
@@ -197,7 +213,8 @@ const Menu = () => {
             </Text>
           </View>
           <Pressable
-            onPress={() => setAiAgentVisible(true)}
+            onPress={() => openAiAgentWithVoice()}
+            onLongPress={chooseAiVoiceLanguage}
             accessibilityRole="button"
             accessibilityLabel="Open AI Agent"
             hitSlop={8}
@@ -426,7 +443,14 @@ const Menu = () => {
           </Pressable>
         )}
       </ScrollView>
-      <AIAgentModal visible={aiAgentVisible} onClose={() => setAiAgentVisible(false)} />
+      <AIAgentModal
+        visible={aiAgentVisible}
+        autoStartVoiceLanguage={pendingAiVoiceLanguage}
+        onClose={() => {
+          setAiAgentVisible(false);
+          setPendingAiVoiceLanguage(null);
+        }}
+      />
     </SafeAreaView>
   );
 };
