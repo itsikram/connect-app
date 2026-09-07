@@ -862,12 +862,6 @@ const SingleMessage = () => {
   const [friendEmotion, setFriendEmotion] = useState<string | null>('');
   const [friendExpression, setFriendExpression] = useState<string | null>(null); // Store friend's expression
   const [myEmotion, setMyEmotion] = useState<string | null>(null);
-  const [expressionModalVisible, setExpressionModalVisible] = useState(false);
-  const [latestExpression, setLatestExpression] = useState<{
-    label: string;
-    confidence: number;
-    baseEmotion?: string;
-  } | null>(null);
   const [isBlocked, setIsBlocked] = useState<boolean>(() =>
     listHasId(myProfile?.blockedUsers, friend?._id),
   );
@@ -2025,14 +2019,6 @@ const SingleMessage = () => {
         // Listen for emotion detection results using ref to get latest handler
         emotionServerSocketRef.current.on('expression_update', data => {
           detectionStatsRef.current.updatesReceived += 1;
-          if (typeof data?.label === 'string') {
-            setLatestExpression({
-              label: data.label,
-              confidence: Number(data.confidence) || 0,
-              baseEmotion: data.base_emotion,
-            });
-            setExpressionModalVisible(true);
-          }
           const responseLatencyMs = lastFrameSentAtRef.current
             ? Date.now() - lastFrameSentAtRef.current
             : null;
@@ -2578,6 +2564,7 @@ const SingleMessage = () => {
           // avoid uploading multi-megapixel JPEGs from the phone.
           quality: 0.2,
           skipProcessing: true,
+          shutterSound: false,
         });
 
         const timeoutPromise = new Promise((_, reject) =>
@@ -8097,82 +8084,6 @@ const SingleMessage = () => {
         friendProfile={friend}
       />
 
-      <Modal
-        visible={expressionModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setExpressionModalVisible(false)}
-      >
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.45)',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <View
-            style={{
-              width: '82%',
-              borderRadius: 18,
-              padding: 22,
-              backgroundColor: chatTheme.colors.recvBg,
-              borderWidth: 1,
-              borderColor: chatTheme.colors.recvBorder,
-              alignItems: 'center',
-            }}
-          >
-            <Text
-              style={{
-                color: themeColors.text.primary,
-                fontSize: 18,
-                fontWeight: '700',
-                marginBottom: 14,
-              }}
-            >
-              Live Expression
-            </Text>
-            <Text style={{ fontSize: 38, marginBottom: 8 }}>
-              {latestExpression?.label === 'happy' ? '😊' :
-                latestExpression?.label === 'sad' ? '😢' :
-                latestExpression?.label === 'angry' ? '😠' :
-                latestExpression?.label === 'surprised' ? '😲' : '😐'}
-            </Text>
-            <Text
-              style={{
-                color: themeColors.text.primary,
-                fontSize: 24,
-                fontWeight: '700',
-                textTransform: 'capitalize',
-              }}
-            >
-              {latestExpression?.label || 'Waiting...'}
-            </Text>
-            <Text
-              style={{
-                color: themeColors.text.secondary,
-                fontSize: 14,
-                marginTop: 8,
-              }}
-            >
-              Confidence: {Math.round((latestExpression?.confidence || 0) * 100)}%
-            </Text>
-            <TouchableOpacity
-              onPress={() => setExpressionModalVisible(false)}
-              style={{
-                marginTop: 18,
-                paddingHorizontal: 24,
-                paddingVertical: 10,
-                borderRadius: 10,
-                backgroundColor: chatTheme.colors.accent,
-              }}
-            >
-              <Text style={{ color: '#fff', fontWeight: '700' }}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {/* Hidden camera for emotion detection - keep mounted and active while on page */}
       {cameraDevice &&
         shouldUseCamera &&
@@ -8194,6 +8105,7 @@ const SingleMessage = () => {
             ref={handleCameraRef}
             facing="front"
             mode="picture"
+            mute
             // Keep the native camera active for the detector while
             // this screen owns it; the interval already pauses
             // when the app is not focused.
