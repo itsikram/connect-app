@@ -194,6 +194,7 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
     created.muted = Boolean(isMuted);
     if (shouldPlay) created.play();
   });
+  const videoViewRef = React.useRef<any>(null);
 
   useEffect(() => {
     player.loop = Boolean(isLooping);
@@ -243,9 +244,11 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
     pauseAsync: async () => { player.pause(); },
     setPositionAsync: async (milliseconds: number) => { player.currentTime = milliseconds / 1000; },
     getStatusAsync: async () => ({ isLoaded: player.status === 'readyToPlay', isPlaying: player.playing, positionMillis: player.currentTime * 1000, durationMillis: player.duration * 1000 }),
-  }), [player]);
+    enterFullscreen: async () => { await videoViewRef.current?.enterFullscreen?.(); },
+    exitFullscreen: async () => { await videoViewRef.current?.exitFullscreen?.(); },
+  }), []);
 
-  return <VideoView {...viewProps} player={player} nativeControls={Boolean(useNativeControls)} contentFit={resizeMode || 'contain'} />;
+  return <VideoView ref={videoViewRef} {...viewProps} player={player} fullscreenOptions={{ enable: true, orientation: 'landscape' }} nativeControls={Boolean(useNativeControls)} contentFit={resizeMode || 'contain'} />;
 });
 
 export type AVPlaybackStatus = any;

@@ -47,6 +47,7 @@
     "expo-location": "~57.0.15",
     "expo-media-library": "~57.0.4",
     "expo-notifications": "~57.0.16",
+    "expo-screen-orientation": "~9.0.7",
     "expo-speech": "~57.0.2",
     "expo-status-bar": "~57.0.1",
     "expo-task-manager": "~57.0.15",

@@ -92,6 +92,7 @@ export const normalizePlaylistItem = (item: any): PlaylistItem | null => {
     type: item.type || 'url',
     thumbnail: item.thumbnail || '',
     sourceId: item.sourceId || item.savedVideoId || item.watchId || '',
+    youtubeId: item.youtubeId || undefined,
     online: item.online !== false,
   };
 };
@@ -354,6 +355,27 @@ export const savePlayQueue = async (items: QueueItem[]) => {
       playCount: clampPlayCount(playCount),
     })),
   );
+};
+
+export type SavedPlaylist = {
+  _id: string;
+  name: string;
+  items: QueueItem[];
+  updatedAt?: string;
+};
+
+export const loadSavedPlaylists = async (): Promise<SavedPlaylist[]> => {
+  const response = await api.get('/video-playlists');
+  return Array.isArray(response.data?.data) ? response.data.data : [];
+};
+
+export const saveNamedPlaylist = async (name: string, items: QueueItem[]): Promise<SavedPlaylist | undefined> => {
+  const response = await api.post('/video-playlists', { name, items });
+  return response.data?.data;
+};
+
+export const deleteNamedPlaylist = async (id: string) => {
+  await api.delete(`/video-playlists/${id}`);
 };
 
 export const loadPlaybackState = async (): Promise<PlaybackState | null> => {

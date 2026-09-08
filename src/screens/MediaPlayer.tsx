@@ -19,6 +19,7 @@ import {
   AppState,
   AppStateStatus,
 } from 'react-native';
+import * as ScreenOrientation from 'expo-screen-orientation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { useFocusEffect } from '@react-navigation/native';
@@ -76,8 +77,12 @@ import {
   SORT_OPTIONS,
   getCachedSavedPlaylist,
   getCachedWatchPlaylist,
+  loadSavedPlaylists,
+  saveNamedPlaylist,
+  deleteNamedPlaylist,
   PlaylistItem,
   QueueItem,
+  SavedPlaylist,
   PlaybackState,
   FilterId,
   SortId,
@@ -155,6 +160,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [videoTitle, setVideoTitle] = useState('');
   const [isPlaying, setIsPlaying] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [filter, setFilter] = useState<FilterId>('all');
   const [sortMode, setSortMode] = useState<SortId>('custom');
   const [searchQuery, setSearchQuery] = useState('');
@@ -172,6 +178,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [playQueue, setPlayQueue] = useState<QueueItem[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
   const [playPass, setPlayPass] = useState(1);
+  const [savedPlaylists, setSavedPlaylists] = useState<SavedPlaylist[]>([]);
+  const [playlistName, setPlaylistName] = useState('');
+  const [savingPlaylist, setSavingPlaylist] = useState(false);
   const [mediaReady, setMediaReady] = useState(false);
   const [videoPosition, setVideoPosition] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
@@ -248,13 +257,19 @@ const MediaPlayer = ({ route, navigation }: any) => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [custom, order, queue, cachedWatch, cachedSaved, playbackState] = await Promise.all([
+      const [custom, order, queue, cachedWatch, cachedSaved, playbackState, remotePlaylists] = await Promise.all([
         loadCustomPlaylist(),
         loadPlaylistOrder(),
         loadPlayQueue(),
         getCachedWatchPlaylist(),
         getCachedSavedPlaylist(),
         loadPlaybackState(),
+        myProfileId
+          ? loadSavedPlaylists().catch((error) => {
+              console.error('Failed to load saved playlists:', error);
+              return [];
+            })
+          : Promise.resolve([]),
       ]);
       if (cancelled) return;
       setCustomVideos(custom);
@@ -263,13 +278,14 @@ const MediaPlayer = ({ route, navigation }: any) => {
       if (cachedWatch?.length) setWatchVideos(cachedWatch);
       if (cachedSaved?.length) setSavedVideos(cachedSaved);
       savedPlaybackRef.current = playbackState;
+      setSavedPlaylists(remotePlaylists);
       setHydrated(true);
       setLibraryLoading(!(cachedWatch?.length || cachedSaved?.length || custom.length));
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [myProfileId]);
 
   const allVideos = useMemo(
     () => mergePlaylist(watchVideos, savedVideos, customVideos),
@@ -733,6 +749,32 @@ const MediaPlayer = ({ route, navigation }: any) => {
     setIsPlaying(false);
   }, []);
 
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (isFullscreen) {
+        await videoRef.current?.exitFullscreen?.();
+        await ScreenOrientation.unlockAsync();
+        setIsFullscreen(false);
+        return;
+      }
+
+      await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
+      await videoRef.current?.enterFullscreen?.();
+      setIsFullscreen(true);
+    } catch (error) {
+      console.error('Unable to toggle video fullscreen:', error);
+      await ScreenOrientation.unlockAsync().catch(() => {});
+      setIsFullscreen(false);
+      Alert.alert('Fullscreen unavailable', 'This device could not rotate the video to fullscreen.');
+    }
+  }, [isFullscreen]);
+
+  useEffect(() => {
+    return () => {
+      ScreenOrientation.unlockAsync().catch(() => {});
+    };
+  }, []);
+
   const handleVideoEnd = useCallback(() => {
     const item = currentPlaybackRef.current;
     const times = clampPlayCount(item?.playCount);
@@ -928,7 +970,19 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const handleSelectYoutubeResult = useCallback(async (result: any) => {
     if (!result?.url) return;
     const youtubeId = result.videoId;
-    const existingWatch = watchVideos.find((video) => video.youtubeId === youtubeId);
+    const existingWatch =
+      (result.localWatch?.videoUrl &&
+        normalizePlaylistItem({
+          id: `watch-${result.localWatch._id}`,
+          sourceId: result.localWatch._id,
+          url: result.localWatch.videoUrl,
+          title: result.localWatch.caption || result.title,
+          thumbnail: result.localWatch.thumbnail || result.thumbnail,
+          type: 'watch',
+          online: true,
+          youtubeId: result.localWatch.youtubeId || youtubeId,
+        })) ||
+      watchVideos.find((video) => video.youtubeId === youtubeId);
     if (existingWatch) {
       addToPlayQueue(existingWatch);
       setSearchQuery('');
@@ -1059,6 +1113,49 @@ const MediaPlayer = ({ route, navigation }: any) => {
     setPlayQueue([]);
     setQueueIndex(0);
     setPlayPass(1);
+  }, []);
+
+  const saveCurrentPlaylist = useCallback(async () => {
+    const name = playlistName.trim();
+    if (!name || playQueue.length === 0 || savingPlaylist) return;
+    setSavingPlaylist(true);
+    try {
+      const saved = await saveNamedPlaylist(name, playQueue);
+      if (saved) {
+        setSavedPlaylists((prev) => [saved, ...prev.filter((item) => item._id !== saved._id)]);
+        setPlaylistName('');
+        Alert.alert('Playlist saved', `"${saved.name}" is available on your other devices.`);
+      }
+    } catch (error: any) {
+      Alert.alert('Could not save playlist', error?.response?.data?.error || 'Please try again.');
+    } finally {
+      setSavingPlaylist(false);
+    }
+  }, [playlistName, playQueue, savingPlaylist]);
+
+  const loadNamedPlaylist = useCallback((playlist: SavedPlaylist) => {
+    if (!playlist.items?.length) return;
+    setPlayQueue(playlist.items);
+    setQueueIndex(0);
+    setPlayPass(1);
+  }, []);
+
+  const removeNamedPlaylist = useCallback((playlist: SavedPlaylist) => {
+    Alert.alert('Delete playlist?', `Remove "${playlist.name}" from your saved playlists?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteNamedPlaylist(playlist._id);
+            setSavedPlaylists((prev) => prev.filter((item) => item._id !== playlist._id));
+          } catch (error: any) {
+            Alert.alert('Could not delete playlist', error?.response?.data?.error || 'Please try again.');
+          }
+        },
+      },
+    ]);
   }, []);
 
   const applyQueueReorder = useCallback((fromIndex: number, toIndex: number) => {
@@ -1451,6 +1548,11 @@ const MediaPlayer = ({ route, navigation }: any) => {
                 {watchPip && !isThisPip ? (
                   <ToolBtn icon="picture-in-picture-alt" onPress={minimizeToPip} {...toolBtnTheme} />
                 ) : null}
+                <ToolBtn
+                  icon={isFullscreen ? 'fullscreen-exit' : 'fullscreen'}
+                  onPress={toggleFullscreen}
+                  {...toolBtnTheme}
+                />
               </View>
             </View>
           ) : (
@@ -1582,6 +1684,49 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
           <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
             <View style={styles.cardHeader}>
+              <Text style={[styles.cardTitle, { color: t.text }]}>Saved playlists</Text>
+              <Text style={[styles.count, { color: t.muted }]}>{savedPlaylists.length}</Text>
+            </View>
+            {myProfileId ? (
+              <>
+                <View style={styles.playlistSaveForm}>
+                  <TextInput
+                    style={[styles.playlistNameInput, { color: t.text, borderColor: t.border }]}
+                    placeholder="Playlist name"
+                    placeholderTextColor={t.muted}
+                    value={playlistName}
+                    maxLength={120}
+                    onChangeText={setPlaylistName}
+                  />
+                  <Pressable
+                    style={[styles.smallBtn, { backgroundColor: t.primary }]}
+                    disabled={!playlistName.trim() || playQueue.length === 0 || savingPlaylist}
+                    onPress={saveCurrentPlaylist}
+                  >
+                    {savingPlaylist ? <ActivityIndicator color={t.ctaText} /> : <Text style={[styles.smallBtnText, { color: t.ctaText }]}>Save</Text>}
+                  </Pressable>
+                </View>
+                {savedPlaylists.length > 0 ? savedPlaylists.map((playlist) => (
+                  <View key={playlist._id} style={[styles.savedPlaylistRow, { borderColor: t.border }]}>
+                    <Pressable style={styles.savedPlaylistLoad} onPress={() => loadNamedPlaylist(playlist)}>
+                      <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={1}>{playlist.name}</Text>
+                      <Text style={[styles.itemMeta, { color: t.muted }]}>{playlist.items?.length || 0} videos</Text>
+                    </Pressable>
+                    <Pressable onPress={() => removeNamedPlaylist(playlist)}>
+                      <Text style={[styles.removeBtnText, { color: t.error }]}>×</Text>
+                    </Pressable>
+                  </View>
+                )) : (
+                  <Text style={[styles.hint, { color: t.tertiary }]}>Save the current playlist to access it on any device.</Text>
+                )}
+              </>
+            ) : (
+              <Text style={[styles.hint, { color: t.tertiary }]}>Sign in to save playlists across devices.</Text>
+            )}
+          </View>
+
+          <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+            <View style={styles.cardHeader}>
               <Text style={[styles.cardTitle, { color: t.text }]}>Library</Text>
               <View style={styles.headerActions}>
                 <Text style={[styles.count, { color: t.muted }]}>{filteredVideos.length} videos</Text>
@@ -1641,7 +1786,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
                     <Image source={{ uri: result.thumbnail }} style={styles.youtubeThumb} />
                     <View style={styles.youtubeResultInfo}>
                       <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>{result.title}</Text>
-                      <Text style={[styles.itemMeta, { color: t.muted }]} numberOfLines={1}>{result.channelTitle}</Text>
+                      <Text style={[styles.itemMeta, { color: t.muted }]} numberOfLines={1}>
+                        {result.localWatch ? 'Already in Watch · added instantly' : result.channelTitle}
+                      </Text>
                     </View>
                     <Icon name="add" size={20} color={t.primary} />
                   </Pressable>
@@ -1906,6 +2053,24 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   smallBtnText: { fontSize: 12, fontWeight: '600' },
+  playlistSaveForm: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  playlistNameInput: {
+    flex: 1,
+    minHeight: 38,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    fontSize: 13,
+  },
+  savedPlaylistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  savedPlaylistLoad: { flex: 1, minWidth: 0 },
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
