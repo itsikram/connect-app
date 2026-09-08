@@ -6,6 +6,7 @@ import { getWatchSavedMetaMap, parseWatchIdFromFileName } from '../lib/saveWatch
 const PLAYLIST_STORAGE_KEY = 'videoPlayerCustomPlaylist';
 const PLAYLIST_ORDER_KEY = 'videoPlayerPlaylistOrder';
 const PLAY_QUEUE_KEY = 'videoPlayerPlayQueue';
+const PLAYBACK_STATE_KEY = 'videoPlayerPlaybackState';
 const SAVED_PLAYLIST_CACHE_KEY = 'cached_video_player_saved';
 const WATCH_PLAYLIST_CACHE_KEY = 'cached_video_player_watches';
 
@@ -51,6 +52,18 @@ export type QueueItem = {
   thumbnail: string;
   type: PlaylistType;
   playCount: number;
+};
+
+export type PlaybackState = {
+  queueId?: string;
+  videoId: string;
+  url: string;
+  queueIndex: number;
+  currentVideoIndex: number;
+  playPass: number;
+  positionSeconds: number;
+  isPlaying: boolean;
+  isLooping: boolean;
 };
 
 const readJson = async <T>(key: string, fallback: T): Promise<T> => {
@@ -341,6 +354,33 @@ export const savePlayQueue = async (items: QueueItem[]) => {
       playCount: clampPlayCount(playCount),
     })),
   );
+};
+
+export const loadPlaybackState = async (): Promise<PlaybackState | null> => {
+  const state = await readJson<PlaybackState | null>(PLAYBACK_STATE_KEY, null);
+  if (!state || !state.videoId || !state.url) return null;
+  return {
+    queueId: state.queueId ? String(state.queueId) : undefined,
+    videoId: String(state.videoId),
+    url: String(state.url),
+    queueIndex: Math.max(0, Number(state.queueIndex) || 0),
+    currentVideoIndex: Math.max(0, Number(state.currentVideoIndex) || 0),
+    playPass: clampPlayCount(state.playPass),
+    positionSeconds: Math.max(0, Number(state.positionSeconds) || 0),
+    isPlaying: state.isPlaying === true,
+    isLooping: state.isLooping === true,
+  };
+};
+
+export const savePlaybackState = async (state: PlaybackState) => {
+  if (!state?.videoId || !state.url) return;
+  await writeJson(PLAYBACK_STATE_KEY, {
+    ...state,
+    queueIndex: Math.max(0, state.queueIndex),
+    currentVideoIndex: Math.max(0, state.currentVideoIndex),
+    playPass: clampPlayCount(state.playPass),
+    positionSeconds: Math.max(0, state.positionSeconds),
+  });
 };
 
 export const videoToQueueItem = (video: PlaylistItem, playCount = MIN_PLAY_COUNT) =>

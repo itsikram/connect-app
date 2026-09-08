@@ -66,6 +66,8 @@ import {
   normalizePlaylistItem,
   loadPlayQueue,
   savePlayQueue,
+  loadPlaybackState,
+  savePlaybackState,
   videoToQueueItem,
   clampPlayCount,
   MIN_PLAY_COUNT,
@@ -76,6 +78,7 @@ import {
   getCachedWatchPlaylist,
   PlaylistItem,
   QueueItem,
+  PlaybackState,
   FilterId,
   SortId,
 } from '../utils/videoPlayerLibrary';
@@ -220,9 +223,16 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const loopingRef = useRef(false);
   const pipReturnRef = useRef<{ resumeAt: number; autoplay: boolean } | null>(null);
   const currentPlaybackRef = useRef<QueueItem | null>(null);
+  const savedPlaybackRef = useRef<PlaybackState | null>(null);
+  const playbackRestoreHandledRef = useRef(false);
+  const skipTrackAutoplayRef = useRef(false);
+  const pendingResumePositionRef = useRef<number | null>(null);
   const resumeHandledRef = useRef(false);
   const currentTimeRef = useRef(0);
   const isPlayingRef = useRef(false);
+  const currentVideoIndexRef = useRef(0);
+  const queueIndexRef = useRef(0);
+  const playPassRef = useRef(1);
   const endedKeyRef = useRef('');
   const handleVideoEndRef = useRef<() => void>(() => {});
   const bgSoundRef = useRef<Audio.Sound | null>(null);
@@ -238,12 +248,13 @@ const MediaPlayer = ({ route, navigation }: any) => {
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const [custom, order, queue, cachedWatch, cachedSaved] = await Promise.all([
+      const [custom, order, queue, cachedWatch, cachedSaved, playbackState] = await Promise.all([
         loadCustomPlaylist(),
         loadPlaylistOrder(),
         loadPlayQueue(),
         getCachedWatchPlaylist(),
         getCachedSavedPlaylist(),
+        loadPlaybackState(),
       ]);
       if (cancelled) return;
       setCustomVideos(custom);
@@ -251,6 +262,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
       setPlayQueue(queue);
       if (cachedWatch?.length) setWatchVideos(cachedWatch);
       if (cachedSaved?.length) setSavedVideos(cachedSaved);
+      savedPlaybackRef.current = playbackState;
       setHydrated(true);
       setLibraryLoading(!(cachedWatch?.length || cachedSaved?.length || custom.length));
     })();
@@ -310,6 +322,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
   loopingRef.current = isLooping;
   currentPlaybackRef.current = currentPlayback;
   isPlayingRef.current = isPlaying;
+  currentVideoIndexRef.current = currentVideoIndex;
+  queueIndexRef.current = queueIndex;
+  playPassRef.current = playPass;
 
   const libraryPipPlaylist = useMemo(
     () =>
@@ -402,12 +417,86 @@ const MediaPlayer = ({ route, navigation }: any) => {
   }, [playQueue.length, queueIndex]);
 
   useEffect(() => {
+    if (!hydrated || playbackRestoreHandledRef.current || !playbackList.length) return;
+    if (params.videoId || params.playUrl || paramsSource?.uri) {
+      playbackRestoreHandledRef.current = true;
+      return;
+    }
+    const saved = savedPlaybackRef.current;
+    if (!saved) {
+      playbackRestoreHandledRef.current = true;
+      return;
+    }
+    const savedIndex = playbackList.findIndex(
+      (item) =>
+        (saved.queueId && item.queueId === saved.queueId) ||
+        (item.videoId === saved.videoId && item.url === saved.url),
+    );
+    if (savedIndex < 0) {
+      playbackRestoreHandledRef.current = true;
+      return;
+    }
+    if (usingQueue) setQueueIndex(savedIndex);
+    else setCurrentVideoIndex(savedIndex);
+    setPlayPass(saved.playPass);
+    setIsLooping(saved.isLooping);
+    skipTrackAutoplayRef.current = true;
+    pendingResumePositionRef.current = saved.positionSeconds;
+    setIsPlaying(saved.isPlaying);
+    playbackRestoreHandledRef.current = true;
+  }, [
+    hydrated,
+    playbackList,
+    usingQueue,
+    params.videoId,
+    params.playUrl,
+    paramsSource?.uri,
+  ]);
+
+  useEffect(() => {
     setMediaReady(false);
+    currentTimeRef.current = 0;
     setVideoPosition(0);
     setVideoDuration(0);
-    setIsPlaying(!isThisPip);
+    if (skipTrackAutoplayRef.current) {
+      skipTrackAutoplayRef.current = false;
+    } else {
+      setIsPlaying(!isThisPip);
+    }
     endedKeyRef.current = '';
   }, [currentTrackKey, isThisPip]);
+
+  const persistPlaybackState = useCallback(async () => {
+    const playback = currentPlaybackRef.current;
+    const video = currentVideoRef.current;
+    if (!playback || !video) return;
+    await savePlaybackState({
+      queueId: playback.queueId,
+      videoId: playback.videoId,
+      url: playback.url,
+      queueIndex: queueIndexRef.current,
+      currentVideoIndex: currentVideoIndexRef.current,
+      playPass: playPassRef.current,
+      positionSeconds: currentTimeRef.current,
+      isPlaying: isPlayingRef.current,
+      isLooping: loopingRef.current,
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!mediaReady || pendingResumePositionRef.current === null) return;
+    const position = pendingResumePositionRef.current;
+    pendingResumePositionRef.current = null;
+    if (position > 0) {
+      videoRef.current?.setPositionAsync(position * 1000).catch(() => {});
+      currentTimeRef.current = position;
+      setVideoPosition(position);
+    }
+  }, [mediaReady, currentTrackKey]);
+
+  useEffect(() => {
+    if (hydrated && currentPlayback) persistPlaybackState();
+  }, [hydrated, currentTrackKey, isPlaying, isLooping, playPass, persistPlaybackState]);
 
   const ingestPlayable = useCallback(
     (url: string, title?: string, thumbnail?: string) => {
@@ -606,9 +695,10 @@ const MediaPlayer = ({ route, navigation }: any) => {
       refreshLibrary();
       return () => {
         if (skipPipOnUnmount.current || isThisPip) return;
+        persistPlaybackState();
         startLibraryPip();
       };
-    }, [refreshLibrary, startLibraryPip, isThisPip]),
+    }, [refreshLibrary, startLibraryPip, isThisPip, persistPlaybackState]),
   );
 
   const setPlaybackIndex = useCallback(
@@ -622,6 +712,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   const replayCurrent = useCallback(async () => {
     wantPlayingRef.current = true;
+    endedKeyRef.current = '';
     try {
       if (bgActiveRef.current && bgSoundRef.current) {
         currentTimeRef.current = 0;
@@ -663,7 +754,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
     if (nextIndex >= playbackList.length) {
       if (isLooping) {
         setPlayPass(1);
-        setPlaybackIndex(0);
+        setPlaybackIndex(0, false);
         return;
       }
       stopPlayback();
@@ -1173,11 +1264,12 @@ const MediaPlayer = ({ route, navigation }: any) => {
     currentTimeRef.current = nextPos;
     setVideoPosition(nextPos);
     if (nextDuration > 0) setVideoDuration(nextDuration);
+    if (pendingResumePositionRef.current === null) persistPlaybackState();
     if (status.didJustFinish && endedKeyRef.current !== currentTrackKey) {
       endedKeyRef.current = currentTrackKey;
       handleVideoEndRef.current();
     }
-  }, [currentTrackKey]);
+  }, [currentTrackKey, persistPlaybackState]);
 
   const toolBtnTheme = {
     color: t.text,

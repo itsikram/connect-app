@@ -34,6 +34,9 @@ const isExpoTunnelHost = (host: string): boolean =>
 // Ollama. Set EXPO_PUBLIC_LOCAL_API_URL when the computer's LAN address differs.
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
+const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
+
+return liveServerUrl;
 
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
