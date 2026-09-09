@@ -37,6 +37,7 @@ import CacheManager from '../utils/cacheManager';
 import { emitPostUpdated } from '../utils/postEvents';
 import { getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
+import { SkeletonBlock } from './skeleton/Skeleton';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const POST_IMAGE_MAX_HEIGHT = 620;
@@ -135,11 +136,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>('');
+  const [updatingCommentId, setUpdatingCommentId] = useState<string | null>(null);
   const [likingCommentId, setLikingCommentId] = useState<string | null>(null);
   const [showFullCaption, setShowFullCaption] = useState<boolean>(false);
   const [captionHasMore, setCaptionHasMore] = useState<boolean>(false);
   const [showAllComments, setShowAllComments] = useState<boolean>(false);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
+  const [imageLoading, setImageLoading] = useState<boolean>(true);
+  const [imageRetryKey, setImageRetryKey] = useState<number>(0);
   const [imageHeight, setImageHeight] = useState<number>(
     Math.min(POST_IMAGE_MAX_HEIGHT, SCREEN_WIDTH),
   );
@@ -152,6 +158,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const reactLockRef = useRef(false);
   const commentsFetchedRef = useRef<string | null>(null);
   const commentInputRef = useRef<TextInput>(null);
+
+  useEffect(() => {
+    setImageLoading(true);
+    setImageLoadError(false);
+    setImageRetryKey(0);
+  }, [post._id, post.photos]);
 
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -565,12 +577,20 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   };
 
   const handlePostImageLoad = (event: any) => {
+    setImageLoading(false);
+    setImageLoadError(false);
     const source = event?.nativeEvent?.source;
     const width = source?.width;
     const height = source?.height;
     if (!width || !height) return;
     const scaled = (SCREEN_WIDTH / width) * height;
     setImageHeight(Math.min(POST_IMAGE_MAX_HEIGHT, Math.max(180, scaled)));
+  };
+
+  const retryPostImage = () => {
+    setImageLoadError(false);
+    setImageLoading(true);
+    setImageRetryKey(value => value + 1);
   };
 
   // Handle posting a comment
@@ -700,6 +720,54 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     ]);
   };
 
+  const startEditing = (comment: any) => {
+    setCommentMenuId(null);
+    setEditingCommentId(comment._id);
+    setEditingText(comment.text || comment.body || comment.content || comment.message || '');
+  };
+
+  const cancelEditing = () => {
+    setEditingCommentId(null);
+    setEditingText('');
+  };
+
+  const handleUpdateComment = async (comment: any, isReply: boolean) => {
+    const text = editingText.trim();
+    if (!comment?._id || !text || updatingCommentId) return;
+    setUpdatingCommentId(comment._id);
+    try {
+      const res = await api.post(
+        isReply ? '/comment/updateReply' : '/comment/updateComment',
+        isReply
+          ? { replyId: comment._id, body: text }
+          : { commentId: comment._id, body: text },
+      );
+      if (res.status === 200) {
+        const updated = res.data || {};
+        setComments(prev =>
+          prev.map(item => {
+            if (!isReply && sameId(item._id, comment._id)) {
+              return { ...item, ...updated, body: updated.body || text };
+            }
+            return {
+              ...item,
+              replies: (item.replies || []).map((reply: any) =>
+                isReply && sameId(reply._id, comment._id)
+                  ? { ...reply, ...updated, body: updated.body || text }
+                  : reply,
+              ),
+            };
+          }),
+        );
+        cancelEditing();
+      }
+    } catch (e) {
+      Alert.alert('Unable to update', 'Please try again.');
+    } finally {
+      setUpdatingCommentId(null);
+    }
+  };
+
   const handleDeleteReply = (commentId: string, reply: any) => {
     if (!reply?._id || deletingId) return;
     Alert.alert('Delete reply', 'Delete this reply?', [
@@ -786,6 +854,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     const menuOpen = commentMenuId === c._id;
     const attachment = c.image || c.photo || c.attachment;
     const isReplyingHere = !isReply && sameId(replyingTo?._id, c._id);
+    const isEditing = editingCommentId === c._id;
 
     return (
       <View
@@ -808,11 +877,40 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               <Text style={[styles.fbAuthorName, { color: textColor }]}>
                 {commentAuthorName(c)}
               </Text>
-              {!!body.trim() && (
+              {isEditing ? (
+                <View style={styles.commentEditContainer}>
+                  <TextInput
+                    value={editingText}
+                    onChangeText={setEditingText}
+                    autoFocus
+                    multiline
+                    maxLength={255}
+                    editable={updatingCommentId !== c._id}
+                    style={[styles.commentEditInput, { color: textColor, borderColor }]}
+                    placeholder="Edit your comment"
+                    placeholderTextColor={subTextColor}
+                  />
+                  <View style={styles.commentEditActions}>
+                    <TouchableOpacity onPress={cancelEditing} disabled={updatingCommentId === c._id}>
+                      <Text style={[styles.fbReactLink, { color: commentActionColor }]}>Cancel</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleUpdateComment(c, isReply)}
+                      disabled={!editingText.trim() || updatingCommentId === c._id}
+                    >
+                      {updatingCommentId === c._id ? (
+                        <ActivityIndicator size="small" color={accentColor} />
+                      ) : (
+                        <Text style={[styles.fbReactLink, { color: accentColor, fontWeight: '700' }]}>Save</Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ) : !!body.trim() ? (
                 <Text style={[styles.fbCommentText, { color: textColor }]}>
                   {body}
                 </Text>
-              )}
+              ) : null}
             </View>
             {isMine ? (
               <View style={styles.fbOptionsWrap}>
@@ -834,6 +932,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                       { backgroundColor: cardBg, borderColor },
                     ]}
                   >
+                    <TouchableOpacity
+                      onPress={() => startEditing(c)}
+                      disabled={!!updatingCommentId}
+                    >
+                      <Text style={styles.fbOptionsText}>Edit</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
                         setCommentMenuId(null);
@@ -1479,39 +1583,76 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           </View>
         ) : null}
 
-        {isValidImageUrl(post.photos) && !imageLoadError && (
+        {isValidImageUrl(post.photos) && (
           <TouchableOpacity
             onPress={openSinglePost}
             activeOpacity={0.92}
             style={[
               styles.attachmentContainer,
-              { backgroundColor: feed.mediaBg },
+              {
+                backgroundColor: feed.mediaBg,
+                ...(imageLoadError
+                  ? {
+                      height:
+                        postType === 'profilePic'
+                          ? Math.min(280, SCREEN_WIDTH - 24)
+                          : imageHeight,
+                    }
+                  : {}),
+              },
               postType === 'profilePic' && styles.attachmentProfilePic,
             ]}
           >
-            <Image
-              source={{
-                uri: getAssetUrl(
-                  typeof post.photos === 'string'
-                    ? post.photos
-                    : post.photos[0],
-                ),
-              }}
-              style={
-                postType === 'profilePic'
-                  ? [styles.postProfilePic, { borderColor: feed.postBorder }]
-                  : [
-                      styles.postImage,
-                      { height: imageHeight, backgroundColor: feed.mediaBg },
-                    ]
-              }
-              resizeMode="cover"
-              onError={() => {
-                setImageLoadError(true);
-              }}
-              onLoad={handlePostImageLoad}
-              onLoadStart={() => setImageLoadError(false)}
-            />
+            {imageLoading && (
+              <SkeletonBlock
+                width="100%"
+                height={postType === 'profilePic' ? Math.min(280, SCREEN_WIDTH - 24) : imageHeight}
+                borderRadius={postType === 'profilePic' ? Math.min(140, (SCREEN_WIDTH - 24) / 2) : 0}
+                style={postType === 'profilePic' ? styles.postProfilePic : styles.postImage}
+              />
+            )}
+            {imageLoadError ? (
+              <View style={styles.imageError}>
+                <TouchableOpacity
+                  onPress={retryPostImage}
+                  accessibilityRole="button"
+                  accessibilityLabel="Reload post image"
+                  style={styles.imageRetryButton}
+                >
+                  <Icon name="refresh" size={30} color={subTextColor} />
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Image
+                key={imageRetryKey}
+                source={{
+                  uri: getAssetUrl(
+                    typeof post.photos === 'string'
+                      ? post.photos
+                      : post.photos[0],
+                  ),
+                }}
+                style={[
+                  postType === 'profilePic'
+                    ? [styles.postProfilePic, { borderColor: feed.postBorder }]
+                    : [
+                        styles.postImage,
+                        { height: imageHeight, backgroundColor: feed.mediaBg },
+                      ],
+                  imageLoading && styles.imageOverlay,
+                ]}
+                resizeMode="cover"
+                onError={() => {
+                  setImageLoading(false);
+                  setImageLoadError(true);
+                }}
+                onLoad={handlePostImageLoad}
+                onLoadStart={() => {
+                  setImageLoading(true);
+                  setImageLoadError(false);
+                }}
+              />
+            )}
           </TouchableOpacity>
         )}
       </View>
@@ -1977,6 +2118,29 @@ const styles = StyleSheet.create({
   postImage: {
     width: '100%',
     maxHeight: POST_IMAGE_MAX_HEIGHT,
+  },
+  imageOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
+  imageError: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  imageRetryButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   postProfilePic: {
     width: Math.min(280, SCREEN_WIDTH - 24),
@@ -2739,6 +2903,30 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     paddingVertical: 6,
+  },
+  fbOptionsText: {
+    fontSize: 13,
+    fontWeight: '600',
+    paddingVertical: 6,
+  },
+  commentEditContainer: {
+    marginTop: 6,
+  },
+  commentEditInput: {
+    minHeight: 42,
+    maxHeight: 100,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 14,
+  },
+  commentEditActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 16,
+    paddingTop: 8,
   },
   fbCommentReact: {
     flexDirection: 'row',

@@ -10,6 +10,8 @@ import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { hideTabBarForChat } from '../lib/chatScreenChrome'
 import ProfileImage from '../components/ProfileImage'
+import ImageWithSkeleton from '../components/ImageWithSkeleton'
+import ProfileImageWithSkeleton from '../components/ProfileImageWithSkeleton'
 import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
 import PostSkeleton from '../components/skeleton/PostSkeleton'
 import { POST_UPDATED_EVENT } from '../utils/postEvents'
@@ -681,7 +683,7 @@ const FriendProfile = () => {
             <View style={[styles.profileHeader, { backgroundColor: themeColors.surface.header }]}>
                 <View style={[styles.coverContainer, { backgroundColor: themeColors.gray[200] }]}>
                     {friendData?.coverPic ? (
-                        <Image source={{ uri: friendData.coverPic }} style={[styles.cover, { height: coverHeight }]} />
+                        <ImageWithSkeleton source={{ uri: friendData.coverPic }} style={[styles.cover, { height: coverHeight }]} />
                     ) : (
                         <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight, backgroundColor: themeColors.gray[200] }]} />
                     )}
@@ -695,7 +697,7 @@ const FriendProfile = () => {
                             friendData?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
                             {friendData?.profilePic ? (
-                                <ProfileImage uri={friendData.profilePic} pixelSize={400} style={styles.avatar} />
+                                <ProfileImageWithSkeleton uri={friendData.profilePic} pixelSize={400} style={styles.avatar} />
                             ) : (
                                 <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
                             )}

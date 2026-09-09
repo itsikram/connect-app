@@ -90,8 +90,8 @@ const Home = () => {
         previousCachedPosts.map(post => post?._id),
       );
 
-      const nfRes = await api.get('/post/newsFeed/', {
-        params: { pageNumber: 1 },
+      const nfRes = await api.get('/feed/posts', {
+        params: { page: 1 },
       });
 
       if (nfRes.status === 200) {
@@ -107,7 +107,7 @@ const Home = () => {
         setPosts(dedupePosts(latestPosts));
         await CacheManager.setCachedPosts(latestPosts);
         setPage(1);
-        setHasMore(nfRes.data.hasNewPost ?? false);
+        setHasMore(nfRes.data.hasMore ?? nfRes.data.hasNewPost ?? false);
 
         if (newPostsInFetch.length > 0) {
           setNewPostsCount(newPostsInFetch.length);
@@ -138,8 +138,8 @@ const Home = () => {
     setLoadingMore(true);
 
     try {
-      const nfRes = await api.get('/post/newsFeed/', {
-        params: { pageNumber: nextPage },
+      const nfRes = await api.get('/feed/posts', {
+        params: { page: nextPage },
       });
       if (nfRes.status === 200) {
         const newPosts = Array.isArray(nfRes.data.posts)
@@ -147,7 +147,7 @@ const Home = () => {
           : [];
         setPosts(prev => dedupePosts([...prev, ...newPosts]));
         setPage(nextPage);
-        setHasMore(nfRes.data.hasNewPost ?? false);
+        setHasMore(nfRes.data.hasMore ?? nfRes.data.hasNewPost ?? false);
       }
     } catch (e: any) {
       console.error('Error loading news feed:', e);

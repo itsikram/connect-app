@@ -16,6 +16,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import StoryModal from './StoryModal';
 import StorySliderSkeleton from './skeleton/StorySliderSkeleton';
 import UserPP from './UserPP';
+import ImageWithSkeleton from './ImageWithSkeleton';
 import CacheManager from '../utils/cacheManager';
 import { RootState } from '../store';
 
@@ -214,7 +215,7 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
                   </View>
                   <View style={styles.storyImageContainer}>
                     {!!story.image && (
-                      <Image
+                      <ImageWithSkeleton
                         source={{ uri: story.image }}
                         style={styles.storyImage}
                         resizeMode="contain"

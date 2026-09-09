@@ -16,8 +16,10 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
+  Modal,
   AppState,
   AppStateStatus,
+  BackHandler,
 } from 'react-native';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,6 +27,7 @@ import KeyboardSafeView from '../components/KeyboardSafeView';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Slider from '@react-native-community/slider';
 import {
   Audio,
   Video as ExpoVideo,
@@ -184,7 +187,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [mediaReady, setMediaReady] = useState(false);
   const [videoPosition, setVideoPosition] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
-  const [scrubWidth, setScrubWidth] = useState(0);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -511,6 +513,14 @@ const MediaPlayer = ({ route, navigation }: any) => {
   }, [mediaReady, currentTrackKey]);
 
   useEffect(() => {
+    if (!isFullscreen || !mediaReady) return;
+    const position = currentTimeRef.current;
+    if (position > 0) {
+      videoRef.current?.setPositionAsync(position * 1000).catch(() => {});
+    }
+  }, [isFullscreen, mediaReady]);
+
+  useEffect(() => {
     if (hydrated && currentPlayback) persistPlaybackState();
   }, [hydrated, currentTrackKey, isPlaying, isLooping, playPass, persistPlaybackState]);
 
@@ -752,14 +762,12 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const toggleFullscreen = useCallback(async () => {
     try {
       if (isFullscreen) {
-        await videoRef.current?.exitFullscreen?.();
         await ScreenOrientation.unlockAsync();
         setIsFullscreen(false);
         return;
       }
 
       await ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE);
-      await videoRef.current?.enterFullscreen?.();
       setIsFullscreen(true);
     } catch (error) {
       console.error('Unable to toggle video fullscreen:', error);
@@ -768,6 +776,15 @@ const MediaPlayer = ({ route, navigation }: any) => {
       Alert.alert('Fullscreen unavailable', 'This device could not rotate the video to fullscreen.');
     }
   }, [isFullscreen]);
+
+  useEffect(() => {
+    if (!isFullscreen) return undefined;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      toggleFullscreen();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isFullscreen, toggleFullscreen]);
 
   useEffect(() => {
     return () => {
@@ -1336,8 +1353,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
     setVideoPosition(safeValue);
   }, [videoDuration]);
 
-  const videoProgressPercent = videoDuration > 0 ? Math.min(100, (videoPosition / videoDuration) * 100) : 0;
-
   const stats = useMemo(
     () => ({
       watches: watchVideos.length,
@@ -1448,7 +1463,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
                 </View>
               </View>
 
-              <View style={styles.stageFrame}>
+              <View style={[styles.stageFrame, isFullscreen && styles.hiddenStageFrame]}>
                 {isThisPip ? (
                   <View style={[styles.pipPlaceholder, { backgroundColor: t.pageBgAlt }]}>
                     <Text style={[styles.pipPlaceholderText, { color: t.text }]}>Playing in pop-out mode</Text>
@@ -1458,7 +1473,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
                   </View>
                 ) : (
                   <>
-                    <ExpoVideo
+                    {!isFullscreen ? <ExpoVideo
                       ref={(node) => {
                         videoRef.current = node;
                       }}
@@ -1473,8 +1488,8 @@ const MediaPlayer = ({ route, navigation }: any) => {
                         currentVideo.thumbnail ? { uri: currentVideo.thumbnail } : undefined
                       }
                       onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-                    />
-                    {!mediaReady ? (
+                    /> : null}
+                    {!isFullscreen && !mediaReady ? (
                       <View style={styles.cover} pointerEvents="none">
                         {currentVideo.thumbnail ? (
                           <Image source={{ uri: currentVideo.thumbnail }} style={styles.coverImg} />
@@ -1484,25 +1499,24 @@ const MediaPlayer = ({ route, navigation }: any) => {
                       </View>
                     ) : null}
 
-                    <View style={[styles.videoController, { backgroundColor: 'rgba(0,0,0,0.38)' }]}>
+                    {!isFullscreen ? <View style={[styles.videoController, { backgroundColor: 'rgba(0,0,0,0.38)' }]}>
                       <View style={styles.timeRow}>
                         <Text style={[styles.timeText, { color: '#fff' }]}>{formatTime(videoPosition)}</Text>
                         <Text style={[styles.timeText, { color: '#fff' }]}>{formatTime(videoDuration)}</Text>
                       </View>
-                      <Pressable
-                        style={styles.scrubBar}
-                        onLayout={(event) => setScrubWidth(event.nativeEvent.layout.width)}
-                        onPress={({ nativeEvent }) => {
-                          const width = scrubWidth || 300;
-                          const percent = Math.max(0, Math.min(1, (nativeEvent.locationX || 0) / Math.max(width, 1)));
-                          handleSeekTo(videoDuration * percent);
-                        }}
-                      >
-                        <View style={[styles.scrubTrack, { backgroundColor: 'rgba(255,255,255,0.28)' }]}>
-                          <View style={[styles.scrubFill, { width: `${videoProgressPercent}%`, backgroundColor: t.primary }]} />
-                        </View>
-                      </Pressable>
-                    </View>
+                      <Slider
+                        style={styles.scrubSlider}
+                        minimumValue={0}
+                        maximumValue={Math.max(videoDuration, 1)}
+                        value={Math.min(videoPosition, Math.max(videoDuration, 1))}
+                        minimumTrackTintColor={t.primary}
+                        maximumTrackTintColor="rgba(255,255,255,0.35)"
+                        thumbTintColor={t.primary}
+                        disabled={videoDuration <= 0}
+                        onValueChange={setVideoPosition}
+                        onSlidingComplete={handleSeekTo}
+                      />
+                    </View> : null}
                   </>
                 )}
               </View>
@@ -1554,6 +1568,70 @@ const MediaPlayer = ({ route, navigation }: any) => {
                   {...toolBtnTheme}
                 />
               </View>
+              {isFullscreen ? (
+                <Modal
+                  visible
+                  animationType="fade"
+                  supportedOrientations={['landscape']}
+                  onRequestClose={toggleFullscreen}
+                >
+                <View style={styles.fullscreenOverlay}>
+                  <ExpoVideo
+                    ref={(node) => {
+                      videoRef.current = node;
+                    }}
+                    source={videoSource}
+                    style={styles.fullscreenVideo}
+                    resizeMode={ResizeMode.CONTAIN}
+                    shouldPlay={isPlaying && !bgActiveRef.current}
+                    isLooping={false}
+                    useNativeControls={false}
+                    progressUpdateIntervalMillis={500}
+                    onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+                  />
+                  <View style={styles.fullscreenTopBar}>
+                    <Pressable style={styles.fullscreenIconBtn} onPress={toggleFullscreen} hitSlop={8}>
+                      <Icon name="arrow-back" size={24} color="#fff" />
+                    </Pressable>
+                    <Text style={styles.fullscreenTitle} numberOfLines={1}>
+                      {currentVideo.title}
+                    </Text>
+                    <Pressable style={styles.fullscreenIconBtn} onPress={toggleFullscreen} hitSlop={8}>
+                      <Icon name="fullscreen-exit" size={23} color="#fff" />
+                    </Pressable>
+                  </View>
+                  <View style={styles.fullscreenBottomBar}>
+                    <View style={styles.timeRow}>
+                      <Text style={styles.fullscreenTimeText}>{formatTime(videoPosition)}</Text>
+                      <Text style={styles.fullscreenTimeText}>{formatTime(videoDuration)}</Text>
+                    </View>
+                    <Slider
+                      style={styles.fullscreenScrubSlider}
+                      minimumValue={0}
+                      maximumValue={Math.max(videoDuration, 1)}
+                      value={Math.min(videoPosition, Math.max(videoDuration, 1))}
+                      minimumTrackTintColor={t.primary}
+                      maximumTrackTintColor="rgba(255,255,255,0.35)"
+                      thumbTintColor={t.primary}
+                      disabled={videoDuration <= 0}
+                      onValueChange={setVideoPosition}
+                      onSlidingComplete={handleSeekTo}
+                    />
+                    <View style={styles.fullscreenActions}>
+                      <Pressable style={styles.fullscreenActionBtn} onPress={handlePrev} disabled={playbackList.length <= 1}>
+                        <Icon name="skip-previous" size={28} color={playbackList.length <= 1 ? '#777' : '#fff'} />
+                      </Pressable>
+                      <Pressable style={[styles.fullscreenPlayBtn, { backgroundColor: t.primary }]} onPress={togglePlayPause}>
+                        <Icon name={playerIsPlaying ? 'pause' : 'play-arrow'} size={30} color={t.ctaText} />
+                      </Pressable>
+                      <Pressable style={styles.fullscreenActionBtn} onPress={handleNext} disabled={playbackList.length <= 1}>
+                        <Icon name="skip-next" size={28} color={playbackList.length <= 1 ? '#777' : '#fff'} />
+                      </Pressable>
+                    </View>
+                  </View>
+                </View>
+                </Modal>
+              ) : null}
             </View>
           ) : (
             <View style={[styles.emptyStage, { borderColor: t.border, backgroundColor: t.surface }]}>
@@ -1980,7 +2058,75 @@ const styles = StyleSheet.create({
   },
   popupBadgeText: { fontSize: 11, fontWeight: '700' },
   stageFrame: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000', position: 'relative' },
+  hiddenStageFrame: { opacity: 0 },
   video: { width: '100%', height: '100%', backgroundColor: '#000' },
+  fullscreenOverlay: {
+    flex: 1,
+    backgroundColor: '#000',
+    justifyContent: 'space-between',
+  },
+  fullscreenVideo: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: '#000',
+  },
+  fullscreenTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 20,
+    backgroundColor: 'rgba(0,0,0,0.62)',
+    zIndex: 2,
+  },
+  fullscreenTitle: {
+    flex: 1,
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  fullscreenIconBtn: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  fullscreenBottomBar: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 18,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    zIndex: 2,
+  },
+  fullscreenTimeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  fullscreenScrubSlider: { width: '100%', height: 32 },
+  fullscreenActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 28,
+    marginTop: 8,
+  },
+  fullscreenActionBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullscreenPlayBtn: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   videoController: {
     position: 'absolute',
     left: 8,
@@ -1992,9 +2138,7 @@ const styles = StyleSheet.create({
   },
   timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
   timeText: { fontSize: 11, fontWeight: '600' },
-  scrubBar: { width: '100%' },
-  scrubTrack: { width: '100%', height: 8, borderRadius: 999, overflow: 'hidden' },
-  scrubFill: { height: '100%', borderRadius: 999 },
+  scrubSlider: { width: '100%', height: 32 },
   cover: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',

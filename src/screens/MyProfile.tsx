@@ -31,6 +31,8 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import ImageCropModal from '../components/ImageCropModal';
 import ProfileImage from '../components/ProfileImage';
+import ImageWithSkeleton from '../components/ImageWithSkeleton';
+import ProfileImageWithSkeleton from '../components/ProfileImageWithSkeleton';
 import VerifiedName from '../components/VerifiedName';
 import ProfileSkeleton, {
   ProfileFriendsSkeleton,
@@ -974,7 +976,7 @@ const MyProfile = () => {
           ]}
         >
           {myProfile?.coverPic ? (
-            <Image
+            <ImageWithSkeleton
               source={{ uri: myProfile.coverPic }}
               style={[styles.cover, { height: coverHeight }]}
             />
@@ -1066,7 +1068,7 @@ const MyProfile = () => {
               ]}
             >
               {myProfile?.profilePic ? (
-                <ProfileImage
+                <ProfileImageWithSkeleton
                   uri={myProfile.profilePic}
                   pixelSize={400}
                   style={styles.avatar}

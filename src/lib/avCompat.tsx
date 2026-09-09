@@ -184,6 +184,7 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
     isMuted,
     isLooping,
     shouldPlay,
+    progressUpdateIntervalMillis = 500,
     staysActiveInBackground = true,
     showNowPlayingNotification = true,
     onPlaybackStatusUpdate,
@@ -222,12 +223,16 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
   }, [player, staysActiveInBackground, showNowPlayingNotification]);
 
   useEffect(() => {
+    player.timeUpdateEventInterval = Math.max(0.1, progressUpdateIntervalMillis / 1000);
+  }, [player, progressUpdateIntervalMillis]);
+
+  useEffect(() => {
     if (!onPlaybackStatusUpdate) return undefined;
-    const subscription = player.addListener('statusChange', () => {
-      const duration = player.duration;
-      const position = player.currentTime;
+    const emitStatus = (timeUpdate?: { currentTime?: number }) => {
+      const duration = Number(player.duration) || 0;
+      const position = Number(timeUpdate?.currentTime ?? player.currentTime) || 0;
       onPlaybackStatusUpdate({
-        isLoaded: player.status === 'readyToPlay',
+        isLoaded: player.status === 'readyToPlay' || duration > 0,
         isPlaying: player.playing,
         positionMillis: position * 1000,
         durationMillis: duration * 1000,
@@ -235,8 +240,14 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
         isMuted: player.muted,
         didJustFinish: duration > 0 && position >= duration - 0.1 && !player.playing,
       });
-    });
-    return () => subscription.remove();
+    };
+    const statusSubscription = player.addListener('statusChange', () => emitStatus());
+    const timeSubscription = player.addListener('timeUpdate', (payload: any) => emitStatus(payload));
+    emitStatus();
+    return () => {
+      statusSubscription.remove();
+      timeSubscription.remove();
+    };
   }, [player, onPlaybackStatusUpdate]);
 
   useImperativeHandle(ref, () => ({

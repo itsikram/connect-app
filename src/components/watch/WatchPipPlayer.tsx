@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import Slider from '@react-native-community/slider';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
   Audio,
@@ -116,12 +117,14 @@ const WatchPipPlayer = () => {
   const { pip, closePip, updatePip } = useWatchPip();
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
-  const videoRef = useRef<ExpoVideo | null>(null);
+  const videoRef = useRef<any | null>(null);
   const [paused, setPaused] = useState(false);
   const [minimized, setMinimized] = useState(false);
   const [dock, setDock] = useState<Dock>('right');
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
   const [mediaReady, setMediaReady] = useState(false);
+  const [videoPosition, setVideoPosition] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(0);
   const [gradientColors, setGradientColors] = useState<[string, string, string]>(() =>
     getGradientColors('watch-pip'),
   );
@@ -151,6 +154,8 @@ const WatchPipPlayer = () => {
 
   useEffect(() => {
     setMediaReady(false);
+    setVideoPosition(0);
+    setVideoDuration(0);
     resumeAppliedRef.current = '';
     endedKeyRef.current = '';
     setPaused(pip?.playing === false);
@@ -163,7 +168,7 @@ const WatchPipPlayer = () => {
     : Math.min(expandedWidth * (16 / 9), winH * 0.46, 360);
   const miniVertical = dock === 'left' || dock === 'right';
   const playerWidth = minimized ? (miniVertical ? 64 : Math.min(winW - 24, 280)) : expandedWidth;
-  const playerHeight = minimized ? (miniVertical ? 220 : 56) : videoHeight + 88;
+  const playerHeight = minimized ? (miniVertical ? 220 : 56) : videoHeight + 132;
 
   useEffect(() => {
     sizeRef.current = { width: playerWidth, height: playerHeight };
@@ -428,6 +433,13 @@ const WatchPipPlayer = () => {
     else pauseCurrent();
   };
 
+  const formatTime = (seconds: number) => {
+    if (!Number.isFinite(seconds) || seconds < 0) return '0:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
   const handleClose = () => {
     pauseCurrent();
     stopBackgroundSound();
@@ -545,13 +557,18 @@ const WatchPipPlayer = () => {
   const onPlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
     setMediaReady(true);
+    const nextPosition = (status.positionMillis || 0) / 1000;
+    const nextDuration = Math.max(0, (Number(status.durationMillis) || 0) / 1000);
     if (!bgActiveRef.current) {
-      currentTimeRef.current = (status.positionMillis || 0) / 1000;
+      currentTimeRef.current = nextPosition;
+      setVideoPosition(nextPosition);
     }
-    const duration = Number(status.durationMillis) || 0;
+    if (nextDuration > 0) setVideoDuration(nextDuration);
+    const duration = nextDuration * 1000;
     const progress = duration > 0
       ? Math.min(1, Math.max(0, (status.positionMillis || 0) / duration))
       : 0;
+    if (pip && !bgActiveRef.current) updatePip({ currentTime: nextPosition });
     setGradientColors(getGradientColors(pip?.thumbnail || pipTrackKey || 'watch-pip', progress));
     if (status.didJustFinish && !bgActiveRef.current && endedKeyRef.current !== pipTrackKey) {
       endedKeyRef.current = pipTrackKey;
@@ -567,7 +584,22 @@ const WatchPipPlayer = () => {
         ).catch(() => {});
       }
     }
-  }, [pipTrackKey, pip]);
+  }, [pipTrackKey, pip, updatePip]);
+
+  const handleSeekTo = useCallback(async (value: number) => {
+    if (!pip || !Number.isFinite(value)) return;
+    const safeValue = Math.max(0, Math.min(value, videoDuration || value));
+    try {
+      if (bgActiveRef.current && bgSoundRef.current) {
+        await bgSoundRef.current.setPositionAsync(safeValue * 1000);
+      } else {
+        await videoRef.current?.setPositionAsync(safeValue * 1000);
+      }
+      currentTimeRef.current = safeValue;
+      setVideoPosition(safeValue);
+      updatePip({ currentTime: safeValue });
+    } catch (_) {}
+  }, [pip, updatePip, videoDuration]);
 
   if (!pip) return null;
 
@@ -700,6 +732,27 @@ const WatchPipPlayer = () => {
         </View>
 
         {!minimized ? (
+          <View style={[styles.seekControls, { backgroundColor: t.overlay }]}>
+            <View style={styles.timeRow}>
+              <Text style={[styles.timeText, { color: t.text }]}>{formatTime(videoPosition)}</Text>
+              <Text style={[styles.timeText, { color: t.text }]}>{formatTime(videoDuration)}</Text>
+            </View>
+            <Slider
+              style={styles.scrubSlider}
+              minimumValue={0}
+              maximumValue={Math.max(videoDuration, 1)}
+              value={Math.min(videoPosition, Math.max(videoDuration, 1))}
+              minimumTrackTintColor={t.primary}
+              maximumTrackTintColor="rgba(255,255,255,0.35)"
+              thumbTintColor={t.primary}
+              disabled={videoDuration <= 0}
+              onValueChange={setVideoPosition}
+              onSlidingComplete={handleSeekTo}
+            />
+          </View>
+        ) : null}
+
+        {!minimized ? (
           <View style={[styles.toolbar, { backgroundColor: t.overlay }]}>
             <Pressable style={[styles.btn, chromeBtn]} onPress={handlePrev} disabled={!canSkip}>
               <Icon name="skip-previous" size={16} color={canSkip ? iconOn : iconOff} />
@@ -808,6 +861,20 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: 8,
   },
+  seekControls: {
+    paddingHorizontal: 10,
+    paddingTop: 5,
+    paddingBottom: 3,
+  },
+  timeRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 3,
+  },
+  timeText: {
+    fontSize: 10,
+  },
+  scrubSlider: { width: '100%', height: 28 },
   btn: {
     width: 28,
     height: 28,

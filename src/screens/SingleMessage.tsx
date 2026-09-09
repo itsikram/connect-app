@@ -363,6 +363,72 @@ const TypingDots = ({ color }: { color: string }) => {
   );
 };
 
+const MessageImage = ({ uri }: { uri: string }) => {
+  const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(
+    'loading',
+  );
+  const [retryKey, setRetryKey] = useState(0);
+
+  useEffect(() => {
+    setStatus('loading');
+    setRetryKey(0);
+  }, [uri]);
+
+  return (
+    <View
+      style={{
+        width: 220,
+        height: 220,
+        borderRadius: 12,
+        marginTop: 3,
+        overflow: 'hidden',
+        position: 'relative',
+      }}
+    >
+      {status === 'loading' ? (
+        <SkeletonBlock width="100%" height={220} borderRadius={12} />
+      ) : null}
+      {status === 'error' ? (
+        <TouchableOpacity
+          onPress={() => {
+            setStatus('loading');
+            setRetryKey(value => value + 1);
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Reload message image"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0,0,0,0.16)',
+          }}
+        >
+          <Icon name="refresh" size={30} color="rgba(255,255,255,0.85)" />
+        </TouchableOpacity>
+      ) : null}
+      {status !== 'error' ? (
+        <Image
+          key={retryKey}
+          source={{ uri }}
+          style={{
+            position: status === 'loading' ? 'absolute' : 'relative',
+            top: 0,
+            left: 0,
+            width: 220,
+            height: 220,
+            borderRadius: 12,
+            opacity: status === 'loading' ? 0 : 1,
+          }}
+          resizeMode="cover"
+          onLoad={() => setStatus('loaded')}
+          onError={() => setStatus('error')}
+        />
+      ) : null}
+    </View>
+  );
+};
+
 const listHasId = (list: any, id: any) => {
   if (!id || !Array.isArray(list)) return false;
   const target = String(id?._id || id);
@@ -4963,16 +5029,7 @@ const SingleMessage = () => {
                 {item.attachment &&
                   isValidImageUrl(item.attachment) &&
                   item.messageType !== 'audio' && (
-                    <Image
-                      source={{ uri: item.attachment }}
-                      style={{
-                        width: 220,
-                        height: 220,
-                        borderRadius: 12,
-                        marginTop: item.message || item.parent ? 3 : 0,
-                      }}
-                      resizeMode="cover"
-                    />
+                    <MessageImage uri={item.attachment} />
                   )}
 
                 <View

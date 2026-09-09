@@ -24,6 +24,8 @@ type PostData = {
   urls: string | null;
   type: 'image' | 'video' | null;
   imageDataUrl?: string;
+  mediaMimeType?: string;
+  mediaFileName?: string;
   location: string;
   feelings: string;
   audience: number;
@@ -47,6 +49,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     urls: null,
     type: null,
     imageDataUrl: undefined,
+    mediaMimeType: undefined,
+    mediaFileName: undefined,
     location: '',
     feelings: '',
     audience: 3, // Default: Only Me
@@ -90,7 +94,17 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const closeModal = () => {
     if (isUploading) return;
     setModalVisible(false);
-    setPostData({ caption: '', urls: null, type: null, imageDataUrl: undefined, location: '', feelings: '', audience: 3 });
+    setPostData({
+      caption: '',
+      urls: null,
+      type: null,
+      imageDataUrl: undefined,
+      mediaMimeType: undefined,
+      mediaFileName: undefined,
+      location: '',
+      feelings: '',
+      audience: 3,
+    });
   };
 
   const handleCaptionChange = (text: string) => setPostData((prev) => ({ ...prev, caption: text }));
@@ -182,6 +196,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
               mediaType === 'image' && asset.base64
                 ? `data:image/jpeg;base64,${asset.base64}`
                 : undefined,
+            mediaMimeType: asset.mimeType || (mediaType === 'image' ? 'image/jpeg' : 'video/mp4'),
+            mediaFileName: asset.fileName || `upload.${mediaType === 'image' ? 'jpg' : 'mp4'}`,
           }));
         }
       }
@@ -209,8 +225,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         const formData = new FormData();
         const fileData = {
           uri: postData.urls,
-          name: `upload.${postData.type === 'image' ? 'jpg' : 'mp4'}`,
-          type: postData.type === 'image' ? 'image/jpeg' : 'video/mp4',
+          name: postData.mediaFileName || `upload.${postData.type === 'image' ? 'jpg' : 'mp4'}`,
+          type: postData.mediaMimeType || (postData.type === 'image' ? 'image/jpeg' : 'video/mp4'),
         } as any;
         
         // Validate file type
@@ -218,10 +234,10 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           throw new Error('Invalid file type');
         }
         
-        // Validate MIME type
-        const expectedMimeType = postData.type === 'image' ? 'image/jpeg' : 'video/mp4';
-        if (fileData.type !== expectedMimeType) {
-          throw new Error(`Invalid MIME type: expected ${expectedMimeType}, got ${fileData.type}`);
+        // Validate MIME type while allowing formats returned by the device picker.
+        const expectedMimePrefix = postData.type === 'image' ? 'image/' : 'video/';
+        if (!fileData.type.startsWith(expectedMimePrefix)) {
+          throw new Error(`Invalid MIME type: expected ${expectedMimePrefix}*, got ${fileData.type}`);
         }
         
         let uploadEndpoint = '/upload/';
@@ -243,7 +259,6 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         
         setUploadProgress(0);
         const uploadRes = await api.post(uploadEndpoint, formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (progressEvent: any) => {
             try {
               if (progressEvent && progressEvent.total) {
@@ -282,7 +297,6 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       postFormData.append('location', postData.location);
       postFormData.append('audience', postData.audience.toString());
       const res = await api.post('/post/create', postFormData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
       });
       if (res.status === 200) {
         if (onPostCreated) onPostCreated(res.data.post);
@@ -295,10 +309,15 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       }
     } catch (e: any) {
       console.log('Error creating post:', e);
+      const providerBlocked = e?.response?.data?.code === 'MEDIA_PROVIDER_BLOCKED';
       showToast({
         type: 'error',
         title: 'Failed to Create Post',
-        message: e?.response?.data?.message || 'Something went wrong. Please try again.',
+        message: providerBlocked
+          ? 'Media uploads are temporarily unavailable. Please try again after the storage provider review is resolved.'
+          : e?.response?.data?.message ||
+            e?.response?.data?.error ||
+            'Something went wrong. Please try again.',
       });
     } finally {
       // clear progress UI
