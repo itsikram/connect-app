@@ -28,6 +28,15 @@ import Home from './src/screens/Home';
 import Message from './src/screens/Message';
 import Menu from './src/screens/Menu';
 import YouTubeScreen from './src/screens/YouTubeScreen';
+import FitnessOnboarding from './src/screens/FitnessOnboarding';
+import FitnessDashboard from './src/screens/FitnessDashboard';
+import FitnessMeal from './src/screens/FitnessMeal';
+import FitnessConfirmation from './src/screens/FitnessConfirmation';
+import FitnessWeight from './src/screens/FitnessWeight';
+import FitnessProgress from './src/screens/FitnessProgress';
+import FitnessReminders from './src/screens/FitnessReminders';
+import FitnessCoach from './src/screens/FitnessCoach';
+import FitnessRecommendations from './src/screens/FitnessRecommendations';
 import Settings from './src/screens/Settings';
 import Tasks from './src/screens/Tasks';
 import Notes from './src/screens/Notes';
@@ -266,6 +275,15 @@ function MenuStack() {
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="Tasks" component={Tasks} />
       <Stack.Screen name="Notes" component={Notes} />
+      <Stack.Screen name="FitnessOnboarding" component={FitnessOnboarding} />
+      <Stack.Screen name="FitnessDashboard" component={FitnessDashboard} />
+      <Stack.Screen name="FitnessMeal" component={FitnessMeal} />
+      <Stack.Screen name="FitnessConfirmation" component={FitnessConfirmation} />
+      <Stack.Screen name="FitnessWeight" component={FitnessWeight} />
+      <Stack.Screen name="FitnessProgress" component={FitnessProgress} />
+      <Stack.Screen name="FitnessReminders" component={FitnessReminders} />
+      <Stack.Screen name="FitnessCoach" component={FitnessCoach} />
+      <Stack.Screen name="FitnessRecommendations" component={FitnessRecommendations} />
       <Stack.Screen name="VideoLibrary">
         {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
       </Stack.Screen>

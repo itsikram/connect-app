@@ -192,6 +192,7 @@ const Menu = () => {
     { id: 'downloads', label: 'Downloads', hint: 'Saved videos', icon: 'download', color: '#009688', onPress: () => (navigation as any).navigate('Menu', { screen: 'Downloads' }) },
     { id: 'tasks', label: 'Tasks', hint: 'Keep track of work', icon: 'checklist', color: '#10B981', onPress: () => (navigation as any).navigate('Menu', { screen: 'Tasks' }) },
     { id: 'notes', label: 'Notes', hint: 'Capture ideas and thoughts', icon: 'edit-note', color: '#6366F1', onPress: () => (navigation as any).navigate('Menu', { screen: 'Notes' }) },
+    { id: 'fitness', label: 'Fitness', hint: 'Meals, targets, and progress', icon: 'fitness-center', color: '#00C851', onPress: () => (navigation as any).navigate('Menu', { screen: 'FitnessDashboard' }) },
   ];
 
   const showComingSoonSection = comingSoonApps.length > 0 && (showComingSoon || Boolean(normalizedQuery));
