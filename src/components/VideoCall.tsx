@@ -25,6 +25,7 @@ import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
 import AgoraWebEngine, { AgoraWebEngineHandle } from './AgoraWebEngine';
+import CallTranscript from './CallTranscript';
 
 interface VideoCallProps {
   myId: string;
@@ -88,6 +89,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   const cleanupVideoCall = useCallback(async () => {
     isTerminating.current = true;
+    DeviceEventEmitter.emit('video-call-active', false);
     await stopIncomingCallAlert();
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
@@ -122,6 +124,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   const startCall = useCallback(async (channelName: string) => {
     try {
+      if (isTerminating.current) return;
+      // The global emotion camera uses the same front camera as Agora.
+      DeviceEventEmitter.emit('video-call-active', true);
+      await new Promise(resolve => setTimeout(resolve, 150));
       if (isTerminating.current) return;
       setCallAccepted(true);
       setCurrentChannel(channelName);
@@ -596,6 +602,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
                   <Icon name="call-end" size={26} color="#fff" />
                 </TouchableOpacity>
               </View>
+              {callAccepted ? <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} /> : null}
             </View>
           ) : null}
         </View>

@@ -48,6 +48,7 @@ interface FaceFrames {
 export type AuthRequestConfig = AxiosRequestConfig & {
   skipAuthRefresh?: boolean;
   _retry?: boolean;
+  _retryNotModified?: boolean;
 };
 
 interface DebugAuthResult {
@@ -111,6 +112,9 @@ const api: AxiosInstance = axios.create({
   headers: {
     'User-Agent': 'MyCustomUserAgent',
     'Access-Control-Allow-Origin': '*',
+    // API responses are user- and auth-specific; do not reuse browser caches.
+    'Cache-Control': 'no-store',
+    Pragma: 'no-cache',
   },
 });
 
@@ -155,6 +159,26 @@ api.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const originalRequest = error.config as AuthRequestConfig;
+
+    // A 304 has no response body. The app has no HTTP response cache to read
+    // from, so retry once without conditional-cache headers to get the data.
+    if (
+      error.response?.status === 304 &&
+      originalRequest &&
+      !originalRequest._retryNotModified
+    ) {
+      originalRequest._retryNotModified = true;
+      originalRequest.headers = {
+        ...originalRequest.headers,
+        'Cache-Control': 'no-cache',
+        Pragma: 'no-cache',
+      };
+      originalRequest.params = {
+        ...(originalRequest.params || {}),
+        _cacheBust: Date.now(),
+      };
+      return api.request(originalRequest);
+    }
 
     // Handle 401 Unauthorized errors
     if (

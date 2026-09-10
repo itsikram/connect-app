@@ -277,6 +277,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     );
   };
 
+  const postImageUrls = [
+    ...(Array.isArray(post.photos) ? post.photos : [post.photos]),
+    ...(Array.isArray(post.gallery) ? post.gallery : []),
+  ].filter((url): url is string => isValidImageUrl(url));
+  const gallerySize = Math.min(postImageUrls.length, 5);
+
   // Safety check for required post data
   if (!post._id || !post.author) {
     console.warn('Post component received invalid data:', post);
@@ -1686,7 +1692,43 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           </View>
         ) : null}
 
-        {isValidImageUrl(post.photos) && (
+        {postImageUrls.length > 1 ? (
+          <View
+            style={[
+              styles.postGallery,
+              gallerySize === 2
+                ? styles.postGallery2
+                : gallerySize === 3
+                  ? styles.postGallery3
+                  : gallerySize === 4
+                    ? styles.postGallery4
+                    : styles.postGallery5,
+            ]}
+          >
+            {postImageUrls.slice(0, 5).map((url, index) => (
+              <TouchableOpacity
+                key={`${url}-${index}`}
+                onPress={openSinglePost}
+                activeOpacity={0.9}
+                style={[
+                  styles.postGalleryItem,
+                  gallerySize === 3 && index === 0 ? styles.postGalleryLead : null,
+                ]}
+              >
+                <Image
+                  source={{ uri: getAssetUrl(url) }}
+                  style={styles.postGalleryImage}
+                  resizeMode="cover"
+                />
+                {index === 4 && postImageUrls.length > 5 ? (
+                  <View style={styles.postGalleryMore}>
+                    <Text style={styles.postGalleryMoreText}>+{postImageUrls.length - 5}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            ))}
+          </View>
+        ) : postImageUrls.length === 1 ? (
           <TouchableOpacity
             onPress={openSinglePost}
             activeOpacity={0.92}
@@ -1730,9 +1772,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 key={imageRetryKey}
                 source={{
                   uri: getAssetUrl(
-                    typeof post.photos === 'string'
-                      ? post.photos
-                      : post.photos[0],
+                    postImageUrls[0],
                   ),
                 }}
                 style={[
@@ -1757,7 +1797,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               />
             )}
           </TouchableOpacity>
-        )}
+        ) : null}
       </View>
       <View style={styles.footer}>
         {showReactions ? (
@@ -2209,6 +2249,58 @@ const styles = StyleSheet.create({
   },
   attachmentContainer: {
     width: '100%',
+  },
+  postGallery: {
+    width: '100%',
+    display: 'flex',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 2,
+    overflow: 'hidden',
+    backgroundColor: '#111',
+  },
+  postGallery1: {
+    height: POST_IMAGE_MAX_HEIGHT,
+  },
+  postGallery2: {
+    height: 300,
+  },
+  postGallery3: {
+    height: 360,
+  },
+  postGallery4: {
+    height: 360,
+  },
+  postGallery5: {
+    height: 360,
+  },
+  postGalleryItem: {
+    width: '49.7%',
+    height: '49.7%',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  postGalleryLead: {
+    height: '100%',
+  },
+  postGalleryImage: {
+    width: '100%',
+    height: '100%',
+  },
+  postGalleryMore: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.48)',
+  },
+  postGalleryMoreText: {
+    color: '#fff',
+    fontSize: 30,
+    fontWeight: '700',
   },
   attachmentProfilePic: {
     backgroundColor: 'transparent',

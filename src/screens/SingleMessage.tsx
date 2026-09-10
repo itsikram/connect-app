@@ -363,7 +363,13 @@ const TypingDots = ({ color }: { color: string }) => {
   );
 };
 
-const MessageImage = ({ uri }: { uri: string }) => {
+const MessageImage = ({
+  uri,
+  onPress,
+}: {
+  uri: string;
+  onPress: () => void;
+}) => {
   const [status, setStatus] = useState<'loading' | 'loaded' | 'error'>(
     'loading',
   );
@@ -375,7 +381,11 @@ const MessageImage = ({ uri }: { uri: string }) => {
   }, [uri]);
 
   return (
-    <View
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.9}
+      accessibilityRole="button"
+      accessibilityLabel="View image"
       style={{
         width: 220,
         height: 220,
@@ -425,7 +435,7 @@ const MessageImage = ({ uri }: { uri: string }) => {
           onError={() => setStatus('error')}
         />
       ) : null}
-    </View>
+    </TouchableOpacity>
   );
 };
 
@@ -5077,7 +5087,10 @@ const SingleMessage = () => {
                 {item.attachment &&
                   isValidImageUrl(item.attachment) &&
                   item.messageType !== 'audio' && (
-                    <MessageImage uri={item.attachment} />
+                    <MessageImage
+                      uri={item.attachment}
+                      onPress={() => openImageModal(item.attachment)}
+                    />
                   )}
 
                 <View

@@ -3,7 +3,6 @@ import {
   Alert,
   FlatList,
   Image,
-  InteractionManager,
   LayoutAnimation,
   KeyboardAvoidingView,
   Modal,
@@ -25,6 +24,7 @@ import { useLudoGame } from '../contexts/LudoGameContext';
 import { useChessGame } from '../contexts/ChessGameContext';
 import { useSocket } from '../contexts/SocketContext';
 import useComposerLiveTranscribe, {
+  mergeTranscriptText,
   restoreChatPlaybackAudioMode,
 } from '../hooks/useComposerLiveTranscribe';
 import {
@@ -52,10 +52,7 @@ import { RootState } from '../store';
 import api, { connectAPI, profileAPI } from '../lib/api';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 import { navigate as navigateWithQueue } from '../lib/navigationService';
-import {
-  extractYouTubeVideoId,
-  toWatchUrl,
-} from '../lib/ytDownload';
+import { extractYouTubeVideoId, toWatchUrl } from '../lib/ytDownload';
 import { startBackgroundYoutubeDownload } from '../lib/ytDownloadManager';
 
 interface Props {
@@ -114,34 +111,56 @@ const getNameSimilarity = (query: string, candidate: string) => {
   if (!query || !candidate) return 0;
   const queryTokens = query.split(' ').filter(Boolean);
   const candidateTokens = candidate.split(' ').filter(Boolean);
-  const sharedTokens = queryTokens.filter(token => candidateTokens.includes(token)).length;
-  const tokenDice = (2 * sharedTokens) /
+  const sharedTokens = queryTokens.filter(token =>
+    candidateTokens.includes(token),
+  ).length;
+  const tokenDice =
+    (2 * sharedTokens) /
     Math.max(1, queryTokens.length + candidateTokens.length);
-  const containsScore = candidate.includes(query) || query.includes(candidate)
-    ? Math.min(query.length, candidate.length) / Math.max(query.length, candidate.length)
-    : 0;
-  const editScore = 1 - levenshteinDistance(query, candidate) /
-    Math.max(query.length, candidate.length);
-  const bestTokenEdit = Math.max(0, ...queryTokens.flatMap(queryToken =>
-    candidateTokens.map(candidateToken =>
-      1 - levenshteinDistance(queryToken, candidateToken) /
-        Math.max(queryToken.length, candidateToken.length),
+  const containsScore =
+    candidate.includes(query) || query.includes(candidate)
+      ? Math.min(query.length, candidate.length) /
+        Math.max(query.length, candidate.length)
+      : 0;
+  const editScore =
+    1 -
+    levenshteinDistance(query, candidate) /
+      Math.max(query.length, candidate.length);
+  const bestTokenEdit = Math.max(
+    0,
+    ...queryTokens.flatMap(queryToken =>
+      candidateTokens.map(
+        candidateToken =>
+          1 -
+          levenshteinDistance(queryToken, candidateToken) /
+            Math.max(queryToken.length, candidateToken.length),
+      ),
     ),
-  ));
+  );
   return Math.max(tokenDice, containsScore, editScore, bestTokenEdit);
 };
 
 const getConnectDisplayName = (connect: Record<string, unknown>) => {
-  const user = connect.user && typeof connect.user === 'object'
-    ? connect.user as Record<string, unknown>
-    : {};
+  const user =
+    connect.user && typeof connect.user === 'object'
+      ? (connect.user as Record<string, unknown>)
+      : {};
   if (connect.fullName) return String(connect.fullName);
   if (user.fullName) return String(user.fullName);
-  const full = `${user.firstName || connect.firstName || ''} ${user.surname || connect.surname || ''}`.trim();
+  const full = `${user.firstName || connect.firstName || ''} ${
+    user.surname || connect.surname || ''
+  }`.trim();
   return String(
-    full || connect.username || connect.displayName || user.displayName ||
-    connect.nickname || user.nickname || connect.name || user.name ||
-    user.username || 'Unknown',
+    full ||
+      connect.username ||
+      connect.displayName ||
+      user.displayName ||
+      connect.nickname ||
+      user.nickname ||
+      connect.name ||
+      user.name ||
+      user.username ||
+      'Unknown',
   );
 };
 
@@ -181,7 +200,6 @@ const AIAgentModal: React.FC<Props> = ({
   } = useSocket();
   const [messages, setMessages] = React.useState<AgentMessage[]>([welcome()]);
   const [input, setInput] = React.useState('');
-  const [interimInput, setInterimInput] = React.useState('');
   const [language, setLanguage] = React.useState<AgentSpeechLanguage>('auto');
   const [loading, setLoading] = React.useState(false);
   const [autoMode, setAutoMode] = React.useState(true);
@@ -193,13 +211,29 @@ const AIAgentModal: React.FC<Props> = ({
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
   const [speechEnabled, setSpeechEnabled] = React.useState(false);
-  const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] = React.useState(false);
-  const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
-  const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
+  const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] =
+    React.useState(false);
+  const [providerStatus, setProviderStatus] =
+    React.useState<AIProviderStatus | null>(null);
+  const [selectedProvider, setSelectedProvider] =
+    React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
+  const openLudo = React.useCallback(() => {
+    navigateWithQueue('Menu');
+    setLudoGameActive(true);
+  }, [setLudoGameActive]);
+  const inviteLudoPlayer = React.useCallback(
+    (userId: string, userName?: string) => {
+      if (!userId) throw new Error('I could not resolve the Ludo player.');
+      navigateWithQueue('Menu');
+      requestLudoInvite({ id: userId, name: userName });
+    },
+    [requestLudoInvite],
+  );
   const voiceStartKeyRef = React.useRef<string | null>(null);
+  const voiceInputBaseRef = React.useRef('');
   const updateAutoActionRunning = React.useCallback((running: boolean) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAutoActionRunning(running);
@@ -207,7 +241,9 @@ const AIAgentModal: React.FC<Props> = ({
   const autoReplyRulesRef = React.useRef<
     Array<{ userId: string; userName: string; replyText: string }>
   >([]);
-  const miniPosition = React.useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+  const miniPosition = React.useRef(
+    new Animated.ValueXY({ x: 0, y: 0 }),
+  ).current;
   const miniOffset = React.useRef({ x: 0, y: 0 });
   const miniPanResponder = React.useMemo(
     () =>
@@ -244,293 +280,494 @@ const AIAgentModal: React.FC<Props> = ({
     activeUser?: { id?: string; name?: string };
     activeProfile?: { id?: string; name?: string };
     activeConversation?: { userId?: string; name?: string };
-    knownConnects?: Array<{ id: string; name: string; username?: string; bio?: string }>;
+    knownConnects?: Array<{
+      id: string;
+      name: string;
+      username?: string;
+      bio?: string;
+    }>;
   }>({});
   const listRef = React.useRef<FlatList<AgentMessage>>(null);
   const clearChat = React.useCallback(async () => {
     await clearAgentChat();
     setMessages([welcome()]);
   }, []);
-  const resolveUser = React.useCallback(async (query: string) => {
-    const profileId = String((profile as Record<string, unknown> | null)?._id || '');
-    if (!profileId) return null;
-    const normalizedQuery = normalizeConnectName(query.normalize('NFC').replace(/\u200c|\u200d/g, ''));
-    const searchQueries = Array.from(new Set([
-      normalizedQuery,
-      normalizedQuery.replace(/(কে|কো|এর|র|তে|কে)$/u, '').trim(),
-    ].filter(Boolean)));
-    const connectMap = new Map<string, Record<string, unknown>>();
-    for (const searchQuery of searchQueries) {
-      const response = await api.get('/search', { params: { input: searchQuery } });
-      const data: unknown = response.data;
-      const dataRecord = data && typeof data === 'object' ? data as Record<string, unknown> : {};
-      const searchPayload = dataRecord.data && typeof dataRecord.data === 'object'
-        ? dataRecord.data as Record<string, unknown>
-        : dataRecord;
-      const users = Array.isArray(searchPayload.users) ? searchPayload.users : [];
-      users.forEach((user: Record<string, unknown>) => {
-        const userId = String(user._id || user.userId || '');
-        if (userId) connectMap.set(userId, user);
-      });
-    }
-    const connects: Array<Record<string, unknown>> = [...new Map(
-      [...knownConnectsRef.current, ...connectMap.values()].map(connect => [
-        String((connect as Record<string, unknown>).id || (connect as Record<string, unknown>)._id || ''),
-        connect,
-      ]),
-    ).values()].map(connect => connect as Record<string, unknown>);
-    const normalizedNeedle = normalizeConnectName(searchQueries[searchQueries.length - 1]);
-    if (normalizedNeedle.replace(/\s/g, '').length < 3) return null;
-    const scored = connects.map((connect: Record<string, unknown>) => {
-      const nestedUser = connect.user && typeof connect.user === 'object' ? connect.user as Record<string, unknown> : {};
-      const fields = [
-        nestedUser.firstName, connect.firstName, nestedUser.surname, connect.surname,
-        `${nestedUser.firstName || connect.firstName || ''} ${nestedUser.surname || connect.surname || ''}`,
-        nestedUser.displayName, connect.displayName, nestedUser.nickname, connect.nickname,
-        connect.banglaName, nestedUser.username, connect.username, connect.name,
-        nestedUser.name, connect.fullName, nestedUser.fullName,
-      ]
-        .map(value => normalizeConnectName(value))
-        .filter(Boolean);
-      const queryTokens = normalizedNeedle.split(' ').filter(Boolean);
-      let score = 0;
-      for (const candidate of fields) {
-        if (candidate === normalizedNeedle) {
-          score = Math.max(score, 1);
-          continue;
-        }
-        const candidateTokens = candidate.split(' ').filter(Boolean);
-        if (queryTokens.length === 1) {
-          const token = queryTokens[0];
-          if (candidateTokens.some(value => value === token)) score = Math.max(score, 1);
-          else if (candidateTokens.some(value => value.startsWith(token) && token.length / value.length >= 0.8)) score = Math.max(score, 0.98);
-          else if (candidateTokens.some(value => value.includes(token) && Math.abs(value.length - token.length) <= 1)) score = Math.max(score, candidateTokens.some(value => value === token) ? 0.98 : 0.9);
-        } else {
-          if (candidate.includes(normalizedNeedle)) score = Math.max(score, 0.99);
-          const tokenMatches = queryTokens.filter(token => candidateTokens.includes(token)).length;
-          if (tokenMatches > 0) score = Math.max(score, 0.85 + (tokenMatches / queryTokens.length) * 0.1);
-        }
-        if (score < 0.85) score = Math.max(score, getNameSimilarity(normalizedNeedle, candidate) >= 0.6 ? getNameSimilarity(normalizedNeedle, candidate) : 0);
+  const resolveUser = React.useCallback(
+    async (query: string) => {
+      const profileId = String(
+        (profile as Record<string, unknown> | null)?._id || '',
+      );
+      if (!profileId) return null;
+      const normalizedQuery = normalizeConnectName(
+        query.normalize('NFC').replace(/\u200c|\u200d/g, ''),
+      );
+      const searchQueries = Array.from(
+        new Set(
+          [
+            normalizedQuery,
+            normalizedQuery.replace(/(কে|কো|এর|র|তে|কে)$/u, '').trim(),
+          ].filter(Boolean),
+        ),
+      );
+      const connectMap = new Map<string, Record<string, unknown>>();
+      for (const searchQuery of searchQueries) {
+        const response = await api.get('/search', {
+          params: { input: searchQuery },
+        });
+        const data: unknown = response.data;
+        const dataRecord =
+          data && typeof data === 'object'
+            ? (data as Record<string, unknown>)
+            : {};
+        const searchPayload =
+          dataRecord.data && typeof dataRecord.data === 'object'
+            ? (dataRecord.data as Record<string, unknown>)
+            : dataRecord;
+        const users = Array.isArray(searchPayload.users)
+          ? searchPayload.users
+          : [];
+        users.forEach((user: Record<string, unknown>) => {
+          const userId = String(user._id || user.userId || '');
+          if (userId) connectMap.set(userId, user);
+        });
       }
-      return { connect, score };
-    }).filter(item => item.score >= 0.4).sort((a, b) => b.score - a.score);
-    if (!scored.length) return null;
-    const bestScore = scored[0].score;
-    const matches = scored.filter(item => item.score === bestScore);
-    if (matches.length > 1) {
-      const names = matches.slice(0, 5).map(item => getConnectDisplayName(item.connect));
-      const ambiguity = new Error(
-        `I found multiple relevant people: ${names.join(', ')}. Which one should I use?`,
-      ) as Error & {
-        profileChoices?: Array<{ id: string; name: string; username?: string; profilePic?: string }>;
-      };
-      ambiguity.profileChoices = matches.slice(0, 5).map(item => {
-        const nested = item.connect.user && typeof item.connect.user === 'object'
-          ? item.connect.user as Record<string, unknown>
-          : {};
-        return {
-          id: String(item.connect._id || item.connect.id || item.connect.userId || nested._id || nested.id),
-          name: getConnectDisplayName(item.connect),
-          username: String(item.connect.username || nested.username || '') || undefined,
-          profilePic: String(
-            item.connect.profilePic || item.connect.profilePicture ||
-            nested.profilePic || nested.profilePicture || nested.avatar || '',
-          ) || undefined,
+      const connects: Array<Record<string, unknown>> = [
+        ...new Map(
+          [...knownConnectsRef.current, ...connectMap.values()].map(connect => [
+            String(
+              (connect as Record<string, unknown>).id ||
+                (connect as Record<string, unknown>)._id ||
+                '',
+            ),
+            connect,
+          ]),
+        ).values(),
+      ].map(connect => connect as Record<string, unknown>);
+      const normalizedNeedle = normalizeConnectName(
+        searchQueries[searchQueries.length - 1],
+      );
+      if (normalizedNeedle.replace(/\s/g, '').length < 3) return null;
+      const scored = connects
+        .map((connect: Record<string, unknown>) => {
+          const nestedUser =
+            connect.user && typeof connect.user === 'object'
+              ? (connect.user as Record<string, unknown>)
+              : {};
+          const fields = [
+            nestedUser.firstName,
+            connect.firstName,
+            nestedUser.surname,
+            connect.surname,
+            `${nestedUser.firstName || connect.firstName || ''} ${
+              nestedUser.surname || connect.surname || ''
+            }`,
+            nestedUser.displayName,
+            connect.displayName,
+            nestedUser.nickname,
+            connect.nickname,
+            connect.banglaName,
+            nestedUser.username,
+            connect.username,
+            connect.name,
+            nestedUser.name,
+            connect.fullName,
+            nestedUser.fullName,
+          ]
+            .map(value => normalizeConnectName(value))
+            .filter(Boolean);
+          const queryTokens = normalizedNeedle.split(' ').filter(Boolean);
+          let score = 0;
+          for (const candidate of fields) {
+            if (candidate === normalizedNeedle) {
+              score = Math.max(score, 1);
+              continue;
+            }
+            const candidateTokens = candidate.split(' ').filter(Boolean);
+            if (queryTokens.length === 1) {
+              const token = queryTokens[0];
+              if (candidateTokens.some(value => value === token))
+                score = Math.max(score, 1);
+              else if (
+                candidateTokens.some(
+                  value =>
+                    value.startsWith(token) &&
+                    token.length / value.length >= 0.8,
+                )
+              )
+                score = Math.max(score, 0.98);
+              else if (
+                candidateTokens.some(
+                  value =>
+                    value.includes(token) &&
+                    Math.abs(value.length - token.length) <= 1,
+                )
+              )
+                score = Math.max(
+                  score,
+                  candidateTokens.some(value => value === token) ? 0.98 : 0.9,
+                );
+            } else {
+              if (candidate.includes(normalizedNeedle))
+                score = Math.max(score, 0.99);
+              const tokenMatches = queryTokens.filter(token =>
+                candidateTokens.includes(token),
+              ).length;
+              if (tokenMatches > 0)
+                score = Math.max(
+                  score,
+                  0.85 + (tokenMatches / queryTokens.length) * 0.1,
+                );
+            }
+            if (score < 0.85)
+              score = Math.max(
+                score,
+                getNameSimilarity(normalizedNeedle, candidate) >= 0.6
+                  ? getNameSimilarity(normalizedNeedle, candidate)
+                  : 0,
+              );
+          }
+          return { connect, score };
+        })
+        .filter(item => item.score >= 0.4)
+        .sort((a, b) => b.score - a.score);
+      if (!scored.length) return null;
+      const bestScore = scored[0].score;
+      const matches = scored.filter(item => item.score === bestScore);
+      if (matches.length > 1) {
+        const names = matches
+          .slice(0, 5)
+          .map(item => getConnectDisplayName(item.connect));
+        const ambiguity = new Error(
+          `I found multiple relevant people: ${names.join(
+            ', ',
+          )}. Which one should I use?`,
+        ) as Error & {
+          profileChoices?: Array<{
+            id: string;
+            name: string;
+            username?: string;
+            profilePic?: string;
+          }>;
         };
-      });
-      throw ambiguity;
-    }
-    const match = matches[0].connect;
-    const nestedUser = match.user && typeof match.user === 'object'
-      ? match.user as Record<string, unknown>
-      : {};
-    const id = match._id || match.userId || nestedUser._id || nestedUser.id;
-    if (!id) return null;
-    const displayName = getConnectDisplayName(match);
-    return {
-      id: String(id),
-      name: String(displayName),
-      profilePic: String(
-        match.profilePic || match.profilePicture || nestedUser.profilePic ||
-          nestedUser.profilePicture || nestedUser.avatar || '',
-      ) || undefined,
-    };
-  }, [profile]);
+        ambiguity.profileChoices = matches.slice(0, 5).map(item => {
+          const nested =
+            item.connect.user && typeof item.connect.user === 'object'
+              ? (item.connect.user as Record<string, unknown>)
+              : {};
+          return {
+            id: String(
+              item.connect._id ||
+                item.connect.id ||
+                item.connect.userId ||
+                nested._id ||
+                nested.id,
+            ),
+            name: getConnectDisplayName(item.connect),
+            username:
+              String(item.connect.username || nested.username || '') ||
+              undefined,
+            profilePic:
+              String(
+                item.connect.profilePic ||
+                  item.connect.profilePicture ||
+                  nested.profilePic ||
+                  nested.profilePicture ||
+                  nested.avatar ||
+                  '',
+              ) || undefined,
+          };
+        });
+        throw ambiguity;
+      }
+      const match = matches[0].connect;
+      const nestedUser =
+        match.user && typeof match.user === 'object'
+          ? (match.user as Record<string, unknown>)
+          : {};
+      const id = match._id || match.userId || nestedUser._id || nestedUser.id;
+      if (!id) return null;
+      const displayName = getConnectDisplayName(match);
+      return {
+        id: String(id),
+        name: String(displayName),
+        profilePic:
+          String(
+            match.profilePic ||
+              match.profilePicture ||
+              nestedUser.profilePic ||
+              nestedUser.profilePicture ||
+              nestedUser.avatar ||
+              '',
+          ) || undefined,
+      };
+    },
+    [profile],
+  );
 
   React.useEffect(() => {
-    const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+    const ownId = String(
+      (profile as Record<string, unknown> | null)?._id || '',
+    );
     if (!ownId) return;
-    api.get('/connects/getConnects', { params: { profile: ownId } })
+    api
+      .get('/connects/getConnects', { params: { profile: ownId } })
       .then(response => {
         const raw = Array.isArray(response.data?.connects)
           ? response.data.connects
           : Array.isArray(response.data?.data?.connects)
-            ? response.data.data.connects
-            : Array.isArray(response.data?.friends)
-              ? response.data.friends
-              : Array.isArray(response.data?.data?.friends)
-                ? response.data.data.friends
-            : [];
-        knownConnectsRef.current = raw.map((item: Record<string, unknown>) => {
-          const nested = item.user && typeof item.user === 'object'
-            ? item.user as Record<string, unknown>
-            : {};
-          const id = item._id || item.userId || nested._id || nested.id;
-          const name = item.fullName || item.name || nested.fullName || nested.name ||
-            item.username || nested.username;
-          return {
-            id: String(id || ''),
-            name: String(name || ''),
-            username: String(item.username || nested.username || '') || undefined,
-            bio: String(item.bio || nested.bio || '') || undefined,
-          };
-        }).filter(item => item.id && item.name);
+          ? response.data.data.connects
+          : Array.isArray(response.data?.friends)
+          ? response.data.friends
+          : Array.isArray(response.data?.data?.friends)
+          ? response.data.data.friends
+          : [];
+        knownConnectsRef.current = raw
+          .map((item: Record<string, unknown>) => {
+            const nested =
+              item.user && typeof item.user === 'object'
+                ? (item.user as Record<string, unknown>)
+                : {};
+            const id = item._id || item.userId || nested._id || nested.id;
+            const name =
+              item.fullName ||
+              item.name ||
+              nested.fullName ||
+              nested.name ||
+              item.username ||
+              nested.username;
+            return {
+              id: String(id || ''),
+              name: String(name || ''),
+              username:
+                String(item.username || nested.username || '') || undefined,
+              bio: String(item.bio || nested.bio || '') || undefined,
+            };
+          })
+          .filter(item => item.id && item.name);
         agentMemoryRef.current.knownConnects = knownConnectsRef.current;
       })
       .catch(error => {
-        if (__DEV__) console.warn('[AI] Failed to load connect context:', error);
+        if (__DEV__)
+          console.warn('[AI] Failed to load connect context:', error);
       });
   }, [profile]);
 
   React.useEffect(() => {
-    const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+    const ownId = String(
+      (profile as Record<string, unknown> | null)?._id || '',
+    );
     if (!ownId) return;
     const key = `@connect/ai-auto-replies/${ownId}`;
-    AsyncStorage.getItem(key).then(value => {
-      if (!value) return;
-      try {
-        const parsed = JSON.parse(value);
-        if (Array.isArray(parsed)) autoReplyRulesRef.current = parsed;
-      } catch (error) {
-        if (__DEV__) console.warn('[AI] Invalid automatic reply rules:', error);
-      }
-    }).catch(error => {
-      if (__DEV__) console.warn('[AI] Failed to load automatic reply rules:', error);
-    });
+    AsyncStorage.getItem(key)
+      .then(value => {
+        if (!value) return;
+        try {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed)) autoReplyRulesRef.current = parsed;
+        } catch (error) {
+          if (__DEV__)
+            console.warn('[AI] Invalid automatic reply rules:', error);
+        }
+      })
+      .catch(error => {
+        if (__DEV__)
+          console.warn('[AI] Failed to load automatic reply rules:', error);
+      });
   }, [profile]);
 
-  const callAdapter = React.useMemo(() => ({
-    resolveUser: async (query: string) => {
-      const normalized = query.trim().toLowerCase();
-      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-      const ownName = String(
-        (profile as Record<string, unknown> | null)?.fullName ||
-          (profile as Record<string, unknown> | null)?.username ||
-          user?.profile?.fullName ||
-          'My profile',
-      );
-      if (['me', 'my profile', 'myself', 'নিজের প্রোফাইল', 'আমার প্রোফাইল'].includes(normalized) && ownId) {
-        return { id: ownId, name: ownName };
-      }
-      if (['him', 'her', 'them', 'ওকে', 'তাকে', 'ওর', 'তার'].includes(normalized)) {
-        const active = agentMemoryRef.current.activeUser;
-        if (active?.id) return { id: active.id, name: active.name };
-      }
-      return resolveUser(query);
-    },
-    startAudioCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
-      setMinimized(true);
-      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-      const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
-       emitStartAudioCall({
-         to: userId,
-         channelName: effectiveChannel,
-         calleeName: userName,
-         calleeProfilePic: profilePic,
-       });
-      startAudioCall(userId, effectiveChannel);
-    },
-    startVideoCall: async (userId: string, channelName: string, userName?: string, profilePic?: string) => {
-      setMinimized(true);
-      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-      const effectiveChannel = channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
-      emitStartVideoCall({
-        to: userId,
-        channelName: effectiveChannel,
-        calleeName: userName,
-        calleeProfilePic: profilePic,
-      });
-      startVideoCall(userId, effectiveChannel);
-    },
-    followUser: async (userId: string) => {
-      await profileAPI.follow(userId);
-    },
-    unfollowUser: async (userId: string) => {
-      await profileAPI.unfollow(userId);
-    },
-    blockUser: async (userId: string) => {
-      await connectAPI.blockUser(userId);
-    },
-    unblockUser: async (userId: string) => {
-      await connectAPI.unblockUser(userId);
-    },
-    sendMessage: async (userId: string, message: string) => {
-      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-      if (!ownId) throw new Error('You must be signed in to send messages.');
-      const room = [ownId, userId].sort().join('_');
-      socketSendMessage(room, ownId, userId, message);
-    },
-    endCall: (userId: string, channelName?: string) => {
-      if (!userId) throw new Error('I could not resolve the call participant.');
-      endAudioCall(userId, channelName, 'end');
-      endVideoCall(userId, channelName, 'end');
-    },
-    changeSetting: (setting: string, value: unknown) =>
-      navigateWithQueue('Menu', { screen: 'Settings', setting, value }),
-    createTask: async (text: string) => {
-      const response = await api.post('/tasks', { text });
-      if (!response.data?.success) throw new Error('I could not create that task.');
-    },
-    resolveTask: async (query: string) => {
-      const response = await api.get('/tasks');
-      const tasks = Array.isArray(response.data?.tasks) ? response.data.tasks : [];
-      const needle = query.trim().toLowerCase();
-      const matches = tasks.filter((task: Record<string, unknown>) =>
-        String(task.text || '').toLowerCase().includes(needle),
-      );
-      return matches.length === 1 && matches[0]?._id
-        ? { id: String(matches[0]._id) }
-        : null;
-    },
-    updateTask: async (taskId: string, values: { text?: string; completed?: boolean }) => {
-      const response = await api.put(`/tasks/${encodeURIComponent(taskId)}`, values);
-      if (!response.data?.success) throw new Error('I could not update that task.');
-    },
-    createAutoReplyRule: async (triggerUserName: string, replyText: string) => {
-      const resolved = await resolveUser(triggerUserName);
-      if (!resolved) throw new Error('I could not uniquely resolve that connect.');
-      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-      if (!ownId) throw new Error('You must be signed in to save an automatic reply.');
-      const rules = autoReplyRulesRef.current.filter(rule => rule.userId !== resolved.id);
-      rules.push({ userId: resolved.id, userName: resolved.name || triggerUserName, replyText });
-      autoReplyRulesRef.current = rules;
-      await AsyncStorage.setItem(`@connect/ai-auto-replies/${ownId}`, JSON.stringify(rules));
-    },
-  }), [
-    onClose,
-    profile,
-    requestLudoInvite,
-    resolveUser,
-    startAudioCall,
-    startVideoCall,
-    socketSendMessage,
-    endAudioCall,
-    endVideoCall,
-  ]);
+  const callAdapter = React.useMemo(
+    () => ({
+      resolveUser: async (query: string) => {
+        const normalized = query.trim().toLowerCase();
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        const ownName = String(
+          (profile as Record<string, unknown> | null)?.fullName ||
+            (profile as Record<string, unknown> | null)?.username ||
+            user?.profile?.fullName ||
+            'My profile',
+        );
+        if (
+          [
+            'me',
+            'my profile',
+            'myself',
+            'নিজের প্রোফাইল',
+            'আমার প্রোফাইল',
+          ].includes(normalized) &&
+          ownId
+        ) {
+          return { id: ownId, name: ownName };
+        }
+        if (
+          ['him', 'her', 'them', 'ওকে', 'তাকে', 'ওর', 'তার'].includes(
+            normalized,
+          )
+        ) {
+          const active = agentMemoryRef.current.activeUser;
+          if (active?.id) return { id: active.id, name: active.name };
+        }
+        return resolveUser(query);
+      },
+      startAudioCall: async (
+        userId: string,
+        channelName: string,
+        userName?: string,
+        profilePic?: string,
+      ) => {
+        setMinimized(true);
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        const effectiveChannel =
+          channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
+        emitStartAudioCall({
+          to: userId,
+          channelName: effectiveChannel,
+          calleeName: userName,
+          calleeProfilePic: profilePic,
+        });
+        startAudioCall(userId, effectiveChannel);
+      },
+      startVideoCall: async (
+        userId: string,
+        channelName: string,
+        userName?: string,
+        profilePic?: string,
+      ) => {
+        setMinimized(true);
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        const effectiveChannel =
+          channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
+        emitStartVideoCall({
+          to: userId,
+          channelName: effectiveChannel,
+          calleeName: userName,
+          calleeProfilePic: profilePic,
+        });
+        startVideoCall(userId, effectiveChannel);
+      },
+      followUser: async (userId: string) => {
+        await profileAPI.follow(userId);
+      },
+      unfollowUser: async (userId: string) => {
+        await profileAPI.unfollow(userId);
+      },
+      blockUser: async (userId: string) => {
+        await connectAPI.blockUser(userId);
+      },
+      unblockUser: async (userId: string) => {
+        await connectAPI.unblockUser(userId);
+      },
+      sendMessage: async (userId: string, message: string) => {
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        if (!ownId) throw new Error('You must be signed in to send messages.');
+        const room = [ownId, userId].sort().join('_');
+        socketSendMessage(room, ownId, userId, message);
+      },
+      endCall: (userId: string, channelName?: string) => {
+        if (!userId)
+          throw new Error('I could not resolve the call participant.');
+        endAudioCall(userId, channelName, 'end');
+        endVideoCall(userId, channelName, 'end');
+      },
+      changeSetting: (setting: string, value: unknown) =>
+        navigateWithQueue('Menu', { screen: 'Settings', setting, value }),
+      createTask: async (text: string) => {
+        const response = await api.post('/tasks', { text });
+        if (!response.data?.success)
+          throw new Error('I could not create that task.');
+      },
+      resolveTask: async (query: string) => {
+        const response = await api.get('/tasks');
+        const tasks = Array.isArray(response.data?.tasks)
+          ? response.data.tasks
+          : [];
+        const needle = query.trim().toLowerCase();
+        const matches = tasks.filter((task: Record<string, unknown>) =>
+          String(task.text || '')
+            .toLowerCase()
+            .includes(needle),
+        );
+        return matches.length === 1 && matches[0]?._id
+          ? { id: String(matches[0]._id) }
+          : null;
+      },
+      updateTask: async (
+        taskId: string,
+        values: { text?: string; completed?: boolean },
+      ) => {
+        const response = await api.put(
+          `/tasks/${encodeURIComponent(taskId)}`,
+          values,
+        );
+        if (!response.data?.success)
+          throw new Error('I could not update that task.');
+      },
+      createAutoReplyRule: async (
+        triggerUserName: string,
+        replyText: string,
+      ) => {
+        const resolved = await resolveUser(triggerUserName);
+        if (!resolved)
+          throw new Error('I could not uniquely resolve that connect.');
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        if (!ownId)
+          throw new Error('You must be signed in to save an automatic reply.');
+        const rules = autoReplyRulesRef.current.filter(
+          rule => rule.userId !== resolved.id,
+        );
+        rules.push({
+          userId: resolved.id,
+          userName: resolved.name || triggerUserName,
+          replyText,
+        });
+        autoReplyRulesRef.current = rules;
+        await AsyncStorage.setItem(
+          `@connect/ai-auto-replies/${ownId}`,
+          JSON.stringify(rules),
+        );
+      },
+    }),
+    [
+      onClose,
+      profile,
+      requestLudoInvite,
+      resolveUser,
+      startAudioCall,
+      startVideoCall,
+      socketSendMessage,
+      endAudioCall,
+      endVideoCall,
+    ],
+  );
 
   React.useEffect(() => {
     const handleIncomingMessage = (payload: unknown) => {
-      const data = payload && typeof payload === 'object'
-        ? payload as Record<string, unknown>
-        : {};
-      const message = data.updatedMessage && typeof data.updatedMessage === 'object'
-        ? data.updatedMessage as Record<string, unknown>
-        : data;
-      const ownId = String((profile as Record<string, unknown> | null)?._id || '');
+      const data =
+        payload && typeof payload === 'object'
+          ? (payload as Record<string, unknown>)
+          : {};
+      const message =
+        data.updatedMessage && typeof data.updatedMessage === 'object'
+          ? (data.updatedMessage as Record<string, unknown>)
+          : data;
+      const ownId = String(
+        (profile as Record<string, unknown> | null)?._id || '',
+      );
       const senderId = String(message.senderId || message.sender || '');
       const text = String(message.message || '').trim();
       if (!ownId || !senderId || senderId === ownId || !text) return;
-      const rule = autoReplyRulesRef.current.find(item => item.userId === senderId);
+      const rule = autoReplyRulesRef.current.find(
+        item => item.userId === senderId,
+      );
       if (!rule) return;
       const room = [ownId, senderId].sort().join('_');
       socketSendMessage(room, ownId, senderId, rule.replyText);
@@ -542,7 +779,9 @@ const AIAgentModal: React.FC<Props> = ({
       socketOff('newMessage', handleIncomingMessage);
     };
   }, [profile, socketOff, socketOn, socketSendMessage]);
-  const voiceAutoSendTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const voiceAutoSendTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const clearVoiceAutoSend = React.useCallback(() => {
     if (voiceAutoSendTimerRef.current) {
       clearTimeout(voiceAutoSendTimerRef.current);
@@ -552,8 +791,9 @@ const AIAgentModal: React.FC<Props> = ({
 
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
-      setInput(text);
-      setInterimInput('');
+      const next = mergeTranscriptText(voiceInputBaseRef.current, text);
+      voiceInputBaseRef.current = next;
+      setInput(next);
       if (!voiceConversation) return;
       clearVoiceAutoSend();
       voiceAutoSendTimerRef.current = setTimeout(() => {
@@ -561,7 +801,9 @@ const AIAgentModal: React.FC<Props> = ({
         sendRef.current(text);
       }, 1200);
     },
-    onInterim: setInterimInput,
+    onInterim: text => {
+      setInput(mergeTranscriptText(voiceInputBaseRef.current, text));
+    },
   });
 
   React.useEffect(() => {
@@ -580,9 +822,11 @@ const AIAgentModal: React.FC<Props> = ({
         setProviderStatus(status);
         const savedProvider = saved as AIProvider | null;
         const available = (Object.keys(providerLabels) as AIProvider[]).find(
-          provider => status.enabled[provider] !== false && status.configured[provider],
+          provider =>
+            status.enabled[provider] !== false && status.configured[provider],
         );
-        const savedIsAvailable = savedProvider &&
+        const savedIsAvailable =
+          savedProvider &&
           status.enabled[savedProvider] !== false &&
           status.configured[savedProvider];
         const next = savedIsAvailable
@@ -652,7 +896,6 @@ const AIAgentModal: React.FC<Props> = ({
     const text = (textOverride ?? input).trim();
     if (!text || loading) return;
     transcribe.stop({ discard: true }).catch(() => {});
-    setInterimInput('');
     const user: AgentMessage = {
       id: id(),
       type: 'user',
@@ -667,6 +910,7 @@ const AIAgentModal: React.FC<Props> = ({
       streaming: true,
     };
     const generation = ++generationRef.current;
+    voiceInputBaseRef.current = '';
     setInput('');
     setMessages(previous => [...previous, user, stream]);
     setLoading(true);
@@ -712,20 +956,21 @@ const AIAgentModal: React.FC<Props> = ({
       const parsed = parseAgentIntent(rawReply);
       if (parsed.ok) {
         const intent = parsed.intent;
-        const contextualAction = intent.actions?.find(action =>
-          action.targetName ||
-          action.parameters?.userName ||
-          action.parameters?.userId ||
-          action.parameters?.profileId,
+        const contextualAction = intent.actions?.find(
+          action =>
+            action.targetName ||
+            action.parameters?.userName ||
+            action.parameters?.userId ||
+            action.parameters?.profileId,
         );
         if (contextualAction) {
           const parameters = contextualAction.parameters || {};
-          const idValue = String(
-            parameters.userId || parameters.profileId || '',
-          ) || undefined;
-          const nameValue = String(
-            parameters.userName || contextualAction.targetName || '',
-          ) || undefined;
+          const idValue =
+            String(parameters.userId || parameters.profileId || '') ||
+            undefined;
+          const nameValue =
+            String(parameters.userName || contextualAction.targetName || '') ||
+            undefined;
           agentMemoryRef.current = {
             activeUser: { id: idValue, name: nameValue },
             activeProfile: { id: idValue, name: nameValue },
@@ -756,9 +1001,11 @@ const AIAgentModal: React.FC<Props> = ({
             try {
               return await callAdapter.resolveUser(query);
             } catch (error) {
-              const choices = (error as Error & {
-                profileChoices?: AgentMessage['profileChoices'];
-              }).profileChoices;
+              const choices = (
+                error as Error & {
+                  profileChoices?: AgentMessage['profileChoices'];
+                }
+              ).profileChoices;
               if (choices?.length) ambiguityRef.current = choices;
               throw error;
             }
@@ -777,23 +1024,31 @@ const AIAgentModal: React.FC<Props> = ({
               tasks: 'Menu',
               task: 'Menu',
             };
-            const normalizedRoute = routeAliases[String(route).trim().toLowerCase()] || route;
+            const normalizedRoute =
+              routeAliases[String(route).trim().toLowerCase()] || route;
             const normalizedParams =
               String(route).trim().toLowerCase() === 'messages' ||
               String(route).trim().toLowerCase() === 'message'
                 ? { screen: 'MessageList', ...(params || {}) }
                 : String(route).trim().toLowerCase() === 'profile'
-                  ? { screen: 'MyProfile', ...(params || {}) }
-                  : String(route).trim().toLowerCase() === 'settings'
-                    ? { screen: 'Settings', ...(params || {}) }
-                    : ['tasks', 'task'].includes(String(route).trim().toLowerCase())
-                      ? { screen: 'Tasks', ...(params || {}) }
-                    : params;
-            const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-            const connectId = String(
-              (normalizedParams as Record<string, unknown> | undefined)?.connectId || '',
+                ? { screen: 'MyProfile', ...(params || {}) }
+                : String(route).trim().toLowerCase() === 'settings'
+                ? { screen: 'Settings', ...(params || {}) }
+                : ['tasks', 'task'].includes(String(route).trim().toLowerCase())
+                ? { screen: 'Tasks', ...(params || {}) }
+                : params;
+            const ownId = String(
+              (profile as Record<string, unknown> | null)?._id || '',
             );
-            if (normalizedRoute === 'ConnectProfile' && ownId && connectId === ownId) {
+            const connectId = String(
+              (normalizedParams as Record<string, unknown> | undefined)
+                ?.connectId || '',
+            );
+            if (
+              normalizedRoute === 'ConnectProfile' &&
+              ownId &&
+              connectId === ownId
+            ) {
               return navigateWithQueue('Menu', { screen: 'MyProfile' });
             }
             return navigateWithQueue(normalizedRoute, normalizedParams);
@@ -806,8 +1061,12 @@ const AIAgentModal: React.FC<Props> = ({
             });
           },
           searchVideo: async (query: string) => {
-            const response = await api.get('/search', { params: { input: query } });
-            const data = response.data as { videos?: Array<Record<string, unknown>> };
+            const response = await api.get('/search', {
+              params: { input: query },
+            });
+            const data = response.data as {
+              videos?: Array<Record<string, unknown>>;
+            };
             const video = Array.isArray(data?.videos) ? data.videos[0] : null;
             const videoId = String(video?._id || video?.id || '');
             if (!videoId) throw new Error('I could not find a matching video.');
@@ -834,7 +1093,9 @@ const AIAgentModal: React.FC<Props> = ({
             audioOnly?: boolean;
           }) => {
             setMinimized(true);
-            let url = options.url || (options.videoId ? toWatchUrl(options.videoId) : null);
+            let url =
+              options.url ||
+              (options.videoId ? toWatchUrl(options.videoId) : null);
             let title = options.title;
             let thumbnail = options.thumbnail;
             if (!url && options.query) {
@@ -846,7 +1107,10 @@ const AIAgentModal: React.FC<Props> = ({
                 : null;
               url = String(result?.url || '').trim() || null;
               title = title || String(result?.title || '').trim() || undefined;
-              thumbnail = thumbnail || String(result?.thumbnail || '').trim() || undefined;
+              thumbnail =
+                thumbnail ||
+                String(result?.thumbnail || '').trim() ||
+                undefined;
             }
             if (!url || !extractYouTubeVideoId(url)) {
               throw new Error('I could not find a downloadable YouTube video.');
@@ -868,11 +1132,8 @@ const AIAgentModal: React.FC<Props> = ({
             });
             if (!job) throw new Error('Could not start the YouTube download.');
           },
-          startLudo: () => setLudoGameActive(true),
-          inviteLudoPlayer: (userId, userName) => {
-            if (!userId) throw new Error('I could not resolve the Ludo player.');
-            requestLudoInvite({ id: userId, name: userName });
-          },
+          startLudo: openLudo,
+          inviteLudoPlayer,
           endCall: callAdapter.endCall,
           changeSetting: callAdapter.changeSetting,
           startChess: () => setChessGameActive(true),
@@ -914,15 +1175,17 @@ const AIAgentModal: React.FC<Props> = ({
           );
           return;
         }
-        const startsCall = Boolean(intent.actions?.some(action =>
-          action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL',
-        ));
+        const startsCall = Boolean(
+          intent.actions?.some(
+            action =>
+              action.action === 'START_AUDIO_CALL' ||
+              action.action === 'START_VIDEO_CALL',
+          ),
+        );
         if (autoMode && intent.actions?.length) {
           updateAutoActionRunning(true);
           // Paint the compact overlay before starting potentially slow action work.
-          await new Promise<void>(resolve => {
-            InteractionManager.runAfterInteractions(() => resolve());
-          });
+          await new Promise<void>(resolve => setTimeout(resolve, 0));
         }
         const results = await executeAgentActions(intent.actions, adapter, {
           // Sensitive actions always require an explicit confirmation, including
@@ -959,23 +1222,25 @@ const AIAgentModal: React.FC<Props> = ({
         if (ambiguityRef.current?.length) {
           const profileChoices = ambiguityRef.current;
           ambiguityRef.current = undefined;
-          ambiguousActionRef.current = intent.actions?.find(action =>
-            [
-              'START_AUDIO_CALL',
-              'START_VIDEO_CALL',
-              'INVITE_LUDO_PLAYER',
-              'SEND_MESSAGE',
-              'OPEN_CHAT',
-              'VIEW_PROFILE',
-            ].includes(action.action),
-          ) || null;
+          ambiguousActionRef.current =
+            intent.actions?.find(action =>
+              [
+                'START_AUDIO_CALL',
+                'START_VIDEO_CALL',
+                'INVITE_LUDO_PLAYER',
+                'SEND_MESSAGE',
+                'OPEN_CHAT',
+                'VIEW_PROFILE',
+              ].includes(action.action),
+            ) || null;
           setPendingActions([]);
           setMessages(previous =>
             previous.map(item =>
               item.id === stream.id
                 ? {
                     ...item,
-                    content: 'I found multiple people. Choose the profile to use for this action.',
+                    content:
+                      'I found multiple people. Choose the profile to use for this action.',
                     profileChoices,
                   }
                 : item,
@@ -994,8 +1259,8 @@ const AIAgentModal: React.FC<Props> = ({
         const outcome = failed.length
           ? failed.map(result => result.message).join(' ')
           : completed.length
-            ? completed.map(result => result.message).join(' ')
-            : '';
+          ? completed.map(result => result.message).join(' ')
+          : '';
         if (shouldSpeak && outcome) speechController.update(outcome, language);
         if (failed.length) {
           setMessages(previous =>
@@ -1035,7 +1300,8 @@ const AIAgentModal: React.FC<Props> = ({
             item.id === stream.id
               ? {
                   ...item,
-                  content: 'I could not understand the agent response. Please try again.',
+                  content:
+                    'I could not understand the agent response. Please try again.',
                 }
               : item,
           ),
@@ -1072,7 +1338,11 @@ const AIAgentModal: React.FC<Props> = ({
       updateAutoActionRunning(false);
       if (generation === generationRef.current) setLoading(false);
       if (voiceConversation && generation === generationRef.current) {
-        if (shouldSpeak) await speechController.finish();
+        if (shouldSpeak) {
+          await speechController.finish();
+          speechController.update('Listening', language);
+          await speechController.finish();
+        }
         const started = await transcribe.start(
           language === 'auto' ? undefined : language,
         );
@@ -1097,26 +1367,49 @@ const AIAgentModal: React.FC<Props> = ({
         },
       },
     ]);
-  const selectVoiceLanguage = React.useCallback(async (nextLanguage: AgentSpeechLanguage) => {
-    setLanguage(nextLanguage);
-    setVoiceLanguageMenuOpen(false);
-    if (!transcribe.supported) {
-      setVoiceConversation(false);
-      Alert.alert('Microphone unavailable', 'Allow microphone access and try again.');
-      return;
-    }
-    setVoiceConversation(true);
-    const started = await transcribe.start(
-      nextLanguage === 'auto' ? undefined : nextLanguage,
-    );
-    if (!started) {
-      setVoiceConversation(false);
-      Alert.alert(
-        'Microphone unavailable',
-        'Allow microphone access and try again.',
+  const announceListening = React.useCallback(
+    async (speechLanguage: AgentSpeechLanguage) => {
+      await transcribe.stop({ discard: true });
+      await restoreChatPlaybackAudioMode();
+      await speechControllerRef.current?.stop();
+      const speechController = createAgentSpeechController(speechLanguage);
+      speechControllerRef.current = speechController;
+      speechController.update('Listening', speechLanguage);
+      await speechController.finish();
+    },
+    [transcribe],
+  );
+
+  const selectVoiceLanguage = React.useCallback(
+    async (nextLanguage: AgentSpeechLanguage) => {
+      setLanguage(nextLanguage);
+      setVoiceLanguageMenuOpen(false);
+      if (!transcribe.supported) {
+        setVoiceConversation(false);
+        Alert.alert(
+          'Microphone unavailable',
+          'Allow microphone access and try again.',
+        );
+        return;
+      }
+      setVoiceConversation(true);
+      if (speechEnabled) {
+        await announceListening(nextLanguage);
+      }
+      const started = await transcribe.start(
+        nextLanguage === 'auto' ? undefined : nextLanguage,
+        { skipStop: true },
       );
-    }
-  }, [transcribe]);
+      if (!started) {
+        setVoiceConversation(false);
+        Alert.alert(
+          'Microphone unavailable',
+          'Allow microphone access and try again.',
+        );
+      }
+    },
+    [announceListening, speechEnabled, transcribe],
+  );
 
   React.useEffect(() => {
     if (!visible || !autoStartVoiceLanguage) {
@@ -1131,8 +1424,22 @@ const AIAgentModal: React.FC<Props> = ({
     setVoiceConversation(true);
     setSpeechEnabled(true);
     setVoiceLanguageMenuOpen(false);
-    void selectVoiceLanguage(autoStartVoiceLanguage);
-  }, [autoStartVoiceLanguage, selectVoiceLanguage, visible, voiceStartRequest]);
+    void (async () => {
+      await announceListening(autoStartVoiceLanguage);
+      const started = await transcribe.start(
+        autoStartVoiceLanguage === 'auto' ? undefined : autoStartVoiceLanguage,
+        { skipStop: true },
+      );
+      if (!started) setVoiceConversation(false);
+    })();
+  }, [
+    announceListening,
+    autoStartVoiceLanguage,
+    selectVoiceLanguage,
+    transcribe,
+    visible,
+    voiceStartRequest,
+  ]);
 
   const toggleVoice = async () => {
     if (transcribe.listening) {
@@ -1158,11 +1465,19 @@ const AIAgentModal: React.FC<Props> = ({
   const toggleSpeech = async () => {
     const nextEnabled = !speechEnabled;
     setSpeechEnabled(nextEnabled);
-    if (nextEnabled && transcribe.listening) {
-      await transcribe.stop({ discard: true });
-    }
     if (!nextEnabled) {
       await speechControllerRef.current?.stop();
+      return;
+    }
+
+    await announceListening(language);
+
+    if (voiceConversation) {
+      const started = await transcribe.start(
+        language === 'auto' ? undefined : language,
+        { skipStop: true },
+      );
+      if (!started) setVoiceConversation(false);
     }
   };
   const restoreAndListen = async () => {
@@ -1172,7 +1487,13 @@ const AIAgentModal: React.FC<Props> = ({
       setVoiceConversation(true);
       return;
     }
-    await selectVoiceLanguage(language);
+    setVoiceConversation(true);
+    await announceListening(language);
+    const started = await transcribe.start(
+      language === 'auto' ? undefined : language,
+      { skipStop: true },
+    );
+    if (!started) setVoiceConversation(false);
   };
   const quickPrompts = [
     'Open my profile',
@@ -1264,18 +1585,36 @@ const AIAgentModal: React.FC<Props> = ({
                   ]}
                 >
                   {choice.profilePic ? (
-                    <Image source={{ uri: choice.profilePic }} style={styles.profileChoiceImage} />
+                    <Image
+                      source={{ uri: choice.profilePic }}
+                      style={styles.profileChoiceImage}
+                    />
                   ) : (
-                    <View style={[styles.profileChoicePlaceholder, { backgroundColor: `${colors.primary}20` }]}>
+                    <View
+                      style={[
+                        styles.profileChoicePlaceholder,
+                        { backgroundColor: `${colors.primary}20` },
+                      ]}
+                    >
                       <Icon name="person" size={20} color={colors.primary} />
                     </View>
                   )}
                   <View style={styles.profileChoiceText}>
-                    <Text style={[styles.profileChoiceName, { color: colors.text.primary }]}>
+                    <Text
+                      style={[
+                        styles.profileChoiceName,
+                        { color: colors.text.primary },
+                      ]}
+                    >
                       {choice.name}
                     </Text>
                     {choice.username ? (
-                      <Text style={[styles.profileChoiceUsername, { color: colors.text.secondary }]}>
+                      <Text
+                        style={[
+                          styles.profileChoiceUsername,
+                          { color: colors.text.secondary },
+                        ]}
+                      >
                         @{choice.username}
                       </Text>
                     ) : null}
@@ -1298,20 +1637,15 @@ const AIAgentModal: React.FC<Props> = ({
   const runPendingAction = async (action: AgentActionIntent) => {
     const adapter = createMobileAgentActionAdapter({
       ...callAdapter,
-      startLudo: () => setLudoGameActive(true),
-      inviteLudoPlayer: (userId, userName) => {
-        if (!userId) throw new Error('I could not resolve the Ludo player.');
-        requestLudoInvite({ id: userId, name: userName });
-      },
+      startLudo: openLudo,
+      inviteLudoPlayer,
       startChess: () => setChessGameActive(true),
       logout,
       clearAgentChat: clearChat,
     });
     if (autoMode) {
       updateAutoActionRunning(true);
-      await new Promise<void>(resolve =>
-        InteractionManager.runAfterInteractions(() => resolve()),
-      );
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
     }
     try {
       const results = await executeAgentActions([action], adapter, {
@@ -1363,7 +1697,9 @@ const AIAgentModal: React.FC<Props> = ({
       updateAutoActionRunning(false);
     }
   };
-  const chooseProfileForAction = (choice: NonNullable<AgentMessage['profileChoices']>[number]) => {
+  const chooseProfileForAction = (
+    choice: NonNullable<AgentMessage['profileChoices']>[number],
+  ) => {
     const action = ambiguousActionRef.current;
     if (!action) return;
     ambiguousActionRef.current = null;
@@ -1376,448 +1712,570 @@ const AIAgentModal: React.FC<Props> = ({
       },
       targetName: choice.name,
     }).catch(error => {
-      setMessages(previous => [...previous, {
-        id: id(),
-        type: 'action-result',
-        content: error instanceof Error ? error.message : 'Action failed.',
-        timestamp: new Date().toISOString(),
-        success: false,
-      }]);
+      setMessages(previous => [
+        ...previous,
+        {
+          id: id(),
+          type: 'action-result',
+          content: error instanceof Error ? error.message : 'Action failed.',
+          timestamp: new Date().toISOString(),
+          success: false,
+        },
+      ]);
     });
   };
 
   return (
     <>
-    <Modal visible={visible && !minimized} animationType="slide" onRequestClose={close}>
-      <SafeAreaView
-        style={[styles.safe, { backgroundColor: colors.background.primary }]}
+      <Modal
+        visible={visible && !minimized}
+        animationType="slide"
+        onRequestClose={close}
       >
-        <KeyboardAvoidingView
-          style={styles.flex}
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+        <SafeAreaView
+          style={[styles.safe, { backgroundColor: colors.background.primary }]}
         >
-          <View
-            style={[
-              styles.header,
-              {
-                backgroundColor: colors.surface.primary,
-                borderBottomColor: colors.border.primary,
-              },
-            ]}
+          <KeyboardAvoidingView
+            style={styles.flex}
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
           >
             <View
               style={[
-                styles.headerIcon,
-                { backgroundColor: `${colors.primary}20` },
-              ]}
-            >
-              <Icon name="psychology" size={26} color={colors.primary} />
-            </View>
-            <View style={styles.title}>
-              <Text style={[styles.heading, { color: colors.text.primary }]}>
-                Connect AI
-              </Text>
-              <View style={styles.statusLine}>
-                <View
-                  style={[
-                    styles.statusDot,
-                    { backgroundColor: colors.status.success },
-                  ]}
-                />
-                <Text
-                  style={[styles.statusText, { color: colors.text.secondary }]}
-                >
-                  {loading
-                    ? 'Thinking...'
-                    : transcribe.listening
-                      ? 'Listening for your command'
-                      : voiceConversation
-                        ? 'Hands-free voice mode'
-                        : 'Ready to help'}
-                </Text>
-              </View>
-            </View>
-            <Pressable
-              style={styles.headerButton}
-              onPress={clear}
-              accessibilityLabel="Clear AI chat"
-            >
-              <Icon
-                name="delete-outline"
-                size={21}
-                color={colors.text.secondary}
-              />
-            </Pressable>
-            <Pressable
-              style={[
-                styles.headerButton,
-                speechEnabled && { backgroundColor: `${colors.primary}18` },
-              ]}
-              onPress={() => {
-                void toggleSpeech();
-              }}
-              accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
-            >
-              <Icon
-                name={speechEnabled ? 'volume-up' : 'volume-off'}
-                size={21}
-                color={speechEnabled ? colors.primary : colors.text.secondary}
-              />
-            </Pressable>
-            <Pressable
-              style={[
-                styles.modeButton,
+                styles.header,
                 {
-                  backgroundColor: autoMode
-                    ? `${colors.primary}18`
-                    : colors.surface.secondary,
+                  backgroundColor: colors.surface.primary,
+                  borderBottomColor: colors.border.primary,
                 },
               ]}
-              onPress={() => setAutoMode(value => !value)}
-              accessibilityLabel={`Auto mode ${autoMode ? 'on' : 'off'}`}
             >
-              <Icon
-                name={autoMode ? 'bolt' : 'touch-app'}
-                size={15}
-                color={autoMode ? colors.primary : colors.text.secondary}
-              />
-              <Text
+              <View
                 style={[
-                  styles.modeText,
-                  { color: autoMode ? colors.primary : colors.text.secondary },
+                  styles.headerIcon,
+                  { backgroundColor: `${colors.primary}20` },
                 ]}
               >
-                {autoMode ? 'Auto' : 'Manual'}
-              </Text>
-            </Pressable>
-            <Pressable
-              style={styles.headerButton}
-              onPress={close}
-              accessibilityLabel="Close AI Agent"
-            >
-              <Icon name="close" size={25} color={colors.text.primary} />
-            </Pressable>
-          </View>
-          {providerStatus && (
-            <View style={[styles.providerBar, { backgroundColor: colors.surface.primary }]}>
-              <Pressable
-                onPress={() => setProviderMenuOpen(value => !value)}
-                style={[styles.providerSelector, { borderColor: colors.border.primary }]}
-                accessibilityLabel="Select AI provider"
-              >
-                <Text style={[styles.providerSelectorText, { color: colors.text.primary }]}>
-                  AI Provider: {providerLabels[selectedProvider]}
+                <Icon name="psychology" size={26} color={colors.primary} />
+              </View>
+              <View style={styles.title}>
+                <Text style={[styles.heading, { color: colors.text.primary }]}>
+                  Connect AI
                 </Text>
-                <Icon
-                  name={providerMenuOpen ? 'expand-less' : 'expand-more'}
-                  size={20}
-                  color={colors.text.secondary}
-                />
-              </Pressable>
-              {providerMenuOpen && (
-                <View style={[styles.providerMenu, { backgroundColor: colors.surface.secondary, borderColor: colors.border.primary }]}>
-                  {(Object.keys(providerLabels) as AIProvider[])
-                    .filter(provider => providerStatus.enabled[provider] !== false && providerStatus.configured[provider])
-                    .map(provider => (
-                      <Pressable
-                        key={provider}
-                        onPress={() => chooseProvider(provider)}
-                        style={styles.providerOption}
-                      >
-                        <Text style={[styles.providerOptionText, { color: colors.text.primary }]}>
-                          {selectedProvider === provider ? '● ' : '○ '}{providerLabels[provider]}
-                        </Text>
-                      </Pressable>
-                    ))}
-                </View>
-              )}
-            </View>
-          )}
-          <FlatList
-            ref={listRef}
-            style={styles.flex}
-            contentContainerStyle={styles.messages}
-            data={messages}
-            keyExtractor={item => item.id}
-            renderItem={renderMessage}
-            showsVerticalScrollIndicator={false}
-            ListFooterComponent={
-              messages.length === 1 ? (
-                <View style={styles.quickPromptWrap}>
+                <View style={styles.statusLine}>
+                  <View
+                    style={[
+                      styles.statusDot,
+                      { backgroundColor: colors.status.success },
+                    ]}
+                  />
                   <Text
                     style={[
-                      styles.quickPromptLabel,
+                      styles.statusText,
                       { color: colors.text.secondary },
                     ]}
                   >
-                    Try asking
+                    {loading
+                      ? 'Thinking...'
+                      : transcribe.listening
+                      ? 'Listening for your command'
+                      : voiceConversation
+                      ? 'Hands-free voice mode'
+                      : 'Ready to help'}
                   </Text>
-                  <View style={styles.quickPrompts}>
-                    {quickPrompts.map(prompt => (
-                      <Pressable
-                        key={prompt}
-                        onPress={() => setInput(prompt)}
+                </View>
+              </View>
+              <Pressable
+                style={styles.headerButton}
+                onPress={clear}
+                accessibilityLabel="Clear AI chat"
+              >
+                <Icon
+                  name="delete-outline"
+                  size={21}
+                  color={colors.text.secondary}
+                />
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.headerButton,
+                  speechEnabled && { backgroundColor: `${colors.primary}18` },
+                ]}
+                onPress={() => {
+                  void toggleSpeech();
+                }}
+                accessibilityLabel={
+                  speechEnabled ? 'Turn speaking off' : 'Turn speaking on'
+                }
+              >
+                <Icon
+                  name={speechEnabled ? 'volume-up' : 'volume-off'}
+                  size={21}
+                  color={speechEnabled ? colors.primary : colors.text.secondary}
+                />
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modeButton,
+                  {
+                    backgroundColor: autoMode
+                      ? `${colors.primary}18`
+                      : colors.surface.secondary,
+                  },
+                ]}
+                onPress={() => setAutoMode(value => !value)}
+                accessibilityLabel={`Auto mode ${autoMode ? 'on' : 'off'}`}
+              >
+                <Icon
+                  name={autoMode ? 'bolt' : 'touch-app'}
+                  size={15}
+                  color={autoMode ? colors.primary : colors.text.secondary}
+                />
+                <Text
+                  style={[
+                    styles.modeText,
+                    {
+                      color: autoMode ? colors.primary : colors.text.secondary,
+                    },
+                  ]}
+                >
+                  {autoMode ? 'Auto' : 'Manual'}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={styles.headerButton}
+                onPress={close}
+                accessibilityLabel="Close AI Agent"
+              >
+                <Icon name="close" size={25} color={colors.text.primary} />
+              </Pressable>
+            </View>
+            {providerStatus && (
+              <View
+                style={[
+                  styles.providerBar,
+                  { backgroundColor: colors.surface.primary },
+                ]}
+              >
+                <Pressable
+                  onPress={() => setProviderMenuOpen(value => !value)}
+                  style={[
+                    styles.providerSelector,
+                    { borderColor: colors.border.primary },
+                  ]}
+                  accessibilityLabel="Select AI provider"
+                >
+                  <Text
+                    style={[
+                      styles.providerSelectorText,
+                      { color: colors.text.primary },
+                    ]}
+                  >
+                    AI Provider: {providerLabels[selectedProvider]}
+                  </Text>
+                  <Icon
+                    name={providerMenuOpen ? 'expand-less' : 'expand-more'}
+                    size={20}
+                    color={colors.text.secondary}
+                  />
+                </Pressable>
+                {providerMenuOpen && (
+                  <View
+                    style={[
+                      styles.providerMenu,
+                      {
+                        backgroundColor: colors.surface.secondary,
+                        borderColor: colors.border.primary,
+                      },
+                    ]}
+                  >
+                    {(Object.keys(providerLabels) as AIProvider[])
+                      .filter(
+                        provider =>
+                          providerStatus.enabled[provider] !== false &&
+                          providerStatus.configured[provider],
+                      )
+                      .map(provider => (
+                        <Pressable
+                          key={provider}
+                          onPress={() => chooseProvider(provider)}
+                          style={styles.providerOption}
+                        >
+                          <Text
+                            style={[
+                              styles.providerOptionText,
+                              { color: colors.text.primary },
+                            ]}
+                          >
+                            {selectedProvider === provider ? '● ' : '○ '}
+                            {providerLabels[provider]}
+                          </Text>
+                        </Pressable>
+                      ))}
+                  </View>
+                )}
+              </View>
+            )}
+            <FlatList
+              ref={listRef}
+              style={styles.flex}
+              contentContainerStyle={styles.messages}
+              data={messages}
+              keyExtractor={item => item.id}
+              renderItem={renderMessage}
+              showsVerticalScrollIndicator={false}
+              ListFooterComponent={
+                messages.length === 1 ? (
+                  <View style={styles.quickPromptWrap}>
+                    <Text
+                      style={[
+                        styles.quickPromptLabel,
+                        { color: colors.text.secondary },
+                      ]}
+                    >
+                      Try asking
+                    </Text>
+                    <View style={styles.quickPrompts}>
+                      {quickPrompts.map(prompt => (
+                        <Pressable
+                          key={prompt}
+                          onPress={() => {
+                            voiceInputBaseRef.current = prompt;
+                            setInput(prompt);
+                          }}
+                          style={[
+                            styles.quickPrompt,
+                            {
+                              borderColor: colors.border.primary,
+                              backgroundColor: colors.surface.secondary,
+                            },
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.quickPromptText,
+                              { color: colors.text.primary },
+                            ]}
+                          >
+                            {prompt}
+                          </Text>
+                        </Pressable>
+                      ))}
+                    </View>
+                  </View>
+                ) : null
+              }
+              ListEmptyComponent={
+                <Text style={{ color: colors.text.secondary }}>
+                  Ask the AI Agent anything about Connect.
+                </Text>
+              }
+            />
+            {pendingActions.length > 0 && (
+              <View
+                style={[
+                  styles.actionTray,
+                  {
+                    backgroundColor: colors.surface.primary,
+                    borderTopColor: colors.border.primary,
+                  },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.actionTrayTitle,
+                    { color: colors.text.secondary },
+                  ]}
+                >
+                  Suggested actions
+                </Text>
+                {pendingActions.map(action => (
+                  <Pressable
+                    key={`${action.id || action.action}-${
+                      action.targetName || ''
+                    }`}
+                    onPress={() => runPendingAction(action)}
+                    style={[
+                      styles.actionCard,
+                      {
+                        backgroundColor: colors.surface.secondary,
+                        borderColor: colors.border.primary,
+                      },
+                    ]}
+                  >
+                    <Icon name="play-arrow" size={18} color={colors.primary} />
+                    <View style={styles.actionCardBody}>
+                      <Text
                         style={[
-                          styles.quickPrompt,
+                          styles.actionCardTitle,
+                          { color: colors.text.primary },
+                        ]}
+                      >
+                        {action.type || action.action}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.actionCardSubtitle,
+                          { color: colors.text.secondary },
+                        ]}
+                      >
+                        {action.targetName ||
+                          action.messageText ||
+                          'Run this action'}
+                      </Text>
+                    </View>
+                    <Text style={[styles.runText, { color: colors.primary }]}>
+                      Run
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+            {voiceConversation && voiceLanguageMenuOpen && (
+              <View
+                style={[
+                  styles.voiceLanguageBar,
+                  { backgroundColor: colors.surface.primary },
+                ]}
+              >
+                {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(
+                  option => (
+                    <Pressable
+                      key={option}
+                      onPress={() => {
+                        void selectVoiceLanguage(option);
+                      }}
+                      style={[
+                        styles.voiceLanguageOption,
+                        {
+                          backgroundColor:
+                            language === option
+                              ? `${colors.primary}20`
+                              : colors.surface.secondary,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.language,
                           {
-                            borderColor: colors.border.primary,
-                            backgroundColor: colors.surface.secondary,
+                            color:
+                              language === option
+                                ? colors.primary
+                                : colors.text.secondary,
                           },
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.quickPromptText,
-                            { color: colors.text.primary },
-                          ]}
-                        >
-                          {prompt}
-                        </Text>
-                      </Pressable>
-                    ))}
-                  </View>
-                </View>
-              ) : null
-            }
-            ListEmptyComponent={
-              <Text style={{ color: colors.text.secondary }}>
-                Ask the AI Agent anything about Connect.
-              </Text>
-            }
-          />
-          {pendingActions.length > 0 && (
+                        {option === 'bn-BD'
+                          ? 'বাংলা'
+                          : option === 'en-US'
+                          ? 'English'
+                          : 'Auto'}
+                      </Text>
+                    </Pressable>
+                  ),
+                )}
+              </View>
+            )}
             <View
               style={[
-                styles.actionTray,
+                styles.composer,
                 {
                   backgroundColor: colors.surface.primary,
                   borderTopColor: colors.border.primary,
                 },
               ]}
             >
+              <View style={styles.voiceControl}>
+                <Pressable
+                  style={[
+                    styles.iconButton,
+                    {
+                      backgroundColor: transcribe.listening
+                        ? `${colors.status.error}18`
+                        : colors.surface.secondary,
+                    },
+                  ]}
+                  onPress={toggleVoice}
+                  disabled={loading || !transcribe.supported}
+                  accessibilityLabel={
+                    transcribe.listening
+                      ? 'Stop hands-free voice commands'
+                      : 'Start hands-free voice commands'
+                  }
+                >
+                  <Icon
+                    name={transcribe.listening ? 'mic' : 'mic-none'}
+                    size={24}
+                    color={
+                      transcribe.listening
+                        ? colors.status.error
+                        : colors.text.secondary
+                    }
+                  />
+                </Pressable>
+              </View>
+              <TextInput
+                value={input}
+                onChangeText={text => {
+                  voiceInputBaseRef.current = text;
+                  setInput(text);
+                }}
+                multiline
+                placeholder="Speak or type a command..."
+                placeholderTextColor={colors.text.tertiary}
+                style={[
+                  styles.input,
+                  {
+                    color: colors.text.primary,
+                    backgroundColor: colors.surface.secondary,
+                    borderColor: colors.border.primary,
+                  },
+                ]}
+                editable={!loading}
+                onSubmitEditing={() => {
+                  void send();
+                }}
+                blurOnSubmit={false}
+              />
+              <Pressable
+                onPress={() => {
+                  void send();
+                }}
+                disabled={!input.trim() || loading}
+                style={[
+                  styles.send,
+                  {
+                    backgroundColor: colors.primary,
+                    opacity: input.trim() && !loading ? 1 : 0.45,
+                  },
+                ]}
+              >
+                <Icon name="arrow-upward" size={21} color="#fff" />
+              </Pressable>
+            </View>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+      {visible && minimized && (
+        <Animated.View
+          {...miniPanResponder.panHandlers}
+          style={[
+            styles.agentMini,
+            {
+              transform: miniPosition.getTranslateTransform(),
+              backgroundColor: colors.surface.primary,
+            },
+          ]}
+        >
+          <Pressable
+            style={styles.agentMiniContent}
+            onPress={restoreAndListen}
+            accessibilityRole="button"
+            accessibilityLabel="Restore AI Agent"
+          >
+            <Icon name="psychology" size={22} color={colors.primary} />
+            <View style={styles.agentMiniText}>
               <Text
                 style={[
-                  styles.actionTrayTitle,
+                  styles.agentMiniStatus,
                   { color: colors.text.secondary },
                 ]}
               >
-                Suggested actions
+                {autoActionRunning ? 'Running action...' : 'Tap to restore'}
               </Text>
-              {pendingActions.map(action => (
-                <Pressable
-                  key={`${action.id || action.action}-${
-                    action.targetName || ''
-                  }`}
-                  onPress={() => runPendingAction(action)}
-                  style={[
-                    styles.actionCard,
-                    {
-                      backgroundColor: colors.surface.secondary,
-                      borderColor: colors.border.primary,
-                    },
-                  ]}
-                >
-                  <Icon name="play-arrow" size={18} color={colors.primary} />
-                  <View style={styles.actionCardBody}>
-                    <Text
-                      style={[
-                        styles.actionCardTitle,
-                        { color: colors.text.primary },
-                      ]}
-                    >
-                      {action.type || action.action}
-                    </Text>
-                    <Text
-                      style={[
-                        styles.actionCardSubtitle,
-                        { color: colors.text.secondary },
-                      ]}
-                    >
-                      {action.targetName ||
-                        action.messageText ||
-                        'Run this action'}
-                    </Text>
-                  </View>
-                  <Text style={[styles.runText, { color: colors.primary }]}>
-                    Run
-                  </Text>
-                </Pressable>
-              ))}
             </View>
-          )}
-          {interimInput ? (
-            <Text style={[styles.interim, { color: colors.text.secondary }]}>
-              {interimInput}
-            </Text>
-          ) : null}
-          {voiceConversation && voiceLanguageMenuOpen && (
-            <View style={[styles.voiceLanguageBar, { backgroundColor: colors.surface.primary }]}>
-              {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
-                <Pressable
-                  key={option}
-                  onPress={() => {
-                    void selectVoiceLanguage(option);
-                  }}
-                  style={[styles.voiceLanguageOption, {
-                    backgroundColor: language === option ? `${colors.primary}20` : colors.surface.secondary,
-                  }]}
-                >
-                  <Text style={[styles.language, { color: language === option ? colors.primary : colors.text.secondary }]}>
-                    {option === 'bn-BD' ? 'বাংলা' : option === 'en-US' ? 'English' : 'Auto'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
-          <View
-            style={[
-              styles.composer,
-              {
-                backgroundColor: colors.surface.primary,
-                borderTopColor: colors.border.primary,
-              },
-            ]}
-          >
-            <View style={styles.voiceControl}>
-              <Pressable
-                style={[
-                  styles.iconButton,
-                  {
-                    backgroundColor: transcribe.listening
-                      ? `${colors.status.error}18`
-                      : colors.surface.secondary,
-                  },
-                ]}
-                onPress={toggleVoice}
-                disabled={loading || !transcribe.supported}
-                accessibilityLabel={
-                  transcribe.listening
-                    ? 'Stop hands-free voice commands'
-                    : 'Start hands-free voice commands'
-                }
-              >
-                <Icon
-                  name={transcribe.listening ? 'mic' : 'mic-none'}
-                  size={24}
-                  color={
-                    transcribe.listening
-                      ? colors.status.error
-                      : colors.text.secondary
-                  }
-                />
-              </Pressable>
-            </View>
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              multiline
-              placeholder="Speak or type a command..."
-              placeholderTextColor={colors.text.tertiary}
+          </Pressable>
+          <View style={styles.agentMiniControls}>
+            <Pressable
               style={[
-                styles.input,
+                styles.agentMiniMic,
+                { backgroundColor: `${colors.primary}20` },
+              ]}
+              onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
+              onPress={toggleVoice}
+              accessibilityLabel="Voice input"
+            >
+              <Icon
+                name={transcribe.listening ? 'mic' : 'mic-none'}
+                size={20}
+                color={colors.primary}
+              />
+            </Pressable>
+            <Pressable
+              style={[
+                styles.agentMiniMic,
                 {
-                  color: colors.text.primary,
-                  backgroundColor: colors.surface.secondary,
+                  backgroundColor: speechEnabled
+                    ? `${colors.primary}30`
+                    : colors.surface.secondary,
+                },
+              ]}
+              onPress={() => {
+                void toggleSpeech();
+              }}
+              accessibilityLabel={
+                speechEnabled ? 'Turn speaking off' : 'Turn speaking on'
+              }
+            >
+              <Icon
+                name={speechEnabled ? 'volume-up' : 'volume-off'}
+                size={20}
+                color={speechEnabled ? colors.primary : colors.text.secondary}
+              />
+            </Pressable>
+          </View>
+          {voiceLanguageMenuOpen && minimized && (
+            <View
+              style={[
+                styles.agentMiniLanguageMenu,
+                {
+                  backgroundColor: colors.surface.primary,
                   borderColor: colors.border.primary,
                 },
               ]}
-              editable={!loading}
-              onSubmitEditing={() => {
-                void send();
-              }}
-              blurOnSubmit={false}
-            />
-            <Pressable
-              onPress={() => {
-                void send();
-              }}
-              disabled={!input.trim() || loading}
-              style={[
-                styles.send,
-                {
-                  backgroundColor: colors.primary,
-                  opacity: input.trim() && !loading ? 1 : 0.45,
-                },
-              ]}
             >
-              <Icon name="arrow-upward" size={21} color="#fff" />
-            </Pressable>
-          </View>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </Modal>
-    {visible && minimized && (
-      <Animated.View
-        {...miniPanResponder.panHandlers}
-        style={[styles.agentMini, { transform: miniPosition.getTranslateTransform(), backgroundColor: colors.surface.primary }]}
-      >
-        <Pressable
-          style={styles.agentMiniContent}
-          onPress={restoreAndListen}
-          accessibilityRole="button"
-          accessibilityLabel="Restore AI Agent"
-        >
-          <Icon name="psychology" size={22} color={colors.primary} />
-          <View style={styles.agentMiniText}>
-            <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
-              {autoActionRunning ? 'Running action...' : 'Tap to restore'}
-            </Text>
-          </View>
-        </Pressable>
-        <View style={styles.agentMiniControls}>
-          <Pressable
-            style={[
-              styles.agentMiniMic,
-              { backgroundColor: `${colors.primary}20` },
-            ]}
-            onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
-            onPress={toggleVoice}
-            accessibilityLabel="Voice input"
-          >
-            <Icon
-              name={transcribe.listening ? 'mic' : 'mic-none'}
-              size={20}
-              color={colors.primary}
-            />
-          </Pressable>
-          <Pressable
-            style={[
-              styles.agentMiniMic,
-              { backgroundColor: speechEnabled ? `${colors.primary}30` : colors.surface.secondary },
-            ]}
-            onPress={() => {
-              void toggleSpeech();
-            }}
-            accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
-          >
-            <Icon
-              name={speechEnabled ? 'volume-up' : 'volume-off'}
-              size={20}
-              color={speechEnabled ? colors.primary : colors.text.secondary}
-            />
-          </Pressable>
-        </View>
-        {voiceLanguageMenuOpen && minimized && (
-          <View style={[styles.agentMiniLanguageMenu, { backgroundColor: colors.surface.primary, borderColor: colors.border.primary }]}>
-            {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
-              <Pressable
-                key={`mini-${option}`}
-                onPress={() => {
-                  setVoiceLanguageMenuOpen(false);
-                  void selectVoiceLanguage(option);
-                }}
-                style={[styles.agentMiniMenuOption, { backgroundColor: language === option ? `${colors.primary}20` : colors.surface.secondary }]}
-              >
-                <Text style={[styles.language, { color: language === option ? colors.primary : colors.text.secondary }]}>
-                  {option === 'bn-BD' ? 'বাংলা' : option === 'en-US' ? 'English' : 'Auto'}
-                </Text>
-              </Pressable>
-            ))}
-          </View>
-        )}
-      </Animated.View>
-    )}
+              {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(
+                option => (
+                  <Pressable
+                    key={`mini-${option}`}
+                    onPress={() => {
+                      setVoiceLanguageMenuOpen(false);
+                      void selectVoiceLanguage(option);
+                    }}
+                    style={[
+                      styles.agentMiniMenuOption,
+                      {
+                        backgroundColor:
+                          language === option
+                            ? `${colors.primary}20`
+                            : colors.surface.secondary,
+                      },
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.language,
+                        {
+                          color:
+                            language === option
+                              ? colors.primary
+                              : colors.text.secondary,
+                        },
+                      ]}
+                    >
+                      {option === 'bn-BD'
+                        ? 'বাংলা'
+                        : option === 'en-US'
+                        ? 'English'
+                        : 'Auto'}
+                    </Text>
+                  </Pressable>
+                ),
+              )}
+            </View>
+          )}
+        </Animated.View>
+      )}
     </>
   );
 };
@@ -2040,12 +2498,6 @@ const styles = StyleSheet.create({
   actionCardTitle: { fontSize: 13, fontWeight: '700' },
   actionCardSubtitle: { fontSize: 11, marginTop: 2 },
   runText: { fontSize: 12, fontWeight: '700' },
-  interim: {
-    paddingHorizontal: 18,
-    paddingBottom: 6,
-    fontStyle: 'italic',
-    fontSize: 12,
-  },
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',

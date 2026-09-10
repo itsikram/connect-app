@@ -1,6 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from '../lib/avCompat';
+import {
+  Audio,
+  InterruptionModeAndroid,
+  InterruptionModeIOS,
+} from '../lib/avCompat';
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from '../lib/config';
@@ -19,6 +23,9 @@ const MIN_AAC_BYTES = 64;
 type TranscribeHandlers = {
   onFinal?: (text: string) => void;
   onInterim?: (text: string) => void;
+  // Agora owns the audio session during calls; do not reconfigure it.
+  preserveAudioSession?: boolean;
+  captureEnabled?: boolean;
 };
 
 export async function setChatRecordingAudioMode() {
@@ -142,18 +149,28 @@ const bytesToBase64 = (bytes: Uint8Array) => {
 
 const stripWavHeader = (bytes: Uint8Array) => {
   if (bytes.length < 44) return bytes;
-  const isRiff = bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70;
-  const isWave = bytes[8] === 87 && bytes[9] === 65 && bytes[10] === 86 && bytes[11] === 69;
+  const isRiff =
+    bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70;
+  const isWave =
+    bytes[8] === 87 && bytes[9] === 65 && bytes[10] === 86 && bytes[11] === 69;
   if (!isRiff || !isWave) return bytes;
   for (let i = 12; i < bytes.length - 8; i += 1) {
-    if (bytes[i] === 100 && bytes[i + 1] === 97 && bytes[i + 2] === 116 && bytes[i + 3] === 97) {
+    if (
+      bytes[i] === 100 &&
+      bytes[i + 1] === 97 &&
+      bytes[i + 2] === 116 &&
+      bytes[i + 3] === 97
+    ) {
       const dataSize =
         bytes[i + 4] |
         (bytes[i + 5] << 8) |
         (bytes[i + 6] << 16) |
         (bytes[i + 7] << 24);
       const start = i + 8;
-      const end = Math.min(bytes.length, start + Math.max(0, dataSize || bytes.length - start));
+      const end = Math.min(
+        bytes.length,
+        start + Math.max(0, dataSize || bytes.length - start),
+      );
       return bytes.subarray(start, end);
     }
   }
@@ -187,13 +204,41 @@ const PCM_RECORDING_OPTIONS: Audio.RecordingOptions = {
   },
 };
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 const normalizeSpeechText = (value: string) =>
-  String(value || '').replace(/\s+/g, ' ').trim();
+  String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim();
 
 const isSameSpeechText = (a: string, b: string) =>
   normalizeSpeechText(a).toLowerCase() === normalizeSpeechText(b).toLowerCase();
+
+export const mergeTranscriptText = (previous = '', incoming = '') => {
+  const prev = normalizeSpeechText(previous);
+  const next = normalizeSpeechText(incoming);
+  if (!prev) return next;
+  if (!next) return prev;
+
+  const prevLower = prev.toLowerCase();
+  const nextLower = next.toLowerCase();
+  if (nextLower === prevLower || prevLower.endsWith(nextLower)) return prev;
+  if (nextLower.startsWith(prevLower)) return next;
+  if (prevLower.includes(nextLower)) return prev;
+
+  const prevWords = prev.split(' ');
+  const nextWords = next.split(' ');
+  const maxOverlap = Math.min(prevWords.length, nextWords.length);
+  for (let size = maxOverlap; size > 0; size -= 1) {
+    if (
+      prevWords.slice(-size).join(' ').toLowerCase() ===
+      nextWords.slice(0, size).join(' ').toLowerCase()
+    ) {
+      return `${prev} ${nextWords.slice(size).join(' ')}`.trim();
+    }
+  }
+  return `${prev} ${next}`.trim();
+};
 
 const getFileSize = async (uri: string) => {
   try {
@@ -207,9 +252,15 @@ const getFileSize = async (uri: string) => {
   return 0;
 };
 
-const sliceBytesToBase64 = (bytes: Uint8Array, position: number, length: number) => {
+const sliceBytesToBase64 = (
+  bytes: Uint8Array,
+  position: number,
+  length: number,
+) => {
   if (position >= bytes.length || length <= 0) return '';
-  return bytesToBase64(bytes.subarray(position, Math.min(bytes.length, position + length)));
+  return bytesToBase64(
+    bytes.subarray(position, Math.min(bytes.length, position + length)),
+  );
 };
 
 const readFileSlice = async (uri: string, position: number, length: number) => {
@@ -252,6 +303,8 @@ const readFileSlice = async (uri: string, position: number, length: number) => {
 export default function useComposerLiveTranscribe({
   onFinal,
   onInterim,
+  preserveAudioSession = false,
+  captureEnabled = true,
 }: TranscribeHandlers = {}) {
   const [listening, setListening] = useState(false);
   const onFinalRef = useRef(onFinal);
@@ -319,7 +372,10 @@ export default function useComposerLiveTranscribe({
         const buffer =
           bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
             ? bytes.buffer
-            : bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+            : bytes.buffer.slice(
+                bytes.byteOffset,
+                bytes.byteOffset + bytes.byteLength,
+              );
         ws.send(buffer as ArrayBuffer);
         return true;
       } catch {
@@ -366,59 +422,67 @@ export default function useComposerLiveTranscribe({
     if (typeof explicitFlag === 'boolean') return explicitFlag;
 
     const reason = String(payload.reason || payload.status || '').toLowerCase();
-    if (reason.includes('utterance') || reason.includes('final') || reason.includes('end')) {
+    if (
+      reason.includes('utterance') ||
+      reason.includes('final') ||
+      reason.includes('end')
+    ) {
       return true;
     }
 
     return false;
   }, []);
 
-  const handleSocketMessage = useCallback((event: any) => {
-    let payload: any;
-    try {
-      payload = JSON.parse(typeof event.data === 'string' ? event.data : '');
-    } catch {
-      return;
-    }
-    if (payload?.type === 'ready') {
-      readyResolverRef.current?.();
-      readyResolverRef.current = null;
-      return;
-    }
-    if (payload?.type === 'error') {
-      wantListenRef.current = false;
-      setListening(false);
-      return;
-    }
-    if (ignoreResultsRef.current) return;
+  const handleSocketMessage = useCallback(
+    (event: any) => {
+      let payload: any;
+      try {
+        payload = JSON.parse(typeof event.data === 'string' ? event.data : '');
+      } catch {
+        return;
+      }
+      if (payload?.type === 'ready') {
+        readyResolverRef.current?.();
+        readyResolverRef.current = null;
+        return;
+      }
+      if (payload?.type === 'error') {
+        wantListenRef.current = false;
+        setListening(false);
+        return;
+      }
+      if (ignoreResultsRef.current) return;
 
-    const emitFinal = (text: string) => {
-      const finalText = normalizeSpeechText(text);
-      if (!finalText) return;
-      if (isSameSpeechText(finalText, lastFinalRef.current)) return;
-      lastFinalRef.current = finalText;
-      lastPartialRef.current = '';
-      onFinalRef.current?.(finalText);
-    };
+      const emitFinal = (text: string) => {
+        const finalText = normalizeSpeechText(text);
+        if (!finalText) return;
+        if (isSameSpeechText(finalText, lastFinalRef.current)) return;
+        lastFinalRef.current = finalText;
+        lastPartialRef.current = '';
+        onFinalRef.current?.(finalText);
+      };
 
-    if (payload?.type === 'partial') {
-      const partial = normalizeSpeechText(payload.text || '');
-      if (!partial) return;
-      lastPartialRef.current = partial;
-      // Partial transcripts are for live feedback only. We wait for an
-      // explicit utterance-end or final flag before committing the transcript.
-      onInterimRef.current?.(partial);
-      return;
-    }
-    if (payload?.type === 'final' || payload?.type === 'utterance-end') {
-      if (payload?.type === 'final' && !isTerminalSpeechResult(payload)) return;
-      emitFinal(payload.text || lastPartialRef.current);
-    }
-  }, [isTerminalSpeechResult]);
+      if (payload?.type === 'partial') {
+        const partial = normalizeSpeechText(payload.text || '');
+        if (!partial) return;
+        lastPartialRef.current = partial;
+        // Partial transcripts are for live feedback only. We wait for an
+        // explicit utterance-end or final flag before committing the transcript.
+        onInterimRef.current?.(partial);
+        return;
+      }
+      if (payload?.type === 'final' || payload?.type === 'utterance-end') {
+        if (payload?.type === 'final' && !isTerminalSpeechResult(payload))
+          return;
+        emitFinal(payload.text || lastPartialRef.current);
+      }
+    },
+    [isTerminalSpeechResult],
+  );
 
   const waitForReady = useCallback(async () => {
     await Promise.race([
-      new Promise<void>((resolve) => {
+      new Promise<void>(resolve => {
         readyResolverRef.current = resolve;
       }),
       sleep(READY_TIMEOUT_MS),
@@ -454,7 +518,9 @@ export default function useComposerLiveTranscribe({
       });
       if (!base64) return;
       if (usePcmStream()) {
-        const pcm = stripHeader ? stripWavHeader(base64ToBytes(base64)) : base64ToBytes(base64);
+        const pcm = stripHeader
+          ? stripWavHeader(base64ToBytes(base64))
+          : base64ToBytes(base64);
         sendAudioBytes(pcm);
         return;
       }
@@ -475,14 +541,16 @@ export default function useComposerLiveTranscribe({
         /* ignore */
       }
     }
-    await Audio.setIsEnabledAsync(true);
-    await setChatRecordingAudioMode();
+    if (!preserveAudioSession) {
+      await Audio.setIsEnabledAsync(true);
+      await setChatRecordingAudioMode();
+    }
     const recording = new Audio.Recording();
     await recording.prepareToRecordAsync(PCM_RECORDING_OPTIONS);
     recordingRef.current = recording;
     await recording.startAsync();
     return recording.getURI();
-  }, [stopCurrentRecording]);
+  }, [preserveAudioSession, stopCurrentRecording]);
 
   const streamGrowingFile = useCallback(
     async (language: string) => {
@@ -499,7 +567,8 @@ export default function useComposerLiveTranscribe({
         await sleep(STREAM_POLL_MS);
         const liveUri = recordingRef.current?.getURI() || uri;
         const size = await getFileSize(liveUri);
-        const minBytes = pcm && !headerSkipped ? 64 : pcm ? MIN_PCM_BYTES : MIN_AAC_BYTES;
+        const minBytes =
+          pcm && !headerSkipped ? 64 : pcm ? MIN_PCM_BYTES : MIN_AAC_BYTES;
         if (size > offset + minBytes) {
           grew = true;
           const slice = await readFileSlice(liveUri, offset, size - offset);
@@ -531,7 +600,8 @@ export default function useComposerLiveTranscribe({
         if (slice) {
           if (pcm) {
             let bytes = base64ToBytes(slice);
-            if (!headerSkipped) bytes = stripWavHeader(bytes) as Uint8Array<ArrayBuffer>;
+            if (!headerSkipped)
+              bytes = stripWavHeader(bytes) as Uint8Array<ArrayBuffer>;
             if (bytes.length) sendAudioBytes(bytes);
           } else {
             sendJson({ type: 'audio', data: slice });
@@ -548,7 +618,13 @@ export default function useComposerLiveTranscribe({
 
       return true;
     },
-    [sendAudioBytes, sendJson, startFreshRecording, startSpeechSession, stopCurrentRecording],
+    [
+      sendAudioBytes,
+      sendJson,
+      startFreshRecording,
+      startSpeechSession,
+      stopCurrentRecording,
+    ],
   );
 
   const streamPipelinedChunks = useCallback(
@@ -557,10 +633,12 @@ export default function useComposerLiveTranscribe({
       while (wantListenRef.current) {
         await sleep(CHUNK_DURATION_MS);
         const uri = await stopCurrentRecording();
-        const starting = wantListenRef.current ? startFreshRecording() : Promise.resolve(null);
+        const starting = wantListenRef.current
+          ? startFreshRecording()
+          : Promise.resolve(null);
         if (uri) {
           sendRecordedUri(uri, language, true)
-            .catch((error) => {
+            .catch(error => {
               console.error('Live transcription chunk failed:', error);
             })
             .finally(() => {
@@ -573,49 +651,61 @@ export default function useComposerLiveTranscribe({
     [sendRecordedUri, startFreshRecording, stopCurrentRecording],
   );
 
-  const stop = useCallback(async (opts?: { discard?: boolean }) => {
-    if (opts?.discard) ignoreResultsRef.current = true;
-    wantListenRef.current = false;
-    const pendingLoop = loopPromiseRef.current;
-    if (pendingLoop) {
-      try {
-        await pendingLoop;
-      } catch {
-        /* ignore */
+  const stop = useCallback(
+    async (opts?: { discard?: boolean }) => {
+      if (opts?.discard) ignoreResultsRef.current = true;
+      wantListenRef.current = false;
+      const pendingLoop = loopPromiseRef.current;
+      if (pendingLoop) {
+        try {
+          await pendingLoop;
+        } catch {
+          /* ignore */
+        }
       }
-    }
-    loopPromiseRef.current = null;
-    const lastUri = await stopCurrentRecording();
-    if (lastUri && !opts?.discard && !usedStreamRef.current) {
-      try {
-        await sendRecordedUri(lastUri, languageRef.current, true);
-      } catch {
-        /* ignore */
+      loopPromiseRef.current = null;
+      const lastUri = await stopCurrentRecording();
+      if (lastUri && !opts?.discard && !usedStreamRef.current) {
+        try {
+          await sendRecordedUri(lastUri, languageRef.current, true);
+        } catch {
+          /* ignore */
+        }
+        try {
+          await FileSystem.deleteAsync(lastUri, { idempotent: true });
+        } catch {
+          /* ignore */
+        }
+      } else if (lastUri) {
+        try {
+          await FileSystem.deleteAsync(lastUri, { idempotent: true });
+        } catch {
+          /* ignore */
+        }
       }
-      try {
-        await FileSystem.deleteAsync(lastUri, { idempotent: true });
-      } catch {
-        /* ignore */
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        sendJson({ type: 'stop' });
+        await sleep(FINAL_FLUSH_MS);
       }
-    } else if (lastUri) {
-      try {
-        await FileSystem.deleteAsync(lastUri, { idempotent: true });
-      } catch {
-        /* ignore */
+      closeSocket();
+      setListening(false);
+      if (!preserveAudioSession) {
+        await restoreChatPlaybackAudioMode();
       }
-    }
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      sendJson({ type: 'stop' });
-      await sleep(FINAL_FLUSH_MS);
-    }
-    closeSocket();
-    setListening(false);
-    await restoreChatPlaybackAudioMode();
-  }, [closeSocket, sendJson, sendRecordedUri, stopCurrentRecording]);
+    },
+    [
+      closeSocket,
+      preserveAudioSession,
+      sendJson,
+      sendRecordedUri,
+      stopCurrentRecording,
+    ],
+  );
 
   const start = useCallback(
-    async (langCode?: string) => {
-      await stop();
+    async (langCode?: string, options?: { skipStop?: boolean }) => {
+      if (!captureEnabled) return false;
+      if (!options?.skipStop) await stop();
       ignoreResultsRef.current = false;
       lastPartialRef.current = '';
       lastFinalRef.current = '';
@@ -623,9 +713,14 @@ export default function useComposerLiveTranscribe({
       if (!granted) return false;
 
       try {
-        await setChatRecordingAudioMode();
+        if (!preserveAudioSession) {
+          await setChatRecordingAudioMode();
+        }
         const token = (await AsyncStorage.getItem('authToken')) || '';
-        const ws = await openSpeechSocket(speechSocketUrl(token), handleSocketMessage);
+        const ws = await openSpeechSocket(
+          speechSocketUrl(token),
+          handleSocketMessage,
+        );
         wsRef.current = ws;
         ws.onerror = () => {
           wantListenRef.current = false;
@@ -657,13 +752,20 @@ export default function useComposerLiveTranscribe({
             }
           } catch (error) {
             console.error('Live transcription stream failed:', error);
-            if (wantListenRef.current) {
+            if (wantListenRef.current && !preserveAudioSession) {
               try {
                 await streamPipelinedChunks(language);
               } catch (fallbackError) {
-                console.error('Live transcription fallback failed:', fallbackError);
+                console.error(
+                  'Live transcription fallback failed:',
+                  fallbackError,
+                );
                 wantListenRef.current = false;
               }
+            } else if (preserveAudioSession) {
+              // Never retry with another recorder while an Agora call owns
+              // the microphone/audio session.
+              wantListenRef.current = false;
             }
           } finally {
             sendJson({ type: 'stop' });
@@ -678,7 +780,16 @@ export default function useComposerLiveTranscribe({
         return false;
       }
     },
-    [handleSocketMessage, sendJson, startSpeechSession, stop, streamGrowingFile, streamPipelinedChunks],
+    [
+      captureEnabled,
+      handleSocketMessage,
+      preserveAudioSession,
+      sendJson,
+      startSpeechSession,
+      stop,
+      streamGrowingFile,
+      streamPipelinedChunks,
+    ],
   );
 
   useEffect(

@@ -13,7 +13,8 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../contexts/ThemeContext';
 import VoiceTextInput from '../VoiceTextInput';
 
-export const SettingsScrollContext = createContext<React.RefObject<ScrollView | null> | null>(null);
+export const SettingsScrollContext =
+  createContext<React.RefObject<ScrollView | null> | null>(null);
 
 export const SettingsSectionHeader = ({
   title,
@@ -25,7 +26,9 @@ export const SettingsSectionHeader = ({
   const { colors } = useTheme();
   return (
     <View style={styles.header}>
-      <Text style={[styles.title, { color: colors.text.primary }]}>{title}</Text>
+      <Text style={[styles.title, { color: colors.text.primary }]}>
+        {title}
+      </Text>
       {description ? (
         <Text style={[styles.description, { color: colors.text.secondary }]}>
           {description}
@@ -48,11 +51,15 @@ export const SettingsField = ({
   return (
     <View style={styles.field}>
       {label ? (
-        <Text style={[styles.label, { color: colors.text.primary }]}>{label}</Text>
+        <Text style={[styles.label, { color: colors.text.primary }]}>
+          {label}
+        </Text>
       ) : null}
       {children}
       {help ? (
-        <Text style={[styles.help, { color: colors.text.secondary }]}>{help}</Text>
+        <Text style={[styles.help, { color: colors.text.secondary }]}>
+          {help}
+        </Text>
       ) : null}
     </View>
   );
@@ -90,13 +97,15 @@ export const SettingsInput = ({
     if (!scrollView || !inputNode) return;
 
     setTimeout(() => {
-      const activeScrollView = settingsScrollRef?.current as (ScrollView & {
-        scrollResponderScrollNativeHandleToKeyboard?: (
-          nodeHandle: number,
-          additionalOffset: number,
-          preventNegativeScrollOffset: boolean,
-        ) => void;
-      }) | null;
+      const activeScrollView = settingsScrollRef?.current as
+        | (ScrollView & {
+            scrollResponderScrollNativeHandleToKeyboard?: (
+              nodeHandle: number,
+              additionalOffset: number,
+              preventNegativeScrollOffset: boolean,
+            ) => void;
+          })
+        | null;
       if (!activeScrollView || !inputNode) return;
       activeScrollView.scrollResponderScrollNativeHandleToKeyboard?.(
         inputNode,
@@ -118,9 +127,16 @@ export const SettingsInput = ({
       ]}
     >
       {prefix ? (
-        <Text style={[styles.prefix, { color: colors.text.secondary }]}>{prefix}</Text>
+        <Text style={[styles.prefix, { color: colors.text.secondary }]}>
+          {prefix}
+        </Text>
       ) : icon ? (
-        <Icon name={icon} size={18} color={colors.gray[400]} style={styles.inputIcon} />
+        <Icon
+          name={icon}
+          size={18}
+          color={colors.gray[400]}
+          style={styles.inputIcon}
+        />
       ) : null}
       <VoiceTextInput
         ref={inputRef}
@@ -153,10 +169,10 @@ export const SettingsPicker = ({
 }) => {
   const { colors } = useTheme();
   const [open, setOpen] = useState(variant === 'list');
-  const selected = options.find((option) => option.value === value);
+  const selected = options.find(option => option.value === value);
 
   const renderOptions = () =>
-    options.map((option) => {
+    options.map(option => {
       const isSelected = option.value === value;
       return (
         <TouchableOpacity
@@ -164,7 +180,9 @@ export const SettingsPicker = ({
           style={[
             styles.pickerOption,
             {
-              backgroundColor: isSelected ? colors.primary + '1F' : 'transparent',
+              backgroundColor: isSelected
+                ? colors.primary + '1F'
+                : 'transparent',
               borderColor: isSelected ? colors.primary : colors.border.primary,
             },
           ]}
@@ -173,7 +191,9 @@ export const SettingsPicker = ({
             if (variant !== 'list') setOpen(false);
           }}
         >
-          <Text style={[styles.pickerOptionLabel, { color: colors.text.primary }]}>
+          <Text
+            style={[styles.pickerOptionLabel, { color: colors.text.primary }]}
+          >
             {option.label}
           </Text>
           {isSelected ? (
@@ -197,7 +217,10 @@ export const SettingsPicker = ({
         },
       ]}
     >
-      <TouchableOpacity style={styles.pickerHeader} onPress={() => setOpen((prev) => !prev)}>
+      <TouchableOpacity
+        style={styles.pickerHeader}
+        onPress={() => setOpen(prev => !prev)}
+      >
         <Text style={[styles.pickerValue, { color: colors.text.primary }]}>
           {selected?.label || 'Select'}
         </Text>
@@ -238,9 +261,16 @@ export const SettingsSwitchRow = ({
       ]}
     >
       <View style={styles.switchCopy}>
-        <Text style={[styles.switchLabel, { color: colors.text.primary }]}>{label}</Text>
+        <Text style={[styles.switchLabel, { color: colors.text.primary }]}>
+          {label}
+        </Text>
         {help ? (
-          <Text style={[styles.help, { color: colors.text.secondary, marginTop: 4 }]}>
+          <Text
+            style={[
+              styles.help,
+              { color: colors.text.secondary, marginTop: 4 },
+            ]}
+          >
             {help}
           </Text>
         ) : null}
@@ -281,7 +311,11 @@ export const SettingsPrimaryButton = ({
       disabled={isDisabled}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={colors.text.inverse} style={{ marginRight: 8 }} />
+        <ActivityIndicator
+          size="small"
+          color={colors.text.inverse}
+          style={{ marginRight: 8 }}
+        />
       ) : null}
       <Text style={[styles.buttonText, { color: colors.text.inverse }]}>
         {loading ? loadingTitle || 'Saving…' : title}
@@ -313,9 +347,15 @@ export const SettingsDangerButton = ({
       disabled={isDisabled}
     >
       {loading ? (
-        <ActivityIndicator size="small" color={colors.text.inverse} style={{ marginRight: 8 }} />
+        <ActivityIndicator
+          size="small"
+          color={colors.text.inverse}
+          style={{ marginRight: 8 }}
+        />
       ) : null}
-      <Text style={[styles.buttonText, { color: colors.text.inverse }]}>{title}</Text>
+      <Text style={[styles.buttonText, { color: colors.text.inverse }]}>
+        {title}
+      </Text>
     </TouchableOpacity>
   );
 };
@@ -343,7 +383,11 @@ export const SettingsSecondaryButton = ({
       onPress={onPress}
       disabled={disabled}
     >
-      <Text style={[styles.secondaryButtonText, { color: colors.text.primary }]}>{title}</Text>
+      <Text
+        style={[styles.secondaryButtonText, { color: colors.text.primary }]}
+      >
+        {title}
+      </Text>
     </TouchableOpacity>
   );
 };

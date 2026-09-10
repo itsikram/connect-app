@@ -56,8 +56,8 @@ export async function configureInCallAudio(speakerOn: boolean): Promise<void> {
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
       staysActiveInBackground: true,
-      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+      interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+      interruptionModeAndroid: InterruptionModeAndroid.MixWithOthers,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: !speakerOn,
     });
@@ -73,8 +73,8 @@ export async function configureLiveVoiceAudio(): Promise<void> {
       allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
       staysActiveInBackground: true,
-      interruptionModeIOS: InterruptionModeIOS.DoNotMix,
-      interruptionModeAndroid: InterruptionModeAndroid.DoNotMix,
+      interruptionModeIOS: InterruptionModeIOS.MixWithOthers,
+      interruptionModeAndroid: InterruptionModeAndroid.MixWithOthers,
       shouldDuckAndroid: true,
       playThroughEarpieceAndroid: false,
     });

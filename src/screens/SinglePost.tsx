@@ -63,6 +63,7 @@ interface Post {
     _id: string;
     caption: string;
     photos?: string | string[];
+    gallery?: string[];
     type?: string;
     feelings?: string;
     location?: string;
@@ -359,6 +360,9 @@ const SinglePost = () => {
             flexDirection: 'row',
             flexWrap: 'wrap',
             gap: 4,
+        },
+        multiImageItem: {
+            width: '49%',
         },
         multiImage: {
             borderRadius: 8,
@@ -956,6 +960,11 @@ const SinglePost = () => {
         // Check if it's a valid URL format
         return imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/');
     };
+
+    const postImageUrls = [
+        ...(Array.isArray(post?.photos) ? post.photos : [post?.photos]),
+        ...(Array.isArray(post?.gallery) ? post.gallery : []),
+    ].filter((url): url is string => isValidImageUrl(url));
 
     const fetchPost = useCallback(async () => {
         try {
@@ -1610,25 +1619,28 @@ const SinglePost = () => {
                     )}
 
                     {/* Photos - Display exactly like Post component */}
-                    {isValidImageUrl(post.photos) && (
+                    {postImageUrls.length > 0 && (
                         <View style={styles.attachmentContainer}>
-                            {(post.type === 'post' || !post.type) && (
-                                <TouchableOpacity onPress={() => openImageModal(typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0])}>
-                                    <Image
-                                        source={{ uri: typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0] }}
-                                        style={styles.postImage}
-                                        onError={() => console.log('Failed to load post image')}
-                                    />
+                            {post.type === 'profilePic' ? (
+                                <TouchableOpacity onPress={() => openImageModal(postImageUrls[0])}>
+                                    <Image source={{ uri: postImageUrls[0] }} style={styles.postProfilePic} />
                                 </TouchableOpacity>
-                            )}
-                            {post.type === 'profilePic' && (
-                                <TouchableOpacity onPress={() => openImageModal(typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0])}>
-                                    <Image
-                                        source={{ uri: typeof post.photos === 'string' ? post.photos : (post.photos as string[])[0] }}
-                                        style={styles.postProfilePic}
-                                        onError={() => console.log('Failed to load profile picture')}
-                                    />
-                                </TouchableOpacity>
+                            ) : (
+                                <View style={postImageUrls.length > 1 ? styles.multiImageContainer : undefined}>
+                                    {postImageUrls.map((imageUrl, index) => (
+                                        <TouchableOpacity
+                                            key={`${imageUrl}-${index}`}
+                                            onPress={() => openImageModal(imageUrl)}
+                                            style={postImageUrls.length > 1 ? styles.multiImageItem : undefined}
+                                        >
+                                            <Image
+                                                source={{ uri: imageUrl }}
+                                                style={postImageUrls.length > 1 ? styles.multiImage : styles.postImage}
+                                                onError={() => console.log('Failed to load post image')}
+                                            />
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
                             )}
                         </View>
                     )}

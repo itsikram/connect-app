@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { DeviceEventEmitter } from 'react-native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useSettings } from '../contexts/SettingsContext';
@@ -13,10 +14,19 @@ const GlobalEmotionDetection: React.FC = () => {
   const profile = useSelector((state: RootState) => state.profile);
   const { settings } = useSettings();
   const [isEnabled, setIsEnabled] = useState(false);
+  const [isVideoCallActive, setIsVideoCallActive] = useState(false);
+
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('video-call-active', (active: boolean) => {
+      setIsVideoCallActive(Boolean(active));
+    });
+    return () => subscription.remove();
+  }, []);
 
   // Enable emotion detection based on settings and profile availability
   useEffect(() => {
-    const shouldEnable = settings.isShareEmotion === true && !!profile?._id;
+    const shouldEnable =
+      settings.isShareEmotion === true && !!profile?._id && !isVideoCallActive;
     setIsEnabled(shouldEnable);
     
     console.log('🎭 Global emotion detection state check:', {
@@ -33,7 +43,7 @@ const GlobalEmotionDetection: React.FC = () => {
       console.log('❌ Global emotion detection DISABLED');
       console.log('💡 To enable: Go to Settings > Message Settings > Share Emotions');
     }
-  }, [settings.isShareEmotion, profile?._id]);
+  }, [isVideoCallActive, settings.isShareEmotion, profile?._id]);
 
   // Don't render anything if not enabled or no profile
   if (!isEnabled || !profile?._id) {

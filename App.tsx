@@ -10,7 +10,7 @@ import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRo
 import { navigationRef, markNavigationReady } from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text } from 'react-native';
+import { StatusBar, useColorScheme, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text, DeviceEventEmitter } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Accelerometer } from 'expo-sensors';
@@ -96,7 +96,7 @@ import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
 import { setConnectOnline, setConnectOffline, setConnectLastSeen } from './src/reducers/presenceReducer';
 import api, { connectAPI, userAPI } from './src/lib/api';
-import ConnectCacheManager from './src/utils/connectCacheManager';
+import ConnectCacheManager, { CONNECT_CACHE_EVENT } from './src/utils/connectCacheManager';
 import FloatingButton from './src/components/FloatingButton';
 // Background services removed for Expo compatibility
 import UpdateModal from './src/components/UpdateModal';
@@ -344,7 +344,63 @@ function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
   const { isChessGameActive } = useChessGame();
   const unreadMessageCount = useSelector((state: RootState) => state.chat.unreadMessageCount);
+  const myProfile = useSelector((state: RootState) => state.profile);
+  const [connectRequestCount, setConnectRequestCount] = React.useState(0);
   const chatScreenActive = useChatScreenChrome();
+
+  React.useEffect(() => {
+    let mounted = true;
+    const profileId = myProfile?._id;
+
+    if (!profileId) {
+      setConnectRequestCount(0);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    const updateFromCache = async () => {
+      const cachedRequests = await ConnectCacheManager.getCached(profileId, 'requests');
+      if (mounted && cachedRequests) {
+        setConnectRequestCount(cachedRequests.length);
+      }
+    };
+
+    const refreshRequestCount = async () => {
+      try {
+        const response = await connectAPI.getConnectRequest(profileId);
+        if (mounted) {
+          setConnectRequestCount(Array.isArray(response.data) ? response.data.length : 0);
+        }
+        await ConnectCacheManager.setCached(profileId, 'requests', response.data);
+      } catch (error) {
+        console.error('Error fetching connect request count:', error);
+      }
+    };
+
+    const subscription = DeviceEventEmitter.addListener(
+      CONNECT_CACHE_EVENT,
+      (event: any) => {
+        if (
+          mounted &&
+          String(event?.profileId) === String(profileId) &&
+          event?.list === 'requests'
+        ) {
+          setConnectRequestCount(Array.isArray(event.items) ? event.items.length : 0);
+        }
+      },
+    );
+    updateFromCache()
+      .catch((error) => {
+        console.error('Error reading connect request cache:', error);
+      })
+      .then(refreshRequestCount);
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, [myProfile?._id]);
   
   // Debug navigation state
   React.useEffect(() => {
@@ -367,7 +423,7 @@ function TabBarWithLudoCheck(props: any) {
   const tabs = props.user ? [
     // Order to match web header: Home, Connects, Videos, Message, Downloads/Menu
     { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Connects', icon: 'user-friends', label: 'Connects', component: ConnectsStack, color: '#2196F3', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Connects', icon: 'user-friends', label: 'Connects', component: ConnectsStack, color: '#2196F3', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: connectRequestCount },
     { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
     { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
     { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },

@@ -32,6 +32,7 @@ interface Post {
     caption?: string;
     content?: string;
     photos?: string | string[];
+    gallery?: string[];
     type?: string;
     feelings?: string;
     location?: string;
@@ -50,6 +51,11 @@ const resolvePhotoUrl = (photos?: string | string[]) => {
     if (!photos) return '';
     return Array.isArray(photos) ? photos[0] || '' : photos;
 };
+
+const resolvePhotoUrls = (photos?: string | string[], gallery: string[] = []) => [
+    ...(Array.isArray(photos) ? photos : photos ? [photos] : []),
+    ...gallery,
+].filter(Boolean);
 
 const EditPost = () => {
     const route = useRoute();
@@ -72,6 +78,7 @@ const EditPost = () => {
     const [audience, setAudience] = useState(3);
     const [isAudiencePickerVisible, setIsAudiencePickerVisible] = useState(false);
     const [currentImage, setCurrentImage] = useState<string>('');
+    const [currentImages, setCurrentImages] = useState<string[]>([]);
     
     // Image editing states
     const [newImageUri, setNewImageUri] = useState<string | null>(null);
@@ -184,6 +191,17 @@ const EditPost = () => {
             width: '100%',
             height: 200,
             borderRadius: 12,
+            backgroundColor: themeColors.gray[100],
+        },
+        multiImageContainer: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 6,
+        },
+        multiImage: {
+            width: '49%',
+            height: 150,
+            borderRadius: 10,
             backgroundColor: themeColors.gray[100],
         },
         imagePlaceholder: {
@@ -364,6 +382,7 @@ const EditPost = () => {
                 setLocation(postData.location || '');
                 setAudience(Number(postData.audience) || 3);
                 setCurrentImage(resolvePhotoUrl(postData.photos));
+                setCurrentImages(resolvePhotoUrls(postData.photos, postData.gallery));
             }
         } catch (err: any) {
             console.error('Error fetching post:', err);
@@ -376,7 +395,7 @@ const EditPost = () => {
     const handleSave = async () => {
         if (!post || !myProfile?._id) return;
         
-        const hasPhoto = Boolean(newImageUri || (currentImage && !imageRemoved));
+        const hasPhoto = Boolean(newImageUri || (currentImages.length > 0 && !imageRemoved));
         if (!caption.trim() && !hasPhoto) {
             Alert.alert('Error', 'Please add a caption or photo before saving');
             return;
@@ -408,6 +427,7 @@ const EditPost = () => {
             if (newImageUrl !== null) {
                 updateData.photos = newImageUrl;
             }
+            updateData.gallery = imageRemoved ? [] : (post.gallery || []);
 
             const response = await api.post('/post/update', updateData);
 
@@ -419,6 +439,7 @@ const EditPost = () => {
                     location: location.trim() || '',
                     audience,
                     photos: newImageUrl !== null ? newImageUrl : post.photos,
+                    gallery: updateData.gallery,
                 };
                 CacheManager.updateCachedPost(updatedPost);
                 emitPostUpdated(updatedPost);
@@ -626,14 +647,22 @@ const EditPost = () => {
                     </View>
 
                     {/* Current Image */}
-                    {currentImage && !imageRemoved && (
+                    {currentImages.length > 0 && !imageRemoved && (
                         <View style={styles.imageContainer}>
                             <Text style={styles.label}>Current Image</Text>
-                            <Image
-                                source={{ uri: currentImage }}
-                                style={styles.currentImage}
-                                resizeMode="cover"
-                            />
+                            <View style={styles.multiImageContainer}>
+                                {currentImages.map((imageUrl, index) => (
+                                    <Image
+                                        key={`${imageUrl}-${index}`}
+                                        source={{ uri: imageUrl }}
+                                        style={[
+                                            styles.multiImage,
+                                            currentImages.length === 1 && styles.currentImage,
+                                        ]}
+                                        resizeMode="cover"
+                                    />
+                                ))}
+                            </View>
                             <View style={styles.imageActions}>
                                 <TouchableOpacity
                                     onPress={pickNewImage}

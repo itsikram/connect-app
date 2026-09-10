@@ -27,6 +27,7 @@ import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
 import AgoraWebEngine, { AgoraWebEngineHandle } from './AgoraWebEngine';
+import CallTranscript from './CallTranscript';
 
 interface AudioCallProps {
   myId: string;
@@ -551,6 +552,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
               <Icon name="call-end" size={26} color="#fff" />
             </TouchableOpacity>
           </View>
+          {callAccepted ? <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} /> : null}
         </SafeAreaView>
       </Modal>
     </>

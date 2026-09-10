@@ -21,11 +21,18 @@ type CreatePostProps = {
 type PostData = {
   caption: string;
   urls: string | null;
+  gallery: string[];
   type: 'image' | 'video' | null;
   uploadAsWatch: boolean;
   imageDataUrl?: string;
   mediaMimeType?: string;
   mediaFileName?: string;
+  imageAssets?: Array<{
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+    base64?: string;
+  }>;
   location: string;
   feelings: string;
   audience: number;
@@ -46,11 +53,13 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const [postData, setPostData] = useState<PostData>({
     caption: '',
     urls: null,
+    gallery: [],
     type: null,
     uploadAsWatch: false,
     imageDataUrl: undefined,
     mediaMimeType: undefined,
     mediaFileName: undefined,
+      imageAssets: undefined,
     location: '',
     feelings: '',
     audience: 3, // Default: Only Me
@@ -97,11 +106,13 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     setPostData({
       caption: '',
       urls: null,
+      gallery: [],
       type: null,
       uploadAsWatch: false,
       imageDataUrl: undefined,
       mediaMimeType: undefined,
       mediaFileName: undefined,
+      imageAssets: undefined,
       location: '',
       feelings: '',
       audience: 3,
@@ -112,6 +123,19 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const handleLocationChange = (text: string) => setPostData((prev) => ({ ...prev, location: text }));
   const handleFeelingsChange = (value: string) => setPostData((prev) => ({ ...prev, feelings: value }));
   const handleAudienceChange = (value: number) => setPostData((prev) => ({ ...prev, audience: value }));
+
+  const removeSelectedImage = (index: number) => {
+    setPostData((prev) => {
+      const remaining = (prev.imageAssets || []).filter((_, assetIndex) => assetIndex !== index);
+      return {
+        ...prev,
+        urls: remaining[0]?.uri || null,
+        imageAssets: remaining,
+        gallery: [],
+        type: remaining.length ? 'image' : null,
+      };
+    });
+  };
 
   const handleWriteCaption = useCallback(async () => {
     if (isWritingCaption || isUploading) return;
@@ -183,15 +207,20 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           : ImagePicker.MediaTypeOptions.Videos,
         quality: 0.7,
         base64: mediaType === 'image',
-        allowsEditing: true,
+        allowsEditing: mediaType === 'video',
+        allowsMultipleSelection: mediaType === 'image',
       });
       
       if (!result.canceled && result.assets && result.assets[0]) {
-        const asset = result.assets[0];
+        const assets = result.assets;
+        const asset = assets[0];
         if (asset.uri) {
           setPostData((prev) => ({
             ...prev,
-            urls: asset.uri,
+            urls: mediaType === 'image' && prev.type === 'image'
+              ? (prev.imageAssets?.[0]?.uri || prev.urls || asset.uri)
+              : asset.uri,
+            gallery: [],
             type: mediaType,
             uploadAsWatch: mediaType === 'video' ? prev.uploadAsWatch : false,
             imageDataUrl:
@@ -200,6 +229,17 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 : undefined,
             mediaMimeType: asset.mimeType || (mediaType === 'image' ? 'image/jpeg' : 'video/mp4'),
             mediaFileName: asset.fileName || `upload.${mediaType === 'image' ? 'jpg' : 'mp4'}`,
+            imageAssets: mediaType === 'image'
+              ? [
+                  ...(prev.type === 'image' ? prev.imageAssets || [] : []),
+                  ...assets.map((selectedAsset) => ({
+                  uri: selectedAsset.uri,
+                  fileName: selectedAsset.fileName,
+                  mimeType: selectedAsset.mimeType,
+                  base64: selectedAsset.base64,
+                  })),
+                ]
+              : undefined,
           }));
         }
       }
@@ -218,7 +258,36 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     setIsUploading(true);
     try {
       let uploadedUrl = postData.urls;
-      if (postData.urls && typeof postData.urls === 'string' && postData.urls.startsWith('file://')) {
+      let uploadedImageUrls: string[] = [];
+      const imageAssets = postData.type === 'image' && postData.imageAssets?.length
+        ? postData.imageAssets
+        : postData.urls && postData.type === 'image'
+          ? [{ uri: postData.urls, fileName: postData.mediaFileName, mimeType: postData.mediaMimeType }]
+          : [];
+      if (postData.type === 'image' && imageAssets.length) {
+        for (const imageAsset of imageAssets) {
+          if (!imageAsset.uri || /^https?:\/\//i.test(imageAsset.uri)) {
+            uploadedImageUrls.push(imageAsset.uri);
+            continue;
+          }
+          const formData = new FormData();
+          const fileData = {
+            uri: imageAsset.uri,
+            name: imageAsset.fileName || 'upload.jpg',
+            type: imageAsset.mimeType || 'image/jpeg',
+          } as any;
+          formData.append('image', fileData);
+          const uploadRes = await api.post('/upload/', formData, {
+            onUploadProgress: (progressEvent: any) => {
+              if (progressEvent?.total) setUploadProgress(progressEvent.loaded / progressEvent.total);
+            },
+          });
+          const imageUrl = uploadRes.data.secure_url || uploadRes.data.url;
+          if (uploadRes.status !== 200 || !imageUrl) throw new Error('Image upload successful but no URL returned');
+          uploadedImageUrls.push(imageUrl);
+        }
+        uploadedUrl = uploadedImageUrls[0] || '';
+      } else if (postData.urls && typeof postData.urls === 'string' && !/^https?:\/\//i.test(postData.urls)) {
         // Validate file URI
         if (!postData.urls || postData.urls.trim() === '') {
           throw new Error('Invalid file URI');
@@ -296,7 +365,11 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         const postFormData = new FormData();
         postFormData.append('caption', postData.caption);
         postFormData.append('photos', uploadedUrl || '');
+        postFormData.append('gallery', JSON.stringify(postData.type === 'image' ? uploadedImageUrls.slice(1) : []));
         postFormData.append('type', postData.type || 'post');
+        postFormData.append('feelings', postData.feelings);
+        postFormData.append('location', postData.location);
+        postFormData.append('audience', String(postData.audience || 3));
         res = await api.post('/post/create', postFormData);
       }
 
@@ -467,8 +540,52 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 onChangeText={handleCaptionChange}
                 multiline
               />
-              {postData.urls && postData.type === 'image' && (
-                <Image source={{ uri: postData.urls }} style={styles.attachmentPreview} />
+              {postData.type === 'image' && postData.urls && (
+                <View style={styles.attachmentGalleryPreview}>
+                  {(postData.imageAssets?.length
+                    ? postData.imageAssets
+                    : [{ uri: postData.urls }]
+                  ).map((asset, index) => (
+                    <View
+                      key={`${asset.uri}-${index}`}
+                      style={[
+                        styles.attachmentGalleryItem,
+                        (postData.imageAssets?.length || 1) === 1 &&
+                          styles.attachmentGallerySingleItem,
+                      ]}
+                    >
+                      <Image
+                        source={{ uri: asset.uri }}
+                        style={[
+                          styles.attachmentGalleryImage,
+                          (postData.imageAssets?.length || 1) === 1 &&
+                            styles.attachmentGallerySingleImage,
+                        ]}
+                      />
+                      <TouchableOpacity
+                        style={styles.removePreviewButton}
+                        onPress={() => removeSelectedImage(index)}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove image ${index + 1}`}
+                        disabled={isUploading}
+                      >
+                        <Icon name="close" size={18} color="#fff" />
+                      </TouchableOpacity>
+                    </View>
+                  ))}
+                </View>
+              )}
+              {postData.type === 'image' && postData.urls && (
+                <TouchableOpacity
+                  style={[styles.addMoreImagesButton, { borderColor, backgroundColor: inputBg }]}
+                  onPress={() => pickMedia('image')}
+                  disabled={isUploading}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add more images"
+                >
+                  <Icon name="add-photo-alternate" size={20} color={themeColors.primary} />
+                  <Text style={[styles.addMoreImagesText, { color: textColor }]}>Add more images</Text>
+                </TouchableOpacity>
               )}
               {postData.urls && postData.type === 'video' && (
                 <View style={{ marginVertical: 8 }}>
@@ -802,6 +919,61 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: 16,
     resizeMode: 'cover',
+  },
+  attachmentGalleryPreview: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 4,
+    marginBottom: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  attachmentGalleryImage: {
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  attachmentGalleryItem: {
+    width: '49%',
+    height: 150,
+    borderRadius: 8,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  attachmentGallerySingleImage: {
+    borderRadius: 8,
+  },
+  attachmentGallerySingleItem: {
+    width: '100%',
+    height: 200,
+  },
+  removePreviewButton: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+  },
+  addMoreImagesButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    minHeight: 42,
+    marginBottom: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderRadius: 10,
+  },
+  addMoreImagesText: {
+    marginLeft: 8,
+    fontSize: 14,
+    fontWeight: '600',
   },
   attachmentRow: {
     flexDirection: 'row',
