@@ -21,6 +21,7 @@ import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
+import VerifiedName from './VerifiedName';
 import VoiceTextInput from './VoiceTextInput';
 import MentionTextInput from './MentionTextInput';
 import config from '../lib/config';
@@ -92,6 +93,18 @@ const commentAuthorName = (comment: any) => {
   );
 };
 
+const commentAuthorId = (comment: any) => {
+  const author = comment?.author;
+  return String(
+    author?._id ||
+      author?.id ||
+      author?.user?._id ||
+      comment?.authorId ||
+      (typeof author === 'string' ? author : '') ||
+      '',
+  ).trim();
+};
+
 const renderMentionBody = (
   body: string,
   onProfilePress: (profileId: string) => void,
@@ -118,7 +131,7 @@ const renderMentionBody = (
         style={mentionStyle}
         onPress={() => onProfilePress(match![2])}
       >
-        {match[1].trim()}
+        @{match[1].trim()}
       </Text>,
     );
     lastIndex = match.index + match[0].length;
@@ -686,7 +699,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   // Handle reply button press
   const handleReplyPress = (comment: any) => {
     setReplyingTo(comment);
-    setReplyText('');
+    const authorId = commentAuthorId(comment);
+    setReplyText(
+      authorId
+        ? `@[${commentAuthorName(comment)}](${authorId}) `
+        : '',
+    );
   };
 
   // Handle posting a reply
@@ -942,9 +960,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 { backgroundColor: commentBubbleBg },
               ]}
             >
-              <Text style={[styles.fbAuthorName, { color: textColor }]}>
-                {commentAuthorName(c)}
-              </Text>
+              <VerifiedName
+                name={commentAuthorName(c)}
+                verified={Boolean(
+                  c.author?.isVerified ||
+                    c.author?.user?.isVerified ||
+                    c.isVerified,
+                )}
+                verifiedColor={feed.postAccent}
+                textStyle={[styles.fbAuthorName, { color: textColor }]}
+                numberOfLines={1}
+              />
               {isEditing ? (
                 <View style={styles.commentEditContainer}>
                   <TextInput
@@ -1225,15 +1251,13 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               }}
               style={styles.authorNameRow}
             >
-              <Text
-                style={[styles.authorName, { color: textColor }]}
+              <VerifiedName
+                name={post.author?.fullName || 'Unknown User'}
+                verified={post.author?.isVerified}
+                verifiedColor={feed.postAccent}
+                textStyle={[styles.authorName, { color: textColor }]}
                 numberOfLines={2}
-              >
-                {post.author?.fullName || 'Unknown User'}
-              </Text>
-              {post.author?.isVerified ? (
-                <Icon name="check-circle" size={15} color="#16a34a" style={styles.verifiedBadge} />
-              ) : null}
+              />
               {post.author?.isOfficial ? (
                 <View
                   style={[
@@ -2118,9 +2142,6 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  verifiedBadge: {
-    marginLeft: 5,
   },
   feelingsLabel: {
     fontSize: 13,

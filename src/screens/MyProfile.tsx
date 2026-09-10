@@ -1197,26 +1197,17 @@ const MyProfile = () => {
 
           <View style={styles.profileInfo}>
             <View style={styles.profileNameBlock}>
-              <Text
-                style={[
-                  styles.fullName,
-                  isSmall ? { fontSize: 20 } : null,
-                  { color: themeColors.text.primary },
-                ]}
-                numberOfLines={2}
-              >
-                <VerifiedName
-                  name={myProfile?.fullName || 'My Profile'}
-                  verified={myProfile?.isVerified}
-                  verifiedColor={themeColors.primary}
-                  textStyle={[
-                    styles.fullName,
-                    isSmall ? { fontSize: 20 } : null,
-                    { color: themeColors.text.primary },
-                  ]}
-                  numberOfLines={2}
-                />
-              </Text>
+            <VerifiedName
+              name={myProfile?.fullName || 'My Profile'}
+              verified={myProfile?.isVerified}
+              verifiedColor={themeColors.primary}
+              textStyle={[
+                styles.fullName,
+                isSmall ? { fontSize: 20 } : null,
+                { color: themeColors.text.primary },
+              ]}
+              numberOfLines={2}
+            />
               {displayedConnectsCount > 0 ? (
                 <Text
                   style={[

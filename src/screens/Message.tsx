@@ -518,7 +518,7 @@ const Message = React.memo(() => {
       await dispatch(fetchChatList(profileData._id));
       dispatch(updateUnreadMessageCount(profileData._id));
     }
-    if (!profileData || Object.keys(profileData).length === 0) {
+    if (!profileData || typeof profileData !== 'object' || Object.keys(profileData).length === 0) {
       await fetchProfile();
     }
     setRefreshing(false);

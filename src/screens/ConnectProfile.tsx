@@ -730,14 +730,13 @@ const ConnectProfile = () => {
 
                     <View style={styles.profileInfo}>
                         <View style={styles.profileNameBlock}>
-                            <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]} numberOfLines={2}>
-                                <VerifiedName
-                                    name={connectData?.fullName || 'Connect Profile'}
-                                    verified={connectData?.isVerified}
-                                    textStyle={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]}
-                                    numberOfLines={2}
-                                />
-                            </Text>
+                        <VerifiedName
+                            name={connectData?.fullName || 'Connect Profile'}
+                            verified={connectData?.isVerified}
+                            verifiedColor={themeColors.primary}
+                            textStyle={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]}
+                            numberOfLines={2}
+                        />
                             {connectsCount > 0 ? (
                                 <Text style={[styles.connectsCount, { color: themeColors.text.secondary }]}>{connectsCount} connects</Text>
                             ) : null}

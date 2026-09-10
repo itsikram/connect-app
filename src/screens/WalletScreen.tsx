@@ -31,6 +31,9 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
   const [tipUsername, setTipUsername] = useState('');
   const [tipCoins, setTipCoins] = useState('');
   const [sendingTip, setSendingTip] = useState(false);
+  const [payouts, setPayouts] = useState<Array<{ _id: string; amountCoins: number; amountBDT: number; status: string }>>([]);
+  const [payoutForm, setPayoutForm] = useState({ method: 'bkash', payoutAddress: '', recipientName: '', phoneNumber: '', amountCoins: '' });
+  const [submittingPayout, setSubmittingPayout] = useState(false);
   useEffect(() => {
     api.get('/config/flags')
       .then((response) => {
@@ -45,10 +48,29 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
       setError(null);
       const response = await api.get<Wallet>('/wallet');
       setWallet(response.data);
+      const payoutResponse = await api.get('/wallet/payout-requests');
+      setPayouts(payoutResponse.data?.requests || []);
     } catch {
       setError('Unable to load your wallet. Please try again.');
     }
   }, []);
+
+  const submitPayout = async () => {
+    const amountCoins = Number(payoutForm.amountCoins);
+    if (!payoutForm.payoutAddress.trim() || !payoutForm.recipientName.trim() ||
+      !payoutForm.phoneNumber.trim() || !Number.isInteger(amountCoins) || amountCoins < 1 || submittingPayout) return;
+    setSubmittingPayout(true);
+    try {
+      await api.post('/wallet/payout-requests', { ...payoutForm, amountCoins });
+      setNotice('Payout request submitted for admin review.');
+      setPayoutForm({ method: 'bkash', payoutAddress: '', recipientName: '', phoneNumber: '', amountCoins: '' });
+      await loadWallet();
+    } catch (requestError: any) {
+      setError(requestError?.response?.data?.message || 'Unable to submit payout request.');
+    } finally {
+      setSubmittingPayout(false);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -103,7 +125,33 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
         <ModernCard margin="none">
           <Text style={[typography.label, { color: colors.text.secondary }]}>Creator earnings</Text>
           <Text style={[typography.h2, { color: colors.primary }]}>{wallet?.creatorEarningsCoins ?? 0} coins</Text>
-          <Text style={[typography.caption, { color: colors.text.tertiary }]}>Received from creator tips.</Text>
+          <Text style={[typography.caption, { color: colors.text.tertiary }]}>Available to withdraw.</Text>
+        </ModernCard>
+        <ModernCard margin="none">
+          <Text style={[typography.h5, { color: colors.text.primary }]}>Withdraw earnings</Text>
+          <Text style={[typography.body, { color: colors.text.secondary }]}>Coins are deducted only after your payout is approved.</Text>
+          <View style={styles.methods}>
+           {(['mobile_recharge', 'bkash', 'nagad'] as const).map((method) => (
+             <Text key={method} onPress={() => setPayoutForm({ ...payoutForm, method })} style={[typography.label, { color: payoutForm.method === method ? colors.primary : colors.text.tertiary }]}>
+               {method === 'mobile_recharge' ? 'Mobile recharge' : method === 'bkash' ? 'bKash' : 'Nagad'}
+             </Text>
+           ))}
+          </View>
+          {(['recipientName', 'phoneNumber', 'payoutAddress', 'amountCoins'] as const).map((field) => (
+           <TextInput
+             key={field}
+             value={payoutForm[field]}
+             onChangeText={(value) => setPayoutForm({ ...payoutForm, [field]: value })}
+             keyboardType={field === 'amountCoins' ? 'number-pad' : field === 'phoneNumber' ? 'phone-pad' : 'default'}
+             placeholder={field === 'recipientName' ? 'Recipient name' : field === 'phoneNumber' ? 'Phone number' : field === 'payoutAddress' ? 'Payout address or account' : 'Coins to withdraw'}
+             placeholderTextColor={colors.text.tertiary}
+             style={[styles.tipInput, { borderColor: colors.border.primary, color: colors.text.primary }]}
+           />
+          ))}
+          <Text onPress={() => void submitPayout()} style={[typography.label, { color: colors.primary, marginTop: 10 }]}>
+           {submittingPayout ? 'Submitting...' : 'Request payout'}
+          </Text>
+          {payouts.length ? <Text style={[typography.caption, { color: colors.text.tertiary, marginTop: 10 }]}>{payouts.slice(0, 3).map((payout) => `${payout.amountCoins} coins → ৳${Number(payout.amountBDT).toFixed(2)} (${payout.status})`).join('\n')}</Text> : null}
         </ModernCard>
         {tippingEnabled ? (
           <ModernCard margin="none">
@@ -116,7 +164,7 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
               onChangeText={setTipUsername}
               placeholder="Creator username"
               placeholderTextColor={colors.text.tertiary}
-              style={[styles.tipInput, { borderColor: colors.border, color: colors.text.primary }]}
+              style={[styles.tipInput, { borderColor: colors.border.primary, color: colors.text.primary }]}
             />
             <TextInput
               value={tipCoins}
@@ -124,7 +172,7 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
               keyboardType="number-pad"
               placeholder="Coins to send"
               placeholderTextColor={colors.text.tertiary}
-              style={[styles.tipInput, { borderColor: colors.border, color: colors.text.primary }]}
+              style={[styles.tipInput, { borderColor: colors.border.primary, color: colors.text.primary }]}
             />
             <Text
               onPress={async () => {
@@ -226,6 +274,7 @@ const styles = StyleSheet.create({
   coinIcon: { alignItems: 'center', borderRadius: 28, height: 56, justifyContent: 'center', width: 56 },
   packCard: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 },
   packInfo: { gap: 2 },
+  methods: { flexDirection: 'row', gap: 16, marginTop: 10 },
   tipInput: { borderRadius: 8, borderWidth: 1, marginTop: 10, paddingHorizontal: 12, paddingVertical: 10 },
 });
 

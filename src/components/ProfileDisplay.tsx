@@ -6,7 +6,7 @@ import { RootState } from '../store';
 const ProfileDisplay: React.FC = () => {
   const profile = useSelector((state: RootState) => state.profile);
 
-  if (!profile || Object.keys(profile).length === 0) {
+  if (!profile || typeof profile !== 'object' || Object.keys(profile).length === 0) {
     return (
       <View style={styles.container}>
         <Text style={styles.text}>No profile data available</Text>

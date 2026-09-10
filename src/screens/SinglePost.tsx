@@ -50,6 +50,7 @@ import {
 } from '../components/post/ReactIcons';
 import SinglePostSkeleton from '../components/skeleton/SinglePostSkeleton';
 import EditAudienceModal from '../components/post/EditAudienceModal';
+import VerifiedName from '../components/VerifiedName';
 import CacheManager from '../utils/cacheManager';
 import { POST_UPDATED_EVENT, emitPostUpdated } from '../utils/postEvents';
 import { getAudienceOption } from '../constants/audience';
@@ -87,9 +88,11 @@ interface Post {
             firstName?: string;
             name?: string;
             profilePic?: string;
+            isVerified?: boolean;
             user?: {
                 firstName?: string;
                 surname?: string;
+                isVerified?: boolean;
             };
         };
         createdAt: string;
@@ -104,9 +107,11 @@ interface Post {
                 firstName?: string;
                 name?: string;
                 profilePic?: string;
+                isVerified?: boolean;
                 user?: {
                     firstName?: string;
                     surname?: string;
+                    isVerified?: boolean;
                 };
             };
             createdAt: string;
@@ -131,9 +136,11 @@ interface Comment {
         firstName?: string;
         name?: string;
         profilePic?: string;
+        isVerified?: boolean;
         user?: {
             firstName?: string;
             surname?: string;
+            isVerified?: boolean;
         };
     };
     createdAt: string;
@@ -148,9 +155,11 @@ interface Comment {
             firstName?: string;
             name?: string;
             profilePic?: string;
+            isVerified?: boolean;
             user?: {
                 firstName?: string;
                 surname?: string;
+                isVerified?: boolean;
             };
         };
         createdAt: string;
@@ -1379,9 +1388,16 @@ const SinglePost = () => {
                 <View style={{ flex: 1, minWidth: 0 }}>
                     <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
                         <View style={[styles.fbNameComment, { backgroundColor: commentBubbleBg }]}>
-                            <Text style={[styles.fbAuthorName, { color: themeColors.text.primary }]}>
-                                {commentAuthorName(comment)}
-                            </Text>
+                            <VerifiedName
+                                name={commentAuthorName(comment)}
+                                verified={Boolean(
+                                    comment.author?.isVerified ||
+                                    comment.author?.user?.isVerified,
+                                )}
+                                verifiedColor={themeColors.primary}
+                                textStyle={[styles.fbAuthorName, { color: themeColors.text.primary }]}
+                                numberOfLines={1}
+                            />
                             {!!body.trim() && (
                                 <Text style={[styles.fbCommentText, { color: themeColors.text.primary }]}>
                                     {renderMentionBody(
@@ -1538,8 +1554,13 @@ const SinglePost = () => {
                         />
                         <View style={styles.authorInfo}>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Text style={styles.authorName}>
-                                    {post.author?.fullName || 'Unknown User'}
+                                <VerifiedName
+                                    name={post.author?.fullName || 'Unknown User'}
+                                    verified={post.author?.isVerified}
+                                    verifiedColor={themeColors.primary}
+                                    textStyle={styles.authorName}
+                                />
+                                <Text>
                                     {post.feelings ? (
                                         <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
                                             {' '}is feeling {post.feelings}
@@ -1551,9 +1572,6 @@ const SinglePost = () => {
                                         </Text>
                                     ) : null}
                                 </Text>
-                                {post.author?.isVerified ? (
-                                    <Icon name="check-circle" size={15} color="#16a34a" style={{ marginLeft: 5 }} />
-                                ) : null}
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                                 <Text style={styles.postTime}>

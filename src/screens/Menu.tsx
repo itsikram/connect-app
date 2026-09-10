@@ -334,14 +334,13 @@ const Menu = () => {
                 )}
               </View>
               <View style={styles.profileBody}>
-                <Text style={[styles.profileName, { color: themeColors.text.primary }]} numberOfLines={1}>
-                  <VerifiedName
-                    name={myProfile?.fullName || 'My Profile'}
-                    verified={myProfile?.isVerified}
-                    textStyle={[styles.profileName, { color: themeColors.text.primary }]}
-                    numberOfLines={1}
-                  />
-                </Text>
+                <VerifiedName
+                  name={myProfile?.fullName || 'My Profile'}
+                  verified={myProfile?.isVerified}
+                  verifiedColor={themeColors.primary}
+                  textStyle={[styles.profileName, { color: themeColors.text.primary }]}
+                  numberOfLines={1}
+                />
                 <Text style={[styles.profileHint, { color: themeColors.text.secondary }]}>
                   {connectsCount > 0 ? `See your profile · ${connectsCount} connects` : 'See your profile'}
                 </Text>

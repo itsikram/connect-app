@@ -178,6 +178,9 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   YOUTUBE_SEARCH: 'SEARCH_YOUTUBE',
   DOWNLOAD_YT: 'DOWNLOAD_YOUTUBE',
   YOUTUBE_DOWNLOAD: 'DOWNLOAD_YOUTUBE',
+  INVITE_LUDO: 'INVITE_LUDO_PLAYER',
+  INVITE_LUDO_FRIEND: 'INVITE_LUDO_PLAYER',
+  INVITE_FRIEND_TO_LUDO: 'INVITE_LUDO_PLAYER',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -370,6 +373,7 @@ export type MobileAgentActionAdapter = {
     params?: Record<string, unknown>,
   ) => void | Promise<void>;
   startLudo?: () => void | Promise<void>;
+  inviteLudoPlayer?: (userId: string, userName?: string) => void | Promise<void>;
   startChess?: () => void | Promise<void>;
   startVoiceInput?: () => void | Promise<void>;
   stopVoiceInput?: () => void | Promise<void>;
@@ -379,6 +383,8 @@ export type MobileAgentActionAdapter = {
   clearAgentChat?: () => void | Promise<void>;
   startAudioCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
   startVideoCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
+  endCall?: (userId: string, channelName?: string) => void | Promise<void>;
+  changeSetting?: (setting: string, value: unknown) => void | Promise<void>;
   playVideo?: (videoId: string) => void | Promise<void>;
   searchVideo?: (query: string) => void | Promise<void>;
   searchYoutube?: (query: string) => void | Promise<void>;
@@ -447,6 +453,57 @@ const navigationTargets: Partial<
   navigate_cricbuzz: ['Menu', { screen: 'Cricbuzz' }],
   navigate_maps: ['Menu', { screen: 'GoogleMaps' }],
   navigate_contacts: ['Menu', { screen: 'GoogleContacts' }],
+};
+
+const getActionSuccessMessage = (
+  action: AgentActionIntent,
+  definition: AgentActionDefinition,
+  resolvedUserName: string,
+  parameters: Record<string, unknown>,
+) => {
+  const target = resolvedUserName || action.targetName || '';
+  switch (action.action) {
+    case 'OPEN_LUDO':
+    case 'start_ludo':
+      return 'Ludo is open and ready to play.';
+    case 'INVITE_LUDO_PLAYER':
+      return target
+        ? `Ludo invitation sent to ${target}.`
+        : 'Ludo invitation sent.';
+    case 'SEND_MESSAGE':
+      return target
+        ? `Message sent to ${target}: "${String(parameters.message || action.messageText || '')}"`
+        : 'Message sent.';
+    case 'FOLLOW_USER':
+      return target ? `You are now following ${target}.` : 'User followed.';
+    case 'UNFOLLOW_USER':
+      return target ? `You stopped following ${target}.` : 'User unfollowed.';
+    case 'BLOCK_USER':
+      return target ? `${target} was blocked.` : 'User blocked.';
+    case 'UNBLOCK_USER':
+      return target ? `${target} was unblocked.` : 'User unblocked.';
+    case 'VIEW_PROFILE':
+      return target ? `${target}'s profile is open.` : 'Profile is open.';
+    case 'OPEN_CHAT':
+      return target ? `Chat with ${target} is open.` : 'Chat is open.';
+    case 'CREATE_TASK':
+      return `Task created: ${String(parameters.text || parameters.taskText || action.messageText || '')}`;
+    case 'UPDATE_TASK':
+      return 'Task updated.';
+    case 'SEARCH_USERS':
+      return target ? `Found ${target}.` : 'User search completed.';
+    case 'SEARCH_VIDEO':
+    case 'SEARCH_YOUTUBE':
+      return `Search completed for "${String(parameters.query || action.searchQuery || '')}".`;
+    case 'PLAY_VIDEO':
+      return 'Video playback started.';
+    case 'DOWNLOAD_YOUTUBE':
+      return 'YouTube download started.';
+    case 'CHANGE_SETTING':
+      return `Setting "${String(parameters.setting || parameters.name || '')}" was updated.`;
+    default:
+      return `${definition.label} completed.`;
+  }
 };
 
 export async function executeAgentActions(
@@ -521,6 +578,8 @@ export async function executeAgentActions(
         'SEND_MESSAGE',
         'START_AUDIO_CALL',
         'START_VIDEO_CALL',
+        'INVITE_LUDO_PLAYER',
+        'END_CALL',
       ].includes(action.action);
       let resolvedUserId = String(parameters.userId || parameters.profileId || '');
       let resolvedUserName = String(parameters.userName || action.targetName || '');
@@ -538,6 +597,18 @@ export async function executeAgentActions(
         if (!adapter.startLudo)
           throw new Error('Ludo is unavailable on this device.');
         await adapter.startLudo();
+      } else if (action.action === 'INVITE_LUDO_PLAYER') {
+        if (!adapter.inviteLudoPlayer)
+          throw new Error('Ludo invitations are unavailable.');
+        await adapter.inviteLudoPlayer(resolvedUserId, resolvedUserName);
+      } else if (action.action === 'END_CALL') {
+        if (!adapter.endCall) throw new Error('Call controls are unavailable.');
+        await adapter.endCall(resolvedUserId, String(parameters.channelName || '') || undefined);
+      } else if (action.action === 'CHANGE_SETTING') {
+        const setting = String(parameters.setting || parameters.name || '').trim();
+        if (!setting) throw new Error('Tell me which setting to change.');
+        if (!adapter.changeSetting) throw new Error('Settings controls are unavailable.');
+        await adapter.changeSetting(setting, parameters.value);
       } else if (action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL') {
         let userId = resolvedUserId;
         let resolvedName = resolvedUserName;
@@ -685,7 +756,12 @@ export async function executeAgentActions(
       results.push({
         action: action.action,
         ok: true,
-        message: `${definition.label} completed.`,
+        message: getActionSuccessMessage(
+          action,
+          definition,
+          resolvedUserName,
+          parameters,
+        ),
       });
     } catch (error) {
       results.push({

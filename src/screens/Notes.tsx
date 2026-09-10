@@ -50,6 +50,7 @@ const Notes = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
   const updateTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const loadNotes = useCallback(async () => {
@@ -92,6 +93,7 @@ const Notes = () => {
         const note = response.data.note as Note;
         setNotes(current => [note, ...current]);
         setSelectedNote(note);
+        setIsEditing(true);
       }
     } catch (error) {
       console.error('Error creating note:', error);
@@ -141,6 +143,7 @@ const Notes = () => {
             if (response.data.success) {
               setNotes(current => current.filter(note => note._id !== selectedNote._id));
               setSelectedNote(null);
+              setIsEditing(false);
             }
           } catch (error) {
             console.error('Error deleting note:', error);
@@ -169,7 +172,10 @@ const Notes = () => {
     const active = selectedNote?._id === item._id;
     return (
       <TouchableOpacity
-        onPress={() => setSelectedNote(item)}
+        onPress={() => {
+          setSelectedNote(item);
+          setIsEditing(true);
+        }}
         style={[
           styles.noteCard,
           {
@@ -201,7 +207,8 @@ const Notes = () => {
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <View style={[styles.header, { borderBottomColor: themeColors.border.primary }]}>
+        {!isEditing && (
+          <View style={[styles.header, { borderBottomColor: themeColors.border.primary }]}>
           <TouchableOpacity
             onPress={() => navigation.goBack()}
             style={[styles.backButton, { backgroundColor: themeColors.surface.secondary }]}
@@ -222,10 +229,12 @@ const Notes = () => {
               {notes.length} {notes.length === 1 ? 'note' : 'notes'}
             </Text>
           </View>
-        </View>
+          </View>
+        )}
 
-        <View style={[styles.body, width >= 768 && styles.bodyWide]}>
-          <View
+        <View style={[styles.body, !isEditing && width >= 768 && styles.bodyWide]}>
+          {!isEditing && (
+            <View
             style={[
               styles.sidebar,
               width < 768 && styles.sidebarNarrow,
@@ -267,13 +276,25 @@ const Notes = () => {
                 }
               />
             )}
-          </View>
+            </View>
+          )}
 
-          <View style={[styles.editor, width < 768 && styles.editorNarrow]}>
+          <View style={[styles.editor, isEditing && styles.editorFullScreen, !isEditing && width < 768 && styles.editorNarrow]}>
             {selectedNote ? (
               <>
                 <View style={[styles.toolbar, { borderBottomColor: themeColors.border.primary }]}>
-                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <View style={styles.toolbarMeta}>
+                    {isEditing && (
+                      <TouchableOpacity
+                        onPress={() => setIsEditing(false)}
+                        style={styles.editorBackButton}
+                        accessibilityRole="button"
+                        accessibilityLabel="Back to notes"
+                      >
+                        <Icon name="arrow-back" size={21} color={themeColors.text.primary} />
+                      </TouchableOpacity>
+                    )}
+                    <View style={styles.saveMeta}>
                     <Text style={[styles.updated, { color: themeColors.text.tertiary, marginRight: 8 }]}>
                       {selectedNote.updatedAt ? formatDate(selectedNote.updatedAt) : ''}
                     </Text>
@@ -282,6 +303,7 @@ const Notes = () => {
                     ) : (
                       <Text style={[styles.savedText, { color: themeColors.text.tertiary }]}>Saved</Text>
                     )}
+                    </View>
                   </View>
                   <View style={styles.toolbarActions}>
                     <TouchableOpacity onPress={shareNote} style={[styles.actionButton, { borderColor: `${themeColors.primary}66` }]}>
@@ -336,7 +358,7 @@ const Notes = () => {
         <TouchableOpacity
           onPress={handleCreateNote}
           disabled={saving}
-          style={[styles.fab, { backgroundColor: themeColors.primary }]}
+          style={[styles.fab, { backgroundColor: themeColors.primary }, isEditing && styles.hidden]}
           accessibilityRole="button"
           accessibilityLabel="Create new note"
         >
@@ -380,8 +402,12 @@ const styles = StyleSheet.create({
   noteDate: { fontSize: 11, marginTop: 8 },
   editor: { flex: 1.08 },
   editorNarrow: { flex: 1 },
+  editorFullScreen: { flex: 1, width: '100%' },
   toolbar: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1, gap: 8 },
   toolbarActions: { flexDirection: 'row', gap: 8 },
+  toolbarMeta: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10 },
+  saveMeta: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  editorBackButton: { padding: 6, marginLeft: -6 },
   updated: { fontSize: 12 },
   savedText: { fontSize: 12, fontWeight: '600' },
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
@@ -410,6 +436,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
   },
+  hidden: { display: 'none' },
 });
 
 export default Notes;

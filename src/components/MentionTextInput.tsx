@@ -4,7 +4,7 @@ import api from '../lib/api';
 import VoiceTextInput from './VoiceTextInput';
 
 type Profile = {
-  _id: string;
+  _id?: string;
   fullName?: string;
   displayName?: string;
   username?: string;
@@ -17,12 +17,31 @@ type Props = TextInputProps & {
   voiceEnabled?: boolean;
 };
 
-const getName = (profile: Profile) =>
-  profile.fullName || profile.displayName || profile.username || 'User';
+const getName = (profile?: Profile | null) =>
+  profile?.fullName || profile?.displayName || profile?.username || 'User';
 
 const getMentionQuery = (value: string) => {
   const match = value.match(/(?:^|\s)@([^\s@]*)$/);
   return match ? match[1] : null;
+};
+
+const mentionTokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+
+const toDisplayValue = (value: string) =>
+  String(value || '').replace(mentionTokenPattern, '@$1');
+
+const toStoredValue = (value: string, sourceValue: string) => {
+  const sourceTokens: Array<{ name: string; id: string }> = [];
+  let sourceMatch: RegExpExecArray | null;
+  while ((sourceMatch = mentionTokenPattern.exec(String(sourceValue || '')))) {
+    sourceTokens.push({ name: sourceMatch[1].trim(), id: sourceMatch[2] });
+  }
+  mentionTokenPattern.lastIndex = 0;
+  let storedValue = String(value || '');
+  sourceTokens.forEach(({ name, id }) => {
+    storedValue = storedValue.replace(`@${name}`, `@[${name}](${id})`);
+  });
+  return storedValue;
 };
 
 const MentionTextInput = forwardRef<TextInput, Props>(({
@@ -44,7 +63,12 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
     let cancelled = false;
     api.get('/connects/getConnects', { params: { profile: myProfileId } })
       .then(response => {
-        if (!cancelled) setConnects(Array.isArray(response.data) ? response.data : []);
+        if (!cancelled) {
+          const profiles = Array.isArray(response.data)
+            ? response.data.filter((profile): profile is Profile => Boolean(profile?._id))
+            : [];
+          setConnects(profiles);
+        }
       })
       .catch(error => {
         if (!cancelled) {
@@ -61,17 +85,21 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
     const normalized = String(activeQuery || '').toLowerCase();
     return connects.filter(profile =>
       !normalized ||
-      `${getName(profile)} ${profile.username || ''}`.toLowerCase().includes(normalized),
+      `${getName(profile)} ${profile?.username || ''}`.toLowerCase().includes(normalized),
     ).slice(0, 8);
   }, [activeQuery, connects]);
 
-  const selectProfile = (profile: Profile) => {
-    const text = String(value);
+  const selectProfile = (profile?: Profile | null) => {
+    if (!profile?._id) return;
+    const text = toDisplayValue(String(value));
     const start = text.search(/(?:^|\s)@[^\s@]*$/);
     if (start < 0) return;
     const mentionStart = start + (text[start] === ' ' ? 1 : 0);
     const name = getName(profile).trim();
-    onChangeText?.(`${text.slice(0, mentionStart)}@[${name}](${profile._id}) ${text.slice(text.length)}`);
+    const nextDisplayValue = `${text.slice(0, mentionStart)}@${name} ${text.slice(text.length)}`;
+    const nextValue = toStoredValue(nextDisplayValue, String(value))
+      .replace(`@${name}`, `@[${name}](${profile._id})`);
+    if (typeof onChangeText === 'function') onChangeText(nextValue);
     setActiveQuery(null);
     inputRef.current?.focus();
   };
@@ -85,11 +113,11 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
           else if (ref) ref.current = node;
         }}
         {...props}
-        value={value}
+        value={toDisplayValue(String(value))}
         voiceEnabled={voiceEnabled}
         onChangeText={text => {
           setActiveQuery(getMentionQuery(text));
-          onChangeText?.(text);
+          onChangeText?.(toStoredValue(text, String(value)));
         }}
       />
       {activeQuery !== null && matches.length > 0 ? (

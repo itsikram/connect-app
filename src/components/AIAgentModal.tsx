@@ -145,6 +145,11 @@ const getConnectDisplayName = (connect: Record<string, unknown>) => {
   );
 };
 
+const isMachineReadableIntent = (value: string) => {
+  const trimmed = value.trimStart();
+  return trimmed.startsWith('{') || /^```(?:json)?\b/i.test(trimmed);
+};
+
 const AIAgentModal: React.FC<Props> = ({
   visible,
   onClose,
@@ -163,12 +168,14 @@ const AIAgentModal: React.FC<Props> = ({
     }),
     [profile, user?.profile],
   );
-  const { setLudoGameActive } = useLudoGame();
+  const { setLudoGameActive, requestLudoInvite } = useLudoGame();
   const { setChessGameActive } = useChessGame();
   const {
     startAudioCall,
     startVideoCall,
     sendMessage: socketSendMessage,
+    endAudioCall,
+    endVideoCall,
     on: socketOn,
     off: socketOff,
   } = useSocket();
@@ -463,6 +470,13 @@ const AIAgentModal: React.FC<Props> = ({
       const room = [ownId, userId].sort().join('_');
       socketSendMessage(room, ownId, userId, message);
     },
+    endCall: (userId: string, channelName?: string) => {
+      if (!userId) throw new Error('I could not resolve the call participant.');
+      endAudioCall(userId, channelName, 'end');
+      endVideoCall(userId, channelName, 'end');
+    },
+    changeSetting: (setting: string, value: unknown) =>
+      navigateWithQueue('Menu', { screen: 'Settings', setting, value }),
     createTask: async (text: string) => {
       const response = await api.post('/tasks', { text });
       if (!response.data?.success) throw new Error('I could not create that task.');
@@ -492,7 +506,17 @@ const AIAgentModal: React.FC<Props> = ({
       autoReplyRulesRef.current = rules;
       await AsyncStorage.setItem(`@connect/ai-auto-replies/${ownId}`, JSON.stringify(rules));
     },
-  }), [onClose, profile, resolveUser, startAudioCall, startVideoCall, socketSendMessage]);
+  }), [
+    onClose,
+    profile,
+    requestLudoInvite,
+    resolveUser,
+    startAudioCall,
+    startVideoCall,
+    socketSendMessage,
+    endAudioCall,
+    endVideoCall,
+  ]);
 
   React.useEffect(() => {
     const handleIncomingMessage = (payload: unknown) => {
@@ -662,14 +686,17 @@ const AIAgentModal: React.FC<Props> = ({
         [...messages, user],
         next => {
           if (generation !== generationRef.current) return;
+          const machineReadable = isMachineReadableIntent(next);
           setMessages(previous =>
             previous.map(item =>
-              item.id === stream.id ? { ...item, content: next } : item,
+              item.id === stream.id
+                ? { ...item, content: machineReadable ? '' : next }
+                : item,
             ),
           );
           // Do not read machine-readable JSON while it is streaming; read the
           // user-facing reply after the intent has been validated below.
-          if (shouldSpeak && !next.trimStart().startsWith('{'))
+          if (shouldSpeak && !machineReadable)
             speechController.update(next, language);
         },
         controller.signal,
@@ -842,6 +869,12 @@ const AIAgentModal: React.FC<Props> = ({
             if (!job) throw new Error('Could not start the YouTube download.');
           },
           startLudo: () => setLudoGameActive(true),
+          inviteLudoPlayer: (userId, userName) => {
+            if (!userId) throw new Error('I could not resolve the Ludo player.');
+            requestLudoInvite({ id: userId, name: userName });
+          },
+          endCall: callAdapter.endCall,
+          changeSetting: callAdapter.changeSetting,
           startChess: () => setChessGameActive(true),
           startVoiceInput: async () => {
             await transcribe.start(language === 'auto' ? undefined : language);
@@ -849,11 +882,13 @@ const AIAgentModal: React.FC<Props> = ({
           stopVoiceInput: async () => {
             await transcribe.stop();
           },
-          speakText: value => {
+          speakText: async value => {
             if (shouldSpeak) {
+              await transcribe.stop({ discard: true });
+              await restoreChatPlaybackAudioMode();
               const reader = createAgentSpeechController(language);
               reader.update(value, language);
-              reader.finish();
+              await reader.finish();
               speechControllerRef.current = reader;
             }
           },
@@ -925,7 +960,14 @@ const AIAgentModal: React.FC<Props> = ({
           const profileChoices = ambiguityRef.current;
           ambiguityRef.current = undefined;
           ambiguousActionRef.current = intent.actions?.find(action =>
-            ['START_AUDIO_CALL', 'START_VIDEO_CALL'].includes(action.action),
+            [
+              'START_AUDIO_CALL',
+              'START_VIDEO_CALL',
+              'INVITE_LUDO_PLAYER',
+              'SEND_MESSAGE',
+              'OPEN_CHAT',
+              'VIEW_PROFILE',
+            ].includes(action.action),
           ) || null;
           setPendingActions([]);
           setMessages(previous =>
@@ -933,7 +975,7 @@ const AIAgentModal: React.FC<Props> = ({
               item.id === stream.id
                 ? {
                     ...item,
-                    content: 'I found multiple people. Choose the profile you want to call.',
+                    content: 'I found multiple people. Choose the profile to use for this action.',
                     profileChoices,
                   }
                 : item,
@@ -983,6 +1025,17 @@ const AIAgentModal: React.FC<Props> = ({
               ? {
                   ...item,
                   content: 'দুঃখিত, এই কাজটি এই Expo অ্যাপে সমর্থিত নয়।',
+                }
+              : item,
+          ),
+        );
+      } else if (isMachineReadableIntent(rawReply)) {
+        setMessages(previous =>
+          previous.map(item =>
+            item.id === stream.id
+              ? {
+                  ...item,
+                  content: 'I could not understand the agent response. Please try again.',
                 }
               : item,
           ),
@@ -1105,6 +1158,9 @@ const AIAgentModal: React.FC<Props> = ({
   const toggleSpeech = async () => {
     const nextEnabled = !speechEnabled;
     setSpeechEnabled(nextEnabled);
+    if (nextEnabled && transcribe.listening) {
+      await transcribe.stop({ discard: true });
+    }
     if (!nextEnabled) {
       await speechControllerRef.current?.stop();
     }
@@ -1243,6 +1299,10 @@ const AIAgentModal: React.FC<Props> = ({
     const adapter = createMobileAgentActionAdapter({
       ...callAdapter,
       startLudo: () => setLudoGameActive(true),
+      inviteLudoPlayer: (userId, userName) => {
+        if (!userId) throw new Error('I could not resolve the Ludo player.');
+        requestLudoInvite({ id: userId, name: userName });
+      },
       startChess: () => setChessGameActive(true),
       logout,
       clearAgentChat: clearChat,
@@ -1253,41 +1313,55 @@ const AIAgentModal: React.FC<Props> = ({
         InteractionManager.runAfterInteractions(() => resolve()),
       );
     }
-    const results = await executeAgentActions([action], adapter, {
-      skipConfirmation: false,
-      confirm: definition =>
-        new Promise<boolean>(resolve => {
-          Alert.alert(
-            'Confirm action',
-            `Allow the agent to ${definition.label.toLowerCase()}?`,
-            [
-              {
-                text: 'Cancel',
-                style: 'cancel',
-                onPress: () => resolve(false),
-              },
-              {
-                text: 'Allow',
-                style: 'destructive',
-                onPress: () => resolve(true),
-              },
-            ],
-          );
-        }),
-    });
-    updateAutoActionRunning(false);
-    const result = results[0];
-    setPendingActions(previous => previous.filter(item => item !== action));
-    setMessages(previous => [
-      ...previous,
-      {
-        id: id(),
-        type: 'action-result',
-        content: result?.message || 'Action completed.',
-        timestamp: new Date().toISOString(),
-        success: result?.ok,
-      },
-    ]);
+    try {
+      const results = await executeAgentActions([action], adapter, {
+        skipConfirmation: false,
+        confirm: definition =>
+          new Promise<boolean>(resolve => {
+            Alert.alert(
+              'Confirm action',
+              `Allow the agent to ${definition.label.toLowerCase()}?`,
+              [
+                {
+                  text: 'Cancel',
+                  style: 'cancel',
+                  onPress: () => resolve(false),
+                },
+                {
+                  text: 'Allow',
+                  style: 'destructive',
+                  onPress: () => resolve(true),
+                },
+              ],
+            );
+          }),
+      });
+      const result = results[0];
+      setPendingActions(previous => previous.filter(item => item !== action));
+      setMessages(previous => [
+        ...previous,
+        {
+          id: id(),
+          type: 'action-result',
+          content: result?.message || 'Action completed.',
+          timestamp: new Date().toISOString(),
+          success: result?.ok,
+        },
+      ]);
+    } catch (error) {
+      setMessages(previous => [
+        ...previous,
+        {
+          id: id(),
+          type: 'action-result',
+          content: error instanceof Error ? error.message : 'Action failed.',
+          timestamp: new Date().toISOString(),
+          success: false,
+        },
+      ]);
+    } finally {
+      updateAutoActionRunning(false);
+    }
   };
   const chooseProfileForAction = (choice: NonNullable<AgentMessage['profileChoices']>[number]) => {
     const action = ambiguousActionRef.current;

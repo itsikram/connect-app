@@ -14,7 +14,7 @@ type VerifiedNameProps = {
 const VerifiedName = ({
   name,
   verified = false,
-  verifiedColor = '#00D4FF',
+  verifiedColor = '#1D9BF0',
   textStyle,
   style,
   numberOfLines,
@@ -26,7 +26,7 @@ const VerifiedName = ({
     {verified ? (
       <Icon
         name="verified"
-        size={17}
+        size={16}
         color={verifiedColor}
         accessibilityLabel="Verified profile"
         accessibilityRole="image"

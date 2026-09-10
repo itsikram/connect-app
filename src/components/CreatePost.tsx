@@ -4,7 +4,6 @@ import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
-import { useNavigation } from '@react-navigation/native';
 import api from '../lib/api';
 import { ModernButton } from './modern';
 import { useModernToast } from '../contexts/ModernToastContext';
@@ -23,6 +22,7 @@ type PostData = {
   caption: string;
   urls: string | null;
   type: 'image' | 'video' | null;
+  uploadAsWatch: boolean;
   imageDataUrl?: string;
   mediaMimeType?: string;
   mediaFileName?: string;
@@ -35,7 +35,6 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const { user } = useContext(AuthContext);
   const { colors: themeColors, isDarkMode } = useTheme();
   const { showToast } = useModernToast();
-  const navigation = useNavigation();
   
   const [isModalVisible, setModalVisible] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -48,6 +47,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     caption: '',
     urls: null,
     type: null,
+    uploadAsWatch: false,
     imageDataUrl: undefined,
     mediaMimeType: undefined,
     mediaFileName: undefined,
@@ -98,6 +98,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       caption: '',
       urls: null,
       type: null,
+      uploadAsWatch: false,
       imageDataUrl: undefined,
       mediaMimeType: undefined,
       mediaFileName: undefined,
@@ -192,6 +193,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
             ...prev,
             urls: asset.uri,
             type: mediaType,
+            uploadAsWatch: mediaType === 'video' ? prev.uploadAsWatch : false,
             imageDataUrl:
               mediaType === 'image' && asset.base64
                 ? `data:image/jpeg;base64,${asset.base64}`
@@ -280,26 +282,26 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           throw new Error(`Upload failed with status: ${uploadRes.status}`);
         }
       }
-      // Create post
-      const postFormData = new FormData();
-      postFormData.append('caption', postData.caption);
-      // If this is a video, mark the post as a "watch" and include videoUrl so backend can treat it as a watch item
-      if (postData.type === 'video') {
-        postFormData.append('type', 'watch');
-        postFormData.append('videoUrl', uploadedUrl || '');
+      const isWatchPost = postData.type === 'video' && postData.uploadAsWatch;
+      let res;
+
+      if (isWatchPost) {
+        res = await api.post('/watch/create', {
+          caption: postData.caption,
+          videoUrl: uploadedUrl || '',
+          feeling: postData.feelings,
+          audience: postData.audience,
+        });
       } else {
-        // For images or regular posts, use the photos field
+        const postFormData = new FormData();
+        postFormData.append('caption', postData.caption);
         postFormData.append('photos', uploadedUrl || '');
-        // Provide explicit type for images or fallback to 'post'
-        postFormData.append('type', postData.type === 'image' ? 'image' : 'post');
+        postFormData.append('type', postData.type || 'post');
+        res = await api.post('/post/create', postFormData);
       }
-      postFormData.append('feelings', postData.feelings);
-      postFormData.append('location', postData.location);
-      postFormData.append('audience', postData.audience.toString());
-      const res = await api.post('/post/create', postFormData, {
-      });
+
       if (res.status === 200) {
-        if (onPostCreated) onPostCreated(res.data.post);
+        if (!isWatchPost && onPostCreated) onPostCreated(res.data.post);
         closeModal();
         showToast({
           type: 'success',
@@ -496,6 +498,27 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   )}
                 </View>
               )}
+              {postData.type === 'video' && (
+                <TouchableOpacity
+                  onPress={() => setPostData((prev) => ({ ...prev, uploadAsWatch: !prev.uploadAsWatch }))}
+                  disabled={isUploading}
+                  style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}
+                  accessibilityRole="checkbox"
+                  accessibilityState={{ checked: postData.uploadAsWatch, disabled: isUploading }}
+                >
+                  <Icon
+                    name={postData.uploadAsWatch ? 'check-box' : 'check-box-outline-blank'}
+                    size={24}
+                    color={postData.uploadAsWatch ? themeColors.primary : themeColors.text.secondary}
+                  />
+                  <View style={{ marginLeft: 8, flex: 1 }}>
+                    <Text style={{ color: textColor, fontWeight: '600' }}>Upload as Watch</Text>
+                    <Text style={{ color: themeColors.text.secondary, fontSize: 12 }}>
+                      Share this video in Watch
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
               <View style={styles.attachmentRow}>
                 <ModernButton
                   title="Add Photo"
@@ -505,15 +528,6 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   icon={<Icon name="photo-camera" size={18} color={themeColors.primary} />}
                   style={{ flex: 1, marginRight: 8 }}
                   disabled={isUploading || postData.type === 'video'}
-                />
-                <ModernButton
-                  title="Camera"
-                  onPress={() => { closeModal(); (navigation as any).navigate('Camera'); }}
-                  variant="glass"
-                  size="small"
-                  icon={<Icon name="camera-alt" size={18} color={themeColors.primary} />}
-                  style={{ flex: 1, marginRight: 8 }}
-                  disabled={isUploading}
                 />
                 <ModernButton
                   title="Add Video"

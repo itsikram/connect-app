@@ -83,7 +83,7 @@ const ProfileSettings = () => {
   }, [user, currentProfile?._id, currentProfile?.user, dispatch]);
 
   useEffect(() => {
-    if (!currentProfile || Object.keys(currentProfile).length === 0) return;
+    if (!currentProfile || typeof currentProfile !== 'object' || Object.keys(currentProfile).length === 0) return;
     const schools = currentProfile.schools?.length
       ? currentProfile.schools
       : currentProfile.education?.length

@@ -77,7 +77,11 @@ import type { ConnectUser, GameSnapshot, LudoInvite, Player } from '../lib/ludo/
 const CONNECT_LOGO = require('../assets/images/logo.png');
 
 const LudoGameSVG = () => {
-  const { setLudoGameActive } = useLudoGame();
+  const {
+    setLudoGameActive,
+    pendingLudoInvite,
+    consumeLudoInvite,
+  } = useLudoGame();
   const { emit, on, off, isConnected } = useSocket();
   const myProfile = useSelector((state: RootState) => state.profile);
 
@@ -155,6 +159,7 @@ const LudoGameSVG = () => {
   const recentMovesRef = useRef(new Map<string, { toSteps: number; timestamp: number; isCapture?: boolean }>());
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const newGameDraftIdRef = useRef<string | null>(null);
+  const autoStartLudoInviteRef = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const diceRotate = useRef(new Animated.Value(0)).current;
 
@@ -1246,6 +1251,25 @@ const LudoGameSVG = () => {
       setTimeout(() => persistAndBroadcastGameState('game_create'), 250);
     }
   };
+
+  useEffect(() => {
+    if (pendingLudoInvite?.id && !autoStartLudoInviteRef.current) {
+      const connect: ConnectUser = {
+        _id: pendingLudoInvite.id,
+        fullName: pendingLudoInvite.name,
+        profilePic: pendingLudoInvite.profilePic,
+        coverPic: pendingLudoInvite.coverPic,
+      };
+      autoStartLudoInviteRef.current = true;
+      consumeLudoInvite();
+      inviteConnect(connect);
+      return;
+    }
+    if (autoStartLudoInviteRef.current && selectedConnects.length) {
+      autoStartLudoInviteRef.current = false;
+      confirmPlayerCount();
+    }
+  }, [pendingLudoInvite, selectedConnects, consumeLudoInvite]);
 
   const startNewGame = () => {
     if (gameIdRef.current) {
