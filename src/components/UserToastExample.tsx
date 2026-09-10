@@ -11,11 +11,11 @@ import { useUserToast } from '../contexts/UserToastContext';
 import { colors } from '../theme/colors';
 
 const UserToastExample: React.FC = () => {
-  const { 
-    showUserToast, 
-    showMessageToast, 
-    showFriendRequestToast, 
-    showNotificationToast 
+  const {
+    showUserToast,
+    showMessageToast,
+    showConnectRequestToast,
+    showNotificationToast
   } = useUserToast();
 
   // Sample user data
@@ -58,13 +58,13 @@ const UserToastExample: React.FC = () => {
     });
   };
 
-  const handleShowFriendRequestToast = (user: any) => {
-    showFriendRequestToast({
+  const handleShowConnectRequestToast = (user: any) => {
+    showConnectRequestToast({
       userProfilePic: user.profilePic,
       fullName: user.name,
       onPress: () => {
-        console.log(`Navigate to friend request from ${user.name}`);
-        // You can navigate to the friend request screen here
+        console.log(`Navigate to connect request from ${user.name}`);
+        // You can navigate to the connect request screen here
       },
     });
   };
@@ -132,9 +132,9 @@ const UserToastExample: React.FC = () => {
 
             <TouchableOpacity
               style={[styles.button, { backgroundColor: colors.secondary }]}
-              onPress={() => handleShowFriendRequestToast(user)}
+              onPress={() => handleShowConnectRequestToast(user)}
             >
-              <Text style={styles.buttonText}>Friend</Text>
+              <Text style={styles.buttonText}>Connect</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -159,7 +159,7 @@ const UserToastExample: React.FC = () => {
         <Text style={styles.infoText}>• Profile picture display with fallback</Text>
         <Text style={styles.infoText}>• User's full name prominently displayed</Text>
         <Text style={styles.infoText}>• Customizable message content</Text>
-        <Text style={styles.infoText}>• Different types: Message, Friend, Notification, Custom</Text>
+        <Text style={styles.infoText}>• Different types: Message, Connect, Notification, Custom</Text>
         <Text style={styles.infoText}>• Tap to navigate to relevant screen</Text>
         <Text style={styles.infoText}>• Auto-dismiss with configurable duration</Text>
         <Text style={styles.infoText}>• Smooth animations and professional design</Text>

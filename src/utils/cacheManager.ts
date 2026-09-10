@@ -21,7 +21,7 @@ const isAppCacheKey = (key: string) =>
   key === CACHE_KEYS.HOME_POSTS ||
   key === CACHE_KEYS.HOME_POSTS_TIMESTAMP ||
   key === CACHE_KEYS.CACHE_VERSION ||
-  key === 'friend_cache_version' ||
+  key === 'connect_cache_version' ||
   key === 'cached_video_player_saved' ||
   key === 'cached_video_player_watches' ||
   key === 'fcmToken' ||
@@ -30,12 +30,12 @@ const isAppCacheKey = (key: string) =>
   key === '@pending_incoming_call' ||
   key.startsWith('homeStories_') ||
   key.startsWith('@chat_messages_') ||
-  key.startsWith('cached_friend_') ||
-  key.startsWith('connect.friendChatSettings.') ||
+  key.startsWith('cached_connect_') ||
+  key.startsWith('connect.connectChatSettings.') ||
   key.startsWith('@connect/ai-auto-replies/') ||
   key.startsWith('chat_list_') ||
-  key.startsWith('friend_requests_timestamp_') ||
-  key.startsWith('friend_suggestions_timestamp_');
+  key.startsWith('connect_requests_timestamp_') ||
+  key.startsWith('connect_suggestions_timestamp_');
 
 type CachedPost = Record<string, any> & { _id?: string };
 

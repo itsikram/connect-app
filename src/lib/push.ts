@@ -348,7 +348,7 @@ export function listenNotificationEvents(navigate: (screen: string, params?: any
           screen: 'SingleMessage',
           params: {
             friendId: data.friendId,
-            friendName: data.friendName,
+            connectName: data.connectName,
           }
         });
       }

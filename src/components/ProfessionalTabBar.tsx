@@ -58,7 +58,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
 
     const mainScreens: { [key: string]: string } = {
       Home: 'HomeMain',
-      Friends: 'FriendsMain',
+      Connects: 'ConnectsMain',
       Videos: 'VideosMain',
       Message: 'MessageList',
       Menu: 'MenuHome',

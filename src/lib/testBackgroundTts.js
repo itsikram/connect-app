@@ -125,8 +125,8 @@ export const testBackgroundNotificationSimulation = async () => {
       {
         type: 'notification',
         data: {
-          title: 'Friend Request',
-          body: 'Sarah Wilson sent you a friend request'
+          title: 'Connect Request',
+          body: 'Sarah Wilson sent you a connect request'
         }
       }
     ];

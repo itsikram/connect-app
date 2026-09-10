@@ -79,7 +79,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
               screen: 'SingleMessage',
               params: {
                 friendId: (data as any).friendId || (data as any).senderId,
-                friendName: (data as any).friendName || (data as any).senderName,
+                connectName: (data as any).connectName || (data as any).senderName,
               },
             });
           }

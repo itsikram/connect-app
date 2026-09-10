@@ -71,14 +71,24 @@ const isPopulatedComment = (comment: any) =>
 const normalizeComments = (list: any) =>
   (Array.isArray(list) ? list : []).filter(isPopulatedComment);
 
-const commentAuthorName = (comment: any) =>
-  comment?.author?.fullName ||
-  comment?.author?.displayName ||
-  [comment?.author?.user?.firstName, comment?.author?.user?.surname]
-    .filter(Boolean)
-    .join(' ')
-    .trim() ||
-  'User';
+const commentAuthorName = (comment: any) => {
+  const author = comment?.author || {};
+  return (
+    author.fullName ||
+    author.displayName ||
+    author.name ||
+    [author.firstName, author.surname || author.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim() ||
+    [author.user?.firstName, author.user?.surname || author.user?.lastName]
+      .filter(Boolean)
+      .join(' ')
+      .trim() ||
+    comment?.authorName ||
+    'User'
+  );
+};
 // Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
@@ -87,7 +97,7 @@ type RootStackParamList = {
   PostDetail: { postId: string };
   SinglePost: { postId: string };
   SingleVideo: { videoId: string };
-  FriendProfile: { friendId: string };
+  ConnectProfile: { connectId: string };
   EditPost: { postId: string };
 };
 
@@ -744,16 +754,29 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
       );
       if (res.status === 200) {
         const updated = res.data || {};
+        const updatedBody = updated.body || updated.text || text;
         setComments(prev =>
           prev.map(item => {
             if (!isReply && sameId(item._id, comment._id)) {
-              return { ...item, ...updated, body: updated.body || text };
+              return {
+                ...item,
+                ...updated,
+                author: item.author,
+                body: updatedBody,
+                text: updatedBody,
+              };
             }
             return {
               ...item,
               replies: (item.replies || []).map((reply: any) =>
                 isReply && sameId(reply._id, comment._id)
-                  ? { ...reply, ...updated, body: updated.body || text }
+                  ? {
+                      ...reply,
+                      ...updated,
+                      author: reply.author,
+                      body: updatedBody,
+                      text: updatedBody,
+                    }
                   : reply,
               ),
             };
@@ -887,7 +910,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                     maxLength={255}
                     editable={updatingCommentId !== c._id}
                     style={[styles.commentEditInput, { color: textColor, borderColor }]}
-                    placeholder="Edit your comment"
+                    placeholder={isReply ? 'Edit your reply' : 'Edit your comment'}
                     placeholderTextColor={subTextColor}
                   />
                   <View style={styles.commentEditActions}>
@@ -936,7 +959,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                       onPress={() => startEditing(c)}
                       disabled={!!updatingCommentId}
                     >
-                      <Text style={styles.fbOptionsText}>Edit</Text>
+                      <Text style={[styles.fbOptionsText, { color: textColor }]}>
+                        {isReply ? 'Edit Reply' : 'Edit Comment'}
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => {
@@ -1123,8 +1148,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           <TouchableOpacity
             onPress={() => {
               if (post.author?._id && post.author._id !== myProfileId) {
-                (navigation as any).navigate('FriendProfile', {
-                  friendId: post.author._id,
+                (navigation as any).navigate('ConnectProfile', {
+                  connectId: post.author._id,
                 });
               }
             }}
@@ -1139,8 +1164,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             <TouchableOpacity
               onPress={() => {
                 if (post.author?._id && post.author._id !== myProfileId) {
-                  (navigation as any).navigate('FriendProfile', {
-                    friendId: post.author._id,
+                  (navigation as any).navigate('ConnectProfile', {
+                    connectId: post.author._id,
                   });
                 }
               }}

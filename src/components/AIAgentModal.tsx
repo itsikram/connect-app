@@ -47,7 +47,7 @@ import {
 import { AgentMessage } from '../types/aiAgent';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
-import api, { friendAPI, profileAPI } from '../lib/api';
+import api, { connectAPI, profileAPI } from '../lib/api';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 import { navigate as navigateWithQueue } from '../lib/navigationService';
 import {
@@ -79,7 +79,7 @@ const providerLabels: Record<AIProvider, string> = {
   ollama: 'Ollama (Local)',
 };
 
-const normalizeFriendName = (value: unknown) =>
+const normalizeConnectName = (value: unknown) =>
   String(value || '')
     .normalize('NFKD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -128,16 +128,16 @@ const getNameSimilarity = (query: string, candidate: string) => {
   return Math.max(tokenDice, containsScore, editScore, bestTokenEdit);
 };
 
-const getFriendDisplayName = (friend: Record<string, unknown>) => {
-  const user = friend.user && typeof friend.user === 'object'
-    ? friend.user as Record<string, unknown>
+const getConnectDisplayName = (connect: Record<string, unknown>) => {
+  const user = connect.user && typeof connect.user === 'object'
+    ? connect.user as Record<string, unknown>
     : {};
-  if (friend.fullName) return String(friend.fullName);
+  if (connect.fullName) return String(connect.fullName);
   if (user.fullName) return String(user.fullName);
-  const full = `${user.firstName || friend.firstName || ''} ${user.surname || friend.surname || ''}`.trim();
+  const full = `${user.firstName || connect.firstName || ''} ${user.surname || connect.surname || ''}`.trim();
   return String(
-    full || friend.username || friend.displayName || user.displayName ||
-    friend.nickname || user.nickname || friend.name || user.name ||
+    full || connect.username || connect.displayName || user.displayName ||
+    connect.nickname || user.nickname || connect.name || user.name ||
     user.username || 'Unknown',
   );
 };
@@ -177,7 +177,7 @@ const AIAgentModal: React.FC<Props> = ({
   const [pendingActions, setPendingActions] = React.useState<
     AgentActionIntent[]
   >([]);
-  const knownFriendsRef = React.useRef<
+  const knownConnectsRef = React.useRef<
     Array<{ id: string; name: string; username?: string; bio?: string }>
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
@@ -231,7 +231,7 @@ const AIAgentModal: React.FC<Props> = ({
     activeUser?: { id?: string; name?: string };
     activeProfile?: { id?: string; name?: string };
     activeConversation?: { userId?: string; name?: string };
-    knownFriends?: Array<{ id: string; name: string; username?: string; bio?: string }>;
+    knownConnects?: Array<{ id: string; name: string; username?: string; bio?: string }>;
   }>({});
   const listRef = React.useRef<FlatList<AgentMessage>>(null);
   const clearChat = React.useCallback(async () => {
@@ -241,12 +241,12 @@ const AIAgentModal: React.FC<Props> = ({
   const resolveUser = React.useCallback(async (query: string) => {
     const profileId = String((profile as Record<string, unknown> | null)?._id || '');
     if (!profileId) return null;
-    const normalizedQuery = normalizeFriendName(query.normalize('NFC').replace(/\u200c|\u200d/g, ''));
+    const normalizedQuery = normalizeConnectName(query.normalize('NFC').replace(/\u200c|\u200d/g, ''));
     const searchQueries = Array.from(new Set([
       normalizedQuery,
       normalizedQuery.replace(/(কে|কো|এর|র|তে|কে)$/u, '').trim(),
     ].filter(Boolean)));
-    const friendMap = new Map<string, Record<string, unknown>>();
+    const connectMap = new Map<string, Record<string, unknown>>();
     for (const searchQuery of searchQueries) {
       const response = await api.get('/search', { params: { input: searchQuery } });
       const data: unknown = response.data;
@@ -257,27 +257,27 @@ const AIAgentModal: React.FC<Props> = ({
       const users = Array.isArray(searchPayload.users) ? searchPayload.users : [];
       users.forEach((user: Record<string, unknown>) => {
         const userId = String(user._id || user.userId || '');
-        if (userId) friendMap.set(userId, user);
+        if (userId) connectMap.set(userId, user);
       });
     }
-    const friends: Array<Record<string, unknown>> = [...new Map(
-      [...knownFriendsRef.current, ...friendMap.values()].map(friend => [
-        String((friend as Record<string, unknown>).id || (friend as Record<string, unknown>)._id || ''),
-        friend,
+    const connects: Array<Record<string, unknown>> = [...new Map(
+      [...knownConnectsRef.current, ...connectMap.values()].map(connect => [
+        String((connect as Record<string, unknown>).id || (connect as Record<string, unknown>)._id || ''),
+        connect,
       ]),
-    ).values()].map(friend => friend as Record<string, unknown>);
-    const normalizedNeedle = normalizeFriendName(searchQueries[searchQueries.length - 1]);
+    ).values()].map(connect => connect as Record<string, unknown>);
+    const normalizedNeedle = normalizeConnectName(searchQueries[searchQueries.length - 1]);
     if (normalizedNeedle.replace(/\s/g, '').length < 3) return null;
-    const scored = friends.map((friend: Record<string, unknown>) => {
-      const nestedUser = friend.user && typeof friend.user === 'object' ? friend.user as Record<string, unknown> : {};
+    const scored = connects.map((connect: Record<string, unknown>) => {
+      const nestedUser = connect.user && typeof connect.user === 'object' ? connect.user as Record<string, unknown> : {};
       const fields = [
-        nestedUser.firstName, friend.firstName, nestedUser.surname, friend.surname,
-        `${nestedUser.firstName || friend.firstName || ''} ${nestedUser.surname || friend.surname || ''}`,
-        nestedUser.displayName, friend.displayName, nestedUser.nickname, friend.nickname,
-        friend.banglaName, nestedUser.username, friend.username, friend.name,
-        nestedUser.name, friend.fullName, nestedUser.fullName,
+        nestedUser.firstName, connect.firstName, nestedUser.surname, connect.surname,
+        `${nestedUser.firstName || connect.firstName || ''} ${nestedUser.surname || connect.surname || ''}`,
+        nestedUser.displayName, connect.displayName, nestedUser.nickname, connect.nickname,
+        connect.banglaName, nestedUser.username, connect.username, connect.name,
+        nestedUser.name, connect.fullName, nestedUser.fullName,
       ]
-        .map(value => normalizeFriendName(value))
+        .map(value => normalizeConnectName(value))
         .filter(Boolean);
       const queryTokens = normalizedNeedle.split(' ').filter(Boolean);
       let score = 0;
@@ -299,41 +299,41 @@ const AIAgentModal: React.FC<Props> = ({
         }
         if (score < 0.85) score = Math.max(score, getNameSimilarity(normalizedNeedle, candidate) >= 0.6 ? getNameSimilarity(normalizedNeedle, candidate) : 0);
       }
-      return { friend, score };
+      return { connect, score };
     }).filter(item => item.score >= 0.4).sort((a, b) => b.score - a.score);
     if (!scored.length) return null;
     const bestScore = scored[0].score;
     const matches = scored.filter(item => item.score === bestScore);
     if (matches.length > 1) {
-      const names = matches.slice(0, 5).map(item => getFriendDisplayName(item.friend));
+      const names = matches.slice(0, 5).map(item => getConnectDisplayName(item.connect));
       const ambiguity = new Error(
         `I found multiple relevant people: ${names.join(', ')}. Which one should I use?`,
       ) as Error & {
         profileChoices?: Array<{ id: string; name: string; username?: string; profilePic?: string }>;
       };
       ambiguity.profileChoices = matches.slice(0, 5).map(item => {
-        const nested = item.friend.user && typeof item.friend.user === 'object'
-          ? item.friend.user as Record<string, unknown>
+        const nested = item.connect.user && typeof item.connect.user === 'object'
+          ? item.connect.user as Record<string, unknown>
           : {};
         return {
-          id: String(item.friend._id || item.friend.id || item.friend.userId || nested._id || nested.id),
-          name: getFriendDisplayName(item.friend),
-          username: String(item.friend.username || nested.username || '') || undefined,
+          id: String(item.connect._id || item.connect.id || item.connect.userId || nested._id || nested.id),
+          name: getConnectDisplayName(item.connect),
+          username: String(item.connect.username || nested.username || '') || undefined,
           profilePic: String(
-            item.friend.profilePic || item.friend.profilePicture ||
+            item.connect.profilePic || item.connect.profilePicture ||
             nested.profilePic || nested.profilePicture || nested.avatar || '',
           ) || undefined,
         };
       });
       throw ambiguity;
     }
-    const match = matches[0].friend;
+    const match = matches[0].connect;
     const nestedUser = match.user && typeof match.user === 'object'
       ? match.user as Record<string, unknown>
       : {};
     const id = match._id || match.userId || nestedUser._id || nestedUser.id;
     if (!id) return null;
-    const displayName = getFriendDisplayName(match);
+    const displayName = getConnectDisplayName(match);
     return {
       id: String(id),
       name: String(displayName),
@@ -347,14 +347,18 @@ const AIAgentModal: React.FC<Props> = ({
   React.useEffect(() => {
     const ownId = String((profile as Record<string, unknown> | null)?._id || '');
     if (!ownId) return;
-    api.get('/friend/getFriends', { params: { profile: ownId } })
+    api.get('/connects/getConnects', { params: { profile: ownId } })
       .then(response => {
-        const raw = Array.isArray(response.data?.friends)
-          ? response.data.friends
-          : Array.isArray(response.data?.data?.friends)
-            ? response.data.data.friends
+        const raw = Array.isArray(response.data?.connects)
+          ? response.data.connects
+          : Array.isArray(response.data?.data?.connects)
+            ? response.data.data.connects
+            : Array.isArray(response.data?.friends)
+              ? response.data.friends
+              : Array.isArray(response.data?.data?.friends)
+                ? response.data.data.friends
             : [];
-        knownFriendsRef.current = raw.map((item: Record<string, unknown>) => {
+        knownConnectsRef.current = raw.map((item: Record<string, unknown>) => {
           const nested = item.user && typeof item.user === 'object'
             ? item.user as Record<string, unknown>
             : {};
@@ -368,10 +372,10 @@ const AIAgentModal: React.FC<Props> = ({
             bio: String(item.bio || nested.bio || '') || undefined,
           };
         }).filter(item => item.id && item.name);
-        agentMemoryRef.current.knownFriends = knownFriendsRef.current;
+        agentMemoryRef.current.knownConnects = knownConnectsRef.current;
       })
       .catch(error => {
-        if (__DEV__) console.warn('[AI] Failed to load friend context:', error);
+        if (__DEV__) console.warn('[AI] Failed to load connect context:', error);
       });
   }, [profile]);
 
@@ -442,10 +446,10 @@ const AIAgentModal: React.FC<Props> = ({
       await profileAPI.unfollow(userId);
     },
     blockUser: async (userId: string) => {
-      await friendAPI.blockUser(userId);
+      await connectAPI.blockUser(userId);
     },
     unblockUser: async (userId: string) => {
-      await friendAPI.unblockUser(userId);
+      await connectAPI.unblockUser(userId);
     },
     sendMessage: async (userId: string, message: string) => {
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
@@ -474,7 +478,7 @@ const AIAgentModal: React.FC<Props> = ({
     },
     createAutoReplyRule: async (triggerUserName: string, replyText: string) => {
       const resolved = await resolveUser(triggerUserName);
-      if (!resolved) throw new Error('I could not uniquely resolve that friend.');
+      if (!resolved) throw new Error('I could not uniquely resolve that connect.');
       const ownId = String((profile as Record<string, unknown> | null)?._id || '');
       if (!ownId) throw new Error('You must be signed in to save an automatic reply.');
       const rules = autoReplyRulesRef.current.filter(rule => rule.userId !== resolved.id);
@@ -731,7 +735,7 @@ const AIAgentModal: React.FC<Props> = ({
               messages: 'Message',
               message: 'Message',
               home: 'Home',
-              friends: 'Friends',
+              friends: 'Connects',
               videos: 'Videos',
               menu: 'Menu',
               profile: 'Menu',
@@ -752,10 +756,10 @@ const AIAgentModal: React.FC<Props> = ({
                       ? { screen: 'Tasks', ...(params || {}) }
                     : params;
             const ownId = String((profile as Record<string, unknown> | null)?._id || '');
-            const friendId = String(
-              (normalizedParams as Record<string, unknown> | undefined)?.friendId || '',
+            const connectId = String(
+              (normalizedParams as Record<string, unknown> | undefined)?.connectId || '',
             );
-            if (normalizedRoute === 'FriendProfile' && ownId && friendId === ownId) {
+            if (normalizedRoute === 'ConnectProfile' && ownId && connectId === ownId) {
               return navigateWithQueue('Menu', { screen: 'MyProfile' });
             }
             return navigateWithQueue(normalizedRoute, normalizedParams);

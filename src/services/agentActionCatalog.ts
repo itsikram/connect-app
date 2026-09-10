@@ -26,7 +26,7 @@ export type AgentActionName =
   | 'OPEN_LUDO'
   | 'INVITE_LUDO_PLAYER'
   | 'navigate_home'
-  | 'navigate_friends'
+  | 'navigate_connects'
   | 'navigate_videos'
   | 'navigate_message'
   | 'navigate_menu'
@@ -112,7 +112,7 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['OPEN_LUDO', 'Open Ludo'],
   ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true],
   ['navigate_home', 'Open Home'],
-  ['navigate_friends', 'Open Friends'],
+  ['navigate_connects', 'Open Connects'],
   ['navigate_videos', 'Open Videos'],
   ['navigate_message', 'Open Messages'],
   ['navigate_menu', 'Open Menu'],
@@ -428,7 +428,7 @@ const navigationTargets: Partial<
   Record<AgentActionName, [string, Record<string, unknown>?]>
 > = {
   navigate_home: ['Home'],
-  navigate_friends: ['Friends'],
+  navigate_connects: ['Connects'],
   navigate_videos: ['Videos'],
   // Explicitly target MessageList so the Message tab remains intact.
   navigate_message: ['Message', { screen: 'MessageList' }],
@@ -656,10 +656,10 @@ export async function executeAgentActions(
       } else if (action.action === 'VIEW_PROFILE' || action.action === 'OPEN_CHAT') {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
         await adapter.navigate(
-          action.action === 'VIEW_PROFILE' ? 'FriendProfile' : 'Message',
+          action.action === 'VIEW_PROFILE' ? 'ConnectProfile' : 'Message',
           action.action === 'VIEW_PROFILE'
-            ? { friendId: resolvedUserId }
-            : { screen: 'SingleMessage', friendId: resolvedUserId, profileId: resolvedUserId },
+            ? { connectId: resolvedUserId }
+            : { screen: 'SingleMessage', connectId: resolvedUserId, profileId: resolvedUserId },
         );
       } else if (action.action === 'speak_text') {
         const text = String(

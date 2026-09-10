@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
-import type { FriendUser, Player } from './types';
+import type { ConnectUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
 import KeyboardSafeView from '../../components/KeyboardSafeView';
 import VoiceTextInput from '../../components/VoiceTextInput';
@@ -23,15 +23,15 @@ interface PlayerEditorModalProps {
   editName: string;
   editAvatarUrl: string;
   inviteCopied: boolean;
-  friendSearchQuery: string;
+  connectSearchQuery: string;
   loadingSearch: boolean;
-  searchResults: FriendUser[];
-  friendList: FriendUser[];
+  searchResults: ConnectUser[];
+  connectList: ConnectUser[];
   canReplaceWithComputer: boolean;
   onNameChange: (value: string) => void;
   onAvatarUrlChange: (value: string) => void;
-  onFriendSearchChange: (value: string) => void;
-  onAssignFriendToSlot: (friend: FriendUser, slotIndex: number) => void;
+  onConnectSearchChange: (value: string) => void;
+  onAssignConnectToSlot: (connect: ConnectUser, slotIndex: number) => void;
   onReplaceWithComputer: () => void;
   onCopyInviteLink: (slotIndex?: number) => void;
   onPlaySound?: (type: string) => void;
@@ -46,15 +46,15 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
   editName,
   editAvatarUrl,
   inviteCopied,
-  friendSearchQuery,
+  connectSearchQuery,
   loadingSearch,
   searchResults,
-  friendList,
+  connectList,
   canReplaceWithComputer,
   onNameChange,
   onAvatarUrlChange,
-  onFriendSearchChange,
-  onAssignFriendToSlot,
+  onConnectSearchChange,
+  onAssignConnectToSlot,
   onReplaceWithComputer,
   onCopyInviteLink,
   onPlaySound,
@@ -63,7 +63,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
 }) => {
   if (!show || editingPlayerIndex == null || !player) return null;
 
-  const visibleFriends = friendSearchQuery ? searchResults || [] : friendList || [];
+  const visibleConnects = connectSearchQuery ? searchResults || [] : connectList || [];
   const seatLetter = PLAYER_LETTERS[editingPlayerIndex] || PLAYER_EMOJIS[editingPlayerIndex] || 'P';
   const accent = player.color || THEME.accent;
 
@@ -139,8 +139,8 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
                   style={styles.searchInput}
                   placeholder="Search users by name..."
                   placeholderTextColor={THEME.muted}
-                  value={friendSearchQuery}
-                  onChangeText={onFriendSearchChange}
+                  value={connectSearchQuery}
+                  onChangeText={onConnectSearchChange}
                   autoCapitalize="none"
                 />
               </View>
@@ -150,29 +150,29 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
                   <Text style={styles.emptyText}>Searching…</Text>
                 </View>
               )}
-              {!loadingSearch && visibleFriends.length === 0 && (
+              {!loadingSearch && visibleConnects.length === 0 && (
                 <Text style={styles.emptyText}>
-                  {friendSearchQuery ? 'No users match your search' : 'No users to show'}
+                  {connectSearchQuery ? 'No users match your search' : 'No users to show'}
                 </Text>
               )}
-              <View style={styles.friendList}>
-                {visibleFriends.map((f) => {
+              <View style={styles.connectList}>
+                {visibleConnects.map((f) => {
                   const initial = (f?.fullName || '?').trim().charAt(0).toUpperCase();
                   return (
-                    <View key={f._id} style={styles.friend}>
-                      <View style={styles.friendLeft}>
+                    <View key={f._id} style={styles.connect}>
+                      <View style={styles.connectLeft}>
                         {f.profilePic ? (
-                          <ProfileImage uri={f.profilePic} pixelSize={80} style={styles.friendAvatar} />
+                          <ProfileImage uri={f.profilePic} pixelSize={80} style={styles.connectAvatar} />
                         ) : (
-                          <View style={styles.friendAvatarFallback}>
+                          <View style={styles.connectAvatarFallback}>
                             <Text style={styles.avatarLetter}>{initial}</Text>
                           </View>
                         )}
-                        <Text style={styles.friendName} numberOfLines={1}>
+                        <Text style={styles.connectName} numberOfLines={1}>
                           {f.fullName || 'Unknown'}
                         </Text>
                       </View>
-                      <View style={styles.friendActions}>
+                      <View style={styles.connectActions}>
                         <TouchableOpacity
                           style={styles.ghostSm}
                           onPress={() => {
@@ -187,7 +187,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
                           style={styles.primarySm}
                           onPress={() => {
                             onPlaySound?.('buttonClick');
-                            onAssignFriendToSlot(f, editingPlayerIndex);
+                            onAssignConnectToSlot(f, editingPlayerIndex);
                             onClose();
                           }}
                         >
@@ -348,8 +348,8 @@ const styles = StyleSheet.create({
   },
   empty: { alignItems: 'center', padding: 10, gap: 8 },
   emptyText: { color: THEME.muted, fontSize: 13, textAlign: 'center', paddingVertical: 8 },
-  friendList: { maxHeight: 200 },
-  friend: {
+  connectList: { maxHeight: 200 },
+  connect: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -358,9 +358,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: THEME.border,
   },
-  friendLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8, minWidth: 0 },
-  friendAvatar: { width: 36, height: 36, borderRadius: 8 },
-  friendAvatarFallback: {
+  connectLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8, minWidth: 0 },
+  connectAvatar: { width: 36, height: 36, borderRadius: 8 },
+  connectAvatarFallback: {
     width: 36,
     height: 36,
     borderRadius: 8,
@@ -368,8 +368,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  friendName: { color: THEME.text, fontWeight: '600', flex: 1 },
-  friendActions: { flexDirection: 'row', gap: 6 },
+  connectName: { color: THEME.text, fontWeight: '600', flex: 1 },
+  connectActions: { flexDirection: 'row', gap: 6 },
   ghostSm: {
     paddingHorizontal: 10,
     paddingVertical: 6,

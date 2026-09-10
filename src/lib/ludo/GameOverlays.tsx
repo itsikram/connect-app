@@ -95,7 +95,7 @@ export const IncomingInviteModal: React.FC<IncomingInviteModalProps> = ({
             <View style={{ flex: 1 }}>
               <Text style={[styles.title, { textAlign: 'left', fontSize: 18 }]}>Game Invite</Text>
               <Text style={[styles.muted, { textAlign: 'left' }]}>
-                {inviteRequest.name || 'A friend'} invited you to play Ludo
+                {inviteRequest.name || 'A connect'} invited you to play Ludo
               </Text>
             </View>
           </View>

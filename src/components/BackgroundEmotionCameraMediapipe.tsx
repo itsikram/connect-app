@@ -5,14 +5,14 @@ import useEmotionDetectionMediapipe from '../hooks/useEmotionDetectionMediapipe'
 
 interface BackgroundEmotionCameraMediapipeProps {
   profileId: string;
-  friendId: string;
+  connectId: string;
   isEnabled: boolean;
   detectionInterval?: number;
 }
 
 const BackgroundEmotionCameraMediapipe: React.FC<BackgroundEmotionCameraMediapipeProps> = ({
   profileId,
-  friendId,
+  connectId,
   isEnabled,
   detectionInterval = 1000,
 }) => {
@@ -25,7 +25,7 @@ const BackgroundEmotionCameraMediapipe: React.FC<BackgroundEmotionCameraMediapip
 
   const { currentEmotion, processImagePath } = useEmotionDetectionMediapipe({
     profileId,
-    friendId,
+    connectId,
     isEnabled,
     detectionInterval,
     sessionId: 'rn-mediapipe'

@@ -5,17 +5,17 @@ import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
 import { useTheme } from '../contexts/ThemeContext'
 import { useSocket } from '../contexts/SocketContext'
-import api, { friendAPI } from '../lib/api'
+import api, { connectAPI } from '../lib/api'
 import PostItem from '../components/Post'
 import { useNavigation, useRoute } from '@react-navigation/native'
 import { hideTabBarForChat } from '../lib/chatScreenChrome'
 import ProfileImage from '../components/ProfileImage'
 import ImageWithSkeleton from '../components/ImageWithSkeleton'
 import ProfileImageWithSkeleton from '../components/ProfileImageWithSkeleton'
-import ProfileSkeleton, { ProfileFriendsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
+import ProfileSkeleton, { ProfileConnectsSkeleton, ProfileMediaSkeleton } from '../components/skeleton/ProfileSkeleton'
 import PostSkeleton from '../components/skeleton/PostSkeleton'
 import { POST_UPDATED_EVENT } from '../utils/postEvents'
-import FriendCacheManager from '../utils/friendCacheManager'
+import ConnectCacheManager from '../utils/connectCacheManager'
 import VerifiedName from '../components/VerifiedName'
 import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat'
 
@@ -113,17 +113,17 @@ const ProfileVideoCard = ({
     );
 };
 
-type TabKey = 'Posts' | 'About' | 'Friends' | 'Images' | 'Videos'
+type TabKey = 'Posts' | 'About' | 'Connects' | 'Images' | 'Videos'
 
-interface FriendProfileRouteParams {
-    friendId: string;
-    friendData?: any;
+interface ConnectProfileRouteParams {
+    connectId: string;
+    connectData?: any;
 }
 
-const FriendProfile = () => {
+const ConnectProfile = () => {
     const navigation = useNavigation();
     const route = useRoute();
-    const { friendId, friendData: initialFriendData } = route.params as FriendProfileRouteParams;
+    const { connectId, connectData: initialConnectData } = route.params as ConnectProfileRouteParams;
     const { colors: themeColors } = useTheme();
     
     const myProfile = useSelector((state: RootState) => state.profile)
@@ -135,14 +135,16 @@ const FriendProfile = () => {
     const coverHeight = isSmall ? 240 : 280
     const infoOverlap = -Math.round(avatarSize / 3)
 
-    const [friendData, setFriendData] = React.useState<any>(initialFriendData || {})
-    const [isLoading, setIsLoading] = React.useState<boolean>(!initialFriendData)
-    const [isFriend, setIsFriend] = React.useState<boolean>(false)
-    const [friendStatus, setFriendStatus] = React.useState<'none' | 'incoming' | 'outgoing' | 'friends'>('none')
+    const [connectData, setConnectData] = React.useState<any>(initialConnectData || {})
+    const [isLoading, setIsLoading] = React.useState<boolean>(!initialConnectData)
+    const [isConnect, setIsConnect] = React.useState<boolean>(false)
+    const [connectStatus, setConnectStatus] = React.useState<'none' | 'incoming' | 'outgoing' | 'connects'>('none')
     const { on, off } = useSocket();
     const [refreshing, setRefreshing] = React.useState<boolean>(false)
 
-    const friendsCount = Array.isArray(friendData?.friends) ? friendData.friends.length : 0
+    const connectsCount = Array.isArray(connectData?.connects ?? connectData?.friends)
+        ? (connectData.connects ?? connectData.friends).length
+        : 0
 
     const [posts, setPosts] = React.useState<any[]>([])
     const [postsLoading, setPostsLoading] = React.useState<boolean>(false)
@@ -150,43 +152,44 @@ const FriendProfile = () => {
     const [imagesLoading, setImagesLoading] = React.useState<boolean>(true)
     const [imageViewerOpen, setImageViewerOpen] = React.useState(false)
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0)
-    const [friends, setFriends] = React.useState<any[]>([])
-    const [friendsLoading, setFriendsLoading] = React.useState<boolean>(false)
+    const [connects, setConnects] = React.useState<any[]>([])
+    const [connectsLoading, setConnectsLoading] = React.useState<boolean>(false)
     const [videos, setVideos] = React.useState<any[]>([])
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
     const [showFullBio, setShowFullBio] = React.useState<boolean>(false)
     const fetchRequestRef = React.useRef(0);
 
-    const fetchFriendData = React.useCallback(async () => {
-        if (!friendId) return;
+    const fetchConnectData = React.useCallback(async () => {
+        if (!connectId) return;
         const requestId = ++fetchRequestRef.current;
         
         setIsLoading(true);
         setPostsLoading(true);
-        setFriendsLoading(true);
+        setConnectsLoading(true);
         setVideosLoading(true);
         setPosts([]);
-        setFriends([]);
+        setConnects([]);
         setVideos([]);
         
         try {
-            const [profileRes, postsRes, friendsRes, videosRes] = await Promise.all([
-                api.get('/profile', { params: { profileId: friendId } }),
-                api.get('/post/myPosts', { params: { profile: friendId } }),
-                api.get('/friend/getFriends', { params: { profile: friendId } }),
-                api.get('/watch/profileWatch', { params: { profile: friendId, pageNumber: 1 } })
+            const [profileRes, postsRes, connectsRes, videosRes] = await Promise.all([
+                api.get('/profile', { params: { profileId: connectId } }),
+                api.get('/post/myPosts', { params: { profile: connectId } }),
+                api.get('/connects/getConnects', { params: { profile: connectId } }),
+                api.get('/watch/profileWatch', { params: { profile: connectId, pageNumber: 1 } })
             ]);
             if (requestId !== fetchRequestRef.current) return;
             
             if (profileRes.status === 200) {
-                setFriendData(profileRes.data);
-                // Check if this friend is in my friends list
-                if (myProfile?.friends) {
-                    const isInFriendsList = myProfile.friends.some((f: any) =>
-                        String(f?._id || f) === String(friendId),
+                setConnectData(profileRes.data);
+                // Check if this connect is in my connects list
+                const myConnects = myProfile?.connects ?? myProfile?.friends;
+                if (myConnects) {
+                    const isInConnectsList = myConnects.some((f: any) =>
+                        String(f?._id || f) === String(connectId),
                     );
-                    setIsFriend(isInFriendsList);
-                    if (isInFriendsList) setFriendStatus('friends');
+                    setIsConnect(isInConnectsList);
+                    if (isInConnectsList) setConnectStatus('connects');
                 }
             }
             
@@ -194,14 +197,14 @@ const FriendProfile = () => {
                 setPosts(Array.isArray(postsRes.data) ? postsRes.data : []);
             }
             
-            if (friendsRes.status === 200) {
-                const arr = Array.isArray(friendsRes.data) ? friendsRes.data : [];
-                setFriends(arr.length ? arr : []);
+            if (connectsRes.status === 200) {
+                const arr = Array.isArray(connectsRes.data) ? connectsRes.data : [];
+                setConnects(arr.length ? arr : []);
             }
             
             if (videosRes.status === 200) {
                 const data = videosRes.data.watchs || videosRes.data || [];
-                const targetId = String(friendId);
+                const targetId = String(connectId);
                 setVideos(
                     Array.isArray(data)
                         ? data.filter(
@@ -213,24 +216,24 @@ const FriendProfile = () => {
             }
         } catch (err) {
             if (requestId !== fetchRequestRef.current) return;
-            console.error('Error fetching friend data:', err);
+            console.error('Error fetching connect data:', err);
             setPosts([]);
-            setFriends([]);
+            setConnects([]);
             setVideos([]);
         } finally {
             if (requestId !== fetchRequestRef.current) return;
             setIsLoading(false);
             setPostsLoading(false);
-            setFriendsLoading(false);
+            setConnectsLoading(false);
             setVideosLoading(false);
         }
-    }, [friendId, myProfile?.friends]);
+    }, [connectId, myProfile?.connects, myProfile?.friends]);
 
     const onRefresh = React.useCallback(async () => {
         setRefreshing(true);
-        await fetchFriendData();
+        await fetchConnectData();
         setRefreshing(false);
-    }, [fetchFriendData]);
+    }, [fetchConnectData]);
 
     const handlePostDeleted = (postId: string) => {
         setPosts((prev: any[]) => prev.filter(post => post._id !== postId));
@@ -267,43 +270,44 @@ const FriendProfile = () => {
         return () => sub.remove();
     }, [handlePostUpdated]);
 
-    // Fetch friend profile data
+    // Fetch connect profile data
     React.useEffect(() => {
         let isMounted = true;
         
         if (isMounted) {
-            fetchFriendData();
+            fetchConnectData();
         }
         
         return () => {
             isMounted = false;
         };
-    }, [fetchFriendData]);
+    }, [fetchConnectData]);
 
-    // Check friend request status
+    // Check connect request status
     React.useEffect(() => {
         let isMounted = true;
         
-        if (!friendId || !myProfile?._id) return;
+        if (!connectId || !myProfile?._id) return;
         
         const updateStatus = async () => {
             try {
                 const [incomingRes, profileRes] = await Promise.all([
-                    friendAPI.getFriendRequest(myProfile._id),
-                    api.get('/profile', { params: { profileId: friendId } }),
+                    connectAPI.getConnectRequest(myProfile._id),
+                    api.get('/profile', { params: { profileId: connectId } }),
                 ]);
                 if (!isMounted) return;
                 const incoming = Array.isArray(incomingRes.data) &&
-                    incomingRes.data.some((req: any) => String(req?._id) === String(friendId));
+                    incomingRes.data.some((req: any) => String(req?._id) === String(connectId));
                 const targetProfile = profileRes.data;
-                const outgoing = Array.isArray(targetProfile?.friendReqs) &&
-                    targetProfile.friendReqs.some((id: any) => String(id?._id || id) === String(myProfile._id));
-                const isInFriendsList = Array.isArray(myProfile.friends) &&
-                    myProfile.friends.some((f: any) => String(f?._id || f) === String(friendId));
-                setIsFriend(isInFriendsList);
-                setFriendStatus(isInFriendsList ? 'friends' : incoming ? 'incoming' : outgoing ? 'outgoing' : 'none');
+                const outgoing = Array.isArray(targetProfile?.connectReqs) &&
+                    targetProfile.connectReqs.some((id: any) => String(id?._id || id) === String(myProfile._id));
+                const myConnects = myProfile.connects ?? myProfile.friends;
+                const isInConnectsList = Array.isArray(myConnects) &&
+                    myConnects.some((f: any) => String(f?._id || f) === String(connectId));
+                setIsConnect(isInConnectsList);
+                setConnectStatus(isInConnectsList ? 'connects' : incoming ? 'incoming' : outgoing ? 'outgoing' : 'none');
             } catch (error) {
-                console.error('Error checking friend request status:', error);
+                console.error('Error checking connect request status:', error);
             }
         };
         updateStatus();
@@ -311,38 +315,38 @@ const FriendProfile = () => {
         return () => {
             isMounted = false;
         };
-    }, [friendId, myProfile?._id]);
+    }, [connectId, myProfile?._id]);
 
     React.useEffect(() => {
         const handleRelationshipUpdate = (data: any) => {
             if (
-                String(data?.targetId) !== String(friendId) &&
-                String(data?.actorId) !== String(friendId)
+                String(data?.targetId) !== String(connectId) &&
+                String(data?.actorId) !== String(connectId)
             ) return;
-            if (data.status === 'friends') {
-                setIsFriend(true);
-                setFriendStatus('friends');
+            if (data.status === 'connects') {
+                setIsConnect(true);
+                setConnectStatus('connects');
             } else if (data.status === 'incoming') {
-                setFriendStatus(String(data.actorId) === String(myProfile?._id) ? 'outgoing' : 'incoming');
+                setConnectStatus(String(data.actorId) === String(myProfile?._id) ? 'outgoing' : 'incoming');
             } else if (data.status === 'none') {
-                setIsFriend(false);
-                setFriendStatus('none');
+                setIsConnect(false);
+                setConnectStatus('none');
             }
         };
-        on('friendRelationshipUpdate', handleRelationshipUpdate);
-        return () => off('friendRelationshipUpdate', handleRelationshipUpdate);
-    }, [friendId, myProfile?._id, on, off]);
+        on('connectRelationshipUpdate', handleRelationshipUpdate);
+        return () => off('connectRelationshipUpdate', handleRelationshipUpdate);
+    }, [connectId, myProfile?._id, on, off]);
 
     // Fetch images directly from profile endpoint
     React.useEffect(() => {
-        if (!friendId) return
+        if (!connectId) return
         
         let isMounted = true;
         
         const fetchImages = async () => {
             setImagesLoading(true);
             try {
-                const res = await api.get('/profile/getImages', { params: { profileId: friendId } });
+                const res = await api.get('/profile/getImages', { params: { profileId: connectId } });
                 if (isMounted && res.status === 200 && Array.isArray(res.data)) {
                     const imgs = res.data
                         .filter((p: any) => p?.photos)
@@ -369,88 +373,88 @@ const FriendProfile = () => {
         return () => {
             isMounted = false;
         };
-    }, [friendId, posts.length]); // Only depend on posts.length, not the entire posts array
+    }, [connectId, posts.length]); // Only depend on posts.length, not the entire posts array
 
-    const handleSendFriendRequest = async () => {
-        if (!friendId || !myProfile?._id) return;
+    const handleSendConnectRequest = async () => {
+        if (!connectId || !myProfile?._id) return;
         
         try {
-            await friendAPI.sendFriendRequest(friendId);
-            setFriendStatus('outgoing');
-            await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
+            await connectAPI.sendConnectRequest(connectId);
+            setConnectStatus('outgoing');
+            await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
-            console.error('Error sending friend request:', error);
+            console.error('Error sending connect request:', error);
         }
     };
 
-    const handleAcceptFriendRequest = async () => {
-        if (!friendId || !myProfile?._id) return;
+    const handleAcceptConnectRequest = async () => {
+        if (!connectId || !myProfile?._id) return;
         
         try {
-            await friendAPI.acceptFriendRequest(friendId);
-            setFriendStatus('friends');
-            setIsFriend(true);
+            await connectAPI.acceptConnectRequest(connectId);
+            setConnectStatus('connects');
+            setIsConnect(true);
             await Promise.all([
-                FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId),
-                FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId),
+                ConnectCacheManager.removeProfile(myProfile._id, 'requests', connectId),
+                ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId),
             ]);
         } catch (error) {
-            console.error('Error accepting friend request:', error);
+            console.error('Error accepting connect request:', error);
         }
     };
 
-    const handleCancelFriendRequest = async () => {
-        if (!friendId || !myProfile?._id) return;
+    const handleCancelConnectRequest = async () => {
+        if (!connectId || !myProfile?._id) return;
         try {
-            await friendAPI.cancelFriendRequest(friendId);
-            setFriendStatus('none');
-            await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
+            await connectAPI.cancelConnectRequest(connectId);
+            setConnectStatus('none');
+            await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
-            console.error('Error cancelling friend request:', error);
+            console.error('Error cancelling connect request:', error);
         }
     };
 
-    const handleRemoveFriend = async () => {
-        if (!friendId || !myProfile?._id) return;
+    const handleRemoveConnect = async () => {
+        if (!connectId || !myProfile?._id) return;
         
         try {
-            await friendAPI.removeFriend(friendId);
-            setFriendStatus('none');
-            setIsFriend(false);
-            await FriendCacheManager.removeProfile(myProfile._id, 'suggestions', friendId);
+            await connectAPI.removeConnect(connectId);
+            setConnectStatus('none');
+            setIsConnect(false);
+            await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
-            console.error('Error removing friend:', error);
+            console.error('Error removing connect:', error);
         }
     };
 
-    const getFriendButton = () => {
-        switch (friendStatus) {
-            case 'friends':
+    const getConnectButton = () => {
+        switch (connectStatus) {
+            case 'connects':
                 return (
-                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleRemoveFriend}>
+                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleRemoveConnect}>
                         <Icon name="person-remove" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Friend</Text>
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Connect</Text>
                     </Pressable>
                 );
             case 'incoming':
                 return (
-                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptFriendRequest}>
+                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptConnectRequest}>
                         <Icon name="check" size={18} color={themeColors.text.inverse} />
                         <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Accept Request</Text>
                     </Pressable>
                 );
             case 'outgoing':
                 return (
-                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleCancelFriendRequest}>
+                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleCancelConnectRequest}>
                         <Icon name="cancel" size={18} color={themeColors.text.inverse} />
                         <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Cancel Request</Text>
                     </Pressable>
                 );
             default:
                 return (
-                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSendFriendRequest}>
+                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSendConnectRequest}>
                         <Icon name="person-add" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add Friend</Text>
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add Connect</Text>
                     </Pressable>
                 );
         }
@@ -464,17 +468,17 @@ const FriendProfile = () => {
                 <>
                     <View style={[styles.detailsCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary, marginBottom: 10 }]}>
 
-                    {friendData?.bio && (
+                    {connectData?.bio && (
                         <View style={styles.detailsItem}>
                             <Icon name="info" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
-                                <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{friendData.bio}</Text>
+                                <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{connectData.bio}</Text>
                             </Text>
                         </View>
                     )}
 
 
-                    {Array.isArray(friendData?.workPlaces) && friendData.workPlaces.map((wp: any, idx: number) => (
+                    {Array.isArray(connectData?.workPlaces) && connectData.workPlaces.map((wp: any, idx: number) => (
                         <View key={`wp-${idx}`} style={styles.detailsItem}>
                             <Icon name="work" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
@@ -485,7 +489,7 @@ const FriendProfile = () => {
                     ))}
 
 
-                    {Array.isArray(friendData?.schools) && friendData.schools.map((sc: any, idx: number) => (
+                    {Array.isArray(connectData?.schools) && connectData.schools.map((sc: any, idx: number) => (
                         <View key={`sc-${idx}`} style={styles.detailsItem}>
                             <Icon name="school" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
@@ -496,21 +500,21 @@ const FriendProfile = () => {
                     ))}
 
 
-                    {!!friendData?.presentAddress && (
+                    {!!connectData?.presentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="home" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
-                                Lives in <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{friendData.presentAddress}</Text>
+                                Lives in <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{connectData.presentAddress}</Text>
                             </Text>
                         </View>
                     )}
 
 
-                    {!!friendData?.permanentAddress && (
+                    {!!connectData?.permanentAddress && (
                         <View style={styles.detailsItem}>
                             <Icon name="public" size={20} color={themeColors.text.secondary} />
                             <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
-                                From <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{friendData.permanentAddress}</Text>
+                                From <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{connectData.permanentAddress}</Text>
                             </Text>
                         </View>
                     )}
@@ -519,7 +523,7 @@ const FriendProfile = () => {
                     <View style={styles.detailsItem}>
                         <Icon name="schedule" size={20} color={themeColors.text.secondary} />
                         <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
-                            Joined <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{formatMonthYear(friendData?.user?.createdAt || friendData?.createdAt)}</Text>
+                            Joined <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{formatMonthYear(connectData?.user?.createdAt || connectData?.createdAt)}</Text>
                         </Text>
                     </View>
                     </View>
@@ -534,41 +538,41 @@ const FriendProfile = () => {
             render: renderPosts
         },
         {
-            key: 'Friends',
-            label: 'Friends',
-            count: (friends.length || friendsCount) || undefined,
+            key: 'Connects',
+            label: 'Connects',
+            count: (connects.length || connectsCount) || undefined,
             render: () => (
                 <View style={{ gap: 10 }}>
-                    {friendsLoading && (
-                        <ProfileFriendsSkeleton count={4} />
+                    {connectsLoading && (
+                        <ProfileConnectsSkeleton count={4} />
                     )}
-                    {!friendsLoading && friends.length === 0 && (
-                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No friends found.</Text></View>
+                    {!connectsLoading && connects.length === 0 && (
+                        <View style={[styles.placeholderCard, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}><Text style={[styles.placeholderText, { color: themeColors.text.primary }]}>No connects found.</Text></View>
                     )}
-                    {!friendsLoading && friends.length > 0 && (
-                        <View style={styles.friendsGrid}>
-                            {friends.map((f: any) => {
+                    {!connectsLoading && connects.length > 0 && (
+                        <View style={styles.connectsGrid}>
+                            {connects.map((f: any) => {
                                 const userName = f.fullName || (f.user ? `${f.user.firstName || ''} ${f.user.surname || ''}`.trim() : f.username) || 'Unknown'
                                 const pp = f.profilePic || (f.user && f.user.profilePic)
                                 return (
                                     <TouchableOpacity 
                                         key={f._id || userName} 
-                                        style={[styles.friendItem, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
+                                        style={[styles.connectItem, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
                                         onPress={() => {
                                             (navigation as any).navigate('Message', {
-                                                screen: 'FriendProfile',
-                                                params: { friendId: f._id, friendData: f }
+                                                screen: 'ConnectProfile',
+                                                params: { connectId: f._id, connectData: f }
                                             });
                                         }}
                                     >
-                                        <View style={[styles.friendAvatarWrap, { backgroundColor: themeColors.surface.secondary }]}>
+                                        <View style={[styles.connectAvatarWrap, { backgroundColor: themeColors.surface.secondary }]}>
                                             {pp ? (
-                                                <ProfileImage uri={pp} pixelSize={120} style={styles.friendAvatar} />
+                                                <ProfileImage uri={pp} pixelSize={120} style={styles.connectAvatar} />
                                             ) : (
-                                                <View style={[styles.friendAvatar, { backgroundColor: themeColors.gray[400] }]} />
+                                                <View style={[styles.connectAvatar, { backgroundColor: themeColors.gray[400] }]} />
                                             )}
                                         </View>
-                                        <Text style={[styles.friendName, { color: themeColors.text.primary }]} numberOfLines={1}>{userName}</Text>
+                                        <Text style={[styles.connectName, { color: themeColors.text.primary }]} numberOfLines={1}>{userName}</Text>
                                     </TouchableOpacity>
                                 )
                             })}
@@ -682,8 +686,8 @@ const FriendProfile = () => {
             
             <View style={[styles.profileHeader, { backgroundColor: themeColors.surface.header }]}>
                 <View style={[styles.coverContainer, { backgroundColor: themeColors.gray[200] }]}>
-                    {friendData?.coverPic ? (
-                        <ImageWithSkeleton source={{ uri: friendData.coverPic }} style={[styles.cover, { height: coverHeight }]} />
+                    {connectData?.coverPic ? (
+                        <ImageWithSkeleton source={{ uri: connectData.coverPic }} style={[styles.cover, { height: coverHeight }]} />
                     ) : (
                         <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight, backgroundColor: themeColors.gray[200] }]} />
                     )}
@@ -694,10 +698,10 @@ const FriendProfile = () => {
                         <View style={[
                             styles.avatarWrapper,
                             { height: avatarSize, width: avatarSize, borderRadius: avatarSize / 2, borderColor: themeColors.gray[400], backgroundColor: themeColors.surface.secondary },
-                            friendData?.hasStory ? styles.avatarWithStory : undefined
+                            connectData?.hasStory ? styles.avatarWithStory : undefined
                         ]}>
-                            {friendData?.profilePic ? (
-                                <ProfileImageWithSkeleton uri={friendData.profilePic} pixelSize={400} style={styles.avatar} />
+                            {connectData?.profilePic ? (
+                                <ProfileImageWithSkeleton uri={connectData.profilePic} pixelSize={400} style={styles.avatar} />
                             ) : (
                                 <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
                             )}
@@ -708,25 +712,25 @@ const FriendProfile = () => {
                         <View style={styles.profileNameBlock}>
                             <Text style={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]} numberOfLines={2}>
                                 <VerifiedName
-                                    name={friendData?.fullName || 'Friend Profile'}
-                                    verified={friendData?.isVerified}
+                                    name={connectData?.fullName || 'Connect Profile'}
+                                    verified={connectData?.isVerified}
                                     textStyle={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]}
                                     numberOfLines={2}
                                 />
                             </Text>
-                            {friendsCount > 0 ? (
-                                <Text style={[styles.friendsCount, { color: themeColors.text.secondary }]}>{friendsCount} friends</Text>
+                            {connectsCount > 0 ? (
+                                <Text style={[styles.connectsCount, { color: themeColors.text.secondary }]}>{connectsCount} connects</Text>
                             ) : null}
                         </View>
 
 
                         <View style={[styles.bioSection, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}>
-                            {friendData?.bio ? (
+                            {connectData?.bio ? (
                                 <>
                                     <Text style={[styles.bioText, { color: themeColors.text.primary }]} numberOfLines={showFullBio ? undefined : 3}>
-                                        {friendData.bio}
+                                        {connectData.bio}
                                     </Text>
-                                    {friendData.bio.length > 100 && (
+                                    {connectData.bio.length > 100 && (
                                         <TouchableOpacity 
                                             style={[styles.bioToggleButton, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
                                             onPress={() => setShowFullBio(!showFullBio)}
@@ -745,12 +749,12 @@ const FriendProfile = () => {
                         </View>
 
                         <View style={styles.profileButtons}>
-                            {getFriendButton()}
+                            {getConnectButton()}
                             <Pressable style={[styles.button, styles.secondaryButton, { backgroundColor: themeColors.surface.secondary }]} onPress={() => {
                                 hideTabBarForChat(navigation as any);
                                 (navigation as any).navigate('Message', { 
                                     screen: 'SingleMessage',
-                                    params: { friend: friendData }
+                                    params: { connect: connectData }
                                 });
                             }}>
                                 <Icon name="message" size={18} color={themeColors.text.secondary} />
@@ -885,7 +889,7 @@ const styles = StyleSheet.create({
         fontSize: 22,
         textTransform: 'capitalize',
     },
-    friendsCount: {
+    connectsCount: {
         marginTop: 4,
         textAlign: 'center',
     },
@@ -995,12 +999,12 @@ const styles = StyleSheet.create({
     detailsMuted: {
         // color will be set dynamically
     },
-    friendsGrid: {
+    connectsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
     },
-    friendItem: {
+    connectItem: {
         width: '48%',
         borderRadius: 10,
         padding: 12,
@@ -1009,7 +1013,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         // backgroundColor and borderColor will be set dynamically
     },
-    friendAvatarWrap: {
+    connectAvatarWrap: {
         width: 64,
         height: 64,
         borderRadius: 32,
@@ -1017,11 +1021,11 @@ const styles = StyleSheet.create({
         marginBottom: 8,
         // backgroundColor will be set dynamically
     },
-    friendAvatar: {
+    connectAvatar: {
         width: '100%',
         height: '100%',
     },
-    friendName: {
+    connectName: {
         fontWeight: '600',
         // color will be set dynamically
     },
@@ -1157,4 +1161,4 @@ const styles = StyleSheet.create({
     },
 })
 
-export default FriendProfile;
+export default ConnectProfile;

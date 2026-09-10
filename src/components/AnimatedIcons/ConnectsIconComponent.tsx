@@ -5,12 +5,12 @@ import {
   Circle 
 } from 'react-native-svg';
 
-interface FriendsIconProps {
+interface ConnectsIconProps {
   size?: number;
   color?: string;
 }
 
-const FriendsIconComponent: React.FC<FriendsIconProps> = ({ 
+const ConnectsIconComponent: React.FC<ConnectsIconProps> = ({ 
   size = 24, 
   color = '#666'
 }) => {
@@ -61,4 +61,4 @@ const FriendsIconComponent: React.FC<FriendsIconProps> = ({
   );
 };
 
-export default FriendsIconComponent;
+export default ConnectsIconComponent;

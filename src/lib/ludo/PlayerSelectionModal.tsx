@@ -11,7 +11,7 @@ import {
   Switch,
 } from 'react-native';
 import { COLORS, PLAYER_LETTERS, THEME } from './constants';
-import type { FriendUser, Player } from './types';
+import type { ConnectUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
 import KeyboardSafeView from '../../components/KeyboardSafeView';
 import VoiceTextInput from '../../components/VoiceTextInput';
@@ -21,21 +21,21 @@ interface PlayerSelectionModalProps {
   selectedPlayerCount: number;
   onlineMode: boolean;
   playWithComputer: boolean;
-  friendSearchQuery: string;
+  connectSearchQuery: string;
   loadingSearch: boolean;
-  searchResults: FriendUser[];
-  friendList: FriendUser[];
-  selectedFriends: FriendUser[];
-  invitedStatusByFriendId: Record<string, string>;
+  searchResults: ConnectUser[];
+  connectList: ConnectUser[];
+  selectedConnects: ConnectUser[];
+  invitedStatusByConnectId: Record<string, string>;
   players: Player[];
   myProfile?: { fullName?: string; profilePic?: string };
   onPlayerCountChange: (count: number) => void;
   onOnlineModeToggle: () => void;
   onPlayWithComputerToggle: () => void;
-  onFriendSearchChange: (text: string) => void;
-  onFriendSelect: (friend: FriendUser, isSelected: boolean) => void;
-  onInviteFriend: (friend: FriendUser) => void;
-  onAssignFriendOffline: (friend: FriendUser) => void;
+  onConnectSearchChange: (text: string) => void;
+  onConnectSelect: (connect: ConnectUser, isSelected: boolean) => void;
+  onInviteConnect: (connect: ConnectUser) => void;
+  onAssignConnectOffline: (connect: ConnectUser) => void;
   onGetNextOpenSlot: () => number | null;
   onCancel: () => void;
   onConfirmPlayerCount: () => void;
@@ -46,33 +46,33 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
   selectedPlayerCount,
   onlineMode,
   playWithComputer,
-  friendSearchQuery,
+  connectSearchQuery,
   loadingSearch,
   searchResults,
-  friendList,
-  selectedFriends,
-  invitedStatusByFriendId,
+  connectList,
+  selectedConnects,
+  invitedStatusByConnectId,
   players,
   myProfile,
   onPlayerCountChange,
   onOnlineModeToggle,
   onPlayWithComputerToggle,
-  onFriendSearchChange,
-  onFriendSelect,
-  onInviteFriend,
-  onAssignFriendOffline,
+  onConnectSearchChange,
+  onConnectSelect,
+  onInviteConnect,
+  onAssignConnectOffline,
   onGetNextOpenSlot,
   onCancel,
   onConfirmPlayerCount,
 }) => {
   if (!show) return null;
 
-  const maxFriendSlots = Math.max(0, selectedPlayerCount - 1);
-  const friendProgressPct =
-    maxFriendSlots > 0
-      ? Math.min(100, Math.round((selectedFriends.length / maxFriendSlots) * 100))
+  const maxConnectSlots = Math.max(0, selectedPlayerCount - 1);
+  const connectProgressPct =
+    maxConnectSlots > 0
+      ? Math.min(100, Math.round((selectedConnects.length / maxConnectSlots) * 100))
       : 0;
-  const visibleFriends = friendSearchQuery ? searchResults : friendList;
+  const visibleConnects = connectSearchQuery ? searchResults : connectList;
   const countDots = (count: number) =>
     count === 2 ? [0, 3] : count === 3 ? [0, 1, 2] : [0, 1, 3, 2];
 
@@ -135,8 +135,8 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
               <View style={styles.modeInfo}>
                 <Text style={styles.modeIcon}>🌐</Text>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.modeTitle}>Play Online with Friends</Text>
-                  <Text style={styles.modeDesc}>Invite friends to join remotely</Text>
+                  <Text style={styles.modeTitle}>Play Online with Connects</Text>
+                  <Text style={styles.modeDesc}>Invite connects to join remotely</Text>
                 </View>
               </View>
               <Switch
@@ -151,32 +151,32 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
             {(onlineMode || !playWithComputer) && (
               <>
                 <Text style={styles.sectionTitle}>
-                  {onlineMode ? 'Invite Friends' : 'Add Friends (optional)'}
+                  {onlineMode ? 'Invite Connects' : 'Add Connects (optional)'}
                 </Text>
                 <View style={styles.search}>
                   <VoiceTextInput
                     style={styles.searchInput}
-                    placeholder="Search friends by name..."
+                    placeholder="Search connects by name..."
                     placeholderTextColor={THEME.muted}
-                    value={friendSearchQuery}
-                    onChangeText={onFriendSearchChange}
+                    value={connectSearchQuery}
+                    onChangeText={onConnectSearchChange}
                   />
                 </View>
-                <View style={styles.friendList}>
+                <View style={styles.connectList}>
                   {loadingSearch && (
                     <View style={styles.empty}>
                       <ActivityIndicator color={THEME.accent} />
                       <Text style={styles.emptyText}>Searching…</Text>
                     </View>
                   )}
-                  {!loadingSearch && visibleFriends.length === 0 && (
+                  {!loadingSearch && visibleConnects.length === 0 && (
                     <Text style={styles.emptyText}>
-                      {friendSearchQuery ? 'No friends match your search' : 'No friends to show yet'}
+                      {connectSearchQuery ? 'No connects match your search' : 'No connects to show yet'}
                     </Text>
                   )}
-                  {visibleFriends.map((f) => {
-                    const isSelected = selectedFriends.some((sf) => sf._id === f._id);
-                    const inviteStatus = invitedStatusByFriendId[f?._id];
+                  {visibleConnects.map((f) => {
+                    const isSelected = selectedConnects.some((sf) => sf._id === f._id);
+                    const inviteStatus = invitedStatusByConnectId[f?._id];
                     const maxPlayers = Math.max(2, Math.min(4, selectedPlayerCount));
                     const isAssignedOffline =
                       !onlineMode &&
@@ -190,10 +190,10 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                     return (
                       <TouchableOpacity
                         key={f._id}
-                        style={[styles.friend, isSelected && styles.friendSelected]}
-                        onPress={() => onFriendSelect(f, isSelected)}
+                        style={[styles.connect, isSelected && styles.connectSelected]}
+                        onPress={() => onConnectSelect(f, isSelected)}
                       >
-                        <View style={styles.friendLeft}>
+                        <View style={styles.connectLeft}>
                           {f?.profilePic ? (
                             <ProfileImage uri={f.profilePic} pixelSize={80} style={styles.avatar} />
                           ) : (
@@ -201,7 +201,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                               <Text style={styles.avatarLetter}>{initial}</Text>
                             </View>
                           )}
-                          <Text style={styles.friendName} numberOfLines={1}>
+                          <Text style={styles.connectName} numberOfLines={1}>
                             {f?.fullName || 'Unknown'}
                           </Text>
                         </View>
@@ -211,7 +211,7 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                             inviteStatus === 'joined' ? styles.smallBtnGhost : styles.smallBtnPrimary,
                           ]}
                           disabled={!canAction}
-                          onPress={() => (onlineMode ? onInviteFriend(f) : onAssignFriendOffline(f))}
+                          onPress={() => (onlineMode ? onInviteConnect(f) : onAssignConnectOffline(f))}
                         >
                           <Text
                             style={
@@ -236,13 +236,13 @@ export const PlayerSelectionModal: React.FC<PlayerSelectionModalProps> = ({
                   })}
                 </View>
                 <View style={styles.progressLabel}>
-                  <Text style={styles.progressText}>Friends selected</Text>
+                  <Text style={styles.progressText}>Connects selected</Text>
                   <Text style={styles.progressText}>
-                    {selectedFriends.length} / {maxFriendSlots}
+                    {selectedConnects.length} / {maxConnectSlots}
                   </Text>
                 </View>
                 <View style={styles.progressTrack}>
-                  <View style={[styles.progressFill, { width: `${friendProgressPct}%` }]} />
+                  <View style={[styles.progressFill, { width: `${connectProgressPct}%` }]} />
                 </View>
               </>
             )}
@@ -374,10 +374,10 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 14,
   },
-  friendList: { gap: 6, marginBottom: 10 },
+  connectList: { gap: 6, marginBottom: 10 },
   empty: { alignItems: 'center', padding: 12, gap: 8 },
   emptyText: { color: THEME.muted, fontSize: 13, textAlign: 'center', paddingVertical: 8 },
-  friend: {
+  connect: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -387,8 +387,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: THEME.border,
   },
-  friendSelected: { borderColor: THEME.accent },
-  friendLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8, minWidth: 0 },
+  connectSelected: { borderColor: THEME.accent },
+  connectLeft: { flexDirection: 'row', alignItems: 'center', flex: 1, gap: 8, minWidth: 0 },
   avatar: { width: 32, height: 32, borderRadius: 16 },
   avatarFallback: {
     width: 32,
@@ -399,7 +399,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   avatarLetter: { color: THEME.text, fontWeight: '800', fontSize: 12 },
-  friendName: { color: THEME.text, fontWeight: '600', flex: 1 },
+  connectName: { color: THEME.text, fontWeight: '600', flex: 1 },
   smallBtn: {
     paddingHorizontal: 10,
     paddingVertical: 6,

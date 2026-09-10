@@ -12,8 +12,8 @@ interface ChatPerson {
   workPlaces?: any[];
   schools?: any[];
   blockedUsers?: string[];
-  friends?: string[];
-  friendReqs?: string[];
+  connects?: string[];
+  connectReqs?: string[];
   following?: string[];
   user: string;
   createdAt: string;
@@ -141,9 +141,9 @@ const chatSlice = createSlice({
         state.unreadMessageCount += 1;
       }
     },
-    removeConversation: (state, action: PayloadAction<{ friendId: string; currentUserId: string }>) => {
-      const { friendId, currentUserId } = action.payload;
-      state.chats = state.chats.filter(chat => String(chat.person._id) !== String(friendId));
+    removeConversation: (state, action: PayloadAction<{ connectId: string; currentUserId: string }>) => {
+      const { connectId, currentUserId } = action.payload;
+      state.chats = state.chats.filter(chat => String(chat.person._id) !== String(connectId));
       state.unreadMessageCount = state.chats.reduce((count, chat) => {
         return count + (Array.isArray(chat.messages) ? chat.messages : []).filter(message =>
           !message.isSeen && String(message.receiverId) === String(currentUserId),

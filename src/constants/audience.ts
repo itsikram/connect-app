@@ -1,5 +1,5 @@
 export const AUDIENCE_PUBLIC = 1;
-export const AUDIENCE_FRIENDS = 2;
+export const AUDIENCE_CONNECTS = 2;
 export const AUDIENCE_ONLY_ME = 3;
 
 export const AUDIENCE_OPTIONS = [
@@ -10,10 +10,10 @@ export const AUDIENCE_OPTIONS = [
     desc: 'Anyone can see this post',
   },
   {
-    value: AUDIENCE_FRIENDS,
-    label: 'Friends',
+    value: AUDIENCE_CONNECTS,
+    label: 'Connects',
     icon: 'people',
-    desc: 'Only your friends can see this post',
+    desc: 'Only your connects can see this post',
   },
   {
     value: AUDIENCE_ONLY_ME,

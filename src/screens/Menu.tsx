@@ -15,6 +15,7 @@ import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import { useChessGame } from '../contexts/ChessGameContext';
+import { useFeatureFlag } from '../contexts/FeatureFlagContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useNavigation } from '@react-navigation/native';
@@ -54,6 +55,7 @@ const Menu = () => {
   const navigation = useNavigation();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { colors: themeColors, isDarkMode } = useTheme();
+  const walletEnabled = useFeatureFlag('walletEnabled');
   const { isLudoGameActive, setLudoGameActive } = useLudoGame();
   const { isChessGameActive, setChessGameActive } = useChessGame();
   const [query, setQuery] = useState('');
@@ -61,7 +63,8 @@ const Menu = () => {
   const [aiAgentVisible, setAiAgentVisible] = useState(false);
   const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = useState<AgentSpeechLanguage | null>(null);
 
-  const friendsCount = Array.isArray(myProfile?.friends) ? myProfile.friends.length : 0;
+  const profileConnects = myProfile?.connects ?? myProfile?.friends;
+  const connectsCount = Array.isArray(profileConnects) ? profileConnects.length : 0;
   const normalizedQuery = query.trim().toLowerCase();
 
   const goToProfile = () => {
@@ -70,6 +73,10 @@ const Menu = () => {
 
   const goToSettings = () => {
     (navigation as any).navigate('Settings');
+  };
+
+  const goToWallet = () => {
+    (navigation as any).navigate('Wallet');
   };
 
   const handleAppPress = useCallback((app: AppItem) => {
@@ -187,12 +194,15 @@ const Menu = () => {
 
   const shortcuts = [
     { id: 'settings', label: 'Settings', hint: 'Privacy & account', icon: 'settings', color: '#607D8B', onPress: goToSettings },
-    { id: 'friends', label: 'Friends', hint: 'People you know', icon: 'people', color: '#2196F3', onPress: () => (navigation as any).navigate('Friends') },
+    { id: 'connects', label: 'Connects', hint: 'People you know', icon: 'people', color: '#2196F3', onPress: () => (navigation as any).navigate('Connects') },
     { id: 'messages', label: 'Messages', hint: 'Chats & calls', icon: 'chat', color: '#9C27B0', onPress: () => (navigation as any).navigate('Message') },
     { id: 'downloads', label: 'Downloads', hint: 'Saved videos', icon: 'download', color: '#009688', onPress: () => (navigation as any).navigate('Menu', { screen: 'Downloads' }) },
     { id: 'tasks', label: 'Tasks', hint: 'Keep track of work', icon: 'checklist', color: '#10B981', onPress: () => (navigation as any).navigate('Menu', { screen: 'Tasks' }) },
     { id: 'notes', label: 'Notes', hint: 'Capture ideas and thoughts', icon: 'edit-note', color: '#6366F1', onPress: () => (navigation as any).navigate('Menu', { screen: 'Notes' }) },
     { id: 'fitness', label: 'Fitness', hint: 'Meals, targets, and progress', icon: 'fitness-center', color: '#00C851', onPress: () => (navigation as any).navigate('Menu', { screen: 'FitnessDashboard' }) },
+    ...(walletEnabled
+      ? [{ id: 'wallet', label: 'Wallet', hint: 'View your coins', icon: 'monetization-on', color: '#F59E0B', onPress: goToWallet }]
+      : []),
   ];
 
   const showComingSoonSection = comingSoonApps.length > 0 && (showComingSoon || Boolean(normalizedQuery));
@@ -276,7 +286,7 @@ const Menu = () => {
               Welcome to Connect
             </Text>
             <Text style={[styles.welcomeText, { color: themeColors.text.secondary }]}>
-              Log in to see your profile, chat with friends, and sync your settings.
+              Log in to see your profile, chat with connects, and sync your settings.
             </Text>
             <View style={styles.welcomeActions}>
               <TouchableOpacity
@@ -333,7 +343,7 @@ const Menu = () => {
                   />
                 </Text>
                 <Text style={[styles.profileHint, { color: themeColors.text.secondary }]}>
-                  {friendsCount > 0 ? `See your profile · ${friendsCount} friends` : 'See your profile'}
+                  {connectsCount > 0 ? `See your profile · ${connectsCount} connects` : 'See your profile'}
                 </Text>
               </View>
               <Icon name="chevron-right" size={22} color={themeColors.text.tertiary} />

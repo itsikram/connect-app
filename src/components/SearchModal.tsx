@@ -317,8 +317,8 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
       try {
         if (item.type === 'user' && item.profileId) {
           nav.navigate('Home', {
-            screen: 'FriendProfile',
-            params: { friendId: item.profileId },
+            screen: 'ConnectProfile',
+            params: { connectId: item.profileId },
           });
           return;
         }

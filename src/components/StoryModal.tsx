@@ -245,7 +245,7 @@ const StoryModal: React.FC<StoryModalProps> = ({
         (navigation as any).navigate('Menu', { screen: 'MyProfile' });
         return;
       }
-      (navigation as any).navigate('FriendProfile', { friendId: profileId });
+      (navigation as any).navigate('ConnectProfile', { connectId: profileId });
     },
     [myId, navigation, onClose]
   );

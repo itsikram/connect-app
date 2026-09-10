@@ -170,24 +170,24 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const endCall = useCallback(async () => {
     await stopIncomingCallAlert();
     const incoming = incomingCallRef.current;
-    let friendIdToNotify: string | undefined;
+    let connectIdToNotify: string | undefined;
     if (incoming?.from && incoming.from !== myId) {
-      friendIdToNotify = incoming.from;
+      connectIdToNotify = incoming.from;
       if (!callAcceptedRef.current) {
-        emit('video-call-reject', { to: String(friendIdToNotify), channelName: currentChannelRef.current });
+        emit('video-call-reject', { to: String(connectIdToNotify), channelName: currentChannelRef.current });
         await cleanupVideoCall();
         return;
       }
     } else if (callerRef.current && callerRef.current !== myId) {
-      friendIdToNotify = callerRef.current;
+      connectIdToNotify = callerRef.current;
       if (!callAcceptedRef.current) {
-        emit('video-call-cancel', { to: String(friendIdToNotify), channelName: currentChannelRef.current });
+        emit('video-call-cancel', { to: String(connectIdToNotify), channelName: currentChannelRef.current });
         await cleanupVideoCall();
         return;
       }
     }
-    if (friendIdToNotify && friendIdToNotify !== myId && currentChannelRef.current) {
-      emit('video-call-end', { to: String(friendIdToNotify), channelName: currentChannelRef.current });
+    if (connectIdToNotify && connectIdToNotify !== myId && currentChannelRef.current) {
+      emit('video-call-end', { to: String(connectIdToNotify), channelName: currentChannelRef.current });
     }
     await cleanupVideoCall();
   }, [cleanupVideoCall, emit, myId]);
@@ -311,13 +311,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setIsVideoCall(true);
       setReceivingCall(false);
       setCaller(to);
-      setCallerName(detail.calleeName || detail.callerName || 'Friend');
+      setCallerName(detail.calleeName || detail.callerName || 'Connect');
       setCallerProfilePic(detail.calleeProfilePic || detail.callerProfilePic || '');
       setCurrentChannel(detail.channelName);
       setIncomingCall({
         from: myId,
         channelName: detail.channelName,
-        name: detail.calleeName || detail.callerName || 'Friend',
+        name: detail.calleeName || detail.callerName || 'Connect',
         profilePic: detail.calleeProfilePic || detail.callerProfilePic,
       });
       setOutgoingCallStatus('Calling...');
@@ -520,7 +520,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     ? formatDuration(callDuration)
     : receivingCall
       ? `${callerName || 'Someone'} is calling you`
-      : `Calling ${callerName || 'Friend'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
+      : `Calling ${callerName || 'Connect'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
 
   if (!isVideoCall && !mediaActive && !engineWarm) {
     return null;

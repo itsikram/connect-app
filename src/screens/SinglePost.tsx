@@ -27,7 +27,7 @@ type RootStackParamList = {
     PostDetail: { postId: string };
     SinglePost: { postId: string };
     SingleVideo: { videoId: string };
-    FriendProfile: { friendId: string };
+    ConnectProfile: { connectId: string };
     EditPost: { postId: string };
 };
 import Icon from 'react-native-vector-icons/MaterialIcons';

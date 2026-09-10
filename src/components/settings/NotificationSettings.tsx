@@ -14,21 +14,21 @@ import {
 } from './settingsUi';
 
 const PUSH_TOGGLES = [
-  { key: 'friendRequestReceived', label: 'Friend Request Received', help: 'Get notified when someone sends you a friend request' },
-  { key: 'friendRequestAccepted', label: 'Friend Request Accepted', help: 'Get notified when someone accepts your friend request' },
+  { key: 'connectRequestReceived', label: 'Connect Request Received', help: 'Get notified when someone sends you a connect request' },
+  { key: 'connectRequestAccepted', label: 'Connect Request Accepted', help: 'Get notified when someone accepts your connect request' },
   { key: 'newMessageReceived', label: 'New Message Received', help: 'Get notified when you receive a new message' },
-  { key: 'newFriendPost', label: "New Friend's Post", help: 'Get notified when your friends create new posts' },
-  { key: 'newFriendStory', label: "New Friend's Story", help: 'Get notified when your friends share new stories' },
-  { key: 'newFriendWatch', label: "New Friend's Watch", help: 'Get notified when your friends share new watch content' },
+  { key: 'newConnectPost', label: "New Connect's Post", help: 'Get notified when your connects create new posts' },
+  { key: 'newConnectStory', label: "New Connect's Story", help: 'Get notified when your connects share new stories' },
+  { key: 'newConnectWatch', label: "New Connect's Watch", help: 'Get notified when your connects share new watch content' },
 ] as const;
 
 const EMAIL_TOGGLES = [
-  { key: 'friendRequestReceivedEmail', label: 'Friend Request Received', help: 'Get email notifications for new friend requests' },
-  { key: 'friendRequestAcceptedEmail', label: 'Friend Request Accepted', help: 'Get email notifications when friend requests are accepted' },
+  { key: 'connectRequestReceivedEmail', label: 'Connect Request Received', help: 'Get email notifications for new connect requests' },
+  { key: 'connectRequestAcceptedEmail', label: 'Connect Request Accepted', help: 'Get email notifications when connect requests are accepted' },
   { key: 'newMessageReceivedEmail', label: 'New Message Received', help: 'Get email notifications for new messages' },
-  { key: 'newFriendPostEmail', label: "New Friend's Post", help: 'Get email notifications for new friend posts' },
-  { key: 'newFriendStoryEmail', label: "New Friend's Story", help: 'Get email notifications for new friend stories' },
-  { key: 'newFriendWatchEmail', label: "New Friend's Watch", help: 'Get email notifications for new friend watch content' },
+  { key: 'newConnectPostEmail', label: "New Connect's Post", help: 'Get email notifications for new connect posts' },
+  { key: 'newConnectStoryEmail', label: "New Connect's Story", help: 'Get email notifications for new connect stories' },
+  { key: 'newConnectWatchEmail', label: "New Connect's Watch", help: 'Get email notifications for new connect watch content' },
 ] as const;
 
 type NotificationKey = typeof PUSH_TOGGLES[number]['key'] | typeof EMAIL_TOGGLES[number]['key'];
@@ -41,34 +41,34 @@ const NotificationSettings = () => {
   const [isUnregistering, setIsUnregistering] = useState(false);
 
   const [notificationSettings, setNotificationSettings] = useState<Record<NotificationKey, boolean>>({
-    friendRequestReceived: settings.friendRequestReceived ?? true,
-    friendRequestAccepted: settings.friendRequestAccepted ?? true,
+    connectRequestReceived: settings.connectRequestReceived ?? true,
+    connectRequestAccepted: settings.connectRequestAccepted ?? true,
     newMessageReceived: settings.newMessageReceived ?? true,
-    newFriendPost: settings.newFriendPost ?? true,
-    newFriendStory: settings.newFriendStory ?? true,
-    newFriendWatch: settings.newFriendWatch ?? true,
-    friendRequestReceivedEmail: settings.friendRequestReceivedEmail ?? false,
-    friendRequestAcceptedEmail: settings.friendRequestAcceptedEmail ?? false,
+    newConnectPost: settings.newConnectPost ?? true,
+    newConnectStory: settings.newConnectStory ?? true,
+    newConnectWatch: settings.newConnectWatch ?? true,
+    connectRequestReceivedEmail: settings.connectRequestReceivedEmail ?? false,
+    connectRequestAcceptedEmail: settings.connectRequestAcceptedEmail ?? false,
     newMessageReceivedEmail: settings.newMessageReceivedEmail ?? false,
-    newFriendPostEmail: settings.newFriendPostEmail ?? false,
-    newFriendStoryEmail: settings.newFriendStoryEmail ?? false,
-    newFriendWatchEmail: settings.newFriendWatchEmail ?? false,
+    newConnectPostEmail: settings.newConnectPostEmail ?? false,
+    newConnectStoryEmail: settings.newConnectStoryEmail ?? false,
+    newConnectWatchEmail: settings.newConnectWatchEmail ?? false,
   });
 
   React.useEffect(() => {
     setNotificationSettings({
-      friendRequestReceived: settings.friendRequestReceived ?? true,
-      friendRequestAccepted: settings.friendRequestAccepted ?? true,
+      connectRequestReceived: settings.connectRequestReceived ?? true,
+      connectRequestAccepted: settings.connectRequestAccepted ?? true,
       newMessageReceived: settings.newMessageReceived ?? true,
-      newFriendPost: settings.newFriendPost ?? true,
-      newFriendStory: settings.newFriendStory ?? true,
-      newFriendWatch: settings.newFriendWatch ?? true,
-      friendRequestReceivedEmail: settings.friendRequestReceivedEmail ?? false,
-      friendRequestAcceptedEmail: settings.friendRequestAcceptedEmail ?? false,
+      newConnectPost: settings.newConnectPost ?? true,
+      newConnectStory: settings.newConnectStory ?? true,
+      newConnectWatch: settings.newConnectWatch ?? true,
+      connectRequestReceivedEmail: settings.connectRequestReceivedEmail ?? false,
+      connectRequestAcceptedEmail: settings.connectRequestAcceptedEmail ?? false,
       newMessageReceivedEmail: settings.newMessageReceivedEmail ?? false,
-      newFriendPostEmail: settings.newFriendPostEmail ?? false,
-      newFriendStoryEmail: settings.newFriendStoryEmail ?? false,
-      newFriendWatchEmail: settings.newFriendWatchEmail ?? false,
+      newConnectPostEmail: settings.newConnectPostEmail ?? false,
+      newConnectStoryEmail: settings.newConnectStoryEmail ?? false,
+      newConnectWatchEmail: settings.newConnectWatchEmail ?? false,
     });
   }, [settings]);
 

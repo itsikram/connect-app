@@ -3,11 +3,11 @@ import { View } from 'react-native';
 import { SkeletonBlock, SkeletonColumn } from './Skeleton';
 import { useTheme } from '../../contexts/ThemeContext';
 
-interface FriendCardSkeletonProps {
+interface ConnectCardSkeletonProps {
     count?: number;
 }
 
-const FriendCardSkeleton: React.FC<FriendCardSkeletonProps> = ({ count = 6 }) => {
+const ConnectCardSkeleton: React.FC<ConnectCardSkeletonProps> = ({ count = 6 }) => {
     const { colors: themeColors } = useTheme();
 
     return (
@@ -27,6 +27,6 @@ const FriendCardSkeleton: React.FC<FriendCardSkeletonProps> = ({ count = 6 }) =>
     );
 };
 
-export default FriendCardSkeleton;
+export default ConnectCardSkeleton;
 
 

@@ -13,7 +13,7 @@ This directory contains animated SVG icons for your bottom tab bar, providing sm
 ## Available Icons
 
 - **Home**: `home.svg` - House icon with door and windows
-- **Friends**: `friends.svg` - Two people figures with heart connection
+- **Connects**: `friends.svg` - Two people figures with heart connection
 - **Videos**: `videos.svg` - Play button with recording indicator
 - **Message**: `message.svg` - Chat bubble with typing dots
 - **Menu**: `menu.svg` - Circle with hamburger menu lines
@@ -28,14 +28,14 @@ The animated icons are automatically integrated into your `ProfessionalTabBar` c
 // In your ProfessionalTabBar.tsx
 import AnimatedTabIcon from './AnimatedIcons/AnimatedTabIcon';
 import HomeIcon from '../assets/icons/home.svg';
-import FriendsIcon from '../assets/icons/friends.svg';
+import ConnectsIcon from '../assets/icons/friends.svg';
 // ... other imports
 
 // Icons are automatically mapped by tab name
 const getAnimatedIcon = (tabName: string) => {
   switch (tabName) {
     case 'Home': return HomeIcon;
-    case 'Friends': return FriendsIcon;
+    case 'Connects': return ConnectsIcon;
     // ... other cases
   }
 };

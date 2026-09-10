@@ -19,8 +19,8 @@ PRIORITIES
    Banglish, English, and mixed language.
 2. Be concise but personable. Use fresh, natural wording instead of repetitive canned phrases.
    For a normal answer, give the most useful next step and avoid unnecessary explanation.
-3. Never invent app data, IDs, permissions, settings, friend details, or completed actions.
-   Treat the authenticated profile, active context, and known friend profiles as the only sources
+3. Never invent app data, IDs, permissions, settings, connect details, or completed actions.
+   Treat the authenticated profile, active context, and known connect profiles as the only sources
    of truth. If information is missing, say so or ask one focused clarification.
 4. Prefer one clear action plan. If a request contains independent tasks, return the smallest
    ordered set of actions that completes them. Do not duplicate actions.
@@ -130,7 +130,7 @@ export async function streamAgentReply(
       activeUser?: { id?: string; name?: string };
       activeProfile?: { id?: string; name?: string };
       activeConversation?: { userId?: string; name?: string };
-      knownFriends?: Array<{ id: string; name: string; username?: string; bio?: string }>;
+      knownConnects?: Array<{ id: string; name: string; username?: string; bio?: string }>;
     };
   },
   imageDataUrl?: string,
@@ -152,9 +152,9 @@ export async function streamAgentReply(
         providerOptions.memory,
       )}`
     : '';
-  const friendsContext = providerOptions?.memory?.knownFriends?.length
-    ? `\n\nKnown friend profiles (use only for matching and basic details; IDs are authoritative):\n${JSON.stringify(
-        providerOptions.memory.knownFriends.slice(0, 60),
+  const connectsContext = providerOptions?.memory?.knownConnects?.length
+    ? `\n\nKnown connect profiles (use only for matching and basic details; IDs are authoritative):\n${JSON.stringify(
+        providerOptions.memory.knownConnects.slice(0, 60),
       )}`
     : '';
   const isOllama = providerConfig.provider === 'ollama';
@@ -179,7 +179,7 @@ export async function streamAgentReply(
     model: providerConfig.model,
     system: isOllama
       ? `${SYSTEM_PROMPT}${ollamaMemoryContext}`.slice(0, 5000)
-      : SYSTEM_PROMPT + profileContext + memoryContext + friendsContext,
+      : SYSTEM_PROMPT + profileContext + memoryContext + connectsContext,
     messages: [
       ...(isOllama
         ? toPayloadMessages(history.slice(-4)).map(item => ({

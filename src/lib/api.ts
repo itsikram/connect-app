@@ -282,9 +282,9 @@ export const chatAPI = {
     api.get(`/message/chatList?profileId=${profileId}`),
   deleteConversation: (
     profileId: string,
-    friendId: string,
+    connectId: string,
   ): Promise<AxiosResponse> =>
-    api.post('/message/deleteConversation', { profileId, friendId }),
+    api.post('/message/deleteConversation', { profileId, friendId: connectId }),
 };
 
 // Push notification API methods
@@ -333,29 +333,29 @@ export const profileAPI = {
     api.get('/profile/follow-status', { params: { profileId } }),
 };
 
-export const friendAPI = {
-  getFriendList: (profileId: string): Promise<AxiosResponse> =>
-    api.get(`/friend/getFriends?profileId=${profileId}`),
-  getFriendRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.get(`/friend/getRequest?profileId=${profileId}`),
-  getFriendSuggestions: (profileId: string): Promise<AxiosResponse> =>
-    api.get(`/friend/getSuggetions?profileId=${profileId}`),
-  sendFriendRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.post(`/friend/sendRequest?profileId=${profileId}`),
-  acceptFriendRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.post(`/friend/reqAccept`, { profile: profileId }),
-  deleteFriendRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.post(`/friend/reqDelete`, { profile: profileId }),
-  cancelFriendRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.post(`/friend/removeRequest`, { profile: profileId }),
-  removeFriend: (profileId: string): Promise<AxiosResponse> =>
-    api.post(`/friend/removeFriend?profileId=${profileId}`),
-  blockUser: (friendId: string): Promise<AxiosResponse> =>
-    api.post('/friend/block', { friendId }),
-  unblockUser: (friendId: string): Promise<AxiosResponse> =>
-    api.post('/friend/unblock', { friendId }),
-  getBlockStatus: (friendId: string): Promise<AxiosResponse> =>
-    api.get('/friend/block-status', { params: { friendId } }),
+export const connectAPI = {
+  getConnectList: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/connects/getConnects', { params: { profile: profileId } }),
+  getConnectRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/connects/getRequest', { params: { profileId } }),
+  getConnectSuggestions: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/connects/getSuggetions', { params: { profile: profileId } }),
+  sendConnectRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.post('/connects/sendRequest', { profile: profileId }),
+  acceptConnectRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.post(`/connects/reqAccept`, { profile: profileId }),
+  deleteConnectRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.post(`/connects/reqDelete`, { profile: profileId }),
+  cancelConnectRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.post(`/connects/removeRequest`, { profile: profileId }),
+  removeConnect: (profileId: string): Promise<AxiosResponse> =>
+    api.post('/connects/removeConnect', { profile: profileId }),
+  blockUser: (connectId: string): Promise<AxiosResponse> =>
+    api.post('/connects/block', { connectId }),
+  unblockUser: (connectId: string): Promise<AxiosResponse> =>
+    api.post('/connects/unblock', { connectId }),
+  getBlockStatus: (connectId: string): Promise<AxiosResponse> =>
+    api.get('/connects/block-status', { params: { connectId } }),
 };
 
 export const storyAPI = {

@@ -6,7 +6,7 @@ import { useSocket } from '../contexts/SocketContext';
 
 interface UseEmotionDetectionMediapipeOptions {
   profileId: string;
-  friendId: string;
+  connectId: string;
   isEnabled: boolean;
   detectionInterval?: number;
   sessionId?: string;
@@ -22,7 +22,7 @@ interface MediapipeEmotionResult {
 }
 
 export const useEmotionDetectionMediapipe = (options: UseEmotionDetectionMediapipeOptions) => {
-  const { profileId, friendId, isEnabled, detectionInterval = 900, sessionId = 'rn' } = options;
+  const { profileId, connectId, isEnabled, detectionInterval = 900, sessionId = 'rn' } = options;
   const { emit } = useSocket();
 
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
@@ -70,7 +70,7 @@ export const useEmotionDetectionMediapipe = (options: UseEmotionDetectionMediapi
       const dominant = result.dominant_state || null;
       const label = emotion || dominant;
 
-      if (label && profileId && friendId) {
+      if (label && profileId && connectId) {
         const emojiMap: Record<string, string> = {
           happy: '😊', smiling: '😄', laughing: '😂', excited: '🤩', surprised: '😲',
           fear: '😨', angry: '😠', sad: '😢', crying: '😭', disgust: '🤢', confused: '😕',
@@ -85,7 +85,7 @@ export const useEmotionDetectionMediapipe = (options: UseEmotionDetectionMediapi
           emotion: composed,
           emotionText: label,
           emoji,
-          friendId,
+          connectId,
           confidence: result.confidence || 0.6,
           quality: result.confidence || 0.6
         });
@@ -94,7 +94,7 @@ export const useEmotionDetectionMediapipe = (options: UseEmotionDetectionMediapi
     } finally {
       inFlightRef.current = false;
     }
-  }, [emit, friendId, imageFileToBase64, isEnabled, profileId, sendToMediapipe]);
+  }, [emit, connectId, imageFileToBase64, isEnabled, profileId, sendToMediapipe]);
 
   useEffect(() => {
     setIsDetecting(isEnabled);

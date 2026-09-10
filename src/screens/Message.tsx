@@ -39,7 +39,7 @@ const idsMatch = (a?: string | number | null, b?: string | number | null) =>
 
 const firstName = (fullName?: string) => {
   const name = (fullName || '').trim();
-  if (!name) return 'Friend';
+  if (!name) return 'Connect';
   return name.split(/\s+/)[0];
 };
 
@@ -340,11 +340,11 @@ const Message = React.memo(() => {
   const [refreshing, setRefreshing] = React.useState(false);
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
   const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = React.useState<AgentSpeechLanguage | null>(null);
-  const activeFriendsValue = useSelector(
-    (state: RootState) => state.presence.activeFriends,
+  const activeConnectsValue = useSelector(
+    (state: RootState) => state.presence.activeConnects,
   );
-  const activeFriends = Array.isArray(activeFriendsValue)
-    ? activeFriendsValue
+  const activeConnects = Array.isArray(activeConnectsValue)
+    ? activeConnectsValue
     : [];
   const {
     chats: rawChatList,
@@ -364,34 +364,35 @@ const Message = React.memo(() => {
   const searchInputRef = useRef<TextInput>(null);
   const navigation = useNavigation();
 
-  const sortedFriends = useMemo(() => {
-    const friendsList = Array.isArray(profileData?.friends)
-      ? [...profileData.friends]
+  const sortedConnects = useMemo(() => {
+    const profileConnects = profileData?.connects ?? profileData?.friends;
+    const connectsList = Array.isArray(profileConnects)
+      ? [...profileConnects]
       : [];
-    return friendsList.sort((a: any, b: any) => {
-      const aActive = activeFriends.includes(a?._id) ? 1 : 0;
-      const bActive = activeFriends.includes(b?._id) ? 1 : 0;
+    return connectsList.sort((a: any, b: any) => {
+      const aActive = activeConnects.includes(a?._id) ? 1 : 0;
+      const bActive = activeConnects.includes(b?._id) ? 1 : 0;
       if (aActive !== bActive) return bActive - aActive;
       const aName = (a?.fullName || '').toLowerCase();
       const bName = (b?.fullName || '').toLowerCase();
       return aName.localeCompare(bName);
     });
-  }, [profileData?.friends, activeFriends]);
+  }, [profileData?.connects, profileData?.friends, activeConnects]);
 
-  const onlineFriends = useMemo(
+  const onlineConnects = useMemo(
     () =>
-      (sortedFriends || []).filter((friend: any) =>
-        activeFriends.includes(friend?._id),
+      (sortedConnects || []).filter((connect: any) =>
+        activeConnects.includes(connect?._id),
       ),
-    [sortedFriends, activeFriends],
+    [sortedConnects, activeConnects],
   );
 
   const openChat = useCallback(
-    (friend: any) => {
-      if (!friend) return;
+    (connect: any) => {
+      if (!connect) return;
       Keyboard.dismiss();
       hideTabBarForChat(navigation);
-      (navigation as any).navigate('SingleMessage', { friend });
+      (navigation as any).navigate('SingleMessage', { connect });
     },
     [navigation],
   );
@@ -467,36 +468,36 @@ const Message = React.memo(() => {
 
   const peopleStrip = useMemo(() => {
     if (normalizedQuery) {
-      return (sortedFriends || [])
-        .filter((friend: any) =>
-          (friend.fullName || '').toLowerCase().includes(normalizedQuery),
+      return (sortedConnects || [])
+        .filter((connect: any) =>
+          (connect.fullName || '').toLowerCase().includes(normalizedQuery),
         )
         .slice(0, 20);
     }
-    if (onlineFriends.length > 0) return onlineFriends;
-    if (!sortedChatList.length) return (sortedFriends || []).slice(0, 16);
+    if (onlineConnects.length > 0) return onlineConnects;
+    if (!sortedChatList.length) return (sortedConnects || []).slice(0, 16);
     return [];
-  }, [normalizedQuery, sortedFriends, onlineFriends, sortedChatList.length]);
+  }, [normalizedQuery, sortedConnects, onlineConnects, sortedChatList.length]);
 
   const peopleStripTitle = normalizedQuery
     ? 'People'
-    : onlineFriends.length > 0
+    : onlineConnects.length > 0
     ? 'Active now'
-    : 'Friends';
+    : 'Connects';
 
   const headerSubtitle = useMemo(() => {
-    if (unreadMessageCount > 0 && onlineFriends.length > 0) {
-      return `${unreadMessageCount} unread · ${onlineFriends.length} online`;
+    if (unreadMessageCount > 0 && onlineConnects.length > 0) {
+      return `${unreadMessageCount} unread · ${onlineConnects.length} online`;
     }
     if (unreadMessageCount > 0) return `${unreadMessageCount} unread`;
-    if (onlineFriends.length > 0) return `${onlineFriends.length} online`;
+    if (onlineConnects.length > 0) return `${onlineConnects.length} online`;
     if (sortedChatList.length > 0) {
       return `${sortedChatList.length} conversation${
         sortedChatList.length === 1 ? '' : 's'
       }`;
     }
-    return 'Chats and calls with friends';
-  }, [unreadMessageCount, onlineFriends.length, sortedChatList.length]);
+    return 'Chats and calls with connects';
+  }, [unreadMessageCount, onlineConnects.length, sortedChatList.length]);
 
   const fetchProfile = useCallback(async () => {
     try {
@@ -575,7 +576,7 @@ const Message = React.memo(() => {
           person={item?.person}
           last={last}
           unreadCount={unread}
-          isOnline={activeFriends.includes(item?.person?._id)}
+          isOnline={activeConnects.includes(item?.person?._id)}
           showDivider={index !== filteredChatList.length - 1}
           myId={profileData?._id}
           colors={themeColors}
@@ -584,7 +585,7 @@ const Message = React.memo(() => {
       );
     },
     [
-      activeFriends,
+      activeConnects,
       filteredChatList.length,
       openChat,
       profileData?._id,
@@ -646,27 +647,27 @@ const Message = React.memo(() => {
               contentContainerStyle={styles.peopleScroll}
               keyboardShouldPersistTaps="handled"
             >
-              {peopleStrip.map((friend: any, index: number) => {
-                const friendKey =
-                  friend?._id ??
-                  friend?.id ??
-                  `${friend?.fullName || 'friend'}-${index}`;
-                const isOnline = activeFriends.includes(friend?._id);
+              {peopleStrip.map((connect: any, index: number) => {
+                const connectKey =
+                  connect?._id ??
+                  connect?.id ??
+                  `${connect?.fullName || 'connect'}-${index}`;
+                const isOnline = activeConnects.includes(connect?._id);
                 return (
                   <Pressable
-                    key={friendKey}
+                    key={connectKey}
                     style={({ pressed }) => [
                       styles.personItem,
                       pressed && { opacity: 0.72 },
                     ]}
-                    onPress={() => openChat(friend)}
+                    onPress={() => openChat(connect)}
                     accessibilityRole="button"
                     accessibilityLabel={`Message ${
-                      friend.fullName || 'friend'
+                      connect.fullName || 'connect'
                     }${isOnline ? ', online' : ''}`}
                   >
                     <UserPP
-                      image={friend.profilePic}
+                      image={connect.profilePic}
                       isActive={isOnline}
                       size={58}
                     />
@@ -677,7 +678,7 @@ const Message = React.memo(() => {
                       ]}
                       numberOfLines={1}
                     >
-                      {firstName(friend.fullName)}
+                      {firstName(connect.fullName)}
                     </Text>
                   </Pressable>
                 );
@@ -708,7 +709,7 @@ const Message = React.memo(() => {
       themeColors.text.primary,
       themeColors.text.secondary,
       themeColors.status.success,
-      activeFriends,
+      activeConnects,
       openChat,
       normalizedQuery,
       filteredChatList.length,
@@ -817,10 +818,10 @@ const Message = React.memo(() => {
           No conversations yet
         </Text>
         <Text style={[styles.emptyCopy, { color: themeColors.text.secondary }]}>
-          Pick a friend above or find people to start chatting.
+          Pick a connect above or find people to start chatting.
         </Text>
         <Pressable
-          onPress={() => (navigation as any).navigate('Friends')}
+          onPress={() => (navigation as any).navigate('Connects')}
           style={({ pressed }) => [
             styles.emptyAction,
             {
@@ -835,7 +836,7 @@ const Message = React.memo(() => {
               { color: themeColors.text.inverse },
             ]}
           >
-            Find friends
+            Find connects
           </Text>
         </Pressable>
       </View>
@@ -870,7 +871,7 @@ const Message = React.memo(() => {
         </View>
         <View style={styles.headerActions}>
           <Pressable
-            onPress={() => (navigation as any).navigate('Friends')}
+            onPress={() => (navigation as any).navigate('Connects')}
             accessibilityRole="button"
             accessibilityLabel="New chat"
             hitSlop={8}
@@ -973,7 +974,7 @@ const Message = React.memo(() => {
         contentContainerStyle={styles.listContent}
         contentInsetAdjustmentBehavior="never"
         automaticallyAdjustContentInsets={false}
-        extraData={`${activeFriends.length}-${unreadMessageCount}-${normalizedQuery}`}
+        extraData={`${activeConnects.length}-${unreadMessageCount}-${normalizedQuery}`}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         removeClippedSubviews

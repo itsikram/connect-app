@@ -11,13 +11,13 @@ import { DeviceEventEmitter } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
-import { friendAPI } from '../lib/api';
+import { connectAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
-import FriendCardSkeleton from '../components/skeleton/FriendCardSkeleton';
+import ConnectCardSkeleton from '../components/skeleton/ConnectCardSkeleton';
 import ProfileImage from '../components/ProfileImage';
-import FriendCacheManager, {
-  FRIEND_CACHE_EVENT,
-} from '../utils/friendCacheManager';
+import ConnectCacheManager, {
+  CONNECT_CACHE_EVENT,
+} from '../utils/connectCacheManager';
 import VerifiedName from '../components/VerifiedName';
 import { profileDisplayName } from '../utils/reactTypes';
 
@@ -31,7 +31,7 @@ const uniqueById = (items: any[]) => {
   });
 };
 
-const Friends = () => {
+const Connects = () => {
   const navigation = useNavigation();
   const { colors: themeColors, isDarkMode } = useTheme();
   const backgroundColor = themeColors.background.primary;
@@ -44,31 +44,31 @@ const Friends = () => {
   const removeBtnText = themeColors.text.primary;
   const myProfile = useSelector((state: RootState) => state.profile);
 
-  const [friendRequests, setFriendRequests] = useState<any[]>([]);
-  const [friendSuggestions, setFriendSuggestions] = useState<any[]>([]);
+  const [connectRequests, setConnectRequests] = useState<any[]>([]);
+  const [connectSuggestions, setConnectSuggestions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  const fetchFriendData = useCallback(async () => {
+  const fetchConnectData = useCallback(async () => {
     if (!myProfile?._id) return;
 
     try {
       setLoading(true);
-      const [friendRequestsRes, friendSuggestionsRes] = await Promise.all([
-        friendAPI.getFriendRequest(myProfile._id),
-        friendAPI.getFriendSuggestions(myProfile._id),
+      const [connectRequestsRes, connectSuggestionsRes] = await Promise.all([
+        connectAPI.getConnectRequest(myProfile._id),
+        connectAPI.getConnectSuggestions(myProfile._id),
       ]);
 
-      const requests = uniqueById(friendRequestsRes.data);
-      const suggestions = uniqueById(friendSuggestionsRes.data);
-      setFriendRequests(requests);
-      setFriendSuggestions(suggestions);
+      const requests = uniqueById(connectRequestsRes.data);
+      const suggestions = uniqueById(connectSuggestionsRes.data);
+      setConnectRequests(requests);
+      setConnectSuggestions(suggestions);
       await Promise.all([
-        FriendCacheManager.setCached(myProfile._id, 'requests', requests),
-        FriendCacheManager.setCached(myProfile._id, 'suggestions', suggestions),
+        ConnectCacheManager.setCached(myProfile._id, 'requests', requests),
+        ConnectCacheManager.setCached(myProfile._id, 'suggestions', suggestions),
       ]);
     } catch (error) {
-      console.error('Error fetching friend data:', error);
+      console.error('Error fetching connect data:', error);
     } finally {
       setLoading(false);
     }
@@ -76,88 +76,88 @@ const Friends = () => {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchFriendData();
+    await fetchConnectData();
     setRefreshing(false);
-  }, [fetchFriendData]);
+  }, [fetchConnectData]);
 
   useEffect(() => {
     let mounted = true;
-    const loadFriendData = async () => {
+    const loadConnectData = async () => {
       if (!myProfile?._id) return;
       const [cachedRequests, cachedSuggestions] = await Promise.all([
-        FriendCacheManager.getCached(myProfile._id, 'requests'),
-        FriendCacheManager.getCached(myProfile._id, 'suggestions'),
+        ConnectCacheManager.getCached(myProfile._id, 'requests'),
+        ConnectCacheManager.getCached(myProfile._id, 'suggestions'),
       ]);
       if (mounted && cachedRequests && cachedSuggestions) {
-        setFriendRequests(cachedRequests);
-        setFriendSuggestions(cachedSuggestions);
+        setConnectRequests(cachedRequests);
+        setConnectSuggestions(cachedSuggestions);
         setLoading(false);
       }
-      await fetchFriendData();
+      await fetchConnectData();
     };
-    loadFriendData();
+    loadConnectData();
     const subscription = DeviceEventEmitter.addListener(
-      FRIEND_CACHE_EVENT,
+      CONNECT_CACHE_EVENT,
       event => {
         if (!mounted || event?.profileId !== myProfile?._id) return;
         if (event.list === 'requests')
-          setFriendRequests(uniqueById(event.items));
+          setConnectRequests(uniqueById(event.items));
         if (event.list === 'suggestions')
-          setFriendSuggestions(uniqueById(event.items));
+          setConnectSuggestions(uniqueById(event.items));
       },
     );
     return () => {
       mounted = false;
       subscription.remove();
     };
-  }, [fetchFriendData]);
+  }, [fetchConnectData]);
 
-  const handleSendFriendRequest = async (friendId: string) => {
+  const handleSendConnectRequest = async (connectId: string) => {
     try {
-      const res = await friendAPI.sendFriendRequest(friendId);
+      const res = await connectAPI.sendConnectRequest(connectId);
       console.log(res.data);
-      setFriendSuggestions(prev => prev.filter((f: any) => f._id !== friendId));
+      setConnectSuggestions(prev => prev.filter((f: any) => f._id !== connectId));
       if (myProfile?._id)
-        await FriendCacheManager.removeProfile(
+        await ConnectCacheManager.removeProfile(
           myProfile._id,
           'suggestions',
-          friendId,
+          connectId,
         );
     } catch (error) {
       console.log(error);
     }
   };
-  const handleRemoveFriendRequest = async (friendId: string) => {
+  const handleRemoveConnectRequest = async (connectId: string) => {
     try {
-      const res = await friendAPI.removeFriend(friendId);
+      const res = await connectAPI.removeConnect(connectId);
       console.log(res.data);
       // Hide from suggestions if present
-      setFriendSuggestions(prev => prev.filter((f: any) => f._id !== friendId));
+      setConnectSuggestions(prev => prev.filter((f: any) => f._id !== connectId));
       if (myProfile?._id)
-        await FriendCacheManager.removeProfile(
+        await ConnectCacheManager.removeProfile(
           myProfile._id,
           'suggestions',
-          friendId,
+          connectId,
         );
     } catch (error) {
       console.log(error);
     }
   };
 
-  const handleAcceptFriendRequest = async (friendId: string) => {
-    console.log('accept friend request', friendId);
+  const handleAcceptConnectRequest = async (connectId: string) => {
+    console.log('accept connect request', connectId);
     try {
-      const res = await friendAPI.acceptFriendRequest(friendId);
+      const res = await connectAPI.acceptConnectRequest(connectId);
       console.log(res.data);
       // Remove the accepted request from the list
-      setFriendRequests(prev => prev.filter((f: any) => f._id !== friendId));
+      setConnectRequests(prev => prev.filter((f: any) => f._id !== connectId));
       if (myProfile?._id) {
         await Promise.all([
-          FriendCacheManager.removeProfile(myProfile._id, 'requests', friendId),
-          FriendCacheManager.removeProfile(
+          ConnectCacheManager.removeProfile(myProfile._id, 'requests', connectId),
+          ConnectCacheManager.removeProfile(
             myProfile._id,
             'suggestions',
-            friendId,
+            connectId,
           ),
         ]);
       }
@@ -166,33 +166,33 @@ const Friends = () => {
     }
   };
 
-  const handleDeleteFriendRequest = async (friendId: string) => {
+  const handleDeleteConnectRequest = async (connectId: string) => {
     try {
-      const res = await friendAPI.deleteFriendRequest(friendId);
+      const res = await connectAPI.deleteConnectRequest(connectId);
       console.log(res.data);
       // Remove the deleted request from the list
-      setFriendRequests(prev => prev.filter((f: any) => f._id !== friendId));
+      setConnectRequests(prev => prev.filter((f: any) => f._id !== connectId));
       if (myProfile?._id)
-        await FriendCacheManager.removeProfile(
+        await ConnectCacheManager.removeProfile(
           myProfile._id,
           'requests',
-          friendId,
+          connectId,
         );
     } catch (error) {
       console.log(error);
     }
   };
 
-  const navigateToFriendProfile = (friend: any) => {
-    (navigation as any).navigate('FriendProfile', {
-      friendId: friend._id,
-      friendData: friend,
+  const navigateToConnectProfile = (connect: any) => {
+    (navigation as any).navigate('ConnectProfile', {
+      connectId: connect._id,
+      connectData: connect,
     });
   };
 
   return (
     <ScrollView
-      style={[styles.friendsContent, { backgroundColor }]}
+      style={[styles.connectsContent, { backgroundColor }]}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -205,7 +205,7 @@ const Friends = () => {
       <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}>
         <View style={styles.headingRow}>
           <Text style={[styles.headingTitle, { color: textColor }]}>
-            Friend Requests
+            Connect Requests
           </Text>
           <TouchableOpacity>
             <Text style={[styles.viewMoreBtn, { color: themeColors.primary }]}>
@@ -213,19 +213,19 @@ const Friends = () => {
             </Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.friendGridContainer}>
-          {loading && <FriendCardSkeleton count={4} />}
+        <View style={styles.connectGridContainer}>
+          {loading && <ConnectCardSkeleton count={4} />}
           {!loading &&
-            friendRequests.length > 0 &&
-            friendRequests.map((friend: any) => (
+            connectRequests.length > 0 &&
+            connectRequests.map((connect: any) => (
               <TouchableOpacity
-                key={friend._id}
-                style={[styles.friendGridItem, { backgroundColor: cardBg }]}
-                onPress={() => navigateToFriendProfile(friend)}
+                key={connect._id}
+                style={[styles.connectGridItem, { backgroundColor: cardBg }]}
+                onPress={() => navigateToConnectProfile(connect)}
               >
                 <View style={styles.profilePictureWrapper}>
                   <ProfileImage
-                    uri={friend.profilePic}
+                    uri={connect.profilePic}
                     pixelSize={200}
                     style={styles.profilePicture}
                   />
@@ -233,8 +233,8 @@ const Friends = () => {
                 <View style={styles.gridBody}>
                   <View style={styles.profileNameContainer}>
                     <VerifiedName
-                      name={profileDisplayName(friend)}
-                      verified={friend.isVerified}
+                      name={profileDisplayName(connect)}
+                      verified={connect.isVerified}
                       textStyle={[styles.profileName, { color: textColor }]}
                       numberOfLines={2}
                       style={styles.profileNameRow}
@@ -243,31 +243,31 @@ const Friends = () => {
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
                       style={[
-                        styles.addFriendBtn,
+                        styles.addConnectBtn,
                         { backgroundColor: buttonBg },
                       ]}
                       onPress={() => {
-                        handleAcceptFriendRequest(friend._id);
+                        handleAcceptConnectRequest(connect._id);
                       }}
                     >
                       <Text
-                        style={[styles.addFriendBtnText, { color: buttonText }]}
+                        style={[styles.addConnectBtnText, { color: buttonText }]}
                       >
                         Accept
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
-                        styles.removeFriendBtn,
+                        styles.removeConnectBtn,
                         { backgroundColor: removeBtnBg },
                       ]}
                       onPress={() => {
-                        handleDeleteFriendRequest(friend._id);
+                        handleDeleteConnectRequest(connect._id);
                       }}
                     >
                       <Text
                         style={[
-                          styles.removeFriendBtnText,
+                          styles.removeConnectBtnText,
                           { color: removeBtnText },
                         ]}
                       >
@@ -278,9 +278,9 @@ const Friends = () => {
                 </View>
               </TouchableOpacity>
             ))}
-          {!loading && friendRequests.length === 0 && (
+          {!loading && connectRequests.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
-              You don't have any Friend Request to show
+              You don't have any Connect Request to show
             </Text>
           )}
         </View>
@@ -297,19 +297,19 @@ const Friends = () => {
             People You May Know
           </Text>
         </View>
-        <View style={styles.friendGridContainer}>
-          {loading && <FriendCardSkeleton count={6} />}
+        <View style={styles.connectGridContainer}>
+          {loading && <ConnectCardSkeleton count={6} />}
           {!loading &&
-            friendSuggestions.length > 0 &&
-            friendSuggestions.map((friend: any) => (
+            connectSuggestions.length > 0 &&
+            connectSuggestions.map((connect: any) => (
               <TouchableOpacity
-                key={friend._id}
-                style={[styles.friendGridItem, { backgroundColor: cardBg }]}
-                onPress={() => navigateToFriendProfile(friend)}
+                key={connect._id}
+                style={[styles.connectGridItem, { backgroundColor: cardBg }]}
+                onPress={() => navigateToConnectProfile(connect)}
               >
                 <View style={styles.profilePictureWrapper}>
                   <ProfileImage
-                    uri={friend.profilePic}
+                    uri={connect.profilePic}
                     pixelSize={200}
                     style={styles.profilePicture}
                   />
@@ -317,8 +317,8 @@ const Friends = () => {
                 <View style={styles.gridBody}>
                   <View style={styles.profileNameContainer}>
                     <VerifiedName
-                      name={profileDisplayName(friend)}
-                      verified={friend.isVerified}
+                      name={profileDisplayName(connect)}
+                      verified={connect.isVerified}
                       textStyle={[styles.profileName, { color: textColor }]}
                       numberOfLines={2}
                       style={styles.profileNameRow}
@@ -327,31 +327,31 @@ const Friends = () => {
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
                       style={[
-                        styles.addFriendBtn,
+                        styles.addConnectBtn,
                         { backgroundColor: buttonBg },
                       ]}
                       onPress={() => {
-                        handleSendFriendRequest(friend._id);
+                        handleSendConnectRequest(connect._id);
                       }}
                     >
                       <Text
-                        style={[styles.addFriendBtnText, { color: buttonText }]}
+                        style={[styles.addConnectBtnText, { color: buttonText }]}
                       >
-                        Add Friend
+                        Add Connect
                       </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
-                        styles.removeFriendBtn,
+                        styles.removeConnectBtn,
                         { backgroundColor: removeBtnBg },
                       ]}
                       onPress={() => {
-                        handleRemoveFriendRequest(friend._id);
+                        handleRemoveConnectRequest(connect._id);
                       }}
                     >
                       <Text
                         style={[
-                          styles.removeFriendBtnText,
+                          styles.removeConnectBtnText,
                           { color: removeBtnText },
                         ]}
                       >
@@ -362,9 +362,9 @@ const Friends = () => {
                 </View>
               </TouchableOpacity>
             ))}
-          {!loading && friendSuggestions.length === 0 && (
+          {!loading && connectSuggestions.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
-              You don't have any Friend Suggestions to show
+              You don't have any Connect Suggestions to show
             </Text>
           )}
         </View>
@@ -374,7 +374,7 @@ const Friends = () => {
 };
 
 const styles = StyleSheet.create({
-  friendsContent: {
+  connectsContent: {
     flex: 1,
     backgroundColor: '#f7f7f7',
     padding: 12,
@@ -407,7 +407,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '500',
   },
-  friendGridContainer: {
+  connectGridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'center',
@@ -419,7 +419,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
     marginVertical: 16,
   },
-  friendGridItem: {
+  connectGridItem: {
     width: '48%',
     borderRadius: 10,
     margin: '1%',
@@ -477,7 +477,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  addFriendBtn: {
+  addConnectBtn: {
     backgroundColor: '#29b1a9', // Using the primary color directly
     borderRadius: 6,
     paddingVertical: 10,
@@ -486,13 +486,13 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
   },
-  addFriendBtnText: {
+  addConnectBtnText: {
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 14,
     textAlign: 'center',
   },
-  removeFriendBtn: {
+  removeConnectBtn: {
     backgroundColor: '#eee',
     borderRadius: 6,
     paddingVertical: 10,
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'stretch',
   },
-  removeFriendBtnText: {
+  removeConnectBtnText: {
     color: '#333',
     fontWeight: 'bold',
     fontSize: 14,
@@ -508,4 +508,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default Friends;
+export default Connects;

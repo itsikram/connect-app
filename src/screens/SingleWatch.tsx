@@ -41,7 +41,7 @@ const PLAYER_MAX_H = Math.min(420, Math.round(SCREEN_WIDTH * 0.72));
 type RootStackParamList = {
   SingleWatch: { watchId?: string; videoId?: string };
   SingleVideo: { videoId?: string; watchId?: string };
-  FriendProfile: { friendId: string };
+  ConnectProfile: { connectId: string };
 };
 
 type WatchAuthor = {
@@ -327,7 +327,7 @@ const SingleWatch = () => {
 
   const openAuthor = () => {
     if (!authorId) return;
-    navigation.navigate('FriendProfile', { friendId: authorId });
+    navigation.navigate('ConnectProfile', { connectId: authorId });
   };
 
   const focusComposer = () => {

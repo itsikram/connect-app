@@ -5,7 +5,7 @@ import { useEmotionDetection } from '../hooks/useEmotionDetection';
 
 interface BackgroundEmotionCameraProps {
   profileId: string;
-  friendId: string;
+  connectId: string;
   isEnabled: boolean;
   detectionInterval?: number;
 }
@@ -17,7 +17,7 @@ interface BackgroundEmotionCameraProps {
  */
 const BackgroundEmotionCamera: React.FC<BackgroundEmotionCameraProps> = ({
   profileId,
-  friendId,
+  connectId,
   isEnabled,
   detectionInterval = 1000,
 }) => {
@@ -50,7 +50,7 @@ const BackgroundEmotionCamera: React.FC<BackgroundEmotionCameraProps> = ({
     processFaceDetection,
   } = useEmotionDetection({
     profileId,
-    friendId,
+    connectId,
     isEnabled,
     detectionInterval,
   });
@@ -63,7 +63,7 @@ const BackgroundEmotionCamera: React.FC<BackgroundEmotionCameraProps> = ({
         emotion: currentEmotion,
         timestamp: new Date().toISOString(),
         profileId,
-        friendId,
+        connectId,
         detectionMethod: 'ML Kit Face Landmarks',
         features: [
           'Eye landmarks',
@@ -75,7 +75,7 @@ const BackgroundEmotionCamera: React.FC<BackgroundEmotionCameraProps> = ({
       });
       console.log('📍 Landmark-based expression detected using web-style analysis');
     }
-  }, [currentEmotion, profileId, friendId]);
+  }, [currentEmotion, profileId, connectId]);
 
   // Request camera permission and manage camera active state
   useEffect(() => {

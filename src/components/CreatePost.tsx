@@ -81,7 +81,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
 
   const audienceOptions: { label: string; value: number; icon: string }[] = [
     { label: 'Public', value: 1, icon: 'public' },
-    { label: 'Friends', value: 2, icon: 'people' },
+    { label: 'Connects', value: 2, icon: 'people' },
     { label: 'Only Me', value: 3, icon: 'lock' },
   ];
 

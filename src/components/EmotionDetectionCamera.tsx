@@ -10,14 +10,14 @@ import { View, Text, StyleSheet } from 'react-native';
 
 interface EmotionDetectionCameraProps {
   profileId: string;
-  friendId: string;
+  connectId: string;
   isEnabled: boolean;
   detectionInterval?: number;
 }
 
 const EmotionDetectionCamera: React.FC<EmotionDetectionCameraProps> = ({
   profileId,
-  friendId,
+  connectId,
   isEnabled,
   detectionInterval = 1000,
 }) => {

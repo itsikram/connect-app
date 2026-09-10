@@ -20,20 +20,20 @@ import {
   CHAT_THEMES,
   QUICK_REACTION_PRESETS,
 } from '../utils/chatThemes';
-import useFriendChatSettings from '../hooks/useFriendChatSettings';
+import useConnectChatSettings from '../hooks/useConnectChatSettings';
 
 interface Props {
   isOpen: boolean;
   onRequestClose: () => void;
-  friendId?: string | null;
-  friendProfile?: any;
+  connectId?: string | null;
+  connectProfile?: any;
 }
 
 const ChatSettingsModal = ({
   isOpen,
   onRequestClose,
-  friendId,
-  friendProfile,
+  connectId,
+  connectProfile,
 }: Props) => {
   const {
     settings,
@@ -41,12 +41,12 @@ const ChatSettingsModal = ({
     wallpaper,
     updateSettings,
     resetSettings,
-  } = useFriendChatSettings(friendId);
+  } = useConnectChatSettings(connectId);
   const [isUploading, setIsUploading] = useState(false);
 
-  const friendName =
-    friendProfile?.fullName ||
-    `${friendProfile?.user?.firstName || ''} ${friendProfile?.user?.surname || ''}`.trim() ||
+  const connectName =
+    connectProfile?.fullName ||
+    `${connectProfile?.user?.firstName || ''} ${connectProfile?.user?.surname || ''}`.trim() ||
     'this chat';
 
   const handleThemeSelect = useCallback(
@@ -119,7 +119,7 @@ const ChatSettingsModal = ({
           <View style={styles.headingRow}>
             <View style={{ flex: 1 }}>
               <Text style={styles.title}>Chat appearance</Text>
-              <Text style={styles.subtitle}>Customize this conversation with {friendName}</Text>
+              <Text style={styles.subtitle}>Customize this conversation with {connectName}</Text>
             </View>
             <TouchableOpacity onPress={onRequestClose} style={styles.closeBtn}>
               <Text style={styles.closeTxt}>Done</Text>
@@ -127,14 +127,14 @@ const ChatSettingsModal = ({
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 32 }}>
-            <View style={styles.friendRow}>
+            <View style={styles.connectRow}>
               <UserPP
-                image={friendProfile?.profilePic}
-                isActive={friendProfile?.isActive}
+                image={connectProfile?.profilePic}
+                isActive={connectProfile?.isActive}
                 size={42}
               />
               <View style={{ marginLeft: 12, flex: 1 }}>
-                <Text style={styles.friendName}>{friendName}</Text>
+                <Text style={styles.connectName}>{connectName}</Text>
                 <Text style={styles.muted}>Settings apply only to this chat</Text>
               </View>
             </View>
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
   subtitle: { color: '#9aa0a6', fontSize: 13, marginTop: 4 },
   closeBtn: { paddingVertical: 6, paddingLeft: 12 },
   closeTxt: { color: '#00d4ff', fontWeight: '700' },
-  friendRow: {
+  connectRow: {
     flexDirection: 'row',
     alignItems: 'center',
     padding: 10,
@@ -346,7 +346,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.04)',
     marginBottom: 16,
   },
-  friendName: { color: '#fff', fontWeight: '600', fontSize: 15 },
+  connectName: { color: '#fff', fontWeight: '600', fontSize: 15 },
   muted: { color: '#8b9198', fontSize: 12, marginTop: 2 },
   sectionLabel: {
     color: '#c5c9ce',

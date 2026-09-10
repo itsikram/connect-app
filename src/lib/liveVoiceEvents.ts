@@ -9,7 +9,7 @@ export const LIVE_VOICE_EVENTS = {
 export type LiveVoiceStartDetail = {
   to: string;
   channelName: string;
-  friendName?: string;
+  connectName?: string;
 };
 
 export type LiveVoiceStatusDetail = {
@@ -33,8 +33,8 @@ export function emitLiveVoiceStatus(detail: LiveVoiceStatusDetail): void {
   DeviceEventEmitter.emit(LIVE_VOICE_EVENTS.STATUS, detail);
 }
 
-export function liveVoiceChannelName(myId?: string | null, friendId?: string | null, room?: string | null): string {
+export function liveVoiceChannelName(myId?: string | null, connectId?: string | null, room?: string | null): string {
   if (room) return String(room);
-  if (!myId || !friendId) return '';
-  return [String(myId), String(friendId)].sort().join('_');
+  if (!myId || !connectId) return '';
+  return [String(myId), String(connectId)].sort().join('_');
 }

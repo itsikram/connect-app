@@ -29,15 +29,15 @@ export const ProfileAboutSkeleton = () => {
     );
 };
 
-export const ProfileFriendsSkeleton = ({ count = 4 }: { count?: number }) => {
+export const ProfileConnectsSkeleton = ({ count = 4 }: { count?: number }) => {
     const { colors } = useTheme();
     return (
-        <View style={styles.friendsGrid}>
+        <View style={styles.connectsGrid}>
             {Array.from({ length: count }).map((_, idx) => (
                 <View
                     key={idx}
                     style={[
-                        styles.friendItem,
+                        styles.connectItem,
                         {
                             backgroundColor: colors.surface.secondary,
                             borderColor: colors.border.secondary,
@@ -229,12 +229,12 @@ const styles = StyleSheet.create({
     detailsRow: {
         alignItems: 'center',
     },
-    friendsGrid: {
+    connectsGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
     },
-    friendItem: {
+    connectItem: {
         width: '48%',
         borderRadius: 10,
         padding: 12,

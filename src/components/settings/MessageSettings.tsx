@@ -130,7 +130,7 @@ const MessageSettings = () => {
 
       <SettingsSwitchRow
         label="Show Typing"
-        help="Show your typing indicator to friends before you send a message"
+        help="Show your typing indicator to connects before you send a message"
         value={showIsTyping}
         onValueChange={handleShowTypingChange}
         disabled={isUpdating}

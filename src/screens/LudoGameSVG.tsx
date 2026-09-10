@@ -23,7 +23,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import { useSocket } from '../contexts/SocketContext';
-import api, { friendAPI } from '../lib/api';
+import api, { connectAPI } from '../lib/api';
 import config from '../lib/config';
 import { RootState } from '../store';
 import ProfileImage from '../components/ProfileImage';
@@ -72,7 +72,7 @@ import {
 import { PlayerSelectionModal } from '../lib/ludo/PlayerSelectionModal';
 import { PlayerEditorModal } from '../lib/ludo/PlayerEditorModal';
 import { useLudoAudio } from '../lib/ludo/useLudoAudio';
-import type { FriendUser, GameSnapshot, LudoInvite, Player } from '../lib/ludo/types';
+import type { ConnectUser, GameSnapshot, LudoInvite, Player } from '../lib/ludo/types';
 
 const CONNECT_LOGO = require('../assets/images/logo.png');
 
@@ -111,16 +111,16 @@ const LudoGameSVG = () => {
   const [consecutiveSixes, setConsecutiveSixes] = useState<Record<number, number>>({});
   const [onlineMode, setOnlineMode] = useState(false);
   const [playWithComputer, setPlayWithComputer] = useState(false);
-  const [selectedFriends, setSelectedFriends] = useState<FriendUser[]>([]);
-  const [friendSearchQuery, setFriendSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<FriendUser[]>([]);
+  const [selectedConnects, setSelectedConnects] = useState<ConnectUser[]>([]);
+  const [connectSearchQuery, setConnectSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<ConnectUser[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [friendList, setFriendList] = useState<FriendUser[]>([]);
+  const [connectList, setConnectList] = useState<ConnectUser[]>([]);
   const [gameId, setGameId] = useState<string | null>(null);
   const [myPlayerIndex, setMyPlayerIndex] = useState(0);
   const [waitingForPlayers, setWaitingForPlayers] = useState(false);
-  const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState<Record<string, string>>({});
-  const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState<Record<string, number>>({});
+  const [invitedStatusByConnectId, setInvitedStatusByConnectId] = useState<Record<string, string>>({});
+  const [invitedSlotByConnectId, setInvitedSlotByConnectId] = useState<Record<string, number>>({});
   const [incomingInviteRequest, setIncomingInviteRequest] = useState<LudoInvite | null>(null);
   const [diceSpin, setDiceSpin] = useState(0);
   const { soundsEnabled, playSound, toggleSounds } = useLudoAudio();
@@ -196,12 +196,12 @@ const LudoGameSVG = () => {
 
   const initializeGame = useCallback((
     playerCount = selectedPlayerCount,
-    friends: FriendUser[] = selectedFriends,
+    friends: ConnectUser[] = selectedConnects,
   ) => {
     const newPlayers: Player[] = [];
     for (let i = 0; i < playerCount; i++) {
       const boardSeatIndex = getBoardSeatIndex(i, playerCount);
-      const friend = i > 0 ? friends[i - 1] : undefined;
+      const connect = i > 0 ? friends[i - 1] : undefined;
       const pieces = Array.from({ length: 4 }).map((_, j) => ({
         id: j,
         color: COLORS[boardSeatIndex],
@@ -215,16 +215,16 @@ const LudoGameSVG = () => {
         name:
           i === 0
             ? myProfile?.fullName || 'You'
-            : friend?.fullName || PLAYER_NAMES[boardSeatIndex],
+            : connect?.fullName || PLAYER_NAMES[boardSeatIndex],
         color: COLORS[boardSeatIndex],
         pieces,
         isActive: i === 0,
-        avatar: i === 0 ? myProfile?.profilePic : friend?.profilePic,
+        avatar: i === 0 ? myProfile?.profilePic : connect?.profilePic,
         cover:
           i === 0
             ? myProfile?.coverPic || (myProfile as any)?.cover
-            : friend?.coverPic || friend?.cover,
-        profileId: i === 0 ? myProfile?._id || 'local' : friend?._id,
+            : connect?.coverPic || connect?.cover,
+        profileId: i === 0 ? myProfile?._id || 'local' : connect?._id,
       });
     }
     playersRef.current = newPlayers;
@@ -233,26 +233,26 @@ const LudoGameSVG = () => {
     for (let i = 0; i < playerCount; i++) sixes[i] = 0;
     setConsecutiveSixes(sixes);
     consecutiveSixesRef.current = sixes;
-  }, [selectedPlayerCount, selectedFriends, myProfile]);
+  }, [selectedPlayerCount, selectedConnects, myProfile]);
 
   useEffect(() => {
     if (!gameStartedRef.current) {
-      initializeGame(selectedPlayerCount, selectedFriends);
+      initializeGame(selectedPlayerCount, selectedConnects);
     }
-    // Only rebuild seats when the player count changes. Friend assigns update seats directly.
+    // Only rebuild seats when the player count changes. Connect assigns update seats directly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedPlayerCount]);
 
   useEffect(() => {
     if ((showPlayerSelection || showPlayerEditor) && myProfile?._id) {
-      friendAPI.getFriendList(myProfile._id)
-        .then((res) => setFriendList(Array.isArray(res.data) ? res.data : []))
-        .catch(() => setFriendList([]));
+      connectAPI.getConnectList(myProfile._id)
+        .then((res) => setConnectList(Array.isArray(res.data) ? res.data : []))
+        .catch(() => setConnectList([]));
     }
   }, [showPlayerSelection, showPlayerEditor, myProfile?._id]);
 
-  const onChangeFriendSearch = (text: string) => {
-    setFriendSearchQuery(text);
+  const onChangeConnectSearch = (text: string) => {
+    setConnectSearchQuery(text);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     if (!text || text.trim().length < 2) {
       setSearchResults([]);
@@ -965,21 +965,21 @@ const LudoGameSVG = () => {
     return null;
   }, [players, selectedPlayerCount]);
 
-  const assignFriendOffline = (friend: FriendUser) => {
+  const assignConnectOffline = (connect: ConnectUser) => {
     const slot = getNextOpenSlot();
     if (slot == null) return;
     setPlayers((prev) => {
       const copy = clonePlayers(prev);
       if (!copy[slot]) return prev;
-      copy[slot].name = friend.fullName || copy[slot].name;
-      copy[slot].avatar = friend.profilePic;
-      copy[slot].cover = friend.coverPic || friend.cover;
-      copy[slot].profileId = friend._id;
+      copy[slot].name = connect.fullName || copy[slot].name;
+      copy[slot].avatar = connect.profilePic;
+      copy[slot].cover = connect.coverPic || connect.cover;
+      copy[slot].profileId = connect._id;
       copy[slot].isBot = false;
       playersRef.current = copy;
       return copy;
     });
-    setSelectedFriends((prev) => (prev.some((p) => p._id === friend._id) ? prev : [...prev, friend]));
+    setSelectedConnects((prev) => (prev.some((p) => p._id === connect._id) ? prev : [...prev, connect]));
   };
 
   const closePlayerEditor = () => {
@@ -999,25 +999,25 @@ const LudoGameSVG = () => {
     playSound('buttonClick');
   };
 
-  const assignFriendToSlot = (friend: FriendUser, slotIndex: number) => {
-    if (!friend?._id || typeof slotIndex !== 'number' || slotIndex < 0) return;
+  const assignConnectToSlot = (connect: ConnectUser, slotIndex: number) => {
+    if (!connect?._id || typeof slotIndex !== 'number' || slotIndex < 0) return;
     setPlayers((prev) => {
       const copy = clonePlayers(prev);
       if (!copy[slotIndex]) return prev;
-      copy[slotIndex].name = friend.fullName || copy[slotIndex].name;
-      copy[slotIndex].avatar = friend.profilePic || copy[slotIndex].avatar;
-      copy[slotIndex].cover = friend.coverPic || friend.cover || copy[slotIndex].cover;
-      copy[slotIndex].profileId = friend._id;
+      copy[slotIndex].name = connect.fullName || copy[slotIndex].name;
+      copy[slotIndex].avatar = connect.profilePic || copy[slotIndex].avatar;
+      copy[slotIndex].cover = connect.coverPic || connect.cover || copy[slotIndex].cover;
+      copy[slotIndex].profileId = connect._id;
       copy[slotIndex].isBot = false;
       copy[slotIndex].isActive = true;
       copy[slotIndex].isOffline = false;
       playersRef.current = copy;
       return copy;
     });
-    setSelectedFriends((prev) => {
-      const already = prev.some((p) => String(p?._id) === String(friend._id));
+    setSelectedConnects((prev) => {
+      const already = prev.some((p) => String(p?._id) === String(connect._id));
       if (already) return prev;
-      return [...prev, friend].slice(0, Math.max(0, selectedPlayerCount - 1));
+      return [...prev, connect].slice(0, Math.max(0, selectedPlayerCount - 1));
     });
   };
 
@@ -1067,18 +1067,18 @@ const LudoGameSVG = () => {
     playersRef.current = nextPlayers;
     setPlayers(nextPlayers);
     if (replacedProfileId) {
-      setInvitedStatusByFriendId((prev) => {
+      setInvitedStatusByConnectId((prev) => {
         const next = { ...prev };
         delete next[replacedProfileId];
         return next;
       });
-      setInvitedSlotByFriendId((prev) => {
+      setInvitedSlotByConnectId((prev) => {
         const next = { ...prev };
         delete next[replacedProfileId];
         return next;
       });
-      setSelectedFriends((prev) =>
-        prev.filter((friend) => String(friend?._id || '') !== replacedProfileId),
+      setSelectedConnects((prev) =>
+        prev.filter((connect) => String(connect?._id || '') !== replacedProfileId),
       );
     }
     if (onlineMode && hadActiveGameId && activeGameId) {
@@ -1110,7 +1110,7 @@ const LudoGameSVG = () => {
       const origin = String(config.SOCKET_BASE_URL || '').replace(/\/$/, '');
       const url = `${origin}/?ludoInvite=${encodeURIComponent(token)}`;
       const result = await Share.share({
-        message: `${myProfile?.fullName || 'A friend'} invited you to play Ludo on Connect.\n${url}`,
+        message: `${myProfile?.fullName || 'A connect'} invited you to play Ludo on Connect.\n${url}`,
         url,
         title: 'Ludo Invitation',
       });
@@ -1140,8 +1140,8 @@ const LudoGameSVG = () => {
     closePlayerEditor();
   };
 
-  const inviteFriend = (friend: FriendUser) => {
-    if (!friend?._id) return;
+  const inviteConnect = (connect: ConnectUser) => {
+    if (!connect?._id) return;
     setOnlineMode(true);
     const gid = newGameDraftIdRef.current || generateGameId();
     newGameDraftIdRef.current = gid;
@@ -1152,18 +1152,18 @@ const LudoGameSVG = () => {
     setPlayers((prev) => {
       const copy = clonePlayers(prev);
       if (!copy[slot]) return prev;
-      copy[slot].name = friend.fullName || copy[slot].name;
-      copy[slot].avatar = friend.profilePic;
-      copy[slot].cover = friend.coverPic || friend.cover;
+      copy[slot].name = connect.fullName || copy[slot].name;
+      copy[slot].avatar = connect.profilePic;
+      copy[slot].cover = connect.coverPic || connect.cover;
       copy[slot].isBot = false;
       playersRef.current = copy;
       return copy;
     });
-    setInvitedStatusByFriendId((prev) => ({ ...prev, [String(friend._id)]: 'invited' }));
-    setInvitedSlotByFriendId((prev) => ({ ...prev, [String(friend._id)]: slot }));
-    setSelectedFriends((prev) => (prev.some((p) => p._id === friend._id) ? prev : [...prev, friend]));
+    setInvitedStatusByConnectId((prev) => ({ ...prev, [String(connect._id)]: 'invited' }));
+    setInvitedSlotByConnectId((prev) => ({ ...prev, [String(connect._id)]: slot }));
+    setSelectedConnects((prev) => (prev.some((p) => p._id === connect._id) ? prev : [...prev, connect]));
     emit('ludo:invite', {
-      to: friend._id,
+      to: connect._id,
       gameId: gid,
       by: myProfile?._id,
       from: myProfile?._id,
@@ -1215,8 +1215,8 @@ const LudoGameSVG = () => {
       if (playWithComputer && !onlineMode) {
         for (let i = 1; i < next.length; i++) {
           const seat = next[i];
-          const hasHumanFriend = isHumanLudoProfileId(seat?.profileId);
-          if (!hasHumanFriend) {
+          const hasHumanConnect = isHumanLudoProfileId(seat?.profileId);
+          if (!hasHumanConnect) {
             next[i] = { ...seat, name: `Computer ${i}`, isBot: true, profileId: `bot-${i}` };
           }
         }
@@ -1230,8 +1230,8 @@ const LudoGameSVG = () => {
     if (onlineMode && myProfile?._id && newOnlineGameId) {
       setWaitingForPlayers(true);
       emit('ludo:join', { gameId: newOnlineGameId });
-      selectedFriends.forEach((f, idx) => {
-        const slot = invitedSlotByFriendId[String(f._id)] ?? idx + 1;
+      selectedConnects.forEach((f, idx) => {
+        const slot = invitedSlotByConnectId[String(f._id)] ?? idx + 1;
         emit('ludo:invite', {
           to: f._id,
           gameId: newOnlineGameId,
@@ -1272,9 +1272,9 @@ const LudoGameSVG = () => {
     setWaitingForPlayers(false);
     setCanRollDice(false);
     setShowWinnerModal(false);
-    setSelectedFriends([]);
-    setInvitedStatusByFriendId({});
-    setInvitedSlotByFriendId({});
+    setSelectedConnects([]);
+    setInvitedStatusByConnectId({});
+    setInvitedSlotByConnectId({});
     initializeGame(selectedPlayerCount, []);
     setShowPlayerSelection(true);
   };
@@ -1322,7 +1322,7 @@ const LudoGameSVG = () => {
       gameId: payload.gameId,
       slotIndex: payload.slotIndex,
       by: myProfile?._id,
-      friend: {
+      connect: {
         fullName: myProfile?.fullName,
         profilePic: myProfile?.profilePic,
         coverPic: myProfile?.coverPic,
@@ -1509,10 +1509,10 @@ const LudoGameSVG = () => {
         editName={editName}
         editAvatarUrl={editAvatarUrl}
         inviteCopied={inviteCopied}
-        friendSearchQuery={friendSearchQuery}
+        connectSearchQuery={connectSearchQuery}
         loadingSearch={loadingSearch}
         searchResults={searchResults}
-        friendList={friendList}
+        connectList={connectList}
         canReplaceWithComputer={
           myPlayerIndex === 0 &&
           Number(editingPlayerIndex) > 0 &&
@@ -1522,8 +1522,8 @@ const LudoGameSVG = () => {
         }
         onNameChange={setEditName}
         onAvatarUrlChange={setEditAvatarUrl}
-        onFriendSearchChange={onChangeFriendSearch}
-        onAssignFriendToSlot={assignFriendToSlot}
+        onConnectSearchChange={onChangeConnectSearch}
+        onAssignConnectToSlot={assignConnectToSlot}
         onReplaceWithComputer={() => replacePlayerWithBot(editingPlayerIndex)}
         onCopyInviteLink={copyInviteLink}
         onPlaySound={playSound}
@@ -1536,12 +1536,12 @@ const LudoGameSVG = () => {
         selectedPlayerCount={selectedPlayerCount}
         onlineMode={onlineMode}
         playWithComputer={playWithComputer}
-        friendSearchQuery={friendSearchQuery}
+        connectSearchQuery={connectSearchQuery}
         loadingSearch={loadingSearch}
         searchResults={searchResults}
-        friendList={friendList}
-        selectedFriends={selectedFriends}
-        invitedStatusByFriendId={invitedStatusByFriendId}
+        connectList={connectList}
+        selectedConnects={selectedConnects}
+        invitedStatusByConnectId={invitedStatusByConnectId}
         players={players}
         myProfile={myProfile}
         onPlayerCountChange={setSelectedPlayerCount}
@@ -1559,15 +1559,15 @@ const LudoGameSVG = () => {
             return next;
           });
         }}
-        onFriendSearchChange={onChangeFriendSearch}
-        onFriendSelect={(f, isSelected) => {
-          setSelectedFriends((prev) => {
+        onConnectSearchChange={onChangeConnectSearch}
+        onConnectSelect={(f, isSelected) => {
+          setSelectedConnects((prev) => {
             if (isSelected) return prev.filter((p) => p._id !== f._id);
             return [...prev, f].slice(0, Math.max(0, selectedPlayerCount - 1));
           });
         }}
-        onInviteFriend={inviteFriend}
-        onAssignFriendOffline={assignFriendOffline}
+        onInviteConnect={inviteConnect}
+        onAssignConnectOffline={assignConnectOffline}
         onGetNextOpenSlot={getNextOpenSlot}
         onCancel={() => {
           setShowPlayerSelection(false);

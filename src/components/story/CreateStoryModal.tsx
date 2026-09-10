@@ -22,7 +22,7 @@ const FALLBACK_BG = 'linear-gradient(135deg, #00D4FF 0%, #6366F1 100%)';
 
 const AUDIENCE_OPTIONS = [
   { id: 1, icon: 'public', title: 'Public', desc: 'Anyone can see this story' },
-  { id: 2, icon: 'people', title: 'Friends', desc: 'Only your friends can see this' },
+  { id: 2, icon: 'people', title: 'Connects', desc: 'Only your connects can see this' },
   { id: 3, icon: 'lock', title: 'Only Me', desc: 'Only you can see this story' },
 ] as const;
 

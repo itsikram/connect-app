@@ -72,7 +72,7 @@ import { useSocket } from '../contexts/SocketContext';
 import moment from 'moment';
 import * as ImagePicker from 'expo-image-picker';
 import * as Clipboard from 'expo-clipboard';
-import api, { friendAPI } from '../lib/api';
+import api, { connectAPI } from '../lib/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 // Background TTS service removed for Expo compatibility
 import { CameraView, Camera } from 'expo-camera';
@@ -97,7 +97,7 @@ import {
   LIVE_VOICE_EVENTS,
   type LiveVoiceStatusDetail,
 } from '../lib/liveVoiceEvents';
-import useFriendChatSettings from '../hooks/useFriendChatSettings';
+import useConnectChatSettings from '../hooks/useConnectChatSettings';
 import { isRomanticMessage, QUICK_REACTION_PRESETS } from '../utils/chatThemes';
 import ChatSettingsModal from '../components/ChatSettingsModal';
 import LoveEmojiRain from '../components/LoveEmojiRain';
@@ -439,18 +439,18 @@ const SingleMessage = () => {
   const route: any = useRoute();
   const navigation: any = useNavigation();
   const dispatch = useDispatch<AppDispatch>();
-  const friend: any =
-    route && route.params && route.params.friend ? route.params.friend : null;
+  const connect: any =
+    route && route.params && route.params.connect ? route.params.connect : null;
   const myProfile = useSelector((state: RootState) => state.profile);
-  const activeFriends = useSelector(
-    (state: RootState) => state.presence.activeFriends,
+  const activeConnects = useSelector(
+    (state: RootState) => state.presence.activeConnects,
   );
   const lastSeenMap = useSelector(
     (state: RootState) => (state as any).presence?.lastSeen || {},
   );
   const [room, setRoom] = useState('');
   const {
-    connect,
+    connect: socketConnect,
     isConnected,
     emit,
     on,
@@ -471,32 +471,32 @@ const SingleMessage = () => {
     theme: chatTheme,
     wallpaper,
     updateSettings: updateChatAppearance,
-  } = useFriendChatSettings(friend?._id);
+  } = useConnectChatSettings(connect?._id);
   const [loveRainBurst, setLoveRainBurst] = useState(0);
   const lastLoveRainRef = useRef(0);
   const chatThemeRef = useRef(chatTheme);
   const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const CHAT_BG_STORAGE_KEY = '@chat_background_image';
-  const getMessagesStorageKey = (profileId: string, friendId: string) =>
-    `@chat_messages_${profileId}_${friendId}`;
+  const getMessagesStorageKey = (profileId: string, connectId: string) =>
+    `@chat_messages_${profileId}_${connectId}`;
 
   useEffect(() => {
     chatThemeRef.current = chatTheme;
   }, [chatTheme]);
-  const isFriendOnline = React.useMemo(() => {
+  const isConnectOnline = React.useMemo(() => {
     try {
-      return !!friend?._id && activeFriends.includes(friend._id);
+      return !!connect?._id && activeConnects.includes(connect._id);
     } catch (_) {
       return false;
     }
-  }, [activeFriends, friend?._id]);
-  const friendLastSeenIso = React.useMemo(() => {
+  }, [activeConnects, connect?._id]);
+  const connectLastSeenIso = React.useMemo(() => {
     try {
-      return friend?._id ? lastSeenMap[friend._id] : undefined;
+      return connect?._id ? lastSeenMap[connect._id] : undefined;
     } catch (_) {
       return undefined;
     }
-  }, [lastSeenMap, friend?._id]);
+  }, [lastSeenMap, connect?._id]);
 
   // Ensure status bar sits above header when this screen is focused
   useFocusEffect(
@@ -943,7 +943,7 @@ const SingleMessage = () => {
 
   // Add state for info menu
   const [infoMenuVisible, setInfoMenuVisible] = useState(false);
-  const [friendLocation, setFriendLocation] = useState<{
+  const [connectLocation, setConnectLocation] = useState<{
     latitude: number;
     longitude: number;
     timestamp: number;
@@ -953,11 +953,11 @@ const SingleMessage = () => {
   const [userInfoData, setUserInfoData] = useState<any>(null);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [chatBackground, setChatBackground] = useState<string | null>(null);
-  const [friendEmotion, setFriendEmotion] = useState<string | null>('');
-  const [friendExpression, setFriendExpression] = useState<string | null>(null); // Store friend's expression
+  const [connectEmotion, setConnectEmotion] = useState<string | null>('');
+  const [connectExpression, setConnectExpression] = useState<string | null>(null); // Store connect's expression
   const [myEmotion, setMyEmotion] = useState<string | null>(null);
   const [isBlocked, setIsBlocked] = useState<boolean>(() =>
-    listHasId(myProfile?.blockedUsers, friend?._id),
+    listHasId(myProfile?.blockedUsers, connect?._id),
   );
 
   // Emotion detection state
@@ -1030,7 +1030,7 @@ const SingleMessage = () => {
     Happy: '😃',
   };
   const [isBlocking, setIsBlocking] = useState<boolean>(false);
-  const [isBlockedByFriend, setIsBlockedByFriend] = useState<boolean>(false);
+  const [isBlockedByConnect, setIsBlockedByConnect] = useState<boolean>(false);
   const [expandedMessageIds, setExpandedMessageIds] = useState<
     Record<string, boolean>
   >({});
@@ -1134,13 +1134,13 @@ const SingleMessage = () => {
   // Helper function to save messages to AsyncStorage
   const saveMessagesToStorage = async (
     profileId: string,
-    friendId: string,
+    connectId: string,
     messagesToSave: Message[],
   ) => {
     try {
       if (
         !profileId ||
-        !friendId ||
+        !connectId ||
         !messagesToSave ||
         messagesToSave.length === 0
       )
@@ -1158,13 +1158,13 @@ const SingleMessage = () => {
         }));
       if (serializedMessages.length === 0) return;
 
-      const storageKey = getMessagesStorageKey(profileId, friendId);
+      const storageKey = getMessagesStorageKey(profileId, connectId);
       await AsyncStorage.setItem(
         storageKey,
         JSON.stringify(serializedMessages),
       );
       console.log(
-        `Saved ${serializedMessages.length} messages to storage for friend ${friendId}`,
+        `Saved ${serializedMessages.length} messages to storage for connect ${connectId}`,
       );
     } catch (error) {
       console.error('Error saving messages to storage:', error);
@@ -1174,16 +1174,16 @@ const SingleMessage = () => {
   // Helper function to load messages from AsyncStorage
   const loadMessagesFromStorage = async (
     profileId: string,
-    friendId: string,
+    connectId: string,
   ): Promise<Message[]> => {
     try {
-      if (!profileId || !friendId) return [];
+      if (!profileId || !connectId) return [];
 
-      const storageKey = getMessagesStorageKey(profileId, friendId);
+      const storageKey = getMessagesStorageKey(profileId, connectId);
       const storedData = await AsyncStorage.getItem(storageKey);
 
       if (!storedData) {
-        console.log(`No stored messages found for friend ${friendId}`);
+        console.log(`No stored messages found for connect ${connectId}`);
         return [];
       }
 
@@ -1198,7 +1198,7 @@ const SingleMessage = () => {
       );
 
       console.log(
-        `Loaded ${deserializedMessages.length} messages from storage for friend ${friendId}`,
+        `Loaded ${deserializedMessages.length} messages from storage for connect ${connectId}`,
       );
       return deserializedMessages;
     } catch (error) {
@@ -1211,14 +1211,14 @@ const SingleMessage = () => {
   const saveTimeoutRef = useRef<any>(null);
   const debouncedSaveMessages = (
     profileId: string,
-    friendId: string,
+    connectId: string,
     messagesToSave: Message[],
   ) => {
     if (saveTimeoutRef.current) {
       clearTimeout(saveTimeoutRef.current);
     }
     saveTimeoutRef.current = setTimeout(() => {
-      saveMessagesToStorage(profileId, friendId, messagesToSave);
+      saveMessagesToStorage(profileId, connectId, messagesToSave);
     }, 500); // Save after 500ms of no changes
   };
 
@@ -1261,17 +1261,17 @@ const SingleMessage = () => {
 
   // Set up room and socket events when both IDs are available
   useEffect(() => {
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
 
-    const newRoom = [friend._id, myProfile._id].sort().join('_');
+    const newRoom = [connect._id, myProfile._id].sort().join('_');
     setRoom(newRoom);
 
     // Only emit and set up listeners if socket is connected
     if (isConnected) {
-      emit('startChat', { user1: myProfile._id, user2: friend._id });
+      emit('startChat', { user1: myProfile._id, user2: connect._id });
       emit('joinRoom', newRoom);
       try {
-        checkUserActive(friend._id, myProfile._id);
+        checkUserActive(connect._id, myProfile._id);
       } catch (_) {}
 
       // Set up room joined listener
@@ -1293,7 +1293,7 @@ const SingleMessage = () => {
       };
     }
   }, [
-    friend?._id,
+    connect?._id,
     myProfile?._id,
     isConnected,
     emit,
@@ -1310,46 +1310,46 @@ const SingleMessage = () => {
         ? currentProfile.blockedUsers
         : [];
       const alreadyBlocked = listHasId(current, id);
-      const isCurrentFriend = String(id) === String(friend?._id);
+      const isCurrentConnect = String(id) === String(connect?._id);
       if (shouldBlock === alreadyBlocked) {
-        if (isCurrentFriend) setIsBlocked(shouldBlock);
+        if (isCurrentConnect) setIsBlocked(shouldBlock);
         return;
       }
       const next = shouldBlock
         ? [...current, id]
         : current.filter((item: any) => String(item) !== String(id));
-      if (isCurrentFriend) setIsBlocked(shouldBlock);
+      if (isCurrentConnect) setIsBlocked(shouldBlock);
       dispatch(updateProfileField({ field: 'blockedUsers', value: next }));
     },
-    [dispatch, friend?._id],
+    [dispatch, connect?._id],
   );
 
   useEffect(() => {
-    if (!friend?._id) {
+    if (!connect?._id) {
       setIsBlocked(false);
       return;
     }
-    setIsBlocked(listHasId(myProfile?.blockedUsers, friend._id));
-  }, [friend?._id, myProfile?.blockedUsers]);
+    setIsBlocked(listHasId(myProfile?.blockedUsers, connect._id));
+  }, [connect?._id, myProfile?.blockedUsers]);
 
   const refreshBlockStatus = useCallback(
     async (isStillActive: () => boolean = () => true) => {
-      if (!friend?._id || !myProfile?._id) return;
+      if (!connect?._id || !myProfile?._id) return;
 
       try {
-        const response = await friendAPI.getBlockStatus(friend._id);
+        const response = await connectAPI.getBlockStatus(connect._id);
         if (!isStillActive()) return;
         if (response.status === 200 && response.data) {
           const iBlocked = Boolean(response.data.iBlocked);
           const blockedMe = Boolean(response.data.blockedMe);
           setIsBlocked(iBlocked);
-          setIsBlockedByFriend(blockedMe);
+          setIsBlockedByConnect(blockedMe);
           const currentBlocked = listHasId(
             profileRef.current?.blockedUsers,
-            friend._id,
+            connect._id,
           );
           if (currentBlocked !== iBlocked) {
-            patchMyBlockedUsers(iBlocked, friend._id);
+            patchMyBlockedUsers(iBlocked, connect._id);
           }
           return;
         }
@@ -1362,14 +1362,14 @@ const SingleMessage = () => {
         if (!isStillActive()) return;
         const blockedUsers = response.data?.blockedUsers;
         if (response.status === 200 && Array.isArray(blockedUsers)) {
-          const isUserBlocked = listHasId(blockedUsers, friend._id);
+          const isUserBlocked = listHasId(blockedUsers, connect._id);
           const currentBlocked = listHasId(
             profileRef.current?.blockedUsers,
-            friend._id,
+            connect._id,
           );
           setIsBlocked(isUserBlocked);
           if (currentBlocked !== isUserBlocked) {
-            patchMyBlockedUsers(isUserBlocked, friend._id);
+            patchMyBlockedUsers(isUserBlocked, connect._id);
           }
         }
       } catch (error) {
@@ -1377,34 +1377,34 @@ const SingleMessage = () => {
       }
 
       try {
-        const response = await api.get(`/profile?profileId=${friend._id}`);
+        const response = await api.get(`/profile?profileId=${connect._id}`);
         if (!isStillActive()) return;
         if (
           response.status === 200 &&
           Array.isArray(response.data?.blockedUsers)
         ) {
-          setIsBlockedByFriend(
+          setIsBlockedByConnect(
             listHasId(response.data.blockedUsers, myProfile._id),
           );
         }
       } catch (error) {
-        console.error('Error checking if blocked by friend:', error);
+        console.error('Error checking if blocked by connect:', error);
       }
     },
-    [friend?._id, myProfile?._id, patchMyBlockedUsers],
+    [connect?._id, myProfile?._id, patchMyBlockedUsers],
   );
 
   const fetchChatHistory = useCallback(
     async (
       profileId: string,
-      friendIdArg: string,
+      connectIdArg: string,
       limit = MESSAGES_PER_PAGE,
     ) => {
       try {
         const response = await api.get('/message/getChatHistory', {
           params: {
             profileId,
-            friendId: friendIdArg,
+            friendId: connectIdArg,
             limit,
           },
         });
@@ -1429,7 +1429,7 @@ const SingleMessage = () => {
   const fetchOldMessages = useCallback(
     async (
       profileId: string,
-      friendIdArg: string,
+      connectIdArg: string,
       beforeTimestamp: string,
       limit = MESSAGES_PER_PAGE,
     ) => {
@@ -1440,7 +1440,7 @@ const SingleMessage = () => {
         const response = await api.get('/message/getOldMessages', {
           params: {
             profileId,
-            friendId: friendIdArg,
+            friendId: connectIdArg,
             beforeTimestamp,
             limit,
           },
@@ -1484,7 +1484,7 @@ const SingleMessage = () => {
   // Load cached latest page immediately, then fetch the same window the web chat uses.
   useFocusEffect(
     React.useCallback(() => {
-      if (!friend?._id || !myProfile?._id) return;
+      if (!connect?._id || !myProfile?._id) return;
 
       let cancelled = false;
       setMessages([]);
@@ -1506,7 +1506,7 @@ const SingleMessage = () => {
         try {
           const storedMessages = await loadMessagesFromStorage(
             myProfile._id,
-            friend._id,
+            connect._id,
           );
           if (cancelled) return;
 
@@ -1525,7 +1525,7 @@ const SingleMessage = () => {
 
           const response = await fetchChatHistory(
             myProfile._id,
-            friend._id,
+            connect._id,
             MESSAGES_PER_PAGE,
           );
           if (cancelled) return;
@@ -1551,19 +1551,19 @@ const SingleMessage = () => {
       return () => {
         cancelled = true;
       };
-    }, [friend?._id, myProfile?._id, fetchChatHistory]),
+    }, [connect?._id, myProfile?._id, fetchChatHistory]),
   );
 
   // Keep the cache warm for live messages and call-event messages as well as HTTP loads.
   useEffect(() => {
-    if (!friend?._id || messages.length === 0) return;
-    debouncedSaveMessages(myProfile?._id, friend._id, messages);
+    if (!connect?._id || messages.length === 0) return;
+    debouncedSaveMessages(myProfile?._id, connect._id, messages);
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
       }
     };
-  }, [messages, friend?._id, myProfile?._id]);
+  }, [messages, connect?._id, myProfile?._id]);
 
   // Listen for incoming messages via socket
   useEffect(() => {
@@ -1583,7 +1583,7 @@ const SingleMessage = () => {
       console.log('New message received:', messageData);
       let updatedMessage = messageData?.updatedMessage || messageData;
       if (!updatedMessage) return;
-      if (!isConversationMessage(updatedMessage, myProfile?._id, friend?._id))
+      if (!isConversationMessage(updatedMessage, myProfile?._id, connect?._id))
         return;
 
       pendingFollowLatestRef.current = true;
@@ -1631,7 +1631,7 @@ const SingleMessage = () => {
       messagesRef.current = nextMessages;
       setMessages(nextMessages);
       // Persist live data immediately so the next screen mount can render it before HTTP returns.
-      void saveMessagesToStorage(myProfile?._id, friend._id, nextMessages);
+      void saveMessagesToStorage(myProfile?._id, connect._id, nextMessages);
 
       if (newMessage.tempId) {
         setPendingMessages(prev =>
@@ -1639,7 +1639,7 @@ const SingleMessage = () => {
         );
       }
 
-      if (String(newMessage.senderId) === String(friend?._id)) {
+      if (String(newMessage.senderId) === String(connect?._id)) {
         const currentTheme = chatThemeRef.current;
         if (currentTheme?.loveRain && isRomanticMessage(newMessage.message)) {
           const now = Date.now();
@@ -1652,7 +1652,7 @@ const SingleMessage = () => {
 
       dispatch(
         addNewMessage({
-          chatId: friend?._id,
+          chatId: connect?._id,
           message: serializableMessage,
           currentUserId: myProfile?._id,
         }),
@@ -1663,7 +1663,7 @@ const SingleMessage = () => {
       if (String(typingData?.receiverId) !== String(myProfile?._id)) return;
       if (
         typingData?.senderId &&
-        String(typingData.senderId) !== String(friend?._id)
+        String(typingData.senderId) !== String(connect?._id)
       )
         return;
 
@@ -1714,7 +1714,7 @@ const SingleMessage = () => {
       const updated = payload?.message || payload;
       if (
         !updated?._id ||
-        !isConversationMessage(updated, myProfile?._id, friend?._id)
+        !isConversationMessage(updated, myProfile?._id, connect?._id)
       )
         return;
       const reacts = normalizeMessageReactions(
@@ -1732,16 +1732,16 @@ const SingleMessage = () => {
     const handleEmotionChange = (payload: any) => {
       try {
         if (!payload) return;
-        // Only apply if the event is for this friend (when profileId provided)
+        // Only apply if the event is for this connect (when profileId provided)
         if (
           payload?.profileId &&
-          String(payload.profileId) !== String(friend?._id)
+          String(payload.profileId) !== String(connect?._id)
         )
           return;
 
         if (typeof payload === 'string') {
-          setFriendEmotion(payload);
-          setFriendExpression(null);
+          setConnectEmotion(payload);
+          setConnectExpression(null);
           return;
         }
         if (typeof payload === 'object') {
@@ -1751,23 +1751,23 @@ const SingleMessage = () => {
           const display = emotionText
             ? `${emoji} ${emotionText}`.trim()
             : emotion || emoji;
-          setFriendEmotion(display || '');
+          setConnectEmotion(display || '');
           // Also store expression if available
           if (payload.expression) {
             if (payload.expression !== 'none') {
-              setFriendExpression(payload.expression);
+              setConnectExpression(payload.expression);
               console.log(
                 '[SingleMessage] ✅ Setting expression:',
                 payload.expression,
               );
             } else {
-              setFriendExpression(null);
+              setConnectExpression(null);
               console.log(
                 '[SingleMessage] ℹ️ Expression is "none", clearing display',
               );
             }
           } else {
-            setFriendExpression(null);
+            setConnectExpression(null);
             console.log(
               '[SingleMessage] ⚠️ No expression in emotion_change event',
             );
@@ -1784,23 +1784,23 @@ const SingleMessage = () => {
 
     on('emotion_change', handleEmotionChange);
 
-    // Handle friend location updates
-    const handleFriendLocationUpdate = (data: any) => {
-      const { profileId: friendProfileId, location } = data;
-      if (friendProfileId && location && friendProfileId === friend?._id) {
+    // Handle connect location updates
+    const handleConnectLocationUpdate = (data: any) => {
+      const { profileId: connectProfileId, location } = data;
+      if (connectProfileId && location && connectProfileId === connect?._id) {
         console.log(
-          '📍 Friend location update received in SingleMessage:',
-          friendProfileId,
+          '📍 Connect location update received in SingleMessage:',
+          connectProfileId,
           location,
         );
-        setFriendLocation({
+        setConnectLocation({
           latitude: location.latitude,
           longitude: location.longitude,
           timestamp: location.timestamp || Date.now(),
         });
       }
     };
-    on('friend_location_update', handleFriendLocationUpdate);
+    on('friend_location_update', handleConnectLocationUpdate);
 
     const handleMessageSeenRest = (data: any) => {
       handleSeenMessage(data);
@@ -1848,7 +1848,7 @@ const SingleMessage = () => {
       off('messageReactionUpdated', handleReactionUpdate);
       off('previousMessages', handlePreviousMessages);
       off('emotion_change', handleEmotionChange);
-      off('friend_location_update', handleFriendLocationUpdate);
+      off('friend_location_update', handleConnectLocationUpdate);
       off('deleteMessage', handleDeleteMessage);
       off('speak_message', handleSpeakMessage);
       off('speak-message', handleSpeakMessage);
@@ -1857,7 +1857,7 @@ const SingleMessage = () => {
         incomingTypingTimeoutRef.current = null;
       }
     };
-  }, [isConnected, myProfile?._id, friend?._id, on, off]);
+  }, [isConnected, myProfile?._id, connect?._id, on, off]);
 
   // Emotion detection integration with Python server
   useEffect(() => {
@@ -1868,8 +1868,8 @@ const SingleMessage = () => {
       isShareEmotionType: typeof settings.isShareEmotion,
       hasProfileId: !!myProfile?._id,
       profileId: myProfile?._id,
-      hasFriendId: !!friend?._id,
-      friendId: friend?._id,
+      hasConnectId: !!connect?._id,
+      connectId: connect?._id,
       isCallActive,
       hasCameraDevice: !!cameraDevice,
       isCameraPermissionGranted,
@@ -1884,7 +1884,7 @@ const SingleMessage = () => {
     }
 
     // Guard check: validate IDs before proceeding
-    const currentFriendId = friend?._id;
+    const currentConnectId = connect?._id;
     const currentProfileId = myProfile?._id;
 
     if (!currentProfileId) {
@@ -1912,9 +1912,9 @@ const SingleMessage = () => {
       return;
     }
 
-    if (!currentFriendId) {
+    if (!currentConnectId) {
       console.log(
-        '[SingleMessage] ⏸️ Emotion detection disabled - no friendId',
+        '[SingleMessage] ⏸️ Emotion detection disabled - no connectId',
       );
       // Clean up if conditions not met
       setIsCameraActive(prev => (prev ? false : prev));
@@ -1970,14 +1970,14 @@ const SingleMessage = () => {
     if (
       typeof currentProfileId !== 'string' ||
       currentProfileId.length === 0 ||
-      typeof currentFriendId !== 'string' ||
-      currentFriendId.length === 0
+      typeof currentConnectId !== 'string' ||
+      currentConnectId.length === 0
     ) {
       console.warn('[SingleMessage] ⚠️ Invalid IDs for emotion detection:', {
         profileId: currentProfileId || 'missing',
         profileIdType: typeof currentProfileId,
-        friendId: currentFriendId || 'missing',
-        friendIdType: typeof currentFriendId,
+        friendId: currentConnectId || 'missing',
+        connectIdType: typeof currentConnectId,
       });
       return;
     }
@@ -1988,8 +1988,8 @@ const SingleMessage = () => {
     console.log(
       '[SingleMessage] 📋 ProfileId:',
       currentProfileId,
-      'FriendId:',
-      currentFriendId,
+      'ConnectId:',
+      currentConnectId,
     );
 
     const initializeEmotionServerSocket = async () => {
@@ -2184,7 +2184,7 @@ const SingleMessage = () => {
               ...context,
             },
           );
-          await connect(profileId);
+          await socketConnect(profileId);
         }
 
         console.log(
@@ -2233,11 +2233,11 @@ const SingleMessage = () => {
         error: data?.error,
       });
 
-      // Use friend?._id directly (same as web version uses friendProfile?._id)
-      const currentFriendId = friend?._id;
-      if (!currentFriendId) {
+      // Use connect?._id directly (same as web version uses connectProfile?._id)
+      const currentConnectId = connect?._id;
+      if (!currentConnectId) {
         console.warn(
-          '[SingleMessage] ⚠️ No friendId available, skipping emotion response',
+          '[SingleMessage] ⚠️ No connectId available, skipping emotion response',
         );
         return;
       }
@@ -2275,10 +2275,10 @@ const SingleMessage = () => {
             confidence,
           });
           const profileId = myProfile?._id;
-          if (shareFaceModeEnabledRef.current && profileId && currentFriendId) {
-            console.log('[SingleMessage] 📤 Forwarding expression to friend', {
+          if (shareFaceModeEnabledRef.current && profileId && currentConnectId) {
+            console.log('[SingleMessage] 📤 Forwarding expression to connect', {
               profileId,
-              friendId: currentFriendId,
+              friendId: currentConnectId,
               emotion: `${emoji} ${label}`,
               expression: action,
               confidence,
@@ -2290,13 +2290,13 @@ const SingleMessage = () => {
                 emotion: `${emoji} ${label}`,
                 emotionText: label,
                 emoji,
-                friendId: currentFriendId,
+                friendId: currentConnectId,
                 confidence,
                 quality: confidence,
                 expression: action,
               },
               {
-                friendId: currentFriendId,
+                friendId: currentConnectId,
                 expression: action,
               },
             );
@@ -2308,7 +2308,7 @@ const SingleMessage = () => {
                   ? 'emotion sharing disabled'
                   : !profileId
                   ? 'missing profileId'
-                  : 'missing friendId',
+                  : 'missing connectId',
                 label,
               },
             );
@@ -2418,11 +2418,11 @@ const SingleMessage = () => {
         if (
           shareFaceModeEnabledRef.current &&
           currentProfileId &&
-          currentFriendId
+          currentConnectId
         ) {
-          console.log('[SingleMessage] 📤 Forwarding emotion to friend', {
+          console.log('[SingleMessage] 📤 Forwarding emotion to connect', {
             profileId: currentProfileId,
-            friendId: currentFriendId,
+            friendId: currentConnectId,
             emotion: `${emoji} ${label}`,
             expression: dominantExpression,
             confidence,
@@ -2444,7 +2444,7 @@ const SingleMessage = () => {
                 emotion: `${emoji} ${label}`,
                 emotionText: label,
                 emoji,
-                friendId: currentFriendId,
+                friendId: currentConnectId,
                 confidence: Math.round(confidence * 100) / 100, // Use current frame confidence for immediate emission
                 quality: Math.round(confidence * 100) / 100,
                 // Include expression data
@@ -2462,12 +2462,12 @@ const SingleMessage = () => {
                 emotionScores: latestExpressionData.allEmotions || {},
               },
               {
-                friendId: currentFriendId,
+                friendId: currentConnectId,
                 expression: latestExpressionData.dominantExpression || 'none',
               },
             );
             console.log(
-              `[SingleMessage] 📤 ⚡ FAST Emotion & Expression emitted immediately to friendId: ${currentFriendId}`,
+              `[SingleMessage] 📤 ⚡ FAST Emotion & Expression emitted immediately to friendId: ${currentConnectId}`,
               {
                 emotion: `${emoji} ${label}`,
                 expression: latestExpressionData.dominantExpression || 'none',
@@ -2490,7 +2490,7 @@ const SingleMessage = () => {
                 ? 'emotion sharing disabled'
                 : !currentProfileId
                 ? 'missing profileId'
-                : 'missing friendId',
+                : 'missing connectId',
               label,
             },
           );
@@ -2555,11 +2555,11 @@ const SingleMessage = () => {
         return; // Skip if request already in flight
       }
 
-      // Use friend?._id directly (same as web version)
-      const currentFriendId = friend?._id;
-      if (!currentFriendId) {
+      // Use connect?._id directly (same as web version)
+      const currentConnectId = connect?._id;
+      if (!currentConnectId) {
         console.warn(
-          '[SingleMessage] Cannot detect emotion - friendId not available',
+          '[SingleMessage] Cannot detect emotion - connectId not available',
         );
         return;
       }
@@ -2784,25 +2784,25 @@ const SingleMessage = () => {
       emotionDetectionIntervalRef.current = setInterval(async () => {
         detectionStatsRef.current.intervalTicks += 1;
         logDetectionProgress('interval');
-        const currentFriendId = friend?._id;
+        const currentConnectId = connect?._id;
         const currentProfileId = myProfile?._id;
 
-        // Guard check: stop detection if profileId or friendId become unavailable
+        // Guard check: stop detection if profileId or connectId become unavailable
         if (
           !currentProfileId ||
           typeof currentProfileId !== 'string' ||
           currentProfileId.length === 0 ||
-          !currentFriendId ||
-          typeof currentFriendId !== 'string' ||
-          currentFriendId.length === 0
+          !currentConnectId ||
+          typeof currentConnectId !== 'string' ||
+          currentConnectId.length === 0
         ) {
           console.warn(
             '[SingleMessage] ⚠️ Stopping emotion detection - invalid IDs:',
             {
               profileId: currentProfileId || 'missing',
               profileIdType: typeof currentProfileId,
-              friendId: currentFriendId || 'missing',
-              friendIdType: typeof currentFriendId,
+              friendId: currentConnectId || 'missing',
+              connectIdType: typeof currentConnectId,
             },
           );
           if (emotionDetectionIntervalRef.current) {
@@ -2921,7 +2921,7 @@ const SingleMessage = () => {
         return;
       }
 
-      const currentFriendId = friend?._id;
+      const currentConnectId = connect?._id;
       const currentProfileId = myProfile?._id;
 
       // Don't start detection if we don't have required IDs
@@ -2929,17 +2929,17 @@ const SingleMessage = () => {
         !currentProfileId ||
         typeof currentProfileId !== 'string' ||
         currentProfileId.length === 0 ||
-        !currentFriendId ||
-        typeof currentFriendId !== 'string' ||
-        currentFriendId.length === 0
+        !currentConnectId ||
+        typeof currentConnectId !== 'string' ||
+        currentConnectId.length === 0
       ) {
         console.warn(
           '[SingleMessage] ⚠️ Not starting emotion detection - invalid IDs:',
           {
             profileId: currentProfileId || 'missing',
             profileIdType: typeof currentProfileId,
-            friendId: currentFriendId || 'missing',
-            friendIdType: typeof currentFriendId,
+            friendId: currentConnectId || 'missing',
+            connectIdType: typeof currentConnectId,
           },
         );
         return;
@@ -3063,7 +3063,7 @@ const SingleMessage = () => {
         '[SingleMessage] ✅ Starting server-side emotion detection with profileId:',
         currentProfileId,
         'friendId:',
-        currentFriendId,
+        currentConnectId,
       );
       console.log('[SingleMessage] 📊 Detection will start in 600ms intervals');
 
@@ -3132,7 +3132,7 @@ const SingleMessage = () => {
   }, [
     shareFaceModeEnabled,
     myProfile?._id,
-    friend?._id,
+    connect?._id,
     isCallActive,
     shouldUseCamera,
     isCameraPermissionGranted,
@@ -3210,10 +3210,10 @@ const SingleMessage = () => {
 
   // Realtime block/unblock listeners and blocked message notice
   useEffect(() => {
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
 
     const myId = String(myProfile._id);
-    const friendId = String(friend._id);
+    const connectId = String(connect._id);
 
     const handleUserBlocked = ({
       by,
@@ -3233,8 +3233,8 @@ const SingleMessage = () => {
       by: string;
       target: string;
     }) => {
-      if (String(by) === friendId && String(target) === myId) {
-        setIsBlockedByFriend(true);
+      if (String(by) === connectId && String(target) === myId) {
+        setIsBlockedByConnect(true);
       }
     };
     const handleUserUnblocked = ({
@@ -3255,8 +3255,8 @@ const SingleMessage = () => {
       by: string;
       target: string;
     }) => {
-      if (String(by) === friendId && String(target) === myId) {
-        setIsBlockedByFriend(false);
+      if (String(by) === connectId && String(target) === myId) {
+        setIsBlockedByConnect(false);
       }
     };
     const handleMessageBlocked = ({
@@ -3266,7 +3266,7 @@ const SingleMessage = () => {
       receiverId: string;
       reason: string;
     }) => {
-      if (String(receiverId) === friendId) {
+      if (String(receiverId) === connectId) {
         try {
           Alert.alert(
             'Message not sent',
@@ -3289,7 +3289,7 @@ const SingleMessage = () => {
       off('unblockedByUser', handleUnblockedByUser);
       off('message_blocked', handleMessageBlocked);
     };
-  }, [friend?._id, myProfile?._id, on, off, patchMyBlockedUsers]);
+  }, [connect?._id, myProfile?._id, on, off, patchMyBlockedUsers]);
 
   // Tab bar hiding is now handled at the app level in App.tsx
 
@@ -3308,10 +3308,10 @@ const SingleMessage = () => {
       refreshBlockStatus(() => isActive);
 
       // Mark messages as read when screen is focused
-      if (friend?._id && myProfile?._id) {
+      if (connect?._id && myProfile?._id) {
         dispatch(
           markMessagesAsRead({
-            chatId: friend._id,
+            chatId: connect._id,
             currentUserId: myProfile._id,
           }),
         );
@@ -3345,7 +3345,7 @@ const SingleMessage = () => {
         clearTimeout(t2);
       };
     }, [
-      friend?._id,
+      connect?._id,
       myProfile?._id,
       dispatch,
       shareFaceModeEnabled,
@@ -3413,12 +3413,12 @@ const SingleMessage = () => {
   // Inverted list already opens on the latest message; only unlock pagination after layout.
   useEffect(() => {
     if (hasInitialScrolledRef.current) return;
-    if (!friend?._id || messages.length === 0 || isInitialLoading) return;
+    if (!connect?._id || messages.length === 0 || isInitialLoading) return;
     scrollToBottom(false);
     const t = setTimeout(() => markInitialScrolled(), 300);
     return () => clearTimeout(t);
   }, [
-    friend?._id,
+    connect?._id,
     messages.length,
     isInitialLoading,
     scrollToBottom,
@@ -3455,7 +3455,7 @@ const SingleMessage = () => {
     try {
       dispatch(
         markMessagesAsRead({
-          chatId: friend?._id,
+          chatId: connect?._id,
           currentUserId: myProfile?._id,
         }),
       );
@@ -3477,18 +3477,18 @@ const SingleMessage = () => {
     } catch (_) {}
   };
 
-  // Mirror web: after messages update, if the last message is from friend, emit seen after a delay
+  // Mirror web: after messages update, if the last message is from connect, emit seen after a delay
   useEffect(() => {
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
     if (!messages || messages.length === 0) return;
     const last = messages[messages.length - 1];
     if (!last) return;
-    if (last.senderId === friend._id && !last.isSeen) {
+    if (last.senderId === connect._id && !last.isSeen) {
       const t = setTimeout(() => emitSeenFor(last), 2000);
       return () => clearTimeout(t);
     }
     return;
-  }, [messages, friend?._id, myProfile?._id, isConnected]);
+  }, [messages, connect?._id, myProfile?._id, isConnected]);
 
   // Emit seen when received messages become visible on screen
   const onViewableItemsChanged = useRef(
@@ -3505,7 +3505,7 @@ const SingleMessage = () => {
         viewableItems.forEach(v => {
           const item = v?.item;
           if (!item) return;
-          if (item.senderId === friend?._id && !item.isSeen) {
+          if (item.senderId === connect?._id && !item.isSeen) {
             emitSeenFor(item);
           }
         });
@@ -3540,17 +3540,17 @@ const SingleMessage = () => {
     const messageType = overrides?.messageType || 'text';
     if ((!messageContent && !attachment) || !isConnected || isUploading) return;
     if (isSendingRef.current) return;
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
 
     stopTranscriptionRef.current?.({ discard: true });
 
-    const roomId = room || [myProfile._id, friend._id].sort().join('_');
+    const roomId = room || [myProfile._id, connect._id].sort().join('_');
     isSendingRef.current = true;
     const tempId = `temp-${Date.now()}-${Math.random()}`;
     const pendingMessage: Message = {
       _id: tempId,
       message: messageContent,
-      receiverId: friend._id,
+      receiverId: connect._id,
       senderId: myProfile._id,
       room: roomId,
       attachment: attachment || undefined,
@@ -3582,7 +3582,7 @@ const SingleMessage = () => {
     const payload = {
       room: roomId,
       senderId: myProfile._id,
-      receiverId: friend._id,
+      receiverId: connect._id,
       message: messageContent,
       attachment: attachment || false,
       parent: replyingTo?._id || false,
@@ -3671,12 +3671,12 @@ const SingleMessage = () => {
     }
     if (isTypingOutgoingRef.current) {
       const roomId =
-        room || [myProfile?._id, friend?._id].filter(Boolean).sort().join('_');
+        room || [myProfile?._id, connect?._id].filter(Boolean).sort().join('_');
       emit('typing', {
         room: roomId,
         isTyping: false,
         type: '',
-        receiverId: friend?._id,
+        receiverId: connect?._id,
         senderId: myProfile?._id,
       });
       isTypingOutgoingRef.current = false;
@@ -3700,12 +3700,12 @@ const SingleMessage = () => {
       if (shouldEmit) {
         const roomId =
           room ||
-          [myProfile?._id, friend?._id].filter(Boolean).sort().join('_');
+          [myProfile?._id, connect?._id].filter(Boolean).sort().join('_');
         emit('typing', {
           room: roomId,
           isTyping: true,
           type: value.trim(),
-          receiverId: friend?._id,
+          receiverId: connect?._id,
           senderId: myProfile?._id,
         });
         lastTypingEmitRef.current = now;
@@ -3784,15 +3784,15 @@ const SingleMessage = () => {
       return;
     }
 
-    const friendId = friend?._id;
-    if (!friendId) {
-      console.warn('Speak failed: friend has no id');
+    const connectId = connect?._id;
+    if (!connectId) {
+      console.warn('Speak failed: connect has no id');
       return;
     }
 
     emit('speak_message', {
       msgId: String(msgId),
-      friendId: String(friendId),
+      friendId: String(connectId),
       senderId: String(myProfile?._id || ''),
       message: msg.message || '',
       attachment: typeof msg.attachment === 'string' ? msg.attachment : '',
@@ -3846,11 +3846,11 @@ const SingleMessage = () => {
   };
 
   const deleteConversation = async () => {
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
 
     Alert.alert(
       'Delete conversation',
-      `Delete this conversation with ${friend?.fullName || 'this friend'}?`,
+      `Delete this conversation with ${connect?.fullName || 'this connect'}?`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -3860,12 +3860,12 @@ const SingleMessage = () => {
             try {
               await api.post('/message/deleteConversation', {
                 profileId: myProfile._id,
-                friendId: friend._id,
+                connectId: connect._id,
               });
 
               dispatch(
                 removeConversation({
-                  friendId: friend._id,
+                  connectId: connect._id,
                   currentUserId: myProfile._id,
                 }),
               );
@@ -4009,35 +4009,35 @@ const SingleMessage = () => {
 
   // Handle video call
   const handleVideoCall = () => {
-    if (!friend?._id || !myProfile?._id) {
+    if (!connect?._id || !myProfile?._id) {
       Alert.alert('Error', 'Unable to start call. Please try again.');
       return;
     }
 
-    const channelName = `${myProfile._id}-${friend._id}`;
+    const channelName = `${myProfile._id}-${connect._id}`;
     emitStartVideoCall({
-      to: String(friend._id),
+      to: String(connect._id),
       channelName,
-      callerName: friend.fullName,
-      callerProfilePic: friend.profilePic,
+      callerName: connect.fullName,
+      callerProfilePic: connect.profilePic,
     });
-    startVideoCall(String(friend._id), channelName);
+    startVideoCall(String(connect._id), channelName);
   };
 
   const handleAudioCall = () => {
-    if (!friend?._id || !myProfile?._id) {
+    if (!connect?._id || !myProfile?._id) {
       Alert.alert('Error', 'Unable to start call. Please try again.');
       return;
     }
 
-    const channelName = `${myProfile._id}-${friend._id}`;
+    const channelName = `${myProfile._id}-${connect._id}`;
     emitStartAudioCall({
-      to: String(friend._id),
+      to: String(connect._id),
       channelName,
-      callerName: friend.fullName,
-      callerProfilePic: friend.profilePic,
+      callerName: connect.fullName,
+      callerProfilePic: connect.profilePic,
     });
-    startAudioCall(String(friend._id), channelName);
+    startAudioCall(String(connect._id), channelName);
   };
 
   // Handle live voice transfer — same event protocol as web ChatFooter
@@ -4046,22 +4046,22 @@ const SingleMessage = () => {
       emitStopLiveVoice();
       return;
     }
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
     if (isRecording || isUploadingAudio || isLiveVoiceConnecting) return;
 
-    const channelName = liveVoiceChannelName(myProfile._id, friend._id, room);
+    const channelName = liveVoiceChannelName(myProfile._id, connect._id, room);
     if (!channelName) return;
 
     setIsLiveVoiceConnecting(true);
     emitStartLiveVoice({
-      to: String(friend._id),
+      to: String(connect._id),
       channelName,
-      friendName: friend?.fullName || friend?.user?.firstName || 'Friend',
+      connectName: connect?.fullName || connect?.user?.firstName || 'Connect',
     });
   }, [
-    friend?._id,
-    friend?.fullName,
-    friend?.user?.firstName,
+    connect?._id,
+    connect?.fullName,
+    connect?.user?.firstName,
     isLiveVoiceConnecting,
     isRecording,
     isUploadingAudio,
@@ -4075,7 +4075,7 @@ const SingleMessage = () => {
       (detail: LiveVoiceStatusDetail) => {
         const peerId = detail?.peerId;
         const isThisChat =
-          !peerId || !friend?._id || String(peerId) === String(friend._id);
+          !peerId || !connect?._id || String(peerId) === String(connect._id);
         if (!isThisChat) {
           if (isLiveVoiceActiveRef.current) {
             isLiveVoiceActiveRef.current = false;
@@ -4090,18 +4090,18 @@ const SingleMessage = () => {
       },
     );
     return () => sub.remove();
-  }, [friend?._id]);
+  }, [connect?._id]);
 
   // Block/Unblock functionality
   const handleBlockUser = useCallback(async () => {
-    if (!friend?._id || !myProfile?._id || isBlocking) return;
+    if (!connect?._id || !myProfile?._id || isBlocking) return;
 
     try {
       setIsBlocking(true);
-      const response = await friendAPI.blockUser(friend._id);
+      const response = await connectAPI.blockUser(connect._id);
 
       if (response.status === 200) {
-        patchMyBlockedUsers(true, friend._id);
+        patchMyBlockedUsers(true, connect._id);
         setOptionMenuVisible(false);
       } else {
         Alert.alert('Error', 'Failed to block user. Please try again.');
@@ -4112,17 +4112,17 @@ const SingleMessage = () => {
     } finally {
       setIsBlocking(false);
     }
-  }, [friend?._id, myProfile?._id, isBlocking, patchMyBlockedUsers]);
+  }, [connect?._id, myProfile?._id, isBlocking, patchMyBlockedUsers]);
 
   const handleUnblockUser = useCallback(async () => {
-    if (!friend?._id || !myProfile?._id || isBlocking) return;
+    if (!connect?._id || !myProfile?._id || isBlocking) return;
 
     try {
       setIsBlocking(true);
-      const response = await friendAPI.unblockUser(friend._id);
+      const response = await connectAPI.unblockUser(connect._id);
 
       if (response.status === 200) {
-        patchMyBlockedUsers(false, friend._id);
+        patchMyBlockedUsers(false, connect._id);
         setOptionMenuVisible(false);
       } else {
         Alert.alert('Error', 'Failed to unblock user. Please try again.');
@@ -4133,46 +4133,46 @@ const SingleMessage = () => {
     } finally {
       setIsBlocking(false);
     }
-  }, [friend?._id, myProfile?._id, isBlocking, patchMyBlockedUsers]);
+  }, [connect?._id, myProfile?._id, isBlocking, patchMyBlockedUsers]);
 
   const openUserInfo = useCallback(async () => {
-    if (!friend?._id) return;
+    if (!connect?._id) return;
     setOptionMenuVisible(false);
     setInfoMenuVisible(true);
     setLoadingUserInfo(true);
     try {
-      const res = await api.get(`/profile?profileId=${friend._id}`);
+      const res = await api.get(`/profile?profileId=${connect._id}`);
       if (res.status === 200) {
         setUserInfoData(res.data);
         if (
           res.data?.lastLocation?.latitude &&
           res.data?.lastLocation?.longitude
         ) {
-          setFriendLocation({
+          setConnectLocation({
             latitude: res.data.lastLocation.latitude,
             longitude: res.data.lastLocation.longitude,
             timestamp: res.data.lastLocation.timestamp || Date.now(),
           });
         } else {
-          setFriendLocation(null);
+          setConnectLocation(null);
         }
       }
     } catch (error) {
       console.error('Error fetching user info:', error);
-      setUserInfoData(friend);
-      if (friend?.lastLocation?.latitude && friend?.lastLocation?.longitude) {
-        setFriendLocation({
-          latitude: friend.lastLocation.latitude,
-          longitude: friend.lastLocation.longitude,
-          timestamp: friend.lastLocation.timestamp || Date.now(),
+      setUserInfoData(connect);
+      if (connect?.lastLocation?.latitude && connect?.lastLocation?.longitude) {
+        setConnectLocation({
+          latitude: connect.lastLocation.latitude,
+          longitude: connect.lastLocation.longitude,
+          timestamp: connect.lastLocation.timestamp || Date.now(),
         });
       } else {
-        setFriendLocation(null);
+        setConnectLocation(null);
       }
     } finally {
       setLoadingUserInfo(false);
     }
-  }, [friend]);
+  }, [connect]);
 
   const uploadImageAsset = async (asset: {
     uri: string;
@@ -4501,7 +4501,7 @@ const SingleMessage = () => {
   );
 
   const loadOldMessages = useCallback(async () => {
-    if (!friend?._id || !myProfile?._id) return;
+    if (!connect?._id || !myProfile?._id) return;
     if (!hasMoreMessagesRef.current) return;
     if (!hasInitialScrolledRef.current) return;
     if (loadingOlderRef.current || isInitialLoadingRef.current) return;
@@ -4518,7 +4518,7 @@ const SingleMessage = () => {
     try {
       const response = await fetchOldMessages(
         myProfile._id,
-        friend._id,
+        connect._id,
         beforeTimestamp,
         MESSAGES_PER_PAGE,
       );
@@ -4558,7 +4558,7 @@ const SingleMessage = () => {
       loadingOlderRef.current = false;
       setIsLoadingOldMessages(false);
     }
-  }, [friend?._id, myProfile?._id, fetchOldMessages]);
+  }, [connect?._id, myProfile?._id, fetchOldMessages]);
 
   const handleScroll = useCallback(
     (event: any) => {
@@ -4751,8 +4751,8 @@ const SingleMessage = () => {
             {!isMyMessage && (
               <View style={{ marginRight: 8, marginBottom: 2 }}>
                 <UserPP
-                  image={friend?.profilePic}
-                  isActive={isFriendOnline}
+                  image={connect?.profilePic}
+                  isActive={isConnectOnline}
                   size={36}
                 />
               </View>
@@ -4834,7 +4834,7 @@ const SingleMessage = () => {
                       >
                         {String(item.parent.senderId) === String(myProfile?._id)
                           ? 'You'
-                          : friend?.fullName || 'Reply'}
+                          : connect?.fullName || 'Reply'}
                       </Text>
                       <Text
                         numberOfLines={1}
@@ -5167,8 +5167,8 @@ const SingleMessage = () => {
         }}
       >
         <UserPP
-          image={friend?.profilePic}
-          isActive={isFriendOnline}
+          image={connect?.profilePic}
+          isActive={isConnectOnline}
           size={36}
         />
         <View
@@ -5205,7 +5205,7 @@ const SingleMessage = () => {
         transform: [{ scaleY: -1 }],
       }}
     >
-      <UserPP image={friend?.profilePic} isActive={isFriendOnline} size={88} />
+      <UserPP image={connect?.profilePic} isActive={isConnectOnline} size={88} />
       <Text
         style={{
           color: '#FFFFFF',
@@ -5215,7 +5215,7 @@ const SingleMessage = () => {
           textAlign: 'center',
         }}
       >
-        {friend?.fullName || 'This user'}
+        {connect?.fullName || 'This user'}
       </Text>
       <Text
         style={{
@@ -5250,7 +5250,7 @@ const SingleMessage = () => {
   };
 
   const renderBlockedMessage = () => {
-    if (!isBlockedByFriend) return null;
+    if (!isBlockedByConnect) return null;
 
     return (
       <View
@@ -5285,7 +5285,7 @@ const SingleMessage = () => {
               marginLeft: 8,
             }}
           >
-            {friend?.fullName || 'This user'} blocked you
+            {connect?.fullName || 'This user'} blocked you
           </Text>
         </View>
         <Text
@@ -5337,7 +5337,7 @@ const SingleMessage = () => {
               marginLeft: 8,
             }}
           >
-            You blocked {friend?.fullName || 'this user'}
+            You blocked {connect?.fullName || 'this user'}
           </Text>
         </View>
         <Text
@@ -5354,8 +5354,8 @@ const SingleMessage = () => {
     );
   };
 
-  // Show full skeletons if no friend or profile data
-  if (!friend?._id || !myProfile?._id) {
+  // Show full skeletons if no connect or profile data
+  if (!connect?._id || !myProfile?._id) {
     return (
       <View
         style={{ flex: 1, backgroundColor: themeColors.background.primary }}
@@ -5415,8 +5415,8 @@ const SingleMessage = () => {
             }}
           >
             <UserPP
-              image={friend?.profilePic}
-              isActive={isFriendOnline}
+              image={connect?.profilePic}
+              isActive={isConnectOnline}
               size={35}
             />
 
@@ -5430,7 +5430,7 @@ const SingleMessage = () => {
                 numberOfLines={1}
                 ellipsizeMode="tail"
               >
-                {friend?.fullName || 'Friend'}
+                {connect?.fullName || 'Connect'}
               </Text>
               <View style={{ marginTop: 1 }}>
                 {isTyping ? (
@@ -5442,32 +5442,32 @@ const SingleMessage = () => {
                       ? typingMessage
                       : 'typing...'}
                   </Text>
-                ) : friendEmotion ? (
+                ) : connectEmotion ? (
                   <Text
                     style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}
                     numberOfLines={1}
                   >
                     <Text style={{ fontSize: 18 }}>
-                      {friendEmotion.split(' ')[0]}
+                      {connectEmotion.split(' ')[0]}
                     </Text>{' '}
-                    {friendEmotion.split(' ').slice(1).join(' ')}
-                    {friendExpression && friendExpression !== 'none'
-                      ? `  •  ${friendExpression}`
+                    {connectEmotion.split(' ').slice(1).join(' ')}
+                    {connectExpression && connectExpression !== 'none'
+                      ? `  •  ${connectExpression}`
                       : ''}
-                    {formatHeaderLastSeen(friendLastSeenIso)
+                    {formatHeaderLastSeen(connectLastSeenIso)
                       ? `  |  Last Seen: ${formatHeaderLastSeen(
-                          friendLastSeenIso,
+                          connectLastSeenIso,
                         )}`
                       : ''}
                   </Text>
-                ) : formatHeaderLastSeen(friendLastSeenIso) ? (
+                ) : formatHeaderLastSeen(connectLastSeenIso) ? (
                   <Text
                     style={{ fontSize: 12, color: 'rgba(255,255,255,0.72)' }}
                     numberOfLines={1}
                   >
-                    Last Seen: {formatHeaderLastSeen(friendLastSeenIso)}
+                    Last Seen: {formatHeaderLastSeen(connectLastSeenIso)}
                   </Text>
-                ) : isFriendOnline ? (
+                ) : isConnectOnline ? (
                   <Text
                     style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}
                   >
@@ -6443,8 +6443,8 @@ const SingleMessage = () => {
                 }}
               >
                 <UserPP
-                  image={friend?.profilePic}
-                  isActive={isFriendOnline}
+                  image={connect?.profilePic}
+                  isActive={isConnectOnline}
                   size={50}
                 />
                 <View style={{ marginLeft: 12, flex: 1 }}>
@@ -6455,7 +6455,7 @@ const SingleMessage = () => {
                       color: themeColors.text.primary,
                     }}
                   >
-                    {friend?.fullName || 'Friend'}
+                    {connect?.fullName || 'Connect'}
                   </Text>
                   <Text
                     style={{
@@ -6464,7 +6464,7 @@ const SingleMessage = () => {
                       marginTop: 2,
                     }}
                   >
-                    {friend?.isActive ? 'Online' : 'Away'}
+                    {connect?.isActive ? 'Online' : 'Away'}
                   </Text>
                 </View>
               </View>
@@ -6485,8 +6485,8 @@ const SingleMessage = () => {
                   }}
                   onPress={() => {
                     setOptionMenuVisible(false);
-                    navigation.navigate('FriendProfile', {
-                      friendId: friend?._id,
+                    navigation.navigate('ConnectProfile', {
+                      friendId: connect?._id,
                     });
                   }}
                 >
@@ -6520,7 +6520,7 @@ const SingleMessage = () => {
                         marginTop: 2,
                       }}
                     >
-                      See {friend?.fullName?.split(' ')[0]}'s profile
+                      See {connect?.fullName?.split(' ')[0]}'s profile
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -6619,7 +6619,7 @@ const SingleMessage = () => {
                         marginTop: 2,
                       }}
                     >
-                      View {friend?.fullName?.split(' ')[0] || 'contact'}{' '}
+                      View {connect?.fullName?.split(' ')[0] || 'contact'}{' '}
                       details
                     </Text>
                   </View>
@@ -6637,7 +6637,7 @@ const SingleMessage = () => {
                   onPress={() => {
                     setOptionMenuVisible(false);
                     emit('bump', {
-                      friendProfile: friend?._id,
+                      friendProfile: connect?._id,
                       myProfile: myProfile?._id,
                     });
                   }}
@@ -6676,7 +6676,7 @@ const SingleMessage = () => {
                         marginTop: 2,
                       }}
                     >
-                      Nudge {friend?.fullName?.split(' ')[0] || 'them'}
+                      Nudge {connect?.fullName?.split(' ')[0] || 'them'}
                     </Text>
                   </View>
                 </TouchableOpacity>
@@ -6858,7 +6858,7 @@ const SingleMessage = () => {
                     if (isBlocked) {
                       Alert.alert(
                         'Unblock',
-                        `Are you sure you want to unblock ${friend?.fullName}?`,
+                        `Are you sure you want to unblock ${connect?.fullName}?`,
                         [
                           { text: 'Cancel', style: 'cancel' },
                           {
@@ -6871,7 +6871,7 @@ const SingleMessage = () => {
                     } else {
                       Alert.alert(
                         'Block',
-                        `Are you sure you want to block ${friend?.fullName}?`,
+                        `Are you sure you want to block ${connect?.fullName}?`,
                         [
                           { text: 'Cancel', style: 'cancel' },
                           {
@@ -7005,7 +7005,7 @@ const SingleMessage = () => {
                   }}
                   onPress={() => {
                     setOptionMenuVisible(false);
-                    Alert.alert('Report', `Report ${friend?.fullName}?`, [
+                    Alert.alert('Report', `Report ${connect?.fullName}?`, [
                       { text: 'Cancel', style: 'cancel' },
                       {
                         text: 'Report',
@@ -7164,7 +7164,7 @@ const SingleMessage = () => {
                       <View style={{ position: 'relative', marginBottom: 15 }}>
                         <ProfileImage
                           uri={
-                            userInfoData?.profilePic || friend?.profilePic || ''
+                            userInfoData?.profilePic || connect?.profilePic || ''
                           }
                           pixelSize={200}
                           style={{
@@ -7175,7 +7175,7 @@ const SingleMessage = () => {
                             borderColor: themeColors.primary + '50',
                           }}
                         />
-                        {isFriendOnline && (
+                        {isConnectOnline && (
                           <View
                             style={{
                               position: 'absolute',
@@ -7200,9 +7200,9 @@ const SingleMessage = () => {
                         }}
                       >
                         {userInfoData?.fullName ||
-                          friend?.fullName ||
-                          (friend?.user?.firstName && friend?.user?.surname
-                            ? `${friend.user.firstName} ${friend.user.surname}`
+                          connect?.fullName ||
+                          (connect?.user?.firstName && connect?.user?.surname
+                            ? `${connect.user.firstName} ${connect.user.surname}`
                             : 'Unknown User')}
                       </Text>
                       <View
@@ -7210,7 +7210,7 @@ const SingleMessage = () => {
                           paddingHorizontal: 16,
                           paddingVertical: 6,
                           borderRadius: 20,
-                          backgroundColor: isFriendOnline
+                          backgroundColor: isConnectOnline
                             ? '#4CAF5020'
                             : themeColors.gray[100],
                         }}
@@ -7219,12 +7219,12 @@ const SingleMessage = () => {
                           style={{
                             fontSize: 13,
                             fontWeight: '500',
-                            color: isFriendOnline
+                            color: isConnectOnline
                               ? '#4CAF50'
                               : themeColors.text.secondary,
                           }}
                         >
-                          {isFriendOnline ? 'Online' : 'Offline'}
+                          {isConnectOnline ? 'Online' : 'Offline'}
                         </Text>
                       </View>
                     </View>
@@ -7277,11 +7277,11 @@ const SingleMessage = () => {
                                 marginBottom: 6,
                               }}
                             >
-                              {friendLocation
+                              {connectLocation
                                 ? 'Current Location'
                                 : 'Last Location'}
                             </Text>
-                            {friendLocation ? (
+                            {connectLocation ? (
                               <Text
                                 style={{
                                   fontSize: 14,
@@ -7290,8 +7290,8 @@ const SingleMessage = () => {
                                   marginBottom: 4,
                                 }}
                               >
-                                {friendLocation.latitude.toFixed(6)},{' '}
-                                {friendLocation.longitude.toFixed(6)}
+                                {connectLocation.latitude.toFixed(6)},{' '}
+                                {connectLocation.longitude.toFixed(6)}
                               </Text>
                             ) : (
                               <Text
@@ -7303,15 +7303,15 @@ const SingleMessage = () => {
                               >
                                 {userInfoData?.presentAddress ||
                                   userInfoData?.permanentAddress ||
-                                  friend?.presentAddress ||
-                                  friend?.permanentAddress ||
+                                  connect?.presentAddress ||
+                                  connect?.permanentAddress ||
                                   'Not available'}
                               </Text>
                             )}
-                            {friendLocation && (
+                            {connectLocation && (
                               <TouchableOpacity
                                 onPress={() => {
-                                  const url = `https://www.google.com/maps?q=${friendLocation.latitude},${friendLocation.longitude}`;
+                                  const url = `https://www.google.com/maps?q=${connectLocation.latitude},${connectLocation.longitude}`;
                                   Linking.openURL(url).catch(err =>
                                     console.error('Error opening maps:', err),
                                   );
@@ -7338,7 +7338,7 @@ const SingleMessage = () => {
                             )}
                           </View>
                         </View>
-                        {friendLocation && (
+                        {connectLocation && (
                           <View
                             style={{
                               height: 200,
@@ -7363,13 +7363,13 @@ const SingleMessage = () => {
                                                                 <body>
                                                                     <div id="map"></div>
                                                                     <script>
-                                                                        var map = L.map('map').setView([${friendLocation.latitude}, ${friendLocation.longitude}], 15);
+                                                                        var map = L.map('map').setView([${connectLocation.latitude}, ${connectLocation.longitude}], 15);
                                                                         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                                                                             attribution: '© OpenStreetMap contributors',
                                                                             maxZoom: 19
                                                                         }).addTo(map);
-                                                                        L.marker([${friendLocation.latitude}, ${friendLocation.longitude}]).addTo(map)
-                                                                            .bindPopup('Friend Location').openPopup();
+                                                                        L.marker([${connectLocation.latitude}, ${connectLocation.longitude}]).addTo(map)
+                                                                            .bindPopup('Connect Location').openPopup();
                                                                     </script>
                                                                 </body>
                                                                 </html>
@@ -7451,9 +7451,9 @@ const SingleMessage = () => {
                             }}
                           >
                             {(() => {
-                              const lastSeenValue = friendLastSeenIso;
+                              const lastSeenValue = connectLastSeenIso;
                               if (!lastSeenValue) return 'Never';
-                              if (isFriendOnline) return 'Just now';
+                              if (isConnectOnline) return 'Just now';
                               try {
                                 const lastSeenDate = new Date(lastSeenValue);
                                 const now = new Date();
@@ -7531,15 +7531,15 @@ const SingleMessage = () => {
                               color: themeColors.text.primary,
                             }}
                           >
-                            {friendEmotion ||
+                            {connectEmotion ||
                               userInfoData?.lastEmotion ||
                               (userInfoData?.lastEmotionEmoji &&
                               userInfoData?.lastEmotionText
                                 ? `${userInfoData.lastEmotionEmoji} ${userInfoData.lastEmotionText}`
                                 : 'No emotion detected')}
-                            {friendExpression &&
-                              friendExpression !== 'none' &&
-                              ` • ${friendExpression}`}
+                            {connectExpression &&
+                              connectExpression !== 'none' &&
+                              ` • ${connectExpression}`}
                           </Text>
                         </View>
                       </View>
@@ -7591,12 +7591,12 @@ const SingleMessage = () => {
                             }}
                           >
                             {(() => {
-                              if (friendEmotion) return 'Sharing emotion';
-                              if (isFriendOnline) return 'Currently active';
-                              if (friendLastSeenIso) {
+                              if (connectEmotion) return 'Sharing emotion';
+                              if (isConnectOnline) return 'Currently active';
+                              if (connectLastSeenIso) {
                                 try {
                                   const lastSeenDate = new Date(
-                                    friendLastSeenIso,
+                                    connectLastSeenIso,
                                   );
                                   const now = new Date();
                                   const diffMins = Math.floor(
@@ -7631,8 +7631,8 @@ const SingleMessage = () => {
                         onPress={() => {
                           setInfoMenuVisible(false);
                           navigation.navigate(
-                            'FriendProfile' as never,
-                            { friendId: friend?._id } as never,
+                            'ConnectProfile' as never,
+                            { connectId: connect?._id } as never,
                           );
                         }}
                         style={{
@@ -7695,7 +7695,7 @@ const SingleMessage = () => {
             }
           }}
         >
-          {isBlockedByFriend ? (
+          {isBlockedByConnect ? (
             <>{renderBlockedMessage()}</>
           ) : isBlocked ? (
             <>{renderSelfBlockedMessage()}</>
@@ -7738,7 +7738,7 @@ const SingleMessage = () => {
                       Replying to{' '}
                       {String(replyingTo.senderId) === String(myProfile?._id)
                         ? 'yourself'
-                        : friend?.fullName || 'them'}
+                        : connect?.fullName || 'them'}
                     </Text>
                     <View
                       style={{
@@ -8458,8 +8458,8 @@ const SingleMessage = () => {
       <ChatSettingsModal
         isOpen={isChatSettingsOpen}
         onRequestClose={() => setIsChatSettingsOpen(false)}
-        friendId={friend?._id}
-        friendProfile={friend}
+        connectId={connect?._id}
+        connectProfile={connect}
       />
 
       {/* Hidden camera for emotion detection - keep mounted and active while on page */}

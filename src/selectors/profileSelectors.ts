@@ -8,22 +8,23 @@ import { RootState } from '../store';
 export const selectProfileId = (state: RootState) => state.profile?._id;
 
 /**
- * Base selector for friends array from profile
+ * Base selector for connects array from profile
  */
-const selectFriendsFromProfile = (state: RootState) => {
-  return (state.profile as any)?.friends;
+const selectConnectsFromProfile = (state: RootState) => {
+  const profile = state.profile as any;
+  return profile?.connects ?? profile?.friends;
 };
 
 /**
- * Select normalized friend IDs array
- * Returns an array of string IDs from the friends list
+ * Select normalized connect IDs array
+ * Returns an array of string IDs from the connects list
  */
-export const selectMyFriends = createSelector(
-  selectFriendsFromProfile,
-  (friendsList) => {
-    if (!friendsList) return [];
+export const selectMyConnects = createSelector(
+  selectConnectsFromProfile,
+  (connectsList) => {
+    if (!connectsList) return [];
     // Transform to array of string ids
-    return friendsList
+    return connectsList
       .map((f: any) => (typeof f === 'string' ? f : (f?._id || f?.id || null)))
       .filter((v: any) => typeof v === 'string' && v.length > 0);
   },

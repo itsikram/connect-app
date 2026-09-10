@@ -28,26 +28,26 @@ interface SettingsData {
   messagePreview?: boolean;
   autoSaveDrafts?: boolean;
   chatBackground?: string | null;
-  friendChatSettings?: Record<string, any>;
+  connectChatSettings?: Record<string, any>;
   
   // Privacy Settings
   postVisibility?: string;
-  friendRequestVisibility?: string;
+  connectRequestVisibility?: string;
   timelinePostVisibility?: string;
   
   // Notification Settings
-  friendRequestReceived?: boolean;
-  friendRequestAccepted?: boolean;
+  connectRequestReceived?: boolean;
+  connectRequestAccepted?: boolean;
   newMessageReceived?: boolean;
-  newFriendPost?: boolean;
-  newFriendStory?: boolean;
-  newFriendWatch?: boolean;
-  friendRequestReceivedEmail?: boolean;
-  friendRequestAcceptedEmail?: boolean;
+  newConnectPost?: boolean;
+  newConnectStory?: boolean;
+  newConnectWatch?: boolean;
+  connectRequestReceivedEmail?: boolean;
+  connectRequestAcceptedEmail?: boolean;
   newMessageReceivedEmail?: boolean;
-  newFriendPostEmail?: boolean;
-  newFriendStoryEmail?: boolean;
-  newFriendWatchEmail?: boolean;
+  newConnectPostEmail?: boolean;
+  newConnectStoryEmail?: boolean;
+  newConnectWatchEmail?: boolean;
   
   // Preference Settings
   themeMode?: string;
@@ -122,22 +122,22 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
     messagePreview: true,
     autoSaveDrafts: true,
     chatBackground: null,
-    friendChatSettings: {},
+    connectChatSettings: {},
     postVisibility: 'public',
-    friendRequestVisibility: 'public',
+    connectRequestVisibility: 'public',
     timelinePostVisibility: 'public',
-    friendRequestReceived: true,
-    friendRequestAccepted: true,
+    connectRequestReceived: true,
+    connectRequestAccepted: true,
     newMessageReceived: true,
-    newFriendPost: true,
-    newFriendStory: true,
-    newFriendWatch: true,
-    friendRequestReceivedEmail: false,
-    friendRequestAcceptedEmail: false,
+    newConnectPost: true,
+    newConnectStory: true,
+    newConnectWatch: true,
+    connectRequestReceivedEmail: false,
+    connectRequestAcceptedEmail: false,
     newMessageReceivedEmail: false,
-    newFriendPostEmail: false,
-    newFriendStoryEmail: false,
-    newFriendWatchEmail: false,
+    newConnectPostEmail: false,
+    newConnectStoryEmail: false,
+    newConnectWatchEmail: false,
     themeMode: 'default',
     language: 'en',
     timezone: 'UTC',
@@ -293,22 +293,22 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
         messagePreview: true,
         autoSaveDrafts: true,
         chatBackground: null,
-        friendChatSettings: {},
+        connectChatSettings: {},
         postVisibility: 'public',
-        friendRequestVisibility: 'public',
+        connectRequestVisibility: 'public',
         timelinePostVisibility: 'public',
-        friendRequestReceived: true,
-        friendRequestAccepted: true,
+        connectRequestReceived: true,
+        connectRequestAccepted: true,
         newMessageReceived: true,
-        newFriendPost: true,
-        newFriendStory: true,
-        newFriendWatch: true,
-        friendRequestReceivedEmail: false,
-        friendRequestAcceptedEmail: false,
+        newConnectPost: true,
+        newConnectStory: true,
+        newConnectWatch: true,
+        connectRequestReceivedEmail: false,
+        connectRequestAcceptedEmail: false,
         newMessageReceivedEmail: false,
-        newFriendPostEmail: false,
-        newFriendStoryEmail: false,
-        newFriendWatchEmail: false,
+        newConnectPostEmail: false,
+        newConnectStoryEmail: false,
+        newConnectWatchEmail: false,
         themeMode: 'default',
         language: 'en',
         timezone: 'UTC',

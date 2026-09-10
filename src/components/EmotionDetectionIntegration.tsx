@@ -17,17 +17,17 @@ import { useEmotionDetection } from '../hooks/useEmotionDetection';
  * continuous camera access. It can work with periodic snapshots or
  * manual emotion selection.
  */
-export const useBasicEmotionDetection = (profileId: string, friendId: string) => {
+export const useBasicEmotionDetection = (profileId: string, connectId: string) => {
   const { settings } = useSettings();
   const [myEmotion, setMyEmotion] = useState<string | null>(null);
-  const [friendEmotion, setFriendEmotion] = useState<string | null>(null);
+  const [connectEmotion, setConnectEmotion] = useState<string | null>(null);
   const { on, off, emit } = useSocket();
 
-  // Listen for friend's emotion changes
+  // Listen for connect's emotion changes
   useEffect(() => {
     const handleEmotionChange = (data: any) => {
-      if (data.profileId === friendId) {
-        setFriendEmotion(data.emotion);
+      if (data.profileId === connectId) {
+        setConnectEmotion(data.emotion);
       }
     };
 
@@ -36,17 +36,17 @@ export const useBasicEmotionDetection = (profileId: string, friendId: string) =>
     return () => {
       off('emotion_change', handleEmotionChange);
     };
-  }, [friendId, on, off]);
+  }, [connectId, on, off]);
 
   // Manual emotion update function
   const updateMyEmotion = (emotion: string, emoji: string, emotionText: string) => {
-    if (settings.isShareEmotion && profileId && friendId) {
+    if (settings.isShareEmotion && profileId && connectId) {
       const emotionData = {
         profileId,
         emotion: `${emoji} ${emotionText}`,
         emotionText,
         emoji,
-        friendId,
+        connectId,
         confidence: 1.0, // Manual selection has 100% confidence
         quality: 1.0
       };
@@ -58,7 +58,7 @@ export const useBasicEmotionDetection = (profileId: string, friendId: string) =>
 
   return {
     myEmotion,
-    friendEmotion,
+    connectEmotion,
     updateMyEmotion,
     isEnabled: settings.isShareEmotion
   };
@@ -70,9 +70,9 @@ export const useBasicEmotionDetection = (profileId: string, friendId: string) =>
  * This approach uses the full emotion detection system with camera.
  * Requires additional setup - see EMOTION_DETECTION_GUIDE.md
  */
-export const useAutomatedEmotionDetection = (profileId: string, friendId: string) => {
+export const useAutomatedEmotionDetection = (profileId: string, connectId: string) => {
   const { settings } = useSettings();
-  const [friendEmotion, setFriendEmotion] = useState<string | null>(null);
+  const [connectEmotion, setConnectEmotion] = useState<string | null>(null);
   const { on, off } = useSocket();
 
   const {
@@ -82,16 +82,16 @@ export const useAutomatedEmotionDetection = (profileId: string, friendId: string
     stopDetection,
   } = useEmotionDetection({
     profileId,
-    friendId,
+    connectId,
     isEnabled: settings.isShareEmotion || false,
     detectionInterval: 1500,
   });
 
-  // Listen for friend's emotion changes
+  // Listen for connect's emotion changes
   useEffect(() => {
     const handleEmotionChange = (data: any) => {
-      if (data.profileId === friendId) {
-        setFriendEmotion(data.emotion);
+      if (data.profileId === connectId) {
+        setConnectEmotion(data.emotion);
       }
     };
 
@@ -100,11 +100,11 @@ export const useAutomatedEmotionDetection = (profileId: string, friendId: string
     return () => {
       off('emotion_change', handleEmotionChange);
     };
-  }, [friendId, on, off]);
+  }, [connectId, on, off]);
 
   return {
     myEmotion,
-    friendEmotion,
+    connectEmotion,
     isDetecting,
     startDetection,
     stopDetection,
@@ -150,24 +150,24 @@ import { useBasicEmotionDetection } from '../components/EmotionDetectionIntegrat
 
 const SingleMessage = () => {
   const route = useRoute();
-  const friend = route.params.friend;
+  const connect = route.params.connect;
   const myProfile = useSelector((state: RootState) => state.profile);
   
   // Add emotion detection
   const {
     myEmotion,
-    friendEmotion,
+    connectEmotion,
     updateMyEmotion,
     isEnabled
-  } = useBasicEmotionDetection(myProfile?._id, friend?._id);
+  } = useBasicEmotionDetection(myProfile?._id, connect?._id);
 
   return (
     <SafeAreaView>
-      {/* Chat Header - Show friend's emotion *\/}
+      {/* Chat Header - Show connect's emotion *\/}
       <View style={styles.header}>
-        <Text>{friend?.fullName}</Text>
-        {isEnabled && friendEmotion && (
-          <Text style={styles.emotion}>{friendEmotion}</Text>
+        <Text>{connect?.fullName}</Text>
+        {isEnabled && connectEmotion && (
+          <Text style={styles.emotion}>{connectEmotion}</Text>
         )}
       </View>
 
@@ -262,7 +262,7 @@ export const EmotionPicker: React.FC<EmotionPickerProps> = ({ onSelectEmotion })
  * 1. Start with useBasicEmotionDetection - no camera required
  * 2. Users can manually select emotions via EmotionPicker
  * 3. Emotions are shared via Socket.IO automatically
- * 4. Friend's emotions display in real-time
+ * 4. Connect's emotions display in real-time
  * 5. Settings control emotion sharing (isShareEmotion)
  * 
  * For automated detection with camera:

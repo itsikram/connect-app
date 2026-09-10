@@ -184,8 +184,8 @@ class SocketService {
     });
   }
 
-  loadMessages(myId: string, friendId: string, skip: number): void {
-    this.emit('loadMessages', { myId, friendId, skip });
+  loadMessages(myId: string, connectId: string, skip: number): void {
+    this.emit('loadMessages', { myId, friendId: connectId, skip });
   }
 
   markMessageAsSeen(message: any): void {
@@ -222,23 +222,23 @@ class SocketService {
   }
 
 
-  endAudioCall(friendId: string, channelName?: string, action?: string): void {
+  endAudioCall(connectId: string, channelName?: string, action?: string): void {
     if(action === 'reject') {
-      this.emit('audio-call-reject', { to: friendId, channelName: channelName || '' });
+      this.emit('audio-call-reject', { to: connectId, channelName: channelName || '' });
     } else if(action === 'cancel') {
-      this.emit('audio-call-cancel', { to: friendId, channelName: channelName || '' });
+      this.emit('audio-call-cancel', { to: connectId, channelName: channelName || '' });
     }else {
-      this.emit('audio-call-end', { to: friendId, channelName: channelName || '' });
+      this.emit('audio-call-end', { to: connectId, channelName: channelName || '' });
     }
   }
 
-  endVideoCall(friendId: string, channelName?: string, action?: string): void {
+  endVideoCall(connectId: string, channelName?: string, action?: string): void {
     if(action === 'reject') {
-      this.emit('video-call-reject', { to: friendId, channelName: channelName || '' });
+      this.emit('video-call-reject', { to: connectId, channelName: channelName || '' });
     } else if(action === 'cancel') {
-      this.emit('video-call-cancel', { to: friendId, channelName: channelName || '' });
+      this.emit('video-call-cancel', { to: connectId, channelName: channelName || '' });
     }else {
-      this.emit('video-call-end', { to: friendId, channelName: channelName || '' });
+      this.emit('video-call-end', { to: connectId, channelName: channelName || '' });
     }
   }
 

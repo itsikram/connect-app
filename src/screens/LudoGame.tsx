@@ -35,7 +35,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import Logo from '../components/Logo';
 import VoiceTextInput from '../components/VoiceTextInput';
 // react-native-particles removed for Expo compatibility
-import api, { friendAPI } from '../lib/api';
+import api, { connectAPI } from '../lib/api';
 import config from '../lib/config';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
@@ -157,19 +157,19 @@ const LudoGameSVG = () => {
   const [selectedPlayerCount, setSelectedPlayerCount] = useState(4);
   const [captureAnimations, setCaptureAnimations] = useState<{[key: string]: boolean}>({});
   const [onlineMode, setOnlineMode] = useState(false);
-  const [selectedFriends, setSelectedFriends] = useState<any[]>([]);
-  const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [selectedConnects, setSelectedConnects] = useState<any[]>([]);
+  const [connectSearchQuery, setConnectSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [loadingSearch, setLoadingSearch] = useState(false);
-  const [friendList, setFriendList] = useState<any[]>([]);
+  const [connectList, setConnectList] = useState<any[]>([]);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Additional state variables from web version
   const [gameId, setGameId] = useState<string | null>(null);
   const [myPlayerIndex, setMyPlayerIndex] = useState(0);
   const [waitingForPlayers, setWaitingForPlayers] = useState(false);
-  const [invitedStatusByFriendId, setInvitedStatusByFriendId] = useState<{[key: string]: string}>({});
-  const [invitedSlotByFriendId, setInvitedSlotByFriendId] = useState<{[key: string]: number}>({});
+  const [invitedStatusByConnectId, setInvitedStatusByConnectId] = useState<{[key: string]: string}>({});
+  const [invitedSlotByConnectId, setInvitedSlotByConnectId] = useState<{[key: string]: number}>({});
   const [incomingInviteRequest, setIncomingInviteRequest] = useState<any>(null);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [isReconnecting, setIsReconnecting] = useState(false);
@@ -194,8 +194,8 @@ const LudoGameSVG = () => {
   const lastBroadcastRef = useRef(0);
   const recentMovesRef = useRef(new Map<string, { toSteps: number; timestamp: number; isCapture?: boolean; isMoveOutOfHome?: boolean }>());
   const lastTurnAdvanceTimeRef = useRef(0);
-  const invitedStatusByFriendIdRef = useRef<{[key: string]: string}>({});
-  const invitedSlotByFriendIdRef = useRef<{[key: string]: number}>({});
+  const invitedStatusByConnectIdRef = useRef<{[key: string]: string}>({});
+  const invitedSlotByConnectIdRef = useRef<{[key: string]: number}>({});
   const inviteTimestampsRef = useRef<{[key: string]: number}>({});
   const inviteHandlersAttachedRef = useRef(false);
   const lastInviterRef = useRef<any>(null);
@@ -290,8 +290,8 @@ const LudoGameSVG = () => {
   useEffect(() => { gameStartedRef.current = gameStarted; }, [gameStarted]);
   useEffect(() => { gameEndedRef.current = gameEnded; }, [gameEnded]);
   useEffect(() => { myPlayerIndexRef.current = myPlayerIndex; }, [myPlayerIndex]);
-  useEffect(() => { invitedStatusByFriendIdRef.current = invitedStatusByFriendId; }, [invitedStatusByFriendId]);
-  useEffect(() => { invitedSlotByFriendIdRef.current = invitedSlotByFriendId; }, [invitedSlotByFriendId]);
+  useEffect(() => { invitedStatusByConnectIdRef.current = invitedStatusByConnectId; }, [invitedStatusByConnectId]);
+  useEffect(() => { invitedSlotByConnectIdRef.current = invitedSlotByConnectId; }, [invitedSlotByConnectId]);
 
   const getOverlapOffset = (count: number, index: number) => {
     const delta = CELL_SIZE * 0.35;
@@ -348,14 +348,14 @@ const LudoGameSVG = () => {
 
   useEffect(() => {
     if (showPlayerSelection && myProfile?._id) {
-      friendAPI.getFriendList(myProfile._id)
-        .then(res => setFriendList(Array.isArray(res.data) ? res.data : []))
-        .catch(() => setFriendList([]));
+      connectAPI.getConnectList(myProfile._id)
+        .then(res => setConnectList(Array.isArray(res.data) ? res.data : []))
+        .catch(() => setConnectList([]));
     }
   }, [showPlayerSelection, myProfile?._id]);
 
-  const onChangeFriendSearch = (text: string) => {
-    setFriendSearchQuery(text);
+  const onChangeConnectSearch = (text: string) => {
+    setConnectSearchQuery(text);
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     if (!text || text.trim().length < 2) {
       setSearchResults([]);
@@ -383,7 +383,7 @@ const LudoGameSVG = () => {
     avatars[0] = myProfile?.profilePic;
     ids[0] = myProfile?._id;
     for (let i = 1; i < playerCount; i++) {
-      const f = selectedFriends[i - 1];
+      const f = selectedConnects[i - 1];
       names[i] = f?.fullName || playerNames[i];
       avatars[i] = f?.profilePic;
       ids[i] = f?._id;
@@ -945,7 +945,7 @@ const LudoGameSVG = () => {
     return captured;
   };
 
-  // Check for captures when a token moves AWAY from a position (rule 2: friend moves token away)
+  // Check for captures when a token moves AWAY from a position (rule 2: connect moves token away)
   const checkForCaptureAfterMoveAway = (movingPlayerIndex: number, oldPosition: { x: number; y: number }) => {
     const srcPlayers = playersRef.current && Array.isArray(playersRef.current) && playersRef.current.length > 0 ? playersRef.current : players;
     const captured: { playerIndex: number; pieceIndex: number }[] = [];
@@ -1285,7 +1285,7 @@ const LudoGameSVG = () => {
             });
             
             // Check for captures at the old position (when token moves away)
-            // This handles the case where friend has double tokens and moves one away,
+            // This handles the case where connect has double tokens and moves one away,
             // leaving a single token that should be captured
             if (oldSteps > 0 && oldSteps < maxSteps) {
               const capturedAfterMoveAway = checkForCaptureAfterMoveAway(movingPlayerIndex, oldPosition);
@@ -1392,10 +1392,10 @@ const LudoGameSVG = () => {
     setCanRollDice(true);
     setDiceRolling(false);
     initializeGame(selectedPlayerCount);
-    // Notify invited friends (soft invite event)
-    if (onlineMode && selectedFriends.length > 0 && isConnected) {
+    // Notify invited connects (soft invite event)
+    if (onlineMode && selectedConnects.length > 0 && isConnected) {
       try {
-        const invitedIds = selectedFriends.map(f => f._id).filter(Boolean);
+        const invitedIds = selectedConnects.map(f => f._id).filter(Boolean);
         emit('ludo_invite', {
           from: myProfile?._id,
           to: invitedIds,
@@ -2429,10 +2429,10 @@ const LudoGameSVG = () => {
               ))}
             </View>
 
-            {/* Online toggle and friend picker */}
+            {/* Online toggle and connect picker */}
             <View style={{ marginBottom: 16 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={[styles.playerCountLabel, { fontWeight: '700' }]}>Play Online with Friends</Text>
+                <Text style={[styles.playerCountLabel, { fontWeight: '700' }]}>Play Online with Connects</Text>
                 <TouchableOpacity onPress={() => setOnlineMode(!onlineMode)} style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, backgroundColor: onlineMode ? '#29B1A9' : 'rgba(255,255,255,0.1)' }}>
                   <Text style={{ color: 'white', fontWeight: '600' }}>{onlineMode ? 'On' : 'Off'}</Text>
                 </TouchableOpacity>
@@ -2442,21 +2442,21 @@ const LudoGameSVG = () => {
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.2)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 8 }}>
                     <Icon name="search" size={18} color="#FFD700" />
                     <VoiceTextInput
-                      placeholder="Search friends by name..."
+                      placeholder="Search connects by name..."
                       placeholderTextColor="#B0B0B0"
-                      value={friendSearchQuery}
-                      onChangeText={onChangeFriendSearch}
+                      value={connectSearchQuery}
+                      onChangeText={onChangeConnectSearch}
                       style={{ flex: 1, color: 'white', paddingVertical: 4 }}
                     />
                   </View>
                   <FlatList
-                    data={(friendSearchQuery ? searchResults : friendList) as any[]}
+                    data={(connectSearchQuery ? searchResults : connectList) as any[]}
                     keyExtractor={(item: any) => item?._id || String(item?.id) || Math.random().toString()}
                     renderItem={({ item: f }: { item: any }) => {
-                      const isSelected = selectedFriends.some(sf => sf._id === f._id);
+                      const isSelected = selectedConnects.some(sf => sf._id === f._id);
                       return (
                         <TouchableOpacity onPress={() => {
-                          setSelectedFriends(prev => {
+                          setSelectedConnects(prev => {
                             if (isSelected) return prev.filter(p => p._id !== f._id);
                             const next = [...prev, f];
                             return next.slice(0, Math.max(0, selectedPlayerCount - 1));
@@ -2483,7 +2483,7 @@ const LudoGameSVG = () => {
                     ) : null}
                   />
                   <Text style={{ color: '#B0B0B0', fontSize: 12, marginTop: 6 }}>
-                    Selected: {selectedFriends.length} / {Math.max(0, selectedPlayerCount - 1)}
+                    Selected: {selectedConnects.length} / {Math.max(0, selectedPlayerCount - 1)}
                   </Text>
                 </View>
               )}

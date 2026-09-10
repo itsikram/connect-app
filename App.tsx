@@ -41,14 +41,14 @@ import Settings from './src/screens/Settings';
 import Tasks from './src/screens/Tasks';
 import Notes from './src/screens/Notes';
 import MyProfile from './src/screens/MyProfile';
-import Friends from './src/screens/Friends';
+import Connects from './src/screens/Connects';
 // Redux Provider and store
 import { Provider, useSelector, useDispatch } from 'react-redux';
 import store, { RootState } from './src/store';
 // Profile data hook
 import { useProfileData } from './src/hooks/useProfileData';
 import SingleMessage from './src/screens/SingleMessage';
-import FriendProfile from './src/screens/FriendProfile';
+import ConnectProfile from './src/screens/ConnectProfile';
 import Videos from './src/screens/Videos';
 import SinglePost from './src/screens/SinglePost';
 import SingleWatch from './src/screens/SingleWatch';
@@ -75,6 +75,11 @@ import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext
 import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
 import { WatchPipProvider } from './src/contexts/WatchPipContext';
+import { FeatureFlagProvider } from './src/contexts/FeatureFlagContext';
+import PaymentInstructionsScreen from './src/screens/PaymentInstructionsScreen';
+import PaymentSubmissionScreen from './src/screens/PaymentSubmissionScreen';
+import PaymentPendingConfirmationScreen from './src/screens/PaymentPendingConfirmationScreen';
+import WalletScreen from './src/screens/WalletScreen';
 import WatchPipPlayer from './src/components/watch/WatchPipPlayer';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
@@ -86,9 +91,9 @@ import * as Speech from 'expo-speech';
 import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
 import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
-import { setFriendOnline, setFriendOffline, setFriendLastSeen } from './src/reducers/presenceReducer';
-import api, { friendAPI, userAPI } from './src/lib/api';
-import FriendCacheManager from './src/utils/friendCacheManager';
+import { setConnectOnline, setConnectOffline, setConnectLastSeen } from './src/reducers/presenceReducer';
+import api, { connectAPI, userAPI } from './src/lib/api';
+import ConnectCacheManager from './src/utils/connectCacheManager';
 import FloatingButton from './src/components/FloatingButton';
 // Background services removed for Expo compatibility
 import UpdateModal from './src/components/UpdateModal';
@@ -141,7 +146,7 @@ function MessageStack() {
           beforeRemove: () => restoreTabBarAfterChat(navigation),
         })}
       />
-      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
@@ -158,7 +163,7 @@ function HomeStack() {
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="EditPost" component={EditPost} />
-      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
       <Stack.Screen name="Camera" component={CameraScreen} />
       <Stack.Screen name="Gallery" component={GalleryScreen} />
       <Stack.Screen name="GalleryPreview" component={GalleryPreview} />
@@ -175,17 +180,17 @@ function VideosStack() {
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="EditPost" component={EditPost} />
-      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
     </Stack.Navigator>
   );
 }
 
-// Stack navigator for Friends tab
-function FriendsStack() {
+// Stack navigator for Connects tab
+function ConnectsStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="FriendsMain" component={Friends} />
-      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="ConnectsMain" component={Connects} />
+      <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
@@ -270,7 +275,7 @@ function MenuStack() {
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="EditPost" component={EditPost} />
-      <Stack.Screen name="FriendProfile" component={FriendProfile} />
+      <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="Settings" component={Settings} />
       <Stack.Screen name="Tasks" component={Tasks} />
@@ -284,6 +289,13 @@ function MenuStack() {
       <Stack.Screen name="FitnessReminders" component={FitnessReminders} />
       <Stack.Screen name="FitnessCoach" component={FitnessCoach} />
       <Stack.Screen name="FitnessRecommendations" component={FitnessRecommendations} />
+      <Stack.Screen name="PaymentInstructions" component={PaymentInstructionsScreen} />
+      <Stack.Screen name="PaymentSubmission" component={PaymentSubmissionScreen} />
+      <Stack.Screen
+        name="PaymentPendingConfirmation"
+        component={PaymentPendingConfirmationScreen}
+      />
+      <Stack.Screen name="Wallet" component={WalletScreen} />
       <Stack.Screen name="VideoLibrary">
         {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
       </Stack.Screen>
@@ -349,9 +361,9 @@ function TabBarWithLudoCheck(props: any) {
   }
   
   const tabs = props.user ? [
-    // Order to match web header: Home, Friends, Videos, Message, Downloads/Menu
+    // Order to match web header: Home, Connects, Videos, Message, Downloads/Menu
     { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Friends', icon: 'user-friends', label: 'Friends', component: FriendsStack, color: '#2196F3', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
+    { name: 'Connects', icon: 'user-friends', label: 'Connects', component: ConnectsStack, color: '#2196F3', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
     { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
     { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
     { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
@@ -766,7 +778,7 @@ function AppContent() {
         onPress: () => {
           (navigation as any).navigate('Message', { 
             screen: 'SingleMessage',
-            params: { friend: data.friendProfileData }
+            params: { connect: data.friendProfileData }
           })
         },
       })
@@ -778,62 +790,62 @@ function AppContent() {
     // AudioCall and VideoCall overlays (same socket events as the web app).
 
     // Global online/offline presence listeners
-    const handleFriendOnline = (data: any) => {
-      const friendProfileId = data?.profileId || data?.id || data;
-      if (friendProfileId) {
-        dispatch(setFriendOnline(String(friendProfileId)));
+    const handleConnectOnline = (data: any) => {
+      const connectProfileId = data?.profileId || data?.id || data;
+      if (connectProfileId) {
+        dispatch(setConnectOnline(String(connectProfileId)));
       }
     };
-    const handleFriendOffline = (data: any) => {
-      const friendProfileId = data?.profileId || data?.id || data;
-      if (friendProfileId) {
-        dispatch(setFriendOffline(String(friendProfileId)));
+    const handleConnectOffline = (data: any) => {
+      const connectProfileId = data?.profileId || data?.id || data;
+      if (connectProfileId) {
+        dispatch(setConnectOffline(String(connectProfileId)));
       }
     };
     const handleIsActive = (isUserActive: boolean, lastLogin: Date, activeProfileId: string) => {
       if (!activeProfileId) return;
       if (isUserActive === true) {
-        dispatch(setFriendOnline(String(activeProfileId)));
+        dispatch(setConnectOnline(String(activeProfileId)));
       } else {
-        dispatch(setFriendOffline(String(activeProfileId)));
+        dispatch(setConnectOffline(String(activeProfileId)));
       }
       try {
         const iso = lastLogin ? new Date(lastLogin as any).toISOString() : undefined;
-        dispatch(setFriendLastSeen({ profileId: String(activeProfileId), lastLogin: iso }));
+        dispatch(setConnectLastSeen({ profileId: String(activeProfileId), lastLogin: iso }));
       } catch (_) {}
     };
-    on('friend_online', handleFriendOnline);
-    on('friend_offline', handleFriendOffline);
+    on('friend_online', handleConnectOnline);
+    on('friend_offline', handleConnectOffline);
     on('is_active', handleIsActive);
 
-    // Handle friend location updates
-    const handleFriendLocationUpdate = (data: any) => {
-      const { profileId: friendProfileId, location } = data;
-      if (friendProfileId && location) {
-        console.log('📍 Friend location update received:', friendProfileId, location);
+    // Handle connect location updates
+    const handleConnectLocationUpdate = (data: any) => {
+      const { profileId: connectProfileId, location } = data;
+      if (connectProfileId && location) {
+        console.log('📍 Connect location update received:', connectProfileId, location);
         // You can dispatch this to Redux or handle it as needed
-        // For example, update friend location in Redux store
-        // dispatch(updateFriendLocation({ profileId: friendProfileId, location }));
+        // For example, update connect location in Redux store
+        // dispatch(updateConnectLocation({ profileId: connectProfileId, location }));
       }
     };
-    on('friend_location_update', handleFriendLocationUpdate);
+    on('friend_location_update', handleConnectLocationUpdate);
 
-    const handleFriendCacheUpdate = async (data: any) => {
+    const handleConnectCacheUpdate = async (data: any) => {
       if (!myProfile?._id || String(data?.profileId) !== String(myProfile._id)) return;
       const list = data?.list === 'requests' || data?.list === 'suggestions' ? data.list : null;
       if (!list) return;
       if (data.action === 'remove' && data.targetProfileId) {
-        await FriendCacheManager.removeProfile(myProfile._id, list, data.targetProfileId);
+        await ConnectCacheManager.removeProfile(myProfile._id, list, data.targetProfileId);
         return;
       }
       if (data.action === 'refresh') {
         const response = list === 'requests'
-          ? await friendAPI.getFriendRequest(myProfile._id)
-          : await friendAPI.getFriendSuggestions(myProfile._id);
-        await FriendCacheManager.setCached(myProfile._id, list, response.data);
+          ? await connectAPI.getConnectRequest(myProfile._id)
+          : await connectAPI.getConnectSuggestions(myProfile._id);
+        await ConnectCacheManager.setCached(myProfile._id, list, response.data);
       }
     };
-    on('friendCacheUpdate', handleFriendCacheUpdate);
+    on('friendCacheUpdate', handleConnectCacheUpdate);
 
     let handleNewMessage = (data: any, allowToast = false) => {
       let {updatedMessage, senderName, senderPP, friendProfile} = data || {};
@@ -886,7 +898,7 @@ function AppContent() {
         onPress: () => {
           (navigation as any).navigate('Message', { 
             screen: 'SingleMessage',
-            params: { friend: friendProfile }
+            params: { connect: friendProfile }
           })
         },
       })
@@ -914,8 +926,8 @@ function AppContent() {
                 (navigation as any).navigate('Message');
               } else if (link.includes('profile')) {
                 (navigation as any).navigate('Menu', { screen: 'MyProfile' });
-              } else if (link.includes('friends')) {
-                (navigation as any).navigate('Friends');
+              } else if (link.includes('connects')) {
+                (navigation as any).navigate('Connects');
               } else {
                 (navigation as any).navigate('Home');
               }
@@ -935,11 +947,11 @@ function AppContent() {
       off('newMessage', handleRoomMessage)
       off('newMessageToUser', handleUserMessage)
       off('newNotification', handleNewNotification)
-      off('friend_online', handleFriendOnline)
-      off('friend_offline', handleFriendOffline)
+      off('friend_online', handleConnectOnline)
+      off('friend_offline', handleConnectOffline)
       off('is_active', handleIsActive)
-      off('friend_location_update', handleFriendLocationUpdate)
-      off('friendCacheUpdate', handleFriendCacheUpdate)
+      off('friend_location_update', handleConnectLocationUpdate)
+      off('friendCacheUpdate', handleConnectCacheUpdate)
     }
   }, [isConnected, on, off, myProfile?._id])
 
@@ -1077,8 +1089,8 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
                     route.name === 'Login' || route.name === 'Register'
                       ? { display: 'none', height: 0 }
                       : undefined,
-                  headerShown: route.name === 'Home' || route.name === 'Friends' || route.name === 'Videos',
-                  header: route.name === 'Home' || route.name === 'Friends' || route.name === 'Videos'
+                  headerShown: route.name === 'Home' || route.name === 'Connects' || route.name === 'Videos',
+                  header: route.name === 'Home' || route.name === 'Connects' || route.name === 'Videos'
                     ? () => <FacebookHeader onOpenAIAgent={() => setAiAgentVisible(true)} />
                     : undefined,
                 })}
@@ -1093,10 +1105,10 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
                       }}
                     />
                     <Tab.Screen
-                      name="Friends"
-                      component={FriendsStack}
+                      name="Connects"
+                      component={ConnectsStack}
                       options={{
-                        tabBarLabel: 'Friends',
+                        tabBarLabel: 'Connects',
                         headerShown: true,
                       }}
                     />
@@ -1222,7 +1234,8 @@ function App() {
         <Provider store={store}>
           <PaperProvider>
             <ThemeProvider>
-              <AuthProvider>
+              <FeatureFlagProvider>
+                <AuthProvider>
                 <SocketProvider>
                   <CallMinimizeProvider>
                     <ToastProvider>
@@ -1244,7 +1257,8 @@ function App() {
                     </ToastProvider>
                   </CallMinimizeProvider>
                 </SocketProvider>
-              </AuthProvider>
+                </AuthProvider>
+              </FeatureFlagProvider>
             </ThemeProvider>
           </PaperProvider>
         </Provider>

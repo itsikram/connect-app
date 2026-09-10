@@ -19,7 +19,7 @@ import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { RootState } from '../store';
 import { useTheme } from '../contexts/ThemeContext';
-import api, { friendAPI } from '../lib/api';
+import api, { connectAPI } from '../lib/api';
 import PostItem from '../components/Post';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch } from 'react-redux';
@@ -35,7 +35,7 @@ import ImageWithSkeleton from '../components/ImageWithSkeleton';
 import ProfileImageWithSkeleton from '../components/ProfileImageWithSkeleton';
 import VerifiedName from '../components/VerifiedName';
 import ProfileSkeleton, {
-  ProfileFriendsSkeleton,
+  ProfileConnectsSkeleton,
   ProfileMediaSkeleton,
 } from '../components/skeleton/ProfileSkeleton';
 import PostSkeleton from '../components/skeleton/PostSkeleton';
@@ -157,7 +157,7 @@ const ProfileVideoCard = ({
   );
 };
 
-type TabKey = 'Posts' | 'About' | 'Friends' | 'Images' | 'Videos';
+type TabKey = 'Posts' | 'About' | 'Connects' | 'Images' | 'Videos';
 
 const MyProfile = () => {
   const navigation = useNavigation();
@@ -172,8 +172,9 @@ const MyProfile = () => {
   const coverHeight = isSmall ? 240 : 280;
   const infoOverlap = -Math.round(avatarSize / 3);
 
-  const friendsCount = Array.isArray(myProfile?.friends)
-    ? myProfile.friends.length
+  const profileConnects = myProfile?.connects ?? myProfile?.friends;
+  const connectsCount = Array.isArray(profileConnects)
+    ? profileConnects.length
     : 0;
 
   const [posts, setPosts] = React.useState<any[]>([]);
@@ -182,8 +183,8 @@ const MyProfile = () => {
   const [imagesLoading, setImagesLoading] = React.useState<boolean>(true);
   const [imageViewerOpen, setImageViewerOpen] = React.useState(false);
   const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
-  const [friends, setFriends] = React.useState<any[]>([]);
-  const [friendsLoading, setFriendsLoading] = React.useState<boolean>(true);
+  const [connects, setConnects] = React.useState<any[]>([]);
+  const [connectsLoading, setConnectsLoading] = React.useState<boolean>(true);
   const [videos, setVideos] = React.useState<any[]>([]);
   const [videosLoading, setVideosLoading] = React.useState<boolean>(true);
   const [showFullBio, setShowFullBio] = React.useState<boolean>(false);
@@ -212,28 +213,28 @@ const MyProfile = () => {
       .catch(() => setPosts([]))
       .finally(() => setPostsLoading(false));
 
-    // Friends
-    setFriendsLoading(true);
+    // Connects
+    setConnectsLoading(true);
     // Use server's expected query param `profile`
     api
-      .get('/friend/getFriends', { params: { profile: myProfile._id } })
+      .get('/connects/getConnects', { params: { profile: myProfile._id } })
       .then(res => {
         if (res.status === 200 && String(myProfile._id) === profileId) {
           const arr = Array.isArray(res.data) ? res.data : [];
-          setFriends(
+          setConnects(
             arr.length
               ? arr
-              : Array.isArray(myProfile?.friends)
-              ? myProfile.friends
+              : Array.isArray(profileConnects)
+              ? profileConnects
               : [],
           );
         }
       })
       .catch(() => {
         // Fallback to local profile state if request fails
-        setFriends(Array.isArray(myProfile?.friends) ? myProfile.friends : []);
+        setConnects(Array.isArray(profileConnects) ? profileConnects : []);
       })
-      .finally(() => setFriendsLoading(false));
+      .finally(() => setConnectsLoading(false));
 
     // Videos (profile watch list)
     setVideosLoading(true);
@@ -288,7 +289,7 @@ const MyProfile = () => {
 
   React.useEffect(() => {
     setPosts([]);
-    setFriends([]);
+    setConnects([]);
     setVideos([]);
     fetchProfileData();
   }, [fetchProfileData]);
@@ -658,13 +659,13 @@ const MyProfile = () => {
       render: renderPosts,
     },
     {
-      key: 'Friends',
-      label: 'Friends',
-      count: friends.length || friendsCount || undefined,
+      key: 'Connects',
+      label: 'Connects',
+      count: connects.length || connectsCount || undefined,
       render: () => (
         <View style={{ gap: 10 }}>
-          {friendsLoading && <ProfileFriendsSkeleton count={4} />}
-          {!friendsLoading && friends.length === 0 && (
+          {connectsLoading && <ProfileConnectsSkeleton count={4} />}
+          {!connectsLoading && connects.length === 0 && (
             <View
               style={[
                 styles.placeholderCard,
@@ -680,13 +681,13 @@ const MyProfile = () => {
                   { color: themeColors.text.primary },
                 ]}
               >
-                No friends found.
+                No connects found.
               </Text>
             </View>
           )}
-          {!friendsLoading && friends.length > 0 && (
-            <View style={styles.friendsGrid}>
-              {friends.map((f: any) => {
+          {!connectsLoading && connects.length > 0 && (
+            <View style={styles.connectsGrid}>
+              {connects.map((f: any) => {
                 const userName =
                   f.fullName ||
                   (f.user
@@ -698,7 +699,7 @@ const MyProfile = () => {
                   <TouchableOpacity
                     key={f._id || userName}
                     style={[
-                      styles.friendItem,
+                      styles.connectItem,
                       {
                         backgroundColor: themeColors.surface.secondary,
                         borderColor: themeColors.border.secondary,
@@ -706,14 +707,14 @@ const MyProfile = () => {
                     ]}
                     onPress={() => {
                       (navigation as any).navigate('Message', {
-                        screen: 'FriendProfile',
-                        params: { friendId: f._id, friendData: f },
+                        screen: 'ConnectProfile',
+                        params: { connectId: f._id, connectData: f },
                       });
                     }}
                   >
                     <View
                       style={[
-                        styles.friendAvatarWrap,
+                        styles.connectAvatarWrap,
                         { backgroundColor: themeColors.surface.secondary },
                       ]}
                     >
@@ -721,12 +722,12 @@ const MyProfile = () => {
                         <ProfileImage
                           uri={pp}
                           pixelSize={120}
-                          style={styles.friendAvatar}
+                          style={styles.connectAvatar}
                         />
                       ) : (
                         <View
                           style={[
-                            styles.friendAvatar,
+                            styles.connectAvatar,
                             { backgroundColor: themeColors.gray[400] },
                           ]}
                         />
@@ -734,7 +735,7 @@ const MyProfile = () => {
                     </View>
                     <Text
                       style={[
-                        styles.friendName,
+                        styles.connectName,
                         { color: themeColors.text.primary },
                       ]}
                       numberOfLines={1}
@@ -1147,14 +1148,14 @@ const MyProfile = () => {
                   numberOfLines={2}
                 />
               </Text>
-              {friendsCount > 0 ? (
+              {connectsCount > 0 ? (
                 <Text
                   style={[
-                    styles.friendsCount,
+                    styles.connectsCount,
                     { color: themeColors.text.secondary },
                   ]}
                 >
-                  {friendsCount} friends
+                  {connectsCount} connects
                 </Text>
               ) : null}
             </View>
@@ -1471,7 +1472,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     textTransform: 'capitalize',
   },
-  friendsCount: {
+  connectsCount: {
     marginTop: 4,
     textAlign: 'center',
   },
@@ -1584,12 +1585,12 @@ const styles = StyleSheet.create({
   detailsMuted: {
     // color will be set dynamically
   },
-  friendsGrid: {
+  connectsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
   },
-  friendItem: {
+  connectItem: {
     width: '48%',
     borderRadius: 10,
     padding: 12,
@@ -1598,7 +1599,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     // backgroundColor and borderColor will be set dynamically
   },
-  friendAvatarWrap: {
+  connectAvatarWrap: {
     width: 64,
     height: 64,
     borderRadius: 32,
@@ -1606,11 +1607,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     // backgroundColor will be set dynamically
   },
-  friendAvatar: {
+  connectAvatar: {
     width: '100%',
     height: '100%',
   },
-  friendName: {
+  connectName: {
     fontWeight: '600',
     // color will be set dynamically
   },

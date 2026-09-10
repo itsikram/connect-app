@@ -97,7 +97,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
-      case 'friend_request':
+      case 'connect_request':
         return 'person-add';
       case 'message':
         return 'message';
@@ -118,7 +118,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
 
   const getNotificationColor = (type: string) => {
     switch (type) {
-      case 'friend_request':
+      case 'connect_request':
         return themeColors.primary;
       case 'message':
         return '#4CAF50';
@@ -170,7 +170,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
           }
           break;
         }
-        case 'friend_request': {
+        case 'connect_request': {
           const userId =
             notification.fromUserId ||
             notification.userId ||

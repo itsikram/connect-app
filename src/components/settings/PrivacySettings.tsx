@@ -12,13 +12,13 @@ import {
 
 const VISIBILITY_OPTIONS = [
   { label: 'Only Me', value: 'om' },
-  { label: 'Friend of Friends', value: 'fof' },
+  { label: 'Connect of Connects', value: 'fof' },
   { label: 'Public', value: 'public' },
 ];
 
 const normalizeVisibility = (value?: string) => {
   if (value === 'only-me' || value === 'om') return 'om';
-  if (value === 'friends' || value === 'fof') return 'fof';
+  if (value === 'connects' || value === 'fof') return 'fof';
   return value || 'public';
 };
 
@@ -29,7 +29,7 @@ const PrivacySettings = () => {
 
   const [privacySettings, setPrivacySettings] = useState({
     postVisibility: normalizeVisibility(settings.postVisibility),
-    friendRequestVisibility: normalizeVisibility(settings.friendRequestVisibility),
+    connectRequestVisibility: normalizeVisibility(settings.connectRequestVisibility),
     timelinePostVisibility: normalizeVisibility(settings.timelinePostVisibility),
     isShareLocation: settings.isShareLocation ?? true,
   });
@@ -37,7 +37,7 @@ const PrivacySettings = () => {
   React.useEffect(() => {
     setPrivacySettings({
       postVisibility: normalizeVisibility(settings.postVisibility),
-      friendRequestVisibility: normalizeVisibility(settings.friendRequestVisibility),
+      connectRequestVisibility: normalizeVisibility(settings.connectRequestVisibility),
       timelinePostVisibility: normalizeVisibility(settings.timelinePostVisibility),
       isShareLocation: settings.isShareLocation ?? true,
     });
@@ -84,10 +84,10 @@ const PrivacySettings = () => {
         />
       </SettingsField>
 
-      <SettingsField label="Who Can Send you Friend Request?">
+      <SettingsField label="Who Can Send you Connect Request?">
         <SettingsPicker
-          value={privacySettings.friendRequestVisibility}
-          onValueChange={(value) => setPrivacySettings((prev) => ({ ...prev, friendRequestVisibility: value }))}
+          value={privacySettings.connectRequestVisibility}
+          onValueChange={(value) => setPrivacySettings((prev) => ({ ...prev, connectRequestVisibility: value }))}
           options={VISIBILITY_OPTIONS}
         />
       </SettingsField>
@@ -101,8 +101,8 @@ const PrivacySettings = () => {
       </SettingsField>
 
       <SettingsSwitchRow
-        label="Share Location with Friends"
-        help="Allow friends to see your real-time location in the info modal"
+        label="Share Location with Connects"
+        help="Allow connects to see your real-time location in the info modal"
         value={privacySettings.isShareLocation ?? true}
         onValueChange={handleLocationSharingToggle}
       />

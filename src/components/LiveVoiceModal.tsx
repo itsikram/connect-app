@@ -19,7 +19,7 @@ interface LiveVoiceModalProps {
     duration: number;
     isConnecting: boolean;
     role: 'sender' | 'receiver';
-    friendName: string;
+    connectName: string;
     onStop?: () => void;
     onEnableMicrophone?: () => void;
     microphoneEnabled?: boolean;
@@ -34,7 +34,7 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
     duration,
     isConnecting,
     role,
-    friendName,
+    connectName,
     onStop,
     onEnableMicrophone,
     microphoneEnabled = false,
@@ -132,11 +132,11 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                                     {isConnecting ? 'Connecting...' : isActive ? 'Live Voice Active' : 'Inactive'}
                                 </Text>
 
-                                {friendName && (
+                                {connectName && (
                                     <Text style={[styles.participant, { color: themeColors.text.secondary }]}>
                                         {role === 'sender' ? 'Sending your voice to: ' : 'Hearing: '}
                                         <Text style={{ fontWeight: '600', color: themeColors.text.primary }}>
-                                            {friendName}
+                                            {connectName}
                                         </Text>
                                     </Text>
                                 )}

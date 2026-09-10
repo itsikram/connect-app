@@ -47,18 +47,18 @@ export function upsertConfirmedMessage<T extends {
   return sortMessages([...withoutDupes, { ...confirmed, isOptimistic: false }]);
 }
 
-export function isConversationMessage(msg: any, userId: any, friendId: any): boolean {
+export function isConversationMessage(msg: any, userId: any, connectId: any): boolean {
   if (!msg) return false;
   const sender = idOf(msg.senderId);
   const receiver = idOf(msg.receiverId);
-  const friend = idOf(friendId);
+  const connect = idOf(connectId);
   const me = idOf(userId);
-  if (!friend) return false;
+  if (!connect) return false;
   return (
-    sender === friend ||
-    receiver === friend ||
-    (sender === me && receiver === friend) ||
-    (sender === friend && receiver === me)
+    sender === connect ||
+    receiver === connect ||
+    (sender === me && receiver === connect) ||
+    (sender === connect && receiver === me)
   );
 }
 

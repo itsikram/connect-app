@@ -217,4 +217,3 @@ export async function requestAllPermissionsWithAlerts(): Promise<PermissionStatu
 export function openAppSettings(): void {
   Linking.openSettings();
 }
-

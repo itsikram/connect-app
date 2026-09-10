@@ -7,7 +7,7 @@ import { useSocket } from '../contexts/SocketContext';
 
 interface EmotionDetectionServiceProps {
   profileId: string;
-  friendId: string;
+  connectId: string;
   isEnabled: boolean;
   detectionInterval?: number;
   room?: string; // Room identifier for context
@@ -20,7 +20,7 @@ interface EmotionDetectionServiceProps {
  */
 const EmotionDetectionService: React.FC<EmotionDetectionServiceProps> = ({
   profileId,
-  friendId,
+  connectId,
   isEnabled,
   detectionInterval = 900, // Faster interval like web version
   room,
@@ -31,7 +31,7 @@ const EmotionDetectionService: React.FC<EmotionDetectionServiceProps> = ({
     processFaceDetection,
   } = useEmotionDetection({
     profileId,
-    friendId,
+    connectId,
     isEnabled,
     detectionInterval,
   });
@@ -126,7 +126,7 @@ const EmotionDetectionService: React.FC<EmotionDetectionServiceProps> = ({
     if (isEnabled && !intervalRef.current) {
       console.log('🎭 Starting enhanced emotion detection service...');
       console.log('🎭 Detection interval:', adaptiveIntervalRef.current, 'ms');
-      console.log('🎭 Profile ID:', profileId, 'Friend ID:', friendId);
+      console.log('🎭 Profile ID:', profileId, 'Connect ID:', connectId);
       
       // Start periodic capture with adaptive interval
       intervalRef.current = setInterval(() => {

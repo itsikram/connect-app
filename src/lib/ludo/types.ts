@@ -30,7 +30,7 @@ export interface CaptureHit {
   pieceIndex: number;
 }
 
-export interface FriendUser {
+export interface ConnectUser {
   _id: string;
   fullName?: string;
   profilePic?: string;

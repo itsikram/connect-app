@@ -12,7 +12,7 @@ interface SocketContextType {
   joinChat: (user1: string, user2: string) => void;
   joinRoom: (roomId: string) => void;
   sendMessage: (room: string, senderId: string, receiverId: string, message: string, attachment?: any, parent?: string) => void;
-  loadMessages: (myId: string, friendId: string, skip: number) => void;
+  loadMessages: (myId: string, connectId: string, skip: number) => void;
   markMessageAsSeen: (message: any) => void;
   setTyping: (room: string, isTyping: boolean, type: string, receiverId: string) => void;
   fetchMessages: (profileId: string) => void;
@@ -21,11 +21,11 @@ interface SocketContextType {
   // Video call methods
   startVideoCall: (to: string, channelName: string) => void;
   answerVideoCall: (to: string, channelName: string) => void;
-  endVideoCall: (friendId: string, channelName?: string, action?: string) => void;
+  endVideoCall: (connectId: string, channelName?: string, action?: string) => void;
   // Audio call methods
   startAudioCall: (to: string, channelName: string) => void;
   answerAudioCall: (to: string, channelName: string) => void;
-  endAudioCall: (friendId: string, channelName?: string, action?: string) => void;
+  endAudioCall: (connectId: string, channelName?: string, action?: string) => void;
   // Filter methods
   applyVideoFilter: (to: string, filter: string) => void;
 }
@@ -106,8 +106,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.sendMessage(room, senderId, receiverId, message, attachment, parent);
   }, []);
 
-  const loadMessages = useCallback((myId: string, friendId: string, skip: number) => {
-    socketService.loadMessages(myId, friendId, skip);
+  const loadMessages = useCallback((myId: string, connectId: string, skip: number) => {
+    socketService.loadMessages(myId, connectId, skip);
   }, []);
 
   const markMessageAsSeen = useCallback((message: any) => {
@@ -139,8 +139,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.answerVideoCall(to, channelName);
   }, []);
 
-  const endVideoCall = useCallback((friendId: string, channelName?: string, action?: string) => {
-    socketService.endVideoCall(friendId, channelName, action);
+  const endVideoCall = useCallback((connectId: string, channelName?: string, action?: string) => {
+    socketService.endVideoCall(connectId, channelName, action);
   }, []);
 
   // Audio call methods
@@ -152,8 +152,8 @@ export const SocketProvider: React.FC<SocketProviderProps> = ({ children }) => {
     socketService.answerAudioCall(to, channelName);
   }, []);
 
-  const endAudioCall = useCallback((friendId: string, channelName?: string, action?: string) => {
-    socketService.endAudioCall(friendId, channelName, action);
+  const endAudioCall = useCallback((connectId: string, channelName?: string, action?: string) => {
+    socketService.endAudioCall(connectId, channelName, action);
   }, []);
 
   // Filter methods

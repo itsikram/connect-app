@@ -386,7 +386,7 @@ const Home = () => {
             lineHeight: 20,
           }}
         >
-          Post something, add a friend, or answer today's question above.
+          Post something, add a connect, or answer today's question above.
         </Text>
       </View>
     );

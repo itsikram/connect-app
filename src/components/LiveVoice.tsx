@@ -48,7 +48,7 @@ const normalizeLiveVoicePayload = (payload: any) => {
   return {
     from: data.from || data.senderId || data.callerId,
     channelName: data.channelName || data.channel || data.room,
-    callerName: data.callerName || data.friendName || data.name,
+    callerName: data.callerName || data.connectName || data.name,
   };
 };
 
@@ -65,7 +65,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [duration, setDuration] = useState(0);
   const [role, setRole] = useState<'sender' | 'receiver'>('sender');
-  const [friendName, setFriendName] = useState('Friend');
+  const [connectName, setConnectName] = useState('Connect');
   const [connectionQuality, setConnectionQuality] = useState(4);
   const [mediaActive, setMediaActive] = useState(false);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
@@ -93,7 +93,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     (args: {
       to: string;
       channelName: string;
-      friendName?: string;
+      connectName?: string;
       sessionRole?: 'sender' | 'receiver';
       notifyPeer?: boolean;
     }) => Promise<void>
@@ -133,16 +133,16 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     [],
   );
 
-  const resolveFriendName = useCallback(
-    (friendId?: string | null, fallback?: string) => {
+  const resolveConnectName = useCallback(
+    (connectId?: string | null, fallback?: string) => {
       if (fallback) return fallback;
-      if (!friendId) return 'Friend';
-      const chat = (chats || []).find(
+      if (!connectId) return 'Connect';
+      const chat: any = (chats || []).find(
         (c: any) =>
-          String(c?.person?._id) === String(friendId) ||
-          String(c?.friend?._id) === String(friendId) ||
-          String(c?.friend?.user?._id) === String(friendId) ||
-          String(c?.user?._id) === String(friendId),
+          String(c?.person?._id) === String(connectId) ||
+          String(c?.friend?._id) === String(connectId) ||
+          String(c?.friend?.user?._id) === String(connectId) ||
+          String(c?.user?._id) === String(connectId),
       );
       return (
         chat?.person?.fullName ||
@@ -155,7 +155,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
           .filter(Boolean)
           .join(' ')
           .trim() ||
-        'Friend'
+        'Connect'
       );
     },
     [chats],
@@ -229,13 +229,13 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
     async ({
       to,
       channelName,
-      friendName: name,
+      connectName: name,
       sessionRole = 'sender',
       notifyPeer = true,
     }: {
       to: string;
       channelName: string;
-      friendName?: string;
+      connectName?: string;
       sessionRole?: 'sender' | 'receiver';
       notifyPeer?: boolean;
     }) => {
@@ -279,7 +279,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       channelRef.current = channelName;
       roleRef.current = sessionRole;
       setRole(sessionRole);
-      setFriendName(resolveFriendName(to, name));
+      setConnectName(resolveConnectName(to, name));
       setIsOpen(true);
       setIsConnecting(true);
       setIsActive(false);
@@ -348,7 +348,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         );
       }
     },
-    [broadcastStatus, emit, myId, numericUid, resolveFriendName, stopSession],
+    [broadcastStatus, emit, myId, numericUid, resolveConnectName, stopSession],
   );
 
   startSessionRef.current = startSession;
@@ -498,7 +498,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       void startSessionRef.current({
         to: String(from),
         channelName: String(channelName),
-        friendName: callerName,
+        connectName: callerName,
         sessionRole: 'receiver',
         notifyPeer: false,
       });
@@ -546,12 +546,12 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
 
   useEffect(() => {
     const onOutgoing = (detail: LiveVoiceStartDetail) => {
-      const { to, channelName, friendName: name } = detail || {};
+      const { to, channelName, connectName: name } = detail || {};
       if (!to || !channelName) return;
       void startSessionRef.current({
         to,
         channelName,
-        friendName: name,
+        connectName: name,
         sessionRole: 'sender',
         notifyPeer: true,
       });
@@ -598,7 +598,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
           duration={duration}
           isConnecting={isConnecting}
           role={role}
-          friendName={friendName}
+          connectName={connectName}
           connectionQuality={connectionQuality}
           onStop={() => {
             void stopSession(true);

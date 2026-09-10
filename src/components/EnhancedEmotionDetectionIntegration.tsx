@@ -6,7 +6,7 @@ import EmotionDetectionService from './EmotionDetectionService';
 import { useEmotionDetection } from '../hooks/useEmotionDetection';
 
 interface EnhancedEmotionDetectionIntegrationProps {
-  friendId: string;
+  connectId: string;
   room?: string;
 }
 
@@ -16,7 +16,7 @@ interface EnhancedEmotionDetectionIntegrationProps {
  * Handles settings, permissions, state management, and real-time updates
  */
 const EnhancedEmotionDetectionIntegration: React.FC<EnhancedEmotionDetectionIntegrationProps> = ({
-  friendId,
+  connectId,
   room,
 }) => {
   const settings = useSelector((state: any) => state.setting);
@@ -26,7 +26,7 @@ const EnhancedEmotionDetectionIntegration: React.FC<EnhancedEmotionDetectionInte
   const [isEnabled, setIsEnabled] = useState(false);
   const [hasPermissions, setHasPermissions] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);
-  const [friendEmotion, setFriendEmotion] = useState<string | null>(null);
+  const [connectEmotion, setConnectEmotion] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
 
   const emotionDetectionRef = useRef<any>(null);
@@ -75,9 +75,9 @@ const EnhancedEmotionDetectionIntegration: React.FC<EnhancedEmotionDetectionInte
       console.log('🎭 Received emotion change:', data);
       
       if (data && data.emotion) {
-        // Update friend's emotion if it's from the current friend
-        if (data.profileId === friendId) {
-          setFriendEmotion(data.emotion);
+        // Update connect's emotion if it's from the current connect
+        if (data.profileId === connectId) {
+          setConnectEmotion(data.emotion);
         }
         
         // Handle emotion data with confidence and quality info
@@ -97,20 +97,20 @@ const EnhancedEmotionDetectionIntegration: React.FC<EnhancedEmotionDetectionInte
     return () => {
       // Cleanup is handled by socket context
     };
-  }, [on, friendId]);
+  }, [on, connectId]);
 
-  // Request last emotion from friend (same as web version)
+  // Request last emotion from connect (same as web version)
   useEffect(() => {
-    if (friendId && profile._id) {
+    if (connectId && profile._id) {
       const now = Date.now();
       // Throttle emotion requests to avoid spam
       if (now - lastEmotionRequestRef.current > 5000) {
-        emit('last_emotion', { friendId, profileId: profile._id });
+        emit('last_emotion', { connectId, profileId: profile._id });
         lastEmotionRequestRef.current = now;
-        console.log('📡 Requesting last emotion from friend:', friendId);
+        console.log('📡 Requesting last emotion from connect:', connectId);
       }
     }
-  }, [friendId, profile._id, emit]);
+  }, [connectId, profile._id, emit]);
 
   // Handle emotion detection state changes
   const handleEmotionDetectionChange = useCallback((emotion: string | null) => {
@@ -176,7 +176,7 @@ const EnhancedEmotionDetectionIntegration: React.FC<EnhancedEmotionDetectionInte
       {/* Enhanced Emotion Detection Service */}
       <EmotionDetectionService
         profileId={profile._id}
-        friendId={friendId}
+        connectId={connectId}
         isEnabled={isEnabled}
         room={room}
         detectionInterval={900} // Same as web version
@@ -196,10 +196,10 @@ const EnhancedEmotionDetectionIntegration: React.FC<EnhancedEmotionDetectionInte
         </View>
       )}
 
-      {/* Friend's Emotion Display */}
-      {friendEmotion && (
+      {/* Connect's Emotion Display */}
+      {connectEmotion && (
         <View style={styles.emotionDisplay}>
-          <Text style={styles.emotionText}>Friend's emotion: {friendEmotion}</Text>
+          <Text style={styles.emotionText}>Connect's emotion: {connectEmotion}</Text>
         </View>
       )}
     </View>
@@ -259,5 +259,4 @@ const styles = StyleSheet.create({
 });
 
 export default EnhancedEmotionDetectionIntegration;
-
 

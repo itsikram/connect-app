@@ -6,7 +6,7 @@ interface UserToastContextType {
     userProfilePic?: string;
     fullName: string;
     message: string;
-    type?: 'message' | 'friend' | 'notification' | 'custom';
+    type?: 'message' | 'connect' | 'notification' | 'custom';
     duration?: number;
     onPress?: () => void;
   }) => void;
@@ -16,7 +16,7 @@ interface UserToastContextType {
     message: string;
     onPress?: () => void;
   }) => void;
-  showFriendRequestToast: (userData: {
+  showConnectRequestToast: (userData: {
     userProfilePic?: string;
     fullName: string;
     message?: string;
@@ -43,7 +43,7 @@ export const UserToastProvider: React.FC<UserToastProviderProps> = ({ children }
     userProfilePic?: string;
     fullName: string;
     message: string;
-    type: 'message' | 'friend' | 'notification' | 'custom';
+    type: 'message' | 'connect' | 'notification' | 'custom';
     duration: number;
     onPress?: () => void;
   }>({
@@ -60,7 +60,7 @@ export const UserToastProvider: React.FC<UserToastProviderProps> = ({ children }
     userProfilePic?: string;
     fullName: string;
     message: string;
-    type?: 'message' | 'friend' | 'notification' | 'custom';
+    type?: 'message' | 'connect' | 'notification' | 'custom';
     duration?: number;
     onPress?: () => void;
   }) => {
@@ -88,7 +88,7 @@ export const UserToastProvider: React.FC<UserToastProviderProps> = ({ children }
     });
   };
 
-  const showFriendRequestToast = (userData: {
+  const showConnectRequestToast = (userData: {
     userProfilePic?: string;
     fullName: string;
     message?: string;
@@ -96,9 +96,9 @@ export const UserToastProvider: React.FC<UserToastProviderProps> = ({ children }
   }) => {
     showUserToast({
       ...userData,
-      message: userData.message || `${userData.fullName} sent you a friend request`,
-      type: 'friend',
-      duration: 6000, // Friend requests stay longer
+      message: userData.message || `${userData.fullName} sent you a connect request`,
+      type: 'connect',
+      duration: 6000, // Connect requests stay longer
     });
   };
 
@@ -128,7 +128,7 @@ export const UserToastProvider: React.FC<UserToastProviderProps> = ({ children }
       value={{
         showUserToast,
         showMessageToast,
-        showFriendRequestToast,
+        showConnectRequestToast,
         showNotificationToast,
         hideUserToast,
       }}

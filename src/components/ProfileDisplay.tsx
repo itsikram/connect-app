@@ -22,7 +22,7 @@ const ProfileDisplay: React.FC = () => {
       <Text style={styles.text}>Bio: {profile.bio || 'N/A'}</Text>
       <Text style={styles.text}>Profile Pic: {profile.profilePic ? 'Set' : 'Not set'}</Text>
       <Text style={styles.text}>Cover Pic: {profile.coverPic ? 'Set' : 'Not set'}</Text>
-      <Text style={styles.text}>Friends Count: {profile.friends?.length || 0}</Text>
+      <Text style={styles.text}>Connects Count: {(profile.connects ?? profile.friends)?.length || 0}</Text>
     </View>
   );
 };

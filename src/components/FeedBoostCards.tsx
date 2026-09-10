@@ -92,11 +92,11 @@ const FeedBoostCards: React.FC<FeedBoostCardsProps> = ({
           <View style={styles.actions}>
             <TouchableOpacity
               style={[styles.chip, { backgroundColor: feed.chipBg, borderColor: feed.postBorder }]}
-              onPress={() => navigation.navigate('Friends')}
+              onPress={() => navigation.navigate('Connects')}
               activeOpacity={0.8}
             >
               <Icon name="person-add" size={14} color={feed.postText} />
-              <Text style={[styles.chipText, { color: feed.postText }]}>Add friends</Text>
+              <Text style={[styles.chipText, { color: feed.postText }]}>Add connects</Text>
             </TouchableOpacity>
             <TouchableOpacity
               style={[styles.chip, { backgroundColor: feed.chipBg, borderColor: feed.postBorder }]}

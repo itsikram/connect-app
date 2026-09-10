@@ -40,14 +40,14 @@ const GlobalEmotionDetection: React.FC = () => {
     return null;
   }
 
-  // Use a generic friendId for global detection (can be updated based on current context)
+  // Use a generic connectId for global detection (can be updated based on current context)
   // For now, we'll use the profile ID itself as a placeholder
-  const globalFriendId = 'global-detection';
+  const globalConnectId = 'global-detection';
 
   return (
     <BackgroundEmotionCamera
       profileId={profile._id}
-      friendId={globalFriendId}
+      connectId={globalConnectId}
       isEnabled={isEnabled}
       detectionInterval={2000} // Check every 2 seconds for emotion changes
     />

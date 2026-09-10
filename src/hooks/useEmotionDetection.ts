@@ -14,7 +14,7 @@ type Face = Record<string, unknown>;
 
 interface EmotionDetectionOptions {
   profileId: string;
-  friendId: string;
+  connectId: string;
   isEnabled: boolean;
   detectionInterval?: number;
 }
@@ -32,7 +32,7 @@ interface EmotionData {
  * Mirrors the sophisticated emotion detection from the web version with exact same logic
  */
 export const useEmotionDetection = (options: EmotionDetectionOptions) => {
-  const { profileId, friendId, isEnabled, detectionInterval = 900 } = options; // Faster base interval like web
+  const { profileId, connectId, isEnabled, detectionInterval = 900 } = options; // Faster base interval like web
   const { emit } = useSocket();
   
   const [currentEmotion, setCurrentEmotion] = useState<string | null>(null);

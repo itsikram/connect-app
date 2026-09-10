@@ -14,8 +14,8 @@ const EmotionDetectionTest: React.FC = () => {
   const { emit, on } = useSocket();
 
   const [myEmotion, setMyEmotion] = useState<string | null>(null);
-  const [friendEmotion, setFriendEmotion] = useState<string | null>(null);
-  const [testFriendId] = useState('test-friend-123'); // Test friend ID
+  const [connectEmotion, setConnectEmotion] = useState<string | null>(null);
+  const [testConnectId] = useState('test-connect-123'); // Test connect ID
   const [isEnabled, setIsEnabled] = useState(false);
 
   // Check if emotion sharing is enabled
@@ -29,9 +29,9 @@ const EmotionDetectionTest: React.FC = () => {
       console.log('🎭 Test - Received emotion change:', data);
       
       if (data && data.emotion) {
-        if (data.profileId === testFriendId) {
-          setFriendEmotion(data.emotion);
-          console.log('🎭 Test - Friend emotion updated:', data.emotion);
+        if (data.profileId === testConnectId) {
+          setConnectEmotion(data.emotion);
+          console.log('🎭 Test - Connect emotion updated:', data.emotion);
         } else if (data.profileId === profile._id) {
           setMyEmotion(data.emotion);
           console.log('🎭 Test - My emotion updated:', data.emotion);
@@ -44,7 +44,7 @@ const EmotionDetectionTest: React.FC = () => {
     return () => {
       // Cleanup handled by socket context
     };
-  }, [on, testFriendId, profile._id]);
+  }, [on, testConnectId, profile._id]);
 
   // Test manual emotion emission
   const testEmotionEmission = (emotionText: string) => {
@@ -59,7 +59,7 @@ const EmotionDetectionTest: React.FC = () => {
       emotion: `${emoji} ${emotionText}`,
       emotionText,
       emoji,
-      friendId: testFriendId,
+      connectId: testConnectId,
       confidence: 0.95, // High confidence for manual test
       quality: 0.9
     };
@@ -115,9 +115,9 @@ const EmotionDetectionTest: React.FC = () => {
       </View>
 
       <View style={styles.emotionContainer}>
-        <Text style={styles.sectionTitle}>Friend's Emotion</Text>
+        <Text style={styles.sectionTitle}>Connect's Emotion</Text>
         <Text style={styles.emotionText}>
-          {friendEmotion || 'None received'}
+          {connectEmotion || 'None received'}
         </Text>
       </View>
 
@@ -196,7 +196,7 @@ const EmotionDetectionTest: React.FC = () => {
         1. Enable emotion sharing in settings{'\n'}
         2. Tap emotion buttons to test emission{'\n'}
         3. Check console logs for debug info{'\n'}
-        4. Use in a chat screen with a real friend ID
+        4. Use in a chat screen with a real connect ID
       </Text>
     </View>
   );
@@ -307,5 +307,4 @@ const styles = StyleSheet.create({
 });
 
 export default EmotionDetectionTest;
-
 

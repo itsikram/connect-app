@@ -16,7 +16,7 @@ export interface UserToastProps {
   userProfilePic?: string;
   fullName: string;
   message: string;
-  type?: 'message' | 'friend' | 'notification' | 'custom';
+  type?: 'message' | 'connect' | 'notification' | 'custom';
   duration?: number;
   onHide?: () => void;
   onPress?: () => void;
@@ -49,7 +49,7 @@ const UserToast: React.FC<UserToastProps> = ({
           iconColor: colors.white,
           borderColor: colors.primaryLight,
         };
-      case 'friend':
+      case 'connect':
         return {
           backgroundColor: colors.secondary,
           icon: 'person-add',

@@ -217,7 +217,7 @@ export const isRomanticMessage = (text: unknown) => {
 
 export type WallpaperSource = 'theme' | 'global' | 'custom';
 
-export interface FriendChatSettings {
+export interface ConnectChatSettings {
   themeId: string;
   wallpaperSource: WallpaperSource;
   customBackground: string | null;
@@ -252,7 +252,7 @@ export interface ChatTheme {
   colors: ChatThemeColors;
 }
 
-export const DEFAULT_FRIEND_CHAT_SETTINGS: FriendChatSettings = {
+export const DEFAULT_CONNECT_CHAT_SETTINGS: ConnectChatSettings = {
   themeId: DEFAULT_CHAT_THEME_ID,
   wallpaperSource: 'global',
   customBackground: null,
@@ -422,9 +422,9 @@ export const CHAT_THEMES: ChatTheme[] = [
 export const getChatTheme = (themeId?: string | null): ChatTheme =>
   CHAT_THEMES.find((theme) => theme.id === themeId) || CHAT_THEMES[0];
 
-export const normalizeFriendChatSettings = (
-  raw: Partial<FriendChatSettings> | Record<string, any> = {},
-): FriendChatSettings => {
+export const normalizeConnectChatSettings = (
+  raw: Partial<ConnectChatSettings> | Record<string, any> = {},
+): ConnectChatSettings => {
   const themeId = CHAT_THEMES.some((theme) => theme.id === raw.themeId)
     ? raw.themeId
     : DEFAULT_CHAT_THEME_ID;
@@ -434,7 +434,7 @@ export const normalizeFriendChatSettings = (
     ? raw.wallpaperSource
     : raw.customBackground
       ? 'custom'
-      : DEFAULT_FRIEND_CHAT_SETTINGS.wallpaperSource;
+      : DEFAULT_CONNECT_CHAT_SETTINGS.wallpaperSource;
 
   return {
     themeId,
@@ -457,11 +457,11 @@ export type ResolvedWallpaper =
   | { type: 'gradient'; value: string[]; isDark: boolean | null };
 
 export const resolveChatWallpaper = (
-  friendSettings: Partial<FriendChatSettings> | Record<string, any>,
+  connectSettings: Partial<ConnectChatSettings> | Record<string, any>,
   theme: ChatTheme,
   globalBackground?: string | null,
 ): ResolvedWallpaper => {
-  const settings = normalizeFriendChatSettings(friendSettings);
+  const settings = normalizeConnectChatSettings(connectSettings);
 
   if (settings.wallpaperSource === 'custom' && settings.customBackground) {
     return { type: 'image', value: settings.customBackground, isDark: true };
