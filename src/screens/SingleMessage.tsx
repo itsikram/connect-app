@@ -985,6 +985,7 @@ const SingleMessage = () => {
   const lastFrameSentAtRef = React.useRef<number | null>(null);
   const labelHistoryRef = React.useRef<Array<{ t: number; label: string }>>([]);
   const lastMajorityLabelRef = React.useRef<string | null>(null);
+  const lastExpressionRef = React.useRef<string | null>(null);
   const lastEmotionTimestampRef = React.useRef<number>(0);
   const expressionDataRef = React.useRef<any>(null);
   const handleEmotionServerResponseRef = React.useRef<
@@ -1964,6 +1965,7 @@ const SingleMessage = () => {
       // Reset rolling majority buffers
       labelHistoryRef.current = [];
       lastMajorityLabelRef.current = null;
+      lastExpressionRef.current = null;
       serverRequestInFlightRef.current = false;
       return;
     }
@@ -1989,6 +1991,7 @@ const SingleMessage = () => {
       // Reset rolling majority buffers
       labelHistoryRef.current = [];
       lastMajorityLabelRef.current = null;
+      lastExpressionRef.current = null;
       serverRequestInFlightRef.current = false;
       return;
     }
@@ -2014,6 +2017,7 @@ const SingleMessage = () => {
       // Reset rolling majority buffers
       labelHistoryRef.current = [];
       lastMajorityLabelRef.current = null;
+      lastExpressionRef.current = null;
       serverRequestInFlightRef.current = false;
       return;
     }
@@ -2322,8 +2326,12 @@ const SingleMessage = () => {
         const label = actionLabels[action] || 'Neutral';
         const emoji = emotionEmojiMap[label] || '😐';
         const confidence = Number(data.confidence) || 0;
-        if (label !== lastMajorityLabelRef.current) {
+        if (
+          label !== lastMajorityLabelRef.current ||
+          action !== lastExpressionRef.current
+        ) {
           lastMajorityLabelRef.current = label;
+          lastExpressionRef.current = action;
           setMyEmotion(`${emoji} ${label}`);
           console.log('[SingleMessage] ✅ Applied expression update:', {
             action,
@@ -2458,10 +2466,14 @@ const SingleMessage = () => {
 
       // FAST EMISSION: Emit immediately if emotion changed (before majority window)
       // This ensures super fast response when emotions change
-      if (label !== lastMajorityLabelRef.current) {
+      if (
+        label !== lastMajorityLabelRef.current ||
+        dominantExpression !== lastExpressionRef.current
+      ) {
         // New emotion detected - emit immediately for fast response
         const previousLabel = lastMajorityLabelRef.current;
         lastMajorityLabelRef.current = label;
+        lastExpressionRef.current = dominantExpression;
         setMyEmotion(`${emoji} ${label}`);
         console.log('[SingleMessage] ✅ Applied emotion update:', {
           label,

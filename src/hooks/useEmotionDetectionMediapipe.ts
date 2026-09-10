@@ -87,7 +87,13 @@ export const useEmotionDetectionMediapipe = (options: UseEmotionDetectionMediapi
           emoji,
           connectId,
           confidence: result.confidence || 0.6,
-          quality: result.confidence || 0.6
+          quality: result.confidence || 0.6,
+          expression:
+            dominant && dominant.toLowerCase() !== emotion
+              ? dominant.toLowerCase()
+              : label !== emotion
+                ? label
+                : 'none',
         });
         setCurrentEmotion(composed);
       }
@@ -109,5 +115,4 @@ export const useEmotionDetectionMediapipe = (options: UseEmotionDetectionMediapi
 };
 
 export default useEmotionDetectionMediapipe;
-
 

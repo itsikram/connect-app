@@ -48,6 +48,8 @@ import {
   unloadPipBackgroundSound,
   isAppBackgrounded,
 } from '../lib/pipBackgroundPlayback';
+import { useAudioEqualizer } from '../hooks/useAudioEqualizer';
+import EqualizerModal from '../components/EqualizerModal';
 import api from '../lib/api';
 import {
   pollYoutubeDownloadProgress,
@@ -187,6 +189,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [mediaReady, setMediaReady] = useState(false);
   const [videoPosition, setVideoPosition] = useState(0);
   const [videoDuration, setVideoDuration] = useState(0);
+  const [showEqualizerModal, setShowEqualizerModal] = useState(false);
 
   useEffect(() => {
     const query = searchQuery.trim();
@@ -251,6 +254,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const handingOffRef = useRef(false);
   const wantPlayingRef = useRef(false);
   const libraryRefreshRef = useRef<Promise<void> | null>(null);
+  const htmlVideoRef = useRef<HTMLMediaElement | null>(null);
+
+  const equalizer = useAudioEqualizer(htmlVideoRef.current);
 
   useEffect(() => {
     configurePipAudioMode().catch(() => {});
@@ -1474,6 +1480,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
                 ) : (
                   <>
                     {!isFullscreen ? <ExpoVideo
+                      key={currentTrackKey}
                       ref={(node) => {
                         videoRef.current = node;
                       }}
@@ -1563,6 +1570,11 @@ const MediaPlayer = ({ route, navigation }: any) => {
                   <ToolBtn icon="picture-in-picture-alt" onPress={minimizeToPip} {...toolBtnTheme} />
                 ) : null}
                 <ToolBtn
+                  icon="equalizer"
+                  onPress={() => setShowEqualizerModal(true)}
+                  {...toolBtnTheme}
+                />
+                <ToolBtn
                   icon={isFullscreen ? 'fullscreen-exit' : 'fullscreen'}
                   onPress={toggleFullscreen}
                   {...toolBtnTheme}
@@ -1577,6 +1589,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
                 >
                 <View style={styles.fullscreenOverlay}>
                   <ExpoVideo
+                    key={currentTrackKey}
                     ref={(node) => {
                       videoRef.current = node;
                     }}
@@ -1988,6 +2001,25 @@ const MediaPlayer = ({ route, navigation }: any) => {
           </View>
         </ScrollView>
       </KeyboardSafeView>
+      <EqualizerModal
+        visible={showEqualizerModal}
+        onClose={() => setShowEqualizerModal(false)}
+        state={equalizer.state}
+        presets={equalizer.presets}
+        onStateUpdate={equalizer.updateState}
+        onLoadPreset={equalizer.loadPreset}
+        onResetToDefaults={equalizer.resetToDefaults}
+        isSupported={equalizer.isSupported}
+        theme={{
+          text: t.text,
+          muted: t.muted,
+          background: t.pageBgAlt,
+          surface: t.surface,
+          primary: t.primary,
+          border: t.border,
+          overlay: t.overlay,
+        }}
+      />
     </SafeAreaView>
   );
 };

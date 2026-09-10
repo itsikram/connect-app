@@ -151,6 +151,13 @@ const definitionByName = new Map(
   AGENT_ACTION_CATALOG.map(definition => [definition.name, definition]),
 );
 const ACTION_ALIASES: Record<string, AgentActionName> = {
+  LUDU: 'OPEN_LUDO',
+  OPEN_LUDU: 'OPEN_LUDO',
+  START_LUDU: 'start_ludo',
+  OPEN_LUDO_GAME: 'OPEN_LUDO',
+  START_LUDO_GAME: 'start_ludo',
+  INVITE_LUDU: 'INVITE_LUDO_PLAYER',
+  INVITE_LUDU_PLAYER: 'INVITE_LUDO_PLAYER',
   CALL: 'START_AUDIO_CALL',
   AUDIO_CALL: 'START_AUDIO_CALL',
   START_AUDIO: 'START_AUDIO_CALL',

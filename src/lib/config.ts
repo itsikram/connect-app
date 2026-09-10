@@ -34,9 +34,9 @@ const isExpoTunnelHost = (host: string): boolean =>
 // Ollama. Set EXPO_PUBLIC_LOCAL_API_URL when the computer's LAN address differs.
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
+  const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
 
-// return liveServerUrl;
+  // return liveServerUrl;
 
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
@@ -68,7 +68,8 @@ const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
 };
 
 const getDevMediapipeServerUrl = (): string =>
-  process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || 'http://192.168.1.102:5001';
+  process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() ||
+  'http://192.168.1.102:5001';
 
 // Development server URLs (local network)
 const devServerUrl = getDevServerUrl();
@@ -76,7 +77,8 @@ const devMediapipeServerUrl = getDevMediapipeServerUrl();
 
 // Production server URLs
 const prodServerUrl = liveServerUrl;
-const prodMediapipeServerUrl = process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || '';
+const prodMediapipeServerUrl =
+  process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || '';
 
 const ENV: Record<Environment, EnvironmentConfig> = {
   development: {
@@ -84,10 +86,11 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     SOCKET_BASE_URL: devServerUrl,
     API_TIMEOUT: 15000,
     MEDIAPIPE_BASE_URL: devMediapipeServerUrl,
-    FACE_SERVICE_URL: process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || devMediapipeServerUrl,
+    FACE_SERVICE_URL:
+      process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || devMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
-    DEFAULT_COVER_URL: '/assets/images/default-cover.png',
+    DEFAULT_COVER_URL: '/assets/images/default-cover-pic.png',
     DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
     DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
     LUDU_BACKGROUND_URL: '/assets/images/ludu-background.png',
@@ -101,10 +104,12 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     SOCKET_BASE_URL: prodServerUrl,
     API_TIMEOUT: 15000,
     MEDIAPIPE_BASE_URL: prodMediapipeServerUrl,
-    FACE_SERVICE_URL: process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || prodMediapipeServerUrl,
+    FACE_SERVICE_URL:
+      process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() ||
+      prodMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
-    DEFAULT_COVER_URL: '/assets/images/default-cover.png',
+    DEFAULT_COVER_URL: '/assets/images/default-cover-pic.png',
     DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
     DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
     LUDU_BACKGROUND_URL: '/assets/images/ludu-background.png',
@@ -118,10 +123,12 @@ const ENV: Record<Environment, EnvironmentConfig> = {
     SOCKET_BASE_URL: prodServerUrl,
     API_TIMEOUT: 20000,
     MEDIAPIPE_BASE_URL: prodMediapipeServerUrl,
-    FACE_SERVICE_URL: process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || prodMediapipeServerUrl,
+    FACE_SERVICE_URL:
+      process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() ||
+      prodMediapipeServerUrl,
     LOGO_URL: '/assets/images/logo.png',
     DEFAULT_PROFILE_URL: '/assets/images/default-profile-pic.png',
-    DEFAULT_COVER_URL: '/assets/images/default-cover.png',
+    DEFAULT_COVER_URL: '/assets/images/default-cover-pic.png',
     DEFAULT_NOTIFICATION_SOUND_URL: '/assets/audio/notification_sound.mp3',
     DEFAULT_RINGTONE_URL: '/assets/audio/default-ringtone.mp3',
     LUDU_BACKGROUND_URL: '/assets/images/ludu-background.png',

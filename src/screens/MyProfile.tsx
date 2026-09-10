@@ -42,6 +42,7 @@ import PostSkeleton from '../components/skeleton/PostSkeleton';
 import CreateStoryModal from '../components/story/CreateStoryModal';
 import { POST_UPDATED_EVENT } from '../utils/postEvents';
 import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat';
+import config from '../lib/config';
 
 function formatMonthYear(dateInput: any): string {
   try {
@@ -1050,12 +1051,9 @@ const MyProfile = () => {
               style={[styles.cover, { height: coverHeight }]}
             />
           ) : (
-            <View
-              style={[
-                styles.cover,
-                styles.coverPlaceholder,
-                { height: coverHeight, backgroundColor: themeColors.gray[200] },
-              ]}
+            <ImageWithSkeleton
+              source={{ uri: config.DEFAULT_COVER_URL }}
+              style={[styles.cover, { height: coverHeight }]}
             />
           )}
           {isUploadingCover && (

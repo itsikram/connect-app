@@ -18,6 +18,7 @@ import { POST_UPDATED_EVENT } from '../utils/postEvents'
 import ConnectCacheManager from '../utils/connectCacheManager'
 import VerifiedName from '../components/VerifiedName'
 import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat'
+import config from '../lib/config'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -709,7 +710,7 @@ const ConnectProfile = () => {
                     {connectData?.coverPic ? (
                         <ImageWithSkeleton source={{ uri: connectData.coverPic }} style={[styles.cover, { height: coverHeight }]} />
                     ) : (
-                        <View style={[styles.cover, styles.coverPlaceholder, { height: coverHeight, backgroundColor: themeColors.gray[200] }]} />
+                        <ImageWithSkeleton source={{ uri: config.DEFAULT_COVER_URL }} style={[styles.cover, { height: coverHeight }]} />
                     )}
                 </View>
 
@@ -723,7 +724,7 @@ const ConnectProfile = () => {
                             {connectData?.profilePic ? (
                                 <ProfileImageWithSkeleton uri={connectData.profilePic} pixelSize={400} style={styles.avatar} />
                             ) : (
-                                <View style={[styles.avatarPlaceholder, { backgroundColor: themeColors.gray[300] }]} />
+                                <ProfileImageWithSkeleton uri={config.DEFAULT_PROFILE_URL} pixelSize={400} style={styles.avatar} />
                             )}
                         </View>
                     </View>
