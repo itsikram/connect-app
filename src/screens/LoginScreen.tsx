@@ -216,7 +216,14 @@ const LoginScreen = () => {
               <Icon name="scan-outline" size={32} color={themeColors.primary} />
               <Text style={[styles.faceButtonText, { color: themeColors.text.primary }]}>{faceLoginMode ? 'Use password login' : 'Log in with Face'}</Text>
             </TouchableOpacity>
-            {faceLoginMode ? <FaceCapture onCapture={handleFaceLogin} disabled={isLoading} /> : null}
+            {faceLoginMode ? (
+              <FaceCapture
+                onCapture={handleFaceLogin}
+                disabled={isLoading}
+                frameCount={15}
+                captureIntervalMs={50}
+              />
+            ) : null}
             {!faceLoginMode ? (
               <>
                 <View style={styles.divider}>

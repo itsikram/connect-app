@@ -21,6 +21,7 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import VoiceTextInput from '../components/VoiceTextInput';
+import MentionTextInput from '../components/MentionTextInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type RootStackParamList = {
@@ -1339,6 +1340,7 @@ const SinglePost = () => {
         const body = comment.content || comment.text || comment.body || '';
         const replies = normalizeComments(comment.replies);
         const isMine = sameId(comment.author, myProfile?._id);
+        const canDelete = isMine || sameId(post?.author, myProfile?._id);
         const menuOpen = commentMenuId === comment._id;
         return (
             <View key={comment._id} style={[styles.fbCommentRow, isReply && { marginBottom: 8 }]}>
@@ -1357,7 +1359,7 @@ const SinglePost = () => {
                                 <Text style={[styles.fbCommentText, { color: themeColors.text.primary }]}>{body}</Text>
                             )}
                         </View>
-                        {isMine ? (
+                        {canDelete ? (
                             <TouchableOpacity
                                 onPress={() => setCommentMenuId(menuOpen ? null : comment._id)}
                                 hitSlop={8}
@@ -1662,7 +1664,8 @@ const SinglePost = () => {
                         isActive={false}
                     />
                     <View style={[styles.inputContainer, { borderRadius: 20 }]}>
-                        <VoiceTextInput
+                        <MentionTextInput
+                            myProfileId={myProfile?._id}
                             value={replyText}
                             onChangeText={setReplyText}
                             placeholder={`Reply to ${commentAuthorName(replyingTo)}...`}
@@ -1701,7 +1704,8 @@ const SinglePost = () => {
                         isActive={false}
                     />
                     <View style={styles.inputContainer}>
-                        <VoiceTextInput
+                        <MentionTextInput
+                            myProfileId={myProfile?._id}
                             ref={commentInputRef}
                             value={commentText}
                             onChangeText={setCommentText}

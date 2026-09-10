@@ -22,6 +22,7 @@ import api from '../lib/api';
 import { useTheme } from '../contexts/ThemeContext';
 import UserPP from './UserPP';
 import VoiceTextInput from './VoiceTextInput';
+import MentionTextInput from './MentionTextInput';
 import config from '../lib/config';
 import { useFeedTokens } from '../theme/feedTokens';
 import {
@@ -189,7 +190,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const inputText = feed.postText;
   const accentColor = feed.postAccent;
 
-  const isAuth = post.author?._id === myProfileId;
+  const isAuth = sameId(post.author, myProfileId);
   const postType = post.type || type || 'post';
   const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
   const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
@@ -936,7 +937,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 </Text>
               ) : null}
             </View>
-            {isMine ? (
+            {isMine || isAuth ? (
               <View style={styles.fbOptionsWrap}>
                 <TouchableOpacity
                   onPress={() => setCommentMenuId(menuOpen ? null : c._id)}
@@ -956,14 +957,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                       { backgroundColor: cardBg, borderColor },
                     ]}
                   >
-                    <TouchableOpacity
-                      onPress={() => startEditing(c)}
-                      disabled={!!updatingCommentId}
-                    >
-                      <Text style={[styles.fbOptionsText, { color: textColor }]}>
-                        {isReply ? 'Edit Reply' : 'Edit Comment'}
-                      </Text>
-                    </TouchableOpacity>
+                    {isMine ? (
+                      <TouchableOpacity
+                        onPress={() => startEditing(c)}
+                        disabled={!!updatingCommentId}
+                      >
+                        <Text style={[styles.fbOptionsText, { color: textColor }]}>
+                          {isReply ? 'Edit Reply' : 'Edit Comment'}
+                        </Text>
+                      </TouchableOpacity>
+                    ) : null}
                     <TouchableOpacity
                       onPress={() => {
                         setCommentMenuId(null);
@@ -1057,7 +1060,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   { backgroundColor: inputBg, borderColor },
                 ]}
               >
-                <VoiceTextInput
+                <MentionTextInput
+                  myProfileId={myProfileId}
                   style={[
                     styles.fbFieldText,
                     { color: inputText },
@@ -1855,7 +1859,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 { backgroundColor: inputBg, borderColor },
               ]}
             >
-              <VoiceTextInput
+              <MentionTextInput
+                myProfileId={myProfileId}
                 ref={commentInputRef}
                 style={[
                   styles.fbFieldText,

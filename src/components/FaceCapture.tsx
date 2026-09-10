@@ -4,16 +4,24 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Speech from 'expo-speech';
 import { Button } from 'react-native-paper';
 
-const FRAME_COUNT = 20;
-const MIN_FRAMES_TO_SEND = 20;
+const DEFAULT_FRAME_COUNT = 20;
+const MIN_FRAMES_TO_SEND = 15;
+const DEFAULT_CAPTURE_INTERVAL_MS = 100;
 const CAPTURE_PROMPT_BN = 'আপনার মুখ ফ্রেমের মাঝখানে রাখুন এবং চোখ পিটপিট করুন।';
 
 type FaceCaptureProps = {
   onCapture: (frames: string[]) => Promise<void> | void;
   disabled?: boolean;
+  frameCount?: number;
+  captureIntervalMs?: number;
 };
 
-const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
+const FaceCapture = ({
+  onCapture,
+  disabled = false,
+  frameCount = DEFAULT_FRAME_COUNT,
+  captureIntervalMs = DEFAULT_CAPTURE_INTERVAL_MS,
+}: FaceCaptureProps) => {
   const cameraRef = useRef<CameraView>(null);
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraReady, setCameraReady] = useState(false);
@@ -51,7 +59,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
 
     try {
       const frames: string[] = [];
-      for (let index = 0; index < FRAME_COUNT; index += 1) {
+      for (let index = 0; index < frameCount; index += 1) {
         const photo = await cameraRef.current.takePictureAsync({
           base64: true,
           quality: 0.7,
@@ -63,7 +71,7 @@ const FaceCapture = ({ onCapture, disabled = false }: FaceCaptureProps) => {
         frames.push(photo.base64);
         setProgress(Math.min(100, Math.round((frames.length / MIN_FRAMES_TO_SEND) * 100)));
         if (frames.length < MIN_FRAMES_TO_SEND) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+          await new Promise(resolve => setTimeout(resolve, captureIntervalMs));
         }
       }
 
