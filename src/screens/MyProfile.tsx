@@ -185,6 +185,7 @@ const MyProfile = () => {
   const [imageViewerIndex, setImageViewerIndex] = React.useState(0);
   const [connects, setConnects] = React.useState<any[]>([]);
   const [connectsLoading, setConnectsLoading] = React.useState<boolean>(true);
+  const [connectProfileLoadingId, setConnectProfileLoadingId] = React.useState<string | null>(null);
   const [videos, setVideos] = React.useState<any[]>([]);
   const [videosLoading, setVideosLoading] = React.useState<boolean>(true);
   const [showFullBio, setShowFullBio] = React.useState<boolean>(false);
@@ -706,12 +707,22 @@ const MyProfile = () => {
                       },
                     ]}
                     onPress={() => {
+                      if (connectProfileLoadingId) return;
+                      setConnectProfileLoadingId(f._id);
                       (navigation as any).navigate('Message', {
                         screen: 'ConnectProfile',
                         params: { connectId: f._id, connectData: f },
                       });
                     }}
+                    disabled={Boolean(connectProfileLoadingId)}
                   >
+                    {connectProfileLoadingId === f._id && (
+                      <ActivityIndicator
+                        size="small"
+                        color={themeColors.primary}
+                        style={styles.connectProfileLoading}
+                      />
+                    )}
                     <View
                       style={[
                         styles.connectAvatarWrap,
@@ -1598,6 +1609,11 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     // backgroundColor and borderColor will be set dynamically
+  },
+  connectProfileLoading: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
   },
   connectAvatarWrap: {
     width: 64,

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter, Alert } from 'react-native'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter, Alert, ActivityIndicator } from 'react-native'
 import { useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
@@ -141,6 +141,8 @@ const ConnectProfile = () => {
     const [connectStatus, setConnectStatus] = React.useState<'none' | 'incoming' | 'outgoing' | 'connects'>('none')
     const { on, off } = useSocket();
     const [refreshing, setRefreshing] = React.useState<boolean>(false)
+    const [connectActionLoading, setConnectActionLoading] = React.useState<string | null>(null)
+    const [messageLoading, setMessageLoading] = React.useState(false)
 
     const connectsCount = Array.isArray(connectData?.connects ?? connectData?.friends)
         ? (connectData.connects ?? connectData.friends).length
@@ -377,6 +379,8 @@ const ConnectProfile = () => {
 
     const handleSendConnectRequest = async () => {
         if (!connectId || !myProfile?._id) return;
+        if (connectActionLoading) return;
+        setConnectActionLoading('send');
         
         try {
             await connectAPI.sendConnectRequest(connectId);
@@ -384,11 +388,15 @@ const ConnectProfile = () => {
             await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
             console.error('Error sending connect request:', error);
+        } finally {
+            setConnectActionLoading(null);
         }
     };
 
     const handleAcceptConnectRequest = async () => {
         if (!connectId || !myProfile?._id) return;
+        if (connectActionLoading) return;
+        setConnectActionLoading('accept');
         
         try {
             await connectAPI.acceptConnectRequest(connectId);
@@ -400,22 +408,30 @@ const ConnectProfile = () => {
             ]);
         } catch (error) {
             console.error('Error accepting connect request:', error);
+        } finally {
+            setConnectActionLoading(null);
         }
     };
 
     const handleCancelConnectRequest = async () => {
         if (!connectId || !myProfile?._id) return;
+        if (connectActionLoading) return;
+        setConnectActionLoading('cancel');
         try {
             await connectAPI.cancelConnectRequest(connectId);
             setConnectStatus('none');
             await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
             console.error('Error cancelling connect request:', error);
+        } finally {
+            setConnectActionLoading(null);
         }
     };
 
     const handleRemoveConnect = async () => {
         if (!connectId || !myProfile?._id) return;
+        if (connectActionLoading) return;
+        setConnectActionLoading('remove');
         
         try {
             await connectAPI.removeConnect(connectId);
@@ -424,6 +440,8 @@ const ConnectProfile = () => {
             await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
             console.error('Error removing connect:', error);
+        } finally {
+            setConnectActionLoading(null);
         }
     };
 
@@ -431,30 +449,30 @@ const ConnectProfile = () => {
         switch (connectStatus) {
             case 'connects':
                 return (
-                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleRemoveConnect}>
-                        <Icon name="person-remove" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Connect</Text>
+                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleRemoveConnect} disabled={Boolean(connectActionLoading)}>
+                        {connectActionLoading === 'remove' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="person-remove" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Connect</Text></>}
                     </Pressable>
                 );
             case 'incoming':
                 return (
-                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptConnectRequest}>
-                        <Icon name="check" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Accept Request</Text>
+                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptConnectRequest} disabled={Boolean(connectActionLoading)}>
+                        {connectActionLoading === 'accept' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="check" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Accept Request</Text></>}
                     </Pressable>
                 );
             case 'outgoing':
                 return (
-                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleCancelConnectRequest}>
-                        <Icon name="cancel" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Cancel Request</Text>
+                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleCancelConnectRequest} disabled={Boolean(connectActionLoading)}>
+                        {connectActionLoading === 'cancel' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="cancel" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Cancel Request</Text></>}
                     </Pressable>
                 );
             default:
                 return (
-                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSendConnectRequest}>
-                        <Icon name="person-add" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add Connect</Text>
+                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSendConnectRequest} disabled={Boolean(connectActionLoading)}>
+                        {connectActionLoading === 'send' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="person-add" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add Connect</Text></>}
                     </Pressable>
                 );
         }
@@ -751,14 +769,15 @@ const ConnectProfile = () => {
                         <View style={styles.profileButtons}>
                             {getConnectButton()}
                             <Pressable style={[styles.button, styles.secondaryButton, { backgroundColor: themeColors.surface.secondary }]} onPress={() => {
+                                setMessageLoading(true);
                                 hideTabBarForChat(navigation as any);
                                 (navigation as any).navigate('Message', { 
                                     screen: 'SingleMessage',
                                     params: { connect: connectData }
                                 });
-                            }}>
-                                <Icon name="message" size={18} color={themeColors.text.secondary} />
-                                <Text style={[styles.buttonText, { color: themeColors.text.secondary }]}>Message</Text>
+                            }} disabled={messageLoading}>
+                                {messageLoading ? <ActivityIndicator size="small" color={themeColors.text.secondary} /> : <><Icon name="message" size={18} color={themeColors.text.secondary} />
+                                <Text style={[styles.buttonText, { color: themeColors.text.secondary }]}>Message</Text></>}
                             </Pressable>
                         </View>
                     </View>

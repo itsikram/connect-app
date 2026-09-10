@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
 import { DeviceEventEmitter } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
@@ -48,6 +49,8 @@ const Connects = () => {
   const [connectSuggestions, setConnectSuggestions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState<{ id: string; action: string } | null>(null);
+  const [profileLoadingId, setProfileLoadingId] = useState<string | null>(null);
 
   const fetchConnectData = useCallback(async () => {
     if (!myProfile?._id) return;
@@ -113,6 +116,8 @@ const Connects = () => {
   }, [fetchConnectData]);
 
   const handleSendConnectRequest = async (connectId: string) => {
+    if (actionLoading) return;
+    setActionLoading({ id: connectId, action: 'send' });
     try {
       const res = await connectAPI.sendConnectRequest(connectId);
       console.log(res.data);
@@ -125,9 +130,13 @@ const Connects = () => {
         );
     } catch (error) {
       console.log(error);
+    } finally {
+      setActionLoading(null);
     }
   };
   const handleRemoveConnectRequest = async (connectId: string) => {
+    if (actionLoading) return;
+    setActionLoading({ id: connectId, action: 'remove' });
     try {
       const res = await connectAPI.removeConnect(connectId);
       console.log(res.data);
@@ -141,10 +150,14 @@ const Connects = () => {
         );
     } catch (error) {
       console.log(error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleAcceptConnectRequest = async (connectId: string) => {
+    if (actionLoading) return;
+    setActionLoading({ id: connectId, action: 'accept' });
     console.log('accept connect request', connectId);
     try {
       const res = await connectAPI.acceptConnectRequest(connectId);
@@ -163,10 +176,14 @@ const Connects = () => {
       }
     } catch (error) {
       console.log(error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const handleDeleteConnectRequest = async (connectId: string) => {
+    if (actionLoading) return;
+    setActionLoading({ id: connectId, action: 'delete' });
     try {
       const res = await connectAPI.deleteConnectRequest(connectId);
       console.log(res.data);
@@ -180,10 +197,14 @@ const Connects = () => {
         );
     } catch (error) {
       console.log(error);
+    } finally {
+      setActionLoading(null);
     }
   };
 
   const navigateToConnectProfile = (connect: any) => {
+    if (profileLoadingId) return;
+    setProfileLoadingId(connect._id);
     (navigation as any).navigate('ConnectProfile', {
       connectId: connect._id,
       connectData: connect,
@@ -222,6 +243,7 @@ const Connects = () => {
                 key={connect._id}
                 style={[styles.connectGridItem, { backgroundColor: cardBg }]}
                 onPress={() => navigateToConnectProfile(connect)}
+                disabled={Boolean(profileLoadingId)}
               >
                 <View style={styles.profilePictureWrapper}>
                   <ProfileImage
@@ -249,12 +271,15 @@ const Connects = () => {
                       onPress={() => {
                         handleAcceptConnectRequest(connect._id);
                       }}
+                      disabled={Boolean(actionLoading)}
                     >
-                      <Text
+                      {actionLoading?.id === connect._id && actionLoading.action === 'accept' ? (
+                        <ActivityIndicator size="small" color={buttonText} />
+                      ) : <Text
                         style={[styles.addConnectBtnText, { color: buttonText }]}
                       >
                         Accept
-                      </Text>
+                      </Text>}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
@@ -264,15 +289,18 @@ const Connects = () => {
                       onPress={() => {
                         handleDeleteConnectRequest(connect._id);
                       }}
+                      disabled={Boolean(actionLoading)}
                     >
-                      <Text
+                      {actionLoading?.id === connect._id && actionLoading.action === 'delete' ? (
+                        <ActivityIndicator size="small" color={removeBtnText} />
+                      ) : <Text
                         style={[
                           styles.removeConnectBtnText,
                           { color: removeBtnText },
                         ]}
                       >
                         Delete
-                      </Text>
+                      </Text>}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -306,6 +334,7 @@ const Connects = () => {
                 key={connect._id}
                 style={[styles.connectGridItem, { backgroundColor: cardBg }]}
                 onPress={() => navigateToConnectProfile(connect)}
+                disabled={Boolean(profileLoadingId)}
               >
                 <View style={styles.profilePictureWrapper}>
                   <ProfileImage
@@ -333,12 +362,15 @@ const Connects = () => {
                       onPress={() => {
                         handleSendConnectRequest(connect._id);
                       }}
+                      disabled={Boolean(actionLoading)}
                     >
-                      <Text
+                      {actionLoading?.id === connect._id && actionLoading.action === 'send' ? (
+                        <ActivityIndicator size="small" color={buttonText} />
+                      ) : <Text
                         style={[styles.addConnectBtnText, { color: buttonText }]}
                       >
                         Add Connect
-                      </Text>
+                      </Text>}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
@@ -348,15 +380,18 @@ const Connects = () => {
                       onPress={() => {
                         handleRemoveConnectRequest(connect._id);
                       }}
+                      disabled={Boolean(actionLoading)}
                     >
-                      <Text
+                      {actionLoading?.id === connect._id && actionLoading.action === 'remove' ? (
+                        <ActivityIndicator size="small" color={removeBtnText} />
+                      ) : <Text
                         style={[
                           styles.removeConnectBtnText,
                           { color: removeBtnText },
                         ]}
                       >
                         Remove
-                      </Text>
+                      </Text>}
                     </TouchableOpacity>
                   </View>
                 </View>
