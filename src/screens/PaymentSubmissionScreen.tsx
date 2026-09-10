@@ -40,6 +40,7 @@ const PaymentSubmissionScreen = ({ navigation, route }: { navigation: any; route
         transactionId: transactionId.trim(),
         type: params.type,
         amountBDT: params.amountBDT,
+        coinsAmount: params.coinsAmount,
         subscriptionTier: params.subscriptionTier,
         coachingPlanId: params.coachingPlanId,
       });
@@ -75,7 +76,7 @@ const PaymentSubmissionScreen = ({ navigation, route }: { navigation: any; route
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <ScrollView contentContainerStyle={[styles.content, { padding: spacing.md }]}>
+        <ScrollView contentContainerStyle={[styles.content, { padding: spacing.md, paddingBottom: 100 }]}>
           <Text style={[typography.h3, { color: colors.text.primary }]}>
             Submit payment / পেমেন্ট জমা দিন
           </Text>

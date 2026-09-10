@@ -13,6 +13,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar, useColorScheme, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
+import { Accelerometer } from 'expo-sensors';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
@@ -71,6 +72,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
 import AIAgentModal from './src/components/AIAgentModal';
+import { type AgentSpeechLanguage } from './src/services/agentSpeechService';
 import { HeaderVisibilityProvider } from './src/contexts/HeaderVisibilityContext';
 import { CallMinimizeProvider } from './src/contexts/CallMinimizeContext';
 import MinimizedCallBar from './src/components/MinimizedCallBar';
@@ -80,6 +82,7 @@ import PaymentInstructionsScreen from './src/screens/PaymentInstructionsScreen';
 import PaymentSubmissionScreen from './src/screens/PaymentSubmissionScreen';
 import PaymentPendingConfirmationScreen from './src/screens/PaymentPendingConfirmationScreen';
 import WalletScreen from './src/screens/WalletScreen';
+import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import WatchPipPlayer from './src/components/watch/WatchPipPlayer';
 import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
@@ -296,6 +299,7 @@ function MenuStack() {
         component={PaymentPendingConfirmationScreen}
       />
       <Stack.Screen name="Wallet" component={WalletScreen} />
+      <Stack.Screen name="Subscriptions" component={SubscriptionScreen} />
       <Stack.Screen name="VideoLibrary">
         {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
       </Stack.Screen>
@@ -629,7 +633,7 @@ function AppContent() {
 
   const ensureStoragePermission = React.useCallback(async (): Promise<boolean> => {
     try {
-      const MediaLibrary = await import('expo-media-library');
+      const MediaLibrary = await import('expo-media-library/legacy');
       const { status } = await MediaLibrary.requestPermissionsAsync();
       return status === 'granted';
     } catch (_) {
@@ -1010,7 +1014,34 @@ function AppContent() {
 // Inner component that can use hooks
 function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isInitializing: boolean, isDarkMode: boolean }) {
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
+  const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = React.useState<AgentSpeechLanguage | null>(null);
+  const [aiVoiceStartRequest, setAiVoiceStartRequest] = React.useState(0);
   const previousUserRef = React.useRef(user);
+
+  React.useEffect(() => {
+    if (!user || isInitializing) return undefined;
+
+    Accelerometer.setUpdateInterval(100);
+    let previous = { x: 0, y: 0, z: 0 };
+    let lastShakeAt = 0;
+    const subscription = Accelerometer.addListener(({ x, y, z }) => {
+      const delta = Math.sqrt(
+        (x - previous.x) ** 2 +
+        (y - previous.y) ** 2 +
+        (z - previous.z) ** 2,
+      );
+      previous = { x, y, z };
+
+      const now = Date.now();
+      if (delta < 2.2 || now - lastShakeAt < 1500) return;
+      lastShakeAt = now;
+      setPendingAiVoiceLanguage('auto');
+      setAiVoiceStartRequest(request => request + 1);
+      setAiAgentVisible(true);
+    });
+
+    return () => subscription.remove();
+  }, [isInitializing, user]);
 
   // Debug user state changes
   React.useEffect(() => {
@@ -1091,7 +1122,19 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
                       : undefined,
                   headerShown: route.name === 'Home' || route.name === 'Connects' || route.name === 'Videos',
                   header: route.name === 'Home' || route.name === 'Connects' || route.name === 'Videos'
-                    ? () => <FacebookHeader onOpenAIAgent={() => setAiAgentVisible(true)} />
+                    ? () => (
+                      <FacebookHeader
+                        onOpenAIAgent={() => {
+                          setPendingAiVoiceLanguage(null);
+                          setAiAgentVisible(true);
+                        }}
+                        onLongPressAIAgent={() => {
+                          setPendingAiVoiceLanguage('auto');
+                          setAiVoiceStartRequest(request => request + 1);
+                          setAiAgentVisible(true);
+                        }}
+                      />
+                    )
                     : undefined,
                 })}
               >
@@ -1150,7 +1193,19 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
                           tabBarLabel: 'Menu',
                           headerShown: showHeader,
                           header: showHeader
-                            ? () => <FacebookHeader onOpenAIAgent={() => setAiAgentVisible(true)} />
+                            ? () => (
+                              <FacebookHeader
+                                onOpenAIAgent={() => {
+                                  setPendingAiVoiceLanguage(null);
+                                  setAiAgentVisible(true);
+                                }}
+                                onLongPressAIAgent={() => {
+                                  setPendingAiVoiceLanguage('auto');
+                                  setAiVoiceStartRequest(request => request + 1);
+                                  setAiAgentVisible(true);
+                                }}
+                              />
+                            )
                             : undefined,
                         };
                       }}
@@ -1187,7 +1242,15 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
             <WatchPipPlayer />
         </SafeAreaView>
         <MinimizedCallBar />
-        <AIAgentModal visible={aiAgentVisible} onClose={() => setAiAgentVisible(false)} />
+        <AIAgentModal
+          visible={aiAgentVisible}
+          autoStartVoiceLanguage={pendingAiVoiceLanguage}
+          voiceStartRequest={aiVoiceStartRequest}
+          onClose={() => {
+            setAiAgentVisible(false);
+            setPendingAiVoiceLanguage(null);
+          }}
+        />
         </>
         );
       }}

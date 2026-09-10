@@ -8,7 +8,9 @@ export const GALLERY_ALBUM_NAME = 'Connect';
 export const DOWNLOADS_DIR = `${(FileSystem as any).documentDirectory || ''}downloads/`;
 
 async function getMediaLibrary() {
-  return import('expo-media-library');
+  // These helpers use the function-based MediaLibrary API. Expo SDK 57
+  // requires the legacy entry point when using these functions.
+  return import('expo-media-library/legacy');
 }
 
 export type DownloadKind = 'video' | 'audio';
@@ -312,5 +314,4 @@ export async function deleteDownload(path: string): Promise<void> {
     await FileSystem.deleteAsync(path);
   } catch (_) {}
 }
-
 

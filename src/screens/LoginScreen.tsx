@@ -125,7 +125,11 @@ const LoginScreen = () => {
             ? require('../assets/images/login-registrasion-bg-dark.png')
             : require('../assets/images/login-registrasion-bg.png')
         }
-        style={styles.background}
+        style={[
+          styles.background,
+          { backgroundColor: isDarkMode ? '#0A0A0B' : '#F7FAFF' },
+        ]}
+        fadeDuration={0}
         resizeMode="cover"
       >
         <ScrollView

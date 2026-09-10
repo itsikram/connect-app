@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, TextStyle, ViewStyle } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { MaterialIcons as Icon } from '@expo/vector-icons';
+import { colors } from '../theme/colors';
 
 type VerifiedNameProps = {
   name: string;
@@ -23,10 +24,11 @@ const VerifiedName = ({
     </Text>
     {verified ? (
       <Icon
-        name="check-circle"
-        size={15}
-        color="#16a34a"
+        name="verified"
+        size={17}
+        color={colors.primary}
         accessibilityLabel="Verified profile"
+        accessibilityRole="image"
         style={styles.icon}
       />
     ) : null}
@@ -40,7 +42,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   icon: {
-    marginLeft: 5,
+    marginLeft: 6,
   },
 });
 

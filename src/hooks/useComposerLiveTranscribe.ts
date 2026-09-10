@@ -475,6 +475,8 @@ export default function useComposerLiveTranscribe({
         /* ignore */
       }
     }
+    await Audio.setIsEnabledAsync(true);
+    await setChatRecordingAudioMode();
     const recording = new Audio.Recording();
     await recording.prepareToRecordAsync(PCM_RECORDING_OPTIONS);
     recordingRef.current = recording;

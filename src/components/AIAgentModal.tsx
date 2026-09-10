@@ -24,7 +24,9 @@ import { AuthContext } from '../contexts/AuthContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import { useChessGame } from '../contexts/ChessGameContext';
 import { useSocket } from '../contexts/SocketContext';
-import useComposerLiveTranscribe from '../hooks/useComposerLiveTranscribe';
+import useComposerLiveTranscribe, {
+  restoreChatPlaybackAudioMode,
+} from '../hooks/useComposerLiveTranscribe';
 import {
   clearAgentChat,
   fetchAIProviderStatus,
@@ -60,6 +62,7 @@ interface Props {
   visible: boolean;
   onClose: () => void;
   autoStartVoiceLanguage?: AgentSpeechLanguage | null;
+  voiceStartRequest?: number;
 }
 const id = () => `${Date.now()}-${Math.random()}`;
 const welcome = (): AgentMessage => ({
@@ -146,6 +149,7 @@ const AIAgentModal: React.FC<Props> = ({
   visible,
   onClose,
   autoStartVoiceLanguage,
+  voiceStartRequest = 0,
 }) => {
   const { colors } = useTheme();
   const { logout, user } = React.useContext(AuthContext);
@@ -181,12 +185,14 @@ const AIAgentModal: React.FC<Props> = ({
     Array<{ id: string; name: string; username?: string; bio?: string }>
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
+  const [speechEnabled, setSpeechEnabled] = React.useState(false);
   const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] = React.useState(false);
   const [providerStatus, setProviderStatus] = React.useState<AIProviderStatus | null>(null);
   const [selectedProvider, setSelectedProvider] = React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
+  const voiceStartKeyRef = React.useRef<string | null>(null);
   const updateAutoActionRunning = React.useCallback((running: boolean) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAutoActionRunning(running);
@@ -219,7 +225,7 @@ const AIAgentModal: React.FC<Props> = ({
       }),
     [miniPosition],
   );
-  const sendRef = React.useRef<() => void>(() => {});
+  const sendRef = React.useRef<(textOverride?: string) => void>(() => {});
   const speechControllerRef = React.useRef<ReturnType<
     typeof createAgentSpeechController
   > | null>(null);
@@ -528,7 +534,7 @@ const AIAgentModal: React.FC<Props> = ({
       clearVoiceAutoSend();
       voiceAutoSendTimerRef.current = setTimeout(() => {
         voiceAutoSendTimerRef.current = null;
-        sendRef.current();
+        sendRef.current(text);
       }, 1200);
     },
     onInterim: setInterimInput,
@@ -617,9 +623,9 @@ const AIAgentModal: React.FC<Props> = ({
     onClose();
   };
 
-  const send = async () => {
+  const send = async (textOverride?: string) => {
     clearVoiceAutoSend();
-    const text = input.trim();
+    const text = (textOverride ?? input).trim();
     if (!text || loading) return;
     transcribe.stop({ discard: true }).catch(() => {});
     setInterimInput('');
@@ -642,9 +648,10 @@ const AIAgentModal: React.FC<Props> = ({
     setLoading(true);
     const controller = new AbortController();
     const speechController = createAgentSpeechController(language);
-    const shouldSpeak = voiceConversation;
+    const shouldSpeak = speechEnabled;
     if (shouldSpeak) {
       await transcribe.stop({ discard: true });
+      await restoreChatPlaybackAudioMode();
     }
     await speechControllerRef.current?.stop().catch(() => {});
     speechControllerRef.current = speechController;
@@ -1059,13 +1066,20 @@ const AIAgentModal: React.FC<Props> = ({
   }, [transcribe]);
 
   React.useEffect(() => {
-    if (!visible || !autoStartVoiceLanguage) return;
+    if (!visible || !autoStartVoiceLanguage) {
+      voiceStartKeyRef.current = null;
+      return;
+    }
+    const voiceStartKey = `${voiceStartRequest}:${autoStartVoiceLanguage}`;
+    if (voiceStartKeyRef.current === voiceStartKey) return;
+    voiceStartKeyRef.current = voiceStartKey;
     setLanguage(autoStartVoiceLanguage);
     setMinimized(true);
     setVoiceConversation(true);
+    setSpeechEnabled(true);
     setVoiceLanguageMenuOpen(false);
     void selectVoiceLanguage(autoStartVoiceLanguage);
-  }, [autoStartVoiceLanguage, selectVoiceLanguage, visible]);
+  }, [autoStartVoiceLanguage, selectVoiceLanguage, visible, voiceStartRequest]);
 
   const toggleVoice = async () => {
     if (transcribe.listening) {
@@ -1087,6 +1101,22 @@ const AIAgentModal: React.FC<Props> = ({
         'Allow microphone access and try again.',
       );
     }
+  };
+  const toggleSpeech = async () => {
+    const nextEnabled = !speechEnabled;
+    setSpeechEnabled(nextEnabled);
+    if (!nextEnabled) {
+      await speechControllerRef.current?.stop();
+    }
+  };
+  const restoreAndListen = async () => {
+    setMinimized(false);
+    setSpeechEnabled(true);
+    if (transcribe.listening) {
+      setVoiceConversation(true);
+      return;
+    }
+    await selectVoiceLanguage(language);
   };
   const quickPrompts = [
     'Open my profile',
@@ -1347,6 +1377,22 @@ const AIAgentModal: React.FC<Props> = ({
             </Pressable>
             <Pressable
               style={[
+                styles.headerButton,
+                speechEnabled && { backgroundColor: `${colors.primary}18` },
+              ]}
+              onPress={() => {
+                void toggleSpeech();
+              }}
+              accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
+            >
+              <Icon
+                name={speechEnabled ? 'volume-up' : 'volume-off'}
+                size={21}
+                color={speechEnabled ? colors.primary : colors.text.secondary}
+              />
+            </Pressable>
+            <Pressable
+              style={[
                 styles.modeButton,
                 {
                   backgroundColor: autoMode
@@ -1603,11 +1649,15 @@ const AIAgentModal: React.FC<Props> = ({
                 },
               ]}
               editable={!loading}
-              onSubmitEditing={send}
+              onSubmitEditing={() => {
+                void send();
+              }}
               blurOnSubmit={false}
             />
             <Pressable
-              onPress={send}
+              onPress={() => {
+                void send();
+              }}
               disabled={!input.trim() || loading}
               style={[
                 styles.send,
@@ -1630,15 +1680,12 @@ const AIAgentModal: React.FC<Props> = ({
       >
         <Pressable
           style={styles.agentMiniContent}
-          onPress={() => setMinimized(false)}
+          onPress={restoreAndListen}
           accessibilityRole="button"
           accessibilityLabel="Restore AI Agent"
         >
           <Icon name="psychology" size={22} color={colors.primary} />
           <View style={styles.agentMiniText}>
-            <Text style={[styles.agentMiniTitle, { color: colors.text.primary }]}>
-              Connect AI
-            </Text>
             <Text style={[styles.agentMiniStatus, { color: colors.text.secondary }]}>
               {autoActionRunning ? 'Running action...' : 'Tap to restore'}
             </Text>
@@ -1751,15 +1798,18 @@ const styles = StyleSheet.create({
   },
   agentMini: {
     position: 'absolute',
-    left: 18,
-    top: '45%',
-    minWidth: 210,
+    left: 16,
+    top: '50%',
+    width: 78,
+    height: 132,
+    marginTop: -66,
     borderRadius: 18,
-    paddingHorizontal: 14,
+    paddingHorizontal: 8,
     paddingVertical: 10,
-    flexDirection: 'row',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 9,
+    justifyContent: 'center',
+    gap: 8,
     elevation: 8,
     shadowColor: '#000',
     shadowOpacity: 0.2,
@@ -1767,14 +1817,14 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
   },
   agentMiniContent: {
-    flex: 1,
-    flexDirection: 'row',
+    width: '100%',
+    flexDirection: 'column',
     alignItems: 'center',
-    gap: 9,
+    gap: 6,
   },
-  agentMiniText: { flex: 1 },
+  agentMiniText: { alignItems: 'center' },
   agentMiniTitle: { fontSize: 13, fontWeight: '700' },
-  agentMiniStatus: { fontSize: 11, marginTop: 2 },
+  agentMiniStatus: { fontSize: 10, marginTop: 2, textAlign: 'center' },
   agentMiniMic: {
     width: 36,
     height: 36,

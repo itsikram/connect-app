@@ -16,6 +16,7 @@ import { connectAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
 import ConnectCardSkeleton from '../components/skeleton/ConnectCardSkeleton';
 import ProfileImage from '../components/ProfileImage';
+import Icon from 'react-native-vector-icons/MaterialIcons';
 import ConnectCacheManager, {
   CONNECT_CACHE_EVENT,
 } from '../utils/connectCacheManager';
@@ -134,11 +135,11 @@ const Connects = () => {
       setActionLoading(null);
     }
   };
-  const handleRemoveConnectRequest = async (connectId: string) => {
+  const handleDisconnect = async (connectId: string) => {
     if (actionLoading) return;
-    setActionLoading({ id: connectId, action: 'remove' });
+    setActionLoading({ id: connectId, action: 'disconnect' });
     try {
-      const res = await connectAPI.removeConnect(connectId);
+      const res = await connectAPI.disconnect(connectId);
       console.log(res.data);
       // Hide from suggestions if present
       setConnectSuggestions(prev => prev.filter((f: any) => f._id !== connectId));
@@ -271,36 +272,31 @@ const Connects = () => {
                       onPress={() => {
                         handleAcceptConnectRequest(connect._id);
                       }}
+                      accessibilityLabel="Accept connect request"
                       disabled={Boolean(actionLoading)}
                     >
                       {actionLoading?.id === connect._id && actionLoading.action === 'accept' ? (
                         <ActivityIndicator size="small" color={buttonText} />
-                      ) : <Text
-                        style={[styles.addConnectBtnText, { color: buttonText }]}
-                      >
-                        Accept
-                      </Text>}
+                      ) : (
+                        <Icon name="person-add" size={22} color={buttonText} />
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
-                        styles.removeConnectBtn,
+                        styles.connectionActionBtn,
                         { backgroundColor: removeBtnBg },
                       ]}
                       onPress={() => {
                         handleDeleteConnectRequest(connect._id);
                       }}
+                      accessibilityLabel="Delete connect request"
                       disabled={Boolean(actionLoading)}
                     >
                       {actionLoading?.id === connect._id && actionLoading.action === 'delete' ? (
                         <ActivityIndicator size="small" color={removeBtnText} />
-                      ) : <Text
-                        style={[
-                          styles.removeConnectBtnText,
-                          { color: removeBtnText },
-                        ]}
-                      >
-                        Delete
-                      </Text>}
+                      ) : (
+                        <Icon name="person-remove" size={22} color={removeBtnText} />
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -362,36 +358,31 @@ const Connects = () => {
                       onPress={() => {
                         handleSendConnectRequest(connect._id);
                       }}
+                      accessibilityLabel="Add connect"
                       disabled={Boolean(actionLoading)}
                     >
                       {actionLoading?.id === connect._id && actionLoading.action === 'send' ? (
                         <ActivityIndicator size="small" color={buttonText} />
-                      ) : <Text
-                        style={[styles.addConnectBtnText, { color: buttonText }]}
-                      >
-                        Add Connect
-                      </Text>}
+                      ) : (
+                        <Icon name="person-add" size={22} color={buttonText} />
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
-                        styles.removeConnectBtn,
+                        styles.connectionActionBtn,
                         { backgroundColor: removeBtnBg },
                       ]}
                       onPress={() => {
-                        handleRemoveConnectRequest(connect._id);
+                        handleDisconnect(connect._id);
                       }}
+                      accessibilityLabel="Disconnect"
                       disabled={Boolean(actionLoading)}
                     >
-                      {actionLoading?.id === connect._id && actionLoading.action === 'remove' ? (
+                      {actionLoading?.id === connect._id && actionLoading.action === 'disconnect' ? (
                         <ActivityIndicator size="small" color={removeBtnText} />
-                      ) : <Text
-                        style={[
-                          styles.removeConnectBtnText,
-                          { color: removeBtnText },
-                        ]}
-                      >
-                        Remove
-                      </Text>}
+                      ) : (
+                        <Icon name="person-remove" size={22} color={removeBtnText} />
+                      )}
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -445,7 +436,7 @@ const styles = StyleSheet.create({
   connectGridContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    justifyContent: 'center',
+    justifyContent: 'space-between',
   },
   dataNotFound: {
     width: '100%',
@@ -456,25 +447,24 @@ const styles = StyleSheet.create({
   },
   connectGridItem: {
     width: '48%',
-    borderRadius: 10,
-    margin: '1%',
-    padding: 10,
-    alignItems: 'center',
+    borderRadius: 14,
     marginBottom: 12,
+    padding: 12,
+    alignItems: 'center',
     shadowColor: '#000',
-    shadowOpacity: 0.03,
-    shadowRadius: 2,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: 'rgba(0, 0, 0, 0.06)',
   },
   profilePictureWrapper: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     overflow: 'hidden',
-    marginBottom: 8,
+    marginBottom: 10,
     backgroundColor: '#eee',
   },
   profilePicture: {
@@ -486,59 +476,57 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
     justifyContent: 'center',
     width: '100%',
-    borderRadius: 6,
-    padding: 8,
   },
   profileName: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '600',
     color: '#222',
-    lineHeight: 22,
+    lineHeight: 20,
     textAlign: 'center',
   },
   profileNameContainer: {
-    height: 44,
+    minHeight: 40,
     justifyContent: 'center',
-    marginBottom: 8,
+    marginBottom: 6,
   },
   profileNameRow: {
     justifyContent: 'center',
   },
   buttonRow: {
-    flexDirection: 'column',
-    marginTop: 4,
+    flexDirection: 'row',
     width: '100%',
-    gap: 4,
-    justifyContent: 'center',
-    alignItems: 'center',
+    gap: 8,
+    justifyContent: 'flex-start',
+    alignItems: 'stretch',
   },
   addConnectBtn: {
     backgroundColor: '#29b1a9', // Using the primary color directly
-    borderRadius: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 3,
-    width: '100%',
-    alignSelf: 'stretch',
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addConnectBtnText: {
     color: '#fff',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
   },
-  removeConnectBtn: {
+  connectionActionBtn: {
     backgroundColor: '#eee',
-    borderRadius: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    width: '100%',
-    alignSelf: 'stretch',
+    flex: 1,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  removeConnectBtnText: {
+  connectionActionBtnText: {
     color: '#333',
     fontWeight: 'bold',
-    fontSize: 14,
+    fontSize: 13,
     textAlign: 'center',
   },
 });

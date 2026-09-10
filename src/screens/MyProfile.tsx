@@ -186,6 +186,7 @@ const MyProfile = () => {
   const [connects, setConnects] = React.useState<any[]>([]);
   const [connectsLoading, setConnectsLoading] = React.useState<boolean>(true);
   const [connectProfileLoadingId, setConnectProfileLoadingId] = React.useState<string | null>(null);
+  const [disconnectLoadingId, setDisconnectLoadingId] = React.useState<string | null>(null);
   const [videos, setVideos] = React.useState<any[]>([]);
   const [videosLoading, setVideosLoading] = React.useState<boolean>(true);
   const [showFullBio, setShowFullBio] = React.useState<boolean>(false);
@@ -197,6 +198,7 @@ const MyProfile = () => {
   const [showCreateStoryModal, setShowCreateStoryModal] =
     React.useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = React.useState<number>(0);
+  const displayedConnectsCount = connectsLoading ? connectsCount : connects.length;
 
   const fetchProfileData = React.useCallback(async () => {
     if (!myProfile?._id) return;
@@ -279,6 +281,31 @@ const MyProfile = () => {
       ),
     );
   }, []);
+
+  const handleDisconnect = async (connectId: string) => {
+    if (!connectId || disconnectLoadingId) return;
+
+    setDisconnectLoadingId(connectId);
+    try {
+      await connectAPI.disconnect(connectId);
+      const remainingConnects = connects.filter(
+        connect => String(connect?._id) !== String(connectId),
+      );
+      setConnects(remainingConnects);
+      if (Array.isArray(myProfile?.connects)) {
+        dispatch(setProfile({ ...myProfile, connects: remainingConnects }));
+      } else if (Array.isArray(myProfile?.friends)) {
+        dispatch(setProfile({ ...myProfile, friends: remainingConnects }));
+      }
+    } catch (error: any) {
+      Alert.alert(
+        'Disconnect failed',
+        error?.response?.data?.message || 'Unable to disconnect. Please try again.',
+      );
+    } finally {
+      setDisconnectLoadingId(null);
+    }
+  };
 
   React.useEffect(() => {
     const sub = DeviceEventEmitter.addListener(
@@ -662,7 +689,7 @@ const MyProfile = () => {
     {
       key: 'Connects',
       label: 'Connects',
-      count: connects.length || connectsCount || undefined,
+      count: (connectsLoading ? connectsCount : connects.length) || undefined,
       render: () => (
         <View style={{ gap: 10 }}>
           {connectsLoading && <ProfileConnectsSkeleton count={4} />}
@@ -697,7 +724,7 @@ const MyProfile = () => {
                   'Unknown';
                 const pp = f.profilePic || (f.user && f.user.profilePic);
                 return (
-                  <TouchableOpacity
+                  <View
                     key={f._id || userName}
                     style={[
                       styles.connectItem,
@@ -706,54 +733,82 @@ const MyProfile = () => {
                         borderColor: themeColors.border.secondary,
                       },
                     ]}
-                    onPress={() => {
-                      if (connectProfileLoadingId) return;
-                      setConnectProfileLoadingId(f._id);
-                      (navigation as any).navigate('Message', {
-                        screen: 'ConnectProfile',
-                        params: { connectId: f._id, connectData: f },
-                      });
-                    }}
-                    disabled={Boolean(connectProfileLoadingId)}
                   >
-                    {connectProfileLoadingId === f._id && (
-                      <ActivityIndicator
-                        size="small"
-                        color={themeColors.primary}
-                        style={styles.connectProfileLoading}
-                      />
-                    )}
-                    <View
-                      style={[
-                        styles.connectAvatarWrap,
-                        { backgroundColor: themeColors.surface.secondary },
-                      ]}
+                    <TouchableOpacity
+                      style={styles.connectProfileButton}
+                      onPress={() => {
+                        if (connectProfileLoadingId || disconnectLoadingId) return;
+                        setConnectProfileLoadingId(f._id);
+                        (navigation as any).navigate('Message', {
+                          screen: 'ConnectProfile',
+                          params: { connectId: f._id, connectData: f },
+                        });
+                      }}
+                      disabled={Boolean(connectProfileLoadingId || disconnectLoadingId)}
                     >
-                      {pp ? (
-                        <ProfileImage
-                          uri={pp}
-                          pixelSize={120}
-                          style={styles.connectAvatar}
-                        />
-                      ) : (
-                        <View
-                          style={[
-                            styles.connectAvatar,
-                            { backgroundColor: themeColors.gray[400] },
-                          ]}
+                      {connectProfileLoadingId === f._id && (
+                        <ActivityIndicator
+                          size="small"
+                          color={themeColors.primary}
+                          style={styles.connectProfileLoading}
                         />
                       )}
-                    </View>
-                    <Text
+                      <View
+                        style={[
+                          styles.connectAvatarWrap,
+                          { backgroundColor: themeColors.surface.secondary },
+                        ]}
+                      >
+                        {pp ? (
+                          <ProfileImage
+                            uri={pp}
+                            pixelSize={120}
+                            style={styles.connectAvatar}
+                          />
+                        ) : (
+                          <View
+                            style={[
+                              styles.connectAvatar,
+                              { backgroundColor: themeColors.gray[400] },
+                            ]}
+                          />
+                        )}
+                      </View>
+                      <Text
+                        style={[
+                          styles.connectName,
+                          { color: themeColors.text.primary },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {userName}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                       style={[
-                        styles.connectName,
-                        { color: themeColors.text.primary },
+                        styles.disconnectButton,
+                        { backgroundColor: themeColors.status.error },
                       ]}
-                      numberOfLines={1}
+                      onPress={() => handleDisconnect(f._id)}
+                      disabled={Boolean(disconnectLoadingId || connectProfileLoadingId)}
                     >
-                      {userName}
-                    </Text>
-                  </TouchableOpacity>
+                      {disconnectLoadingId === f._id ? (
+                        <ActivityIndicator
+                          size="small"
+                          color={themeColors.text.inverse}
+                        />
+                      ) : (
+                        <Text
+                          style={[
+                            styles.disconnectButtonText,
+                            { color: themeColors.text.inverse },
+                          ]}
+                        >
+                          Disconnect
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
@@ -1159,14 +1214,14 @@ const MyProfile = () => {
                   numberOfLines={2}
                 />
               </Text>
-              {connectsCount > 0 ? (
+              {displayedConnectsCount > 0 ? (
                 <Text
                   style={[
                     styles.connectsCount,
                     { color: themeColors.text.secondary },
                   ]}
                 >
-                  {connectsCount} connects
+                  {displayedConnectsCount} connects
                 </Text>
               ) : null}
             </View>
@@ -1610,6 +1665,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     // backgroundColor and borderColor will be set dynamically
   },
+  connectProfileButton: {
+    width: '100%',
+    alignItems: 'center',
+  },
   connectProfileLoading: {
     position: 'absolute',
     top: 8,
@@ -1630,6 +1689,18 @@ const styles = StyleSheet.create({
   connectName: {
     fontWeight: '600',
     // color will be set dynamically
+  },
+  disconnectButton: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 34,
+    marginTop: 10,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  disconnectButtonText: {
+    fontWeight: '600',
   },
   imageGrid: {
     flexDirection: 'row',

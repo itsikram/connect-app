@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../contexts/ThemeContext';
 import { fitnessApi } from '../services/fitnessApi';
 import * as Notifications from 'expo-notifications';
@@ -35,6 +36,13 @@ const Field = ({ label, value, onChangeText, keyboardType = 'default', placehold
   return <View style={styles.field}><Text style={[styles.label, { color: colors.text.secondary }]}>{label}</Text><TextInput value={String(value ?? '')} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.text.tertiary} keyboardType={keyboardType} style={[styles.input, { color: colors.text.primary, borderColor: colors.border.primary, backgroundColor: colors.surface.primary }]} /></View>;
 };
 
+type SelectOption = { label: string; value: string };
+
+const SelectField = ({ label, value, onValueChange, options }: { label: string; value: string; onValueChange: (value: string) => void; options: SelectOption[] }) => {
+  const { colors } = useTheme();
+  return <View style={styles.field}><Text style={[styles.label, { color: colors.text.secondary }]}>{label}</Text><View style={[styles.input, styles.select, { borderColor: colors.border.primary, backgroundColor: colors.surface.primary }]}><Picker selectedValue={value} onValueChange={onValueChange} style={{ color: colors.text.primary }} dropdownIconColor={colors.text.primary}>{options.map((option) => <Picker.Item key={option.value} label={option.label} value={option.value} />)}</Picker></View></View>;
+};
+
 const Button = ({ label, loadingLabel = 'Loading...', onPress, secondary = false }: { label: string; loadingLabel?: string; onPress: () => void | Promise<void>; secondary?: boolean }) => {
   const { colors } = useTheme();
   const [loading, setLoading] = useState(false);
@@ -53,7 +61,7 @@ export const FitnessOnboarding = ({ navigation }: Props) => {
   const save = async () => {
     try { await fitnessApi.saveProfile(form); navigation.replace('FitnessDashboard'); } catch (error: any) { Alert.alert('Fitness profile', error?.response?.data?.message || 'Please check your details'); }
   };
-  return <FitnessPage title="Set up your fitness plan" navigation={navigation}><Text style={[styles.help, { color: colors.text.secondary }]}>Your targets are calculated privately on the server using Mifflin-St Jeor.</Text><Field label="Sex (male, female, other)" value={form.sex} onChangeText={set('sex')} /><Field label="Age" value={form.age} onChangeText={set('age')} keyboardType="number-pad" /><Field label="Height (cm)" value={form.heightCm} onChangeText={set('heightCm')} keyboardType="decimal-pad" /><Field label="Current weight (kg)" value={form.weightKg} onChangeText={set('weightKg')} keyboardType="decimal-pad" /><Field label="Target weight (kg, optional)" value={form.targetWeightKg} onChangeText={set('targetWeightKg')} keyboardType="decimal-pad" /><Field label="Activity (sedentary, light, moderate, very_active, extra_active)" value={form.activityLevel} onChangeText={set('activityLevel')} /><Field label="Goal (lose, maintain, gain)" value={form.goal} onChangeText={set('goal')} /><Button label="Calculate my targets" onPress={save} /></FitnessPage>;
+  return <FitnessPage title="Set up your fitness plan" navigation={navigation}><Text style={[styles.help, { color: colors.text.secondary }]}>Your targets are calculated privately on the server using Mifflin-St Jeor.</Text><SelectField label="Sex" value={form.sex} onValueChange={set('sex')} options={[{ label: 'Male', value: 'male' }, { label: 'Female', value: 'female' }, { label: 'Other', value: 'other' }]} /><Field label="Age" value={form.age} onChangeText={set('age')} keyboardType="number-pad" /><Field label="Height (cm)" value={form.heightCm} onChangeText={set('heightCm')} keyboardType="decimal-pad" /><Field label="Current weight (kg)" value={form.weightKg} onChangeText={set('weightKg')} keyboardType="decimal-pad" /><Field label="Target weight (kg, optional)" value={form.targetWeightKg} onChangeText={set('targetWeightKg')} keyboardType="decimal-pad" /><SelectField label="Activity" value={form.activityLevel} onValueChange={set('activityLevel')} options={[{ label: 'Sedentary', value: 'sedentary' }, { label: 'Light', value: 'light' }, { label: 'Moderate', value: 'moderate' }, { label: 'Very active', value: 'very_active' }, { label: 'Extra active', value: 'extra_active' }]} /><SelectField label="Goal" value={form.goal} onValueChange={set('goal')} options={[{ label: 'Lose', value: 'lose' }, { label: 'Maintain', value: 'maintain' }, { label: 'Gain', value: 'gain' }]} /><Button label="Calculate my targets" onPress={save} /></FitnessPage>;
 };
 
 export const FitnessDashboard = ({ navigation }: Props) => {
@@ -255,6 +263,7 @@ const styles = StyleSheet.create({
   field: { marginBottom: 14 },
   label: { fontSize: 13, marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 16 },
+  select: { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' },
   button: { borderWidth: 1, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 10, marginBottom: 4 },
   buttonContent: { minHeight: 19, justifyContent: 'center', alignItems: 'center' },
   buttonText: { fontWeight: '700' },

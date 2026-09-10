@@ -41,6 +41,7 @@ import { SkeletonBlock } from './skeleton/Skeleton';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const POST_IMAGE_MAX_HEIGHT = 620;
+const PROFILE_PIC_SIZE = Math.min(280, SCREEN_WIDTH - 24);
 const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
 
 const sameId = (a: any, b: any) =>
@@ -1630,9 +1631,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           >
             {imageLoading && (
               <SkeletonBlock
-                width="100%"
-                height={postType === 'profilePic' ? Math.min(280, SCREEN_WIDTH - 24) : imageHeight}
-                borderRadius={postType === 'profilePic' ? Math.min(140, (SCREEN_WIDTH - 24) / 2) : 0}
+                width={postType === 'profilePic' ? PROFILE_PIC_SIZE : '100%'}
+                height={postType === 'profilePic' ? PROFILE_PIC_SIZE : imageHeight}
+                borderRadius={postType === 'profilePic' ? PROFILE_PIC_SIZE / 2 : 0}
                 style={postType === 'profilePic' ? styles.postProfilePic : styles.postImage}
               />
             )}
@@ -2136,9 +2137,13 @@ const styles = StyleSheet.create({
   },
   attachmentProfilePic: {
     backgroundColor: 'transparent',
+    width: PROFILE_PIC_SIZE,
+    height: PROFILE_PIC_SIZE,
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingBottom: 14,
+    alignSelf: 'center',
+    borderRadius: PROFILE_PIC_SIZE / 2,
+    overflow: 'hidden',
+    marginBottom: 14,
   },
   postImage: {
     width: '100%',
@@ -2168,13 +2173,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.18)',
   },
   postProfilePic: {
-    width: Math.min(280, SCREEN_WIDTH - 24),
-    height: Math.min(280, SCREEN_WIDTH - 24),
+    width: PROFILE_PIC_SIZE,
+    height: PROFILE_PIC_SIZE,
     maxWidth: '100%',
-    borderRadius: Math.min(140, (SCREEN_WIDTH - 24) / 2),
+    borderRadius: PROFILE_PIC_SIZE / 2,
     borderWidth: 2,
     borderColor: 'transparent',
-    marginVertical: 4,
+    marginVertical: 0,
   },
   footer: {
     paddingHorizontal: 12,

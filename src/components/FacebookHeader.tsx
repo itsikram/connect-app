@@ -15,16 +15,19 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
 import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useSocket } from '../contexts/SocketContext';
 import { useHeaderVisibility } from '../contexts/HeaderVisibilityContext';
 import SearchModal from './SearchModal';
 import moment from 'moment';
+import api from '../lib/api';
 
 interface FacebookHeaderProps {
   title?: string;
   onOpenAIAgent?: () => void;
+  onLongPressAIAgent?: () => void;
 }
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -32,6 +35,7 @@ const { width: screenWidth } = Dimensions.get('window');
 const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   title = 'Connect',
   onOpenAIAgent,
+  onLongPressAIAgent,
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const navigation = useNavigation();
@@ -41,8 +45,43 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   const [notifOpen, setNotifOpen] = React.useState(false);
   const [searchOpen, setSearchOpen] = React.useState(false);
   const [unreadCount, setUnreadCount] = React.useState(0);
+  const [isConnectPlus, setIsConnectPlus] = React.useState(false);
   const dropdownAnimation = React.useRef(new Animated.Value(0)).current;
   const badgeAnimation = React.useRef(new Animated.Value(1)).current;
+
+  const loadSubscription = React.useCallback(async () => {
+    api.get('/wallet')
+      .then((response) => {
+        const wallet = response.data;
+        const active = wallet?.connectPlusActive === true ||
+          (wallet?.subscriptionStatus === 'active' &&
+            Boolean(wallet.subscriptionExpiresAt) &&
+            new Date(wallet.subscriptionExpiresAt).getTime() > Date.now());
+        setIsConnectPlus(active);
+      })
+      .catch((error) => {
+        setIsConnectPlus(false);
+        console.warn('Unable to load Connect+ status:', error);
+      });
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      void loadSubscription();
+    }, [loadSubscription]),
+  );
+
+  React.useEffect(() => {
+    let mounted = true;
+    const refresh = () => {
+      if (mounted) void loadSubscription();
+    };
+    const interval = setInterval(refresh, 60000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, [loadSubscription]);
 
   const backgroundColor = themeColors.surface.primary;
   const iconColor = themeColors.text.primary;
@@ -302,6 +341,15 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
         >
           Connect
         </Text>
+        {isConnectPlus ? (
+          <View
+            style={[styles.connectPlusBadge, { backgroundColor: themeColors.primary }]}
+            accessibilityLabel="Connect Plus active"
+          >
+            <Icon name="workspace-premium" size={13} color="#FFFFFF" />
+            <Text style={styles.connectPlusText}>+</Text>
+          </View>
+        ) : null}
       </TouchableOpacity>
 
       <View style={styles.rightSection}>
@@ -339,6 +387,7 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
         </Pressable>
         <TouchableOpacity
           onPress={onOpenAIAgent}
+          onLongPress={onLongPressAIAgent}
           accessibilityRole="button"
           accessibilityLabel="Open AI Agent"
           style={[
@@ -559,6 +608,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
+  },
+  connectPlusBadge: {
+    alignItems: 'center',
+    borderRadius: 10,
+    flexDirection: 'row',
+    gap: 3,
+    marginLeft: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  connectPlusText: {
+    color: '#FFFFFF',
+    fontSize: 11,
+    fontWeight: '800',
   },
   actionButton: {
     width: 40,

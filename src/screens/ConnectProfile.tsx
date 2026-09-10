@@ -428,18 +428,18 @@ const ConnectProfile = () => {
         }
     };
 
-    const handleRemoveConnect = async () => {
+    const handleDisconnect = async () => {
         if (!connectId || !myProfile?._id) return;
         if (connectActionLoading) return;
-        setConnectActionLoading('remove');
+        setConnectActionLoading('disconnect');
         
         try {
-            await connectAPI.removeConnect(connectId);
+            await connectAPI.disconnect(connectId);
             setConnectStatus('none');
             setIsConnect(false);
             await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
-            console.error('Error removing connect:', error);
+            console.error('Error disconnecting:', error);
         } finally {
             setConnectActionLoading(null);
         }
@@ -449,9 +449,9 @@ const ConnectProfile = () => {
         switch (connectStatus) {
             case 'connects':
                 return (
-                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleRemoveConnect} disabled={Boolean(connectActionLoading)}>
-                        {connectActionLoading === 'remove' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="person-remove" size={18} color={themeColors.text.inverse} />
-                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Remove Connect</Text></>}
+                    <Pressable style={[styles.button, styles.removeButton]} onPress={handleDisconnect} disabled={Boolean(connectActionLoading)}>
+                        {connectActionLoading === 'disconnect' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="person-remove" size={18} color={themeColors.text.inverse} />
+                        <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Disconnect</Text></>}
                     </Pressable>
                 );
             case 'incoming':

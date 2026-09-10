@@ -348,8 +348,8 @@ export const connectAPI = {
     api.post(`/connects/reqDelete`, { profile: profileId }),
   cancelConnectRequest: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/connects/removeRequest`, { profile: profileId }),
-  removeConnect: (profileId: string): Promise<AxiosResponse> =>
-    api.post('/connects/removeConnect', { profile: profileId }),
+  disconnect: (profileId: string): Promise<AxiosResponse> =>
+    api.post('/connects/disconnect', { profile: profileId }),
   blockUser: (connectId: string): Promise<AxiosResponse> =>
     api.post('/connects/block', { connectId }),
   unblockUser: (connectId: string): Promise<AxiosResponse> =>

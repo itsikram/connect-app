@@ -308,7 +308,11 @@ const RegisterScreen = () => {
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} translucent backgroundColor="transparent" />
       <ImageBackground
         source={isDarkMode ? require('../assets/images/login-registrasion-bg-dark.png') : require('../assets/images/login-registrasion-bg.png')}
-        style={styles.background}
+        style={[
+          styles.background,
+          { backgroundColor: isDarkMode ? '#0A0A0B' : '#F7FAFF' },
+        ]}
+        fadeDuration={0}
         resizeMode="cover"
       >
         <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={styles.container}>

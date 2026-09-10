@@ -69,7 +69,7 @@ const PaymentPendingConfirmationScreen = ({ navigation, route }: { navigation: a
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  content: { flex: 1, justifyContent: 'center', padding: 16 },
+  content: { flex: 1, justifyContent: 'center', padding: 16, paddingBottom: 100 },
   card: { alignItems: 'center' },
   iconCircle: {
     alignItems: 'center',

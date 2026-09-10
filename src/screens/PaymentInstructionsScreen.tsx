@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -13,10 +13,12 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import { useFeatureFlag } from '../contexts/FeatureFlagContext';
 import { ModernButton, ModernCard } from '../components/modern';
+import api from '../lib/api';
 
 type PaymentInstructionsRoute = {
   params?: {
     amountBDT?: number;
+    coinsAmount?: number;
     type?: string;
     subscriptionTier?: string;
     coachingPlanId?: string;
@@ -39,18 +41,37 @@ const PaymentInstructionsScreen = ({
   const enabled = useFeatureFlag('manualPaymentEnabled');
   const params = route.params || {};
   const amount = Number(params.amountBDT || 0);
+  const [configuredNumbers, setConfiguredNumbers] = useState({ bkash: '', nagad: '' });
+  useEffect(() => {
+    let mounted = true;
+    api.get('/config/flags')
+      .then((response) => {
+        if (mounted && response.data?.paymentNumbers) {
+          setConfiguredNumbers({
+            bkash: response.data.paymentNumbers.bkash || '',
+            nagad: response.data.paymentNumbers.nagad || '',
+          });
+        }
+      })
+      .catch((error) => {
+        console.warn('Unable to load payment settings:', error);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
   const numbers = useMemo(
     () => ({
       bkash: configuredNumber(
-        params.bkashNumber || process.env.EXPO_PUBLIC_BKASH_NUMBER,
+        params.bkashNumber || configuredNumbers.bkash || process.env.EXPO_PUBLIC_BKASH_NUMBER,
         'Not configured',
       ),
       nagad: configuredNumber(
-        params.nagadNumber || process.env.EXPO_PUBLIC_NAGAD_NUMBER,
+        params.nagadNumber || configuredNumbers.nagad || process.env.EXPO_PUBLIC_NAGAD_NUMBER,
         'Not configured',
       ),
     }),
-    [params.bkashNumber, params.nagadNumber],
+    [params.bkashNumber, params.nagadNumber, configuredNumbers.bkash, configuredNumbers.nagad],
   );
 
   const copyNumber = async (label: string, number: string) => {
@@ -78,7 +99,7 @@ const PaymentInstructionsScreen = ({
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-      <ScrollView contentContainerStyle={[styles.content, { padding: spacing.md }]}>
+      <ScrollView contentContainerStyle={[styles.content, { padding: spacing.md, paddingBottom: 100 }]}>
         <Text style={[typography.h3, { color: colors.text.primary }]}>
           Pay to Connect
         </Text>
