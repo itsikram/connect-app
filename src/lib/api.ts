@@ -284,7 +284,7 @@ export const chatAPI = {
     profileId: string,
     connectId: string,
   ): Promise<AxiosResponse> =>
-    api.post('/message/deleteConversation', { profileId, friendId: connectId }),
+    api.post('/message/deleteConversation', { profileId, connectId }),
 };
 
 // Push notification API methods

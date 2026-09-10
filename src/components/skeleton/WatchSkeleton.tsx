@@ -72,7 +72,7 @@ const WatchSkeleton: React.FC<WatchSkeletonProps> = ({ showBack = false, height,
   const wellHeight = height || SCREEN_HEIGHT;
   const videoHeight = Math.min(wellHeight, Math.round(SCREEN_WIDTH * (9 / 16)));
   const metaContentWidth = SCREEN_WIDTH * 0.9 - 24;
-  const actionLabelWidths = [44, 24, 24, 52, 32, 30];
+  const actionLabelWidths = [44, 24, 24, 52, 32];
 
   return (
     <View style={[styles.item, fillStyle, { backgroundColor: t.pageBg }]}>

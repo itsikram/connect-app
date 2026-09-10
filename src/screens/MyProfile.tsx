@@ -199,6 +199,8 @@ const MyProfile = () => {
     React.useState<boolean>(false);
   const [uploadProgress, setUploadProgress] = React.useState<number>(0);
   const displayedConnectsCount = connectsLoading ? connectsCount : connects.length;
+  const followersCount = myProfile?.followersCount ?? myProfile?.followers?.length ?? 0;
+  const followingCount = myProfile?.followingCount ?? myProfile?.following?.length ?? 0;
 
   const fetchProfileData = React.useCallback(async () => {
     if (!myProfile?._id) return;
@@ -1206,6 +1208,7 @@ const MyProfile = () => {
                 <VerifiedName
                   name={myProfile?.fullName || 'My Profile'}
                   verified={myProfile?.isVerified}
+                  verifiedColor={themeColors.primary}
                   textStyle={[
                     styles.fullName,
                     isSmall ? { fontSize: 20 } : null,
@@ -1224,6 +1227,26 @@ const MyProfile = () => {
                   {displayedConnectsCount} connects
                 </Text>
               ) : null}
+              <View style={styles.followStats}>
+                <Text
+                  style={[
+                    styles.connectsCount,
+                    styles.followStat,
+                    { color: themeColors.text.secondary },
+                  ]}
+                >
+                  {followersCount} followers
+                </Text>
+                <Text
+                  style={[
+                    styles.connectsCount,
+                    styles.followStat,
+                    { color: themeColors.text.secondary },
+                  ]}
+                >
+                  {followingCount} following
+                </Text>
+              </View>
             </View>
 
             <View
@@ -1332,6 +1355,11 @@ const MyProfile = () => {
                   styles.secondaryButton,
                   { backgroundColor: themeColors.surface.secondary },
                 ]}
+                onPress={() => {
+                  (navigation as any).navigate('Settings', {
+                    screen: 'ProfileSettings',
+                  });
+                }}
               >
                 <Icon
                   name="edit"
@@ -1524,7 +1552,7 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   profileInfo: {
-    marginLeft: -20,
+    width: '100%',
     flex: 1,
     flexDirection: 'column',
     alignItems: 'center',
@@ -1532,6 +1560,7 @@ const styles = StyleSheet.create({
   },
   profileNameBlock: {
     flexDirection: 'column',
+    marginTop: 10,
   },
   fullName: {
     fontWeight: 'bold',
@@ -1541,6 +1570,14 @@ const styles = StyleSheet.create({
   connectsCount: {
     marginTop: 4,
     textAlign: 'center',
+  },
+  followStats: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    marginTop: 4,
+  },
+  followStat: {
+    marginHorizontal: 6,
   },
   profileButtons: {
     flexDirection: 'row',
@@ -1825,7 +1862,7 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    width: '90%',
+    width: '100%',
     alignSelf: 'center',
     minHeight: 60,
   },

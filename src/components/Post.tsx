@@ -91,6 +91,49 @@ const commentAuthorName = (comment: any) => {
     'User'
   );
 };
+
+const renderMentionBody = (
+  body: string,
+  onProfilePress: (profileId: string) => void,
+  textStyle: any,
+  mentionStyle: any,
+) => {
+  const value = String(body || '');
+  const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(value))) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <Text key={`text-${lastIndex}`} style={textStyle}>
+          {value.slice(lastIndex, match.index)}
+        </Text>,
+      );
+    }
+    parts.push(
+      <Text
+        key={`mention-${match.index}`}
+        style={mentionStyle}
+        onPress={() => onProfilePress(match![2])}
+      >
+        {match[1].trim()}
+      </Text>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) {
+    parts.push(
+      <Text key={`text-${lastIndex}`} style={textStyle}>
+        {value.slice(lastIndex)}
+      </Text>,
+    );
+  }
+
+  return parts.length ? parts : <Text style={textStyle}>{value}</Text>;
+};
 // Local colorful SVGs drawn in code (no gradients/filters to ensure compatibility)
 // import UserPP from '../UserPP'; // You need to create a React Native version of this
 // import PostComment from './PostComment'; // You need to create a React Native version of this
@@ -933,7 +976,13 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 </View>
               ) : !!body.trim() ? (
                 <Text style={[styles.fbCommentText, { color: textColor }]}>
-                  {body}
+                  {renderMentionBody(
+                    body,
+                    profileId =>
+                      navigation.navigate('ConnectProfile', { connectId: profileId }),
+                    { color: textColor },
+                    { color: accentColor, fontWeight: '600' },
+                  )}
                 </Text>
               ) : null}
             </View>

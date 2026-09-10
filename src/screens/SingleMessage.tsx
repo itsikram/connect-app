@@ -1207,17 +1207,35 @@ const SingleMessage = () => {
     }
   };
 
+  const clearMessagesFromStorage = async (
+    profileId: string,
+    connectId: string,
+  ) => {
+    if (!profileId || !connectId) return;
+    try {
+      await AsyncStorage.removeItem(getMessagesStorageKey(profileId, connectId));
+    } catch (error) {
+      console.error('Error clearing messages from storage:', error);
+    }
+  };
+
   // Debounce save to avoid too many writes
   const saveTimeoutRef = useRef<any>(null);
+  const clearPendingMessageSave = useCallback(() => {
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+      saveTimeoutRef.current = null;
+    }
+  }, []);
+
   const debouncedSaveMessages = (
     profileId: string,
     connectId: string,
     messagesToSave: Message[],
   ) => {
-    if (saveTimeoutRef.current) {
-      clearTimeout(saveTimeoutRef.current);
-    }
+    clearPendingMessageSave();
     saveTimeoutRef.current = setTimeout(() => {
+      saveTimeoutRef.current = null;
       saveMessagesToStorage(profileId, connectId, messagesToSave);
     }, 500); // Save after 500ms of no changes
   };
@@ -1404,7 +1422,7 @@ const SingleMessage = () => {
         const response = await api.get('/message/getChatHistory', {
           params: {
             profileId,
-            friendId: connectIdArg,
+            connectId: connectIdArg,
             limit,
           },
         });
@@ -1440,7 +1458,7 @@ const SingleMessage = () => {
         const response = await api.get('/message/getOldMessages', {
           params: {
             profileId,
-            friendId: connectIdArg,
+            connectId: connectIdArg,
             beforeTimestamp,
             limit,
           },
@@ -1487,6 +1505,7 @@ const SingleMessage = () => {
       if (!connect?._id || !myProfile?._id) return;
 
       let cancelled = false;
+      clearPendingMessageSave();
       setMessages([]);
       setHasMoreMessages(true);
       hasMoreMessagesRef.current = true;
@@ -1523,6 +1542,9 @@ const SingleMessage = () => {
             isInitialLoadingRef.current = false;
           }
 
+          const cachedMessageIds = new Set(
+            storedMessages.map(message => String(message._id)),
+          );
           const response = await fetchChatHistory(
             myProfile._id,
             connect._id,
@@ -1530,7 +1552,22 @@ const SingleMessage = () => {
           );
           if (cancelled) return;
 
-          setMessages(prev => mergeHistoryWithLive(response.messages, prev));
+          // The HTTP response is authoritative for the loaded page. Keep only
+          // messages received while the request was in flight, not stale cache
+          // entries that are no longer part of the current server window.
+          setMessages(prev => {
+            const liveMessages = prev.filter(
+              message =>
+                message.isOptimistic ||
+                !cachedMessageIds.has(String(message._id)),
+            );
+            const nextMessages = mergeHistoryWithLive(
+              response.messages,
+              liveMessages,
+            );
+            messagesRef.current = nextMessages;
+            return nextMessages;
+          });
           setHasMoreMessages(response.hasMore);
           hasMoreMessagesRef.current = response.hasMore;
           hasLoadedFreshMessagesRef.current = true;
@@ -1550,8 +1587,14 @@ const SingleMessage = () => {
       loadAndFetchMessages();
       return () => {
         cancelled = true;
+        clearPendingMessageSave();
       };
-    }, [connect?._id, myProfile?._id, fetchChatHistory]),
+    }, [
+      connect?._id,
+      myProfile?._id,
+      fetchChatHistory,
+      clearPendingMessageSave,
+    ]),
   );
 
   // Keep the cache warm for live messages and call-event messages as well as HTTP loads.
@@ -1559,11 +1602,14 @@ const SingleMessage = () => {
     if (!connect?._id || messages.length === 0) return;
     debouncedSaveMessages(myProfile?._id, connect._id, messages);
     return () => {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
+      clearPendingMessageSave();
     };
-  }, [messages, connect?._id, myProfile?._id]);
+  }, [
+    messages,
+    connect?._id,
+    myProfile?._id,
+    clearPendingMessageSave,
+  ]);
 
   // Listen for incoming messages via socket
   useEffect(() => {
@@ -1800,7 +1846,7 @@ const SingleMessage = () => {
         });
       }
     };
-    on('friend_location_update', handleConnectLocationUpdate);
+    on('connect_location_update', handleConnectLocationUpdate);
 
     const handleMessageSeenRest = (data: any) => {
       handleSeenMessage(data);
@@ -1848,7 +1894,7 @@ const SingleMessage = () => {
       off('messageReactionUpdated', handleReactionUpdate);
       off('previousMessages', handlePreviousMessages);
       off('emotion_change', handleEmotionChange);
-      off('friend_location_update', handleConnectLocationUpdate);
+      off('connect_location_update', handleConnectLocationUpdate);
       off('deleteMessage', handleDeleteMessage);
       off('speak_message', handleSpeakMessage);
       off('speak-message', handleSpeakMessage);
@@ -1976,7 +2022,7 @@ const SingleMessage = () => {
       console.warn('[SingleMessage] ⚠️ Invalid IDs for emotion detection:', {
         profileId: currentProfileId || 'missing',
         profileIdType: typeof currentProfileId,
-        friendId: currentConnectId || 'missing',
+        connectId: currentConnectId || 'missing',
         connectIdType: typeof currentConnectId,
       });
       return;
@@ -2278,7 +2324,7 @@ const SingleMessage = () => {
           if (shareFaceModeEnabledRef.current && profileId && currentConnectId) {
             console.log('[SingleMessage] 📤 Forwarding expression to connect', {
               profileId,
-              friendId: currentConnectId,
+              connectId: currentConnectId,
               emotion: `${emoji} ${label}`,
               expression: action,
               confidence,
@@ -2290,13 +2336,13 @@ const SingleMessage = () => {
                 emotion: `${emoji} ${label}`,
                 emotionText: label,
                 emoji,
-                friendId: currentConnectId,
+                connectId: currentConnectId,
                 confidence,
                 quality: confidence,
                 expression: action,
               },
               {
-                friendId: currentConnectId,
+                connectId: currentConnectId,
                 expression: action,
               },
             );
@@ -2422,7 +2468,7 @@ const SingleMessage = () => {
         ) {
           console.log('[SingleMessage] 📤 Forwarding emotion to connect', {
             profileId: currentProfileId,
-            friendId: currentConnectId,
+            connectId: currentConnectId,
             emotion: `${emoji} ${label}`,
             expression: dominantExpression,
             confidence,
@@ -2444,7 +2490,7 @@ const SingleMessage = () => {
                 emotion: `${emoji} ${label}`,
                 emotionText: label,
                 emoji,
-                friendId: currentConnectId,
+                connectId: currentConnectId,
                 confidence: Math.round(confidence * 100) / 100, // Use current frame confidence for immediate emission
                 quality: Math.round(confidence * 100) / 100,
                 // Include expression data
@@ -2462,12 +2508,12 @@ const SingleMessage = () => {
                 emotionScores: latestExpressionData.allEmotions || {},
               },
               {
-                friendId: currentConnectId,
+                connectId: currentConnectId,
                 expression: latestExpressionData.dominantExpression || 'none',
               },
             );
             console.log(
-              `[SingleMessage] 📤 ⚡ FAST Emotion & Expression emitted immediately to friendId: ${currentConnectId}`,
+              `[SingleMessage] 📤 ⚡ FAST Emotion & Expression emitted immediately to connectId: ${currentConnectId}`,
               {
                 emotion: `${emoji} ${label}`,
                 expression: latestExpressionData.dominantExpression || 'none',
@@ -2801,7 +2847,7 @@ const SingleMessage = () => {
             {
               profileId: currentProfileId || 'missing',
               profileIdType: typeof currentProfileId,
-              friendId: currentConnectId || 'missing',
+              connectId: currentConnectId || 'missing',
               connectIdType: typeof currentConnectId,
             },
           );
@@ -2938,7 +2984,7 @@ const SingleMessage = () => {
           {
             profileId: currentProfileId || 'missing',
             profileIdType: typeof currentProfileId,
-            friendId: currentConnectId || 'missing',
+            connectId: currentConnectId || 'missing',
             connectIdType: typeof currentConnectId,
           },
         );
@@ -3062,7 +3108,7 @@ const SingleMessage = () => {
       console.log(
         '[SingleMessage] ✅ Starting server-side emotion detection with profileId:',
         currentProfileId,
-        'friendId:',
+        'connectId:',
         currentConnectId,
       );
       console.log('[SingleMessage] 📊 Detection will start in 600ms intervals');
@@ -3792,7 +3838,7 @@ const SingleMessage = () => {
 
     emit('speak_message', {
       msgId: String(msgId),
-      friendId: String(connectId),
+      connectId: String(connectId),
       senderId: String(myProfile?._id || ''),
       message: msg.message || '',
       attachment: typeof msg.attachment === 'string' ? msg.attachment : '',
@@ -3870,6 +3916,8 @@ const SingleMessage = () => {
                 }),
               );
 
+              clearPendingMessageSave();
+              await clearMessagesFromStorage(myProfile._id, connect._id);
               setMessages([]);
               setInputText('');
               setContextMenuVisible(false);
@@ -6486,7 +6534,7 @@ const SingleMessage = () => {
                   onPress={() => {
                     setOptionMenuVisible(false);
                     navigation.navigate('ConnectProfile', {
-                      friendId: connect?._id,
+                      connectId: connect?._id,
                     });
                   }}
                 >

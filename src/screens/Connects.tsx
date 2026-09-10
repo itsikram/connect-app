@@ -313,7 +313,7 @@ const Connects = () => {
       <View
         style={[
           styles.sectionContainer,
-          { marginBottom: 32, backgroundColor: cardBg },
+          { marginBottom: 100, backgroundColor: cardBg },
         ]}
       >
         <View style={styles.headingRow}>
@@ -404,7 +404,6 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f7f7f7',
     padding: 12,
-    paddingBottom: 130,
   },
   sectionContainer: {
     backgroundColor: '#fff',

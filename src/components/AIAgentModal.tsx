@@ -1691,14 +1691,39 @@ const AIAgentModal: React.FC<Props> = ({
             </Text>
           </View>
         </Pressable>
-        <Pressable
-          style={[styles.agentMiniMic, { backgroundColor: `${colors.primary}20` }]}
-          onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
-          onPress={toggleVoice}
-          accessibilityLabel="Voice input"
-        >
-          <Icon name={transcribe.listening ? 'mic' : 'mic-none'} size={20} color={colors.primary} />
-        </Pressable>
+        <View style={styles.agentMiniControls}>
+          <Pressable
+            style={[
+              styles.agentMiniMic,
+              { backgroundColor: `${colors.primary}20` },
+            ]}
+            onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
+            onPress={toggleVoice}
+            accessibilityLabel="Voice input"
+          >
+            <Icon
+              name={transcribe.listening ? 'mic' : 'mic-none'}
+              size={20}
+              color={colors.primary}
+            />
+          </Pressable>
+          <Pressable
+            style={[
+              styles.agentMiniMic,
+              { backgroundColor: speechEnabled ? `${colors.primary}30` : colors.surface.secondary },
+            ]}
+            onPress={() => {
+              void toggleSpeech();
+            }}
+            accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
+          >
+            <Icon
+              name={speechEnabled ? 'volume-up' : 'volume-off'}
+              size={20}
+              color={speechEnabled ? colors.primary : colors.text.secondary}
+            />
+          </Pressable>
+        </View>
         {voiceLanguageMenuOpen && minimized && (
           <View style={[styles.agentMiniLanguageMenu, { backgroundColor: colors.surface.primary, borderColor: colors.border.primary }]}>
             {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
@@ -1800,7 +1825,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     top: '50%',
-    width: 78,
+    width: 96,
     height: 132,
     marginTop: -66,
     borderRadius: 18,
@@ -1825,6 +1850,12 @@ const styles = StyleSheet.create({
   agentMiniText: { alignItems: 'center' },
   agentMiniTitle: { fontSize: 13, fontWeight: '700' },
   agentMiniStatus: { fontSize: 10, marginTop: 2, textAlign: 'center' },
+  agentMiniControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   agentMiniMic: {
     width: 36,
     height: 36,

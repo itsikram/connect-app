@@ -70,8 +70,8 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
     const start = text.search(/(?:^|\s)@[^\s@]*$/);
     if (start < 0) return;
     const mentionStart = start + (text[start] === ' ' ? 1 : 0);
-    const name = getName(profile).replace(/\s+/g, '');
-    onChangeText?.(`${text.slice(0, mentionStart)}@${name} ${text.slice(text.length)}`);
+    const name = getName(profile).trim();
+    onChangeText?.(`${text.slice(0, mentionStart)}@[${name}](${profile._id}) ${text.slice(text.length)}`);
     setActiveQuery(null);
     inputRef.current?.focus();
   };

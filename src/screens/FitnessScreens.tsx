@@ -97,7 +97,16 @@ export const FitnessMeal = ({ navigation, route }: Props) => {
       Alert.alert('Photo permission needed', 'You can still add this meal manually.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: true });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: false });
+    if (!result.canceled && result.assets[0]?.uri) setImageUri(result.assets[0].uri);
+  };
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert('Camera permission needed', 'You can still choose a photo from your library or add this meal manually.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: false });
     if (!result.canceled && result.assets[0]?.uri) setImageUri(result.assets[0].uri);
   };
   const analyze = async () => {
@@ -119,7 +128,7 @@ export const FitnessMeal = ({ navigation, route }: Props) => {
     }
   };
   const save = async () => { try { await fitnessApi.createMeal({ ...form, source, imageUrl: imageUri || undefined, date: new Date().toISOString() }); navigation.goBack(); } catch (error: any) { Alert.alert('Meal', error?.response?.data?.message || 'Please complete nutrition fields'); } };
-  return <FitnessPage title="Add meal" navigation={navigation}>{source === 'gemini' ? <Text style={[styles.help, { color: colors.text.secondary }]}>AI filled these values as estimates. Review and edit them before saving.</Text> : null}<Field label="Food name" value={form.name} onChangeText={set('name')} placeholder="e.g. chicken rice bowl" /><Button label={imageUri ? 'Photo selected - analyze' : 'Choose food photo'} onPress={choosePhoto} secondary /><Button label="Analyze food (optional)" loadingLabel="Analyzing meal with AI..." onPress={analyze} secondary /><Field label="Calories" value={form.calories} onChangeText={set('calories')} keyboardType="decimal-pad" /><Field label="Protein (g)" value={form.proteinG} onChangeText={set('proteinG')} keyboardType="decimal-pad" /><Field label="Carbs (g)" value={form.carbsG} onChangeText={set('carbsG')} keyboardType="decimal-pad" /><Field label="Fat (g)" value={form.fatG} onChangeText={set('fatG')} keyboardType="decimal-pad" /><Field label="Fiber (g)" value={form.fiberG} onChangeText={set('fiberG')} keyboardType="decimal-pad" /><Button label="Save meal" onPress={save} /></FitnessPage>;
+  return <FitnessPage title="Add meal" navigation={navigation}>{source === 'gemini' ? <Text style={[styles.help, { color: colors.text.secondary }]}>AI filled these values as estimates. Review and edit them before saving.</Text> : null}<Field label="Food name" value={form.name} onChangeText={set('name')} placeholder="e.g. chicken rice bowl" /><Button label={imageUri ? 'Photo selected - analyze' : 'Choose food photo'} onPress={choosePhoto} secondary /><Button label="Take food photo" onPress={takePhoto} secondary /><Button label="Analyze food (optional)" loadingLabel="Analyzing meal with AI..." onPress={analyze} secondary /><Field label="Calories" value={form.calories} onChangeText={set('calories')} keyboardType="decimal-pad" /><Field label="Protein (g)" value={form.proteinG} onChangeText={set('proteinG')} keyboardType="decimal-pad" /><Field label="Carbs (g)" value={form.carbsG} onChangeText={set('carbsG')} keyboardType="decimal-pad" /><Field label="Fat (g)" value={form.fatG} onChangeText={set('fatG')} keyboardType="decimal-pad" /><Field label="Fiber (g)" value={form.fiberG} onChangeText={set('fiberG')} keyboardType="decimal-pad" /><Button label="Save meal" onPress={save} /></FitnessPage>;
 };
 
 export const FitnessConfirmation = ({ navigation, route }: Props) => {

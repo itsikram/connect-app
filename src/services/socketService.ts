@@ -89,7 +89,7 @@ class SocketService {
         console.log('[SocketService] 📡 Sending emotion_change on connected socket', {
           socketId: this.socket.id,
           profileId: data?.profileId,
-          friendId: data?.friendId,
+          connectId: data?.connectId,
           emotion: data?.emotion,
           expression: data?.expression,
         });
@@ -108,7 +108,7 @@ class SocketService {
         hasSocket: Boolean(this.socket),
         socketId: this.socket?.id,
         profileId: data?.profileId,
-        friendId: data?.friendId,
+        connectId: data?.connectId,
         emotion: data?.emotion,
         expression: data?.expression,
         queuedEvents: this.pendingEmits.length + 1,
@@ -185,7 +185,7 @@ class SocketService {
   }
 
   loadMessages(myId: string, connectId: string, skip: number): void {
-    this.emit('loadMessages', { myId, friendId: connectId, skip });
+    this.emit('loadMessages', { myId, connectId, skip });
   }
 
   markMessageAsSeen(message: any): void {

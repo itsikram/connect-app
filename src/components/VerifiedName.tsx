@@ -1,11 +1,11 @@
 import React from 'react';
 import { StyleSheet, Text, View, TextStyle, ViewStyle } from 'react-native';
 import { MaterialIcons as Icon } from '@expo/vector-icons';
-import { colors } from '../theme/colors';
 
 type VerifiedNameProps = {
   name: string;
   verified?: boolean;
+  verifiedColor?: string;
   textStyle?: TextStyle | TextStyle[];
   style?: ViewStyle | ViewStyle[];
   numberOfLines?: number;
@@ -14,6 +14,7 @@ type VerifiedNameProps = {
 const VerifiedName = ({
   name,
   verified = false,
+  verifiedColor = '#00D4FF',
   textStyle,
   style,
   numberOfLines,
@@ -26,7 +27,7 @@ const VerifiedName = ({
       <Icon
         name="verified"
         size={17}
-        color={colors.primary}
+        color={verifiedColor}
         accessibilityLabel="Verified profile"
         accessibilityRole="image"
         style={styles.icon}

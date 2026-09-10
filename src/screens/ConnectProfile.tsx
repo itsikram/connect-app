@@ -147,6 +147,8 @@ const ConnectProfile = () => {
     const connectsCount = Array.isArray(connectData?.connects ?? connectData?.friends)
         ? (connectData.connects ?? connectData.friends).length
         : 0
+    const followersCount = connectData?.followersCount ?? connectData?.followers?.length ?? 0
+    const followingCount = connectData?.followingCount ?? connectData?.following?.length ?? 0
 
     const [posts, setPosts] = React.useState<any[]>([])
     const [postsLoading, setPostsLoading] = React.useState<boolean>(false)
@@ -739,6 +741,14 @@ const ConnectProfile = () => {
                             {connectsCount > 0 ? (
                                 <Text style={[styles.connectsCount, { color: themeColors.text.secondary }]}>{connectsCount} connects</Text>
                             ) : null}
+                            <View style={styles.followStats}>
+                                <Text style={[styles.connectsCount, styles.followStat, { color: themeColors.text.secondary }]}>
+                                    {followersCount} followers
+                                </Text>
+                                <Text style={[styles.connectsCount, styles.followStat, { color: themeColors.text.secondary }]}>
+                                    {followingCount} following
+                                </Text>
+                            </View>
                         </View>
 
 
@@ -902,6 +912,7 @@ const styles = StyleSheet.create({
     },
     profileNameBlock: {
         flexDirection: 'column',
+        marginTop: 10,
     },
     fullName: {
         fontWeight: 'bold',
@@ -911,6 +922,14 @@ const styles = StyleSheet.create({
     connectsCount: {
         marginTop: 4,
         textAlign: 'center',
+    },
+    followStats: {
+        flexDirection: 'row',
+        justifyContent: 'center',
+        marginTop: 4,
+    },
+    followStat: {
+        marginHorizontal: 6,
     },
     profileButtons: {
         flexDirection: 'row',

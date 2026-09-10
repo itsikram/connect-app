@@ -174,6 +174,33 @@ const commentAuthorName = (comment: any) =>
     [comment?.author?.user?.firstName, comment?.author?.user?.surname].filter(Boolean).join(' ').trim() ||
     'User';
 
+const renderMentionBody = (body: string, onProfilePress: (profileId: string) => void, textStyle: any, mentionStyle: any) => {
+    const value = String(body || '');
+    const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+    const parts: React.ReactNode[] = [];
+    let lastIndex = 0;
+    let match: RegExpExecArray | null;
+    while ((match = tokenPattern.exec(value))) {
+        if (match.index > lastIndex) {
+            parts.push(<Text key={`text-${lastIndex}`} style={textStyle}>{value.slice(lastIndex, match.index)}</Text>);
+        }
+        parts.push(
+            <Text
+                key={`mention-${match.index}`}
+                style={mentionStyle}
+                onPress={() => onProfilePress(match![2])}
+            >
+                {match[1].trim()}
+            </Text>,
+        );
+        lastIndex = match.index + match[0].length;
+    }
+    if (lastIndex < value.length) {
+        parts.push(<Text key={`text-${lastIndex}`} style={textStyle}>{value.slice(lastIndex)}</Text>);
+    }
+    return parts.length ? parts : <Text style={textStyle}>{value}</Text>;
+};
+
 const SinglePost = () => {
     const route = useRoute();
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
@@ -1356,7 +1383,14 @@ const SinglePost = () => {
                                 {commentAuthorName(comment)}
                             </Text>
                             {!!body.trim() && (
-                                <Text style={[styles.fbCommentText, { color: themeColors.text.primary }]}>{body}</Text>
+                                <Text style={[styles.fbCommentText, { color: themeColors.text.primary }]}>
+                                    {renderMentionBody(
+                                        body,
+                                        (profileId) => navigation.navigate('ConnectProfile', { connectId: profileId }),
+                                        { color: themeColors.text.primary },
+                                        { color: themeColors.primary, fontWeight: '600' },
+                                    )}
+                                </Text>
                             )}
                         </View>
                         {canDelete ? (

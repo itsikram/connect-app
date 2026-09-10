@@ -28,9 +28,17 @@ type Note = {
 const formatDate = (value?: string) => {
   if (!value) return '';
   const date = new Date(value);
-  return Number.isNaN(date.getTime())
-    ? ''
-    : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  if (Number.isNaN(date.getTime())) return '';
+  const diff = Date.now() - date.getTime();
+  const seconds = Math.floor(diff / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+  if (seconds < 60) return `${seconds}s ago`;
+  if (minutes < 60) return `${minutes}m ago`;
+  if (hours < 24) return `${hours}h ago`;
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 };
 
 const Notes = () => {
@@ -209,16 +217,11 @@ const Notes = () => {
               Capture ideas and keep them close
             </Text>
           </View>
-          <TouchableOpacity
-            onPress={handleCreateNote}
-            disabled={saving}
-            style={[styles.newButton, { backgroundColor: themeColors.primary }]}
-            accessibilityRole="button"
-            accessibilityLabel="Create new note"
-          >
-            <Icon name="add" size={20} color="#FFFFFF" />
-            <Text style={styles.newButtonText}>New</Text>
-          </TouchableOpacity>
+          <View style={styles.headerRight}>
+            <Text style={[styles.noteCount, { color: themeColors.text.secondary }]}>
+              {notes.length} {notes.length === 1 ? 'note' : 'notes'}
+            </Text>
+          </View>
         </View>
 
         <View style={[styles.body, width >= 768 && styles.bodyWide]}>
@@ -234,11 +237,16 @@ const Notes = () => {
               <TextInput
                 value={searchQuery}
                 onChangeText={setSearchQuery}
-                placeholder="Search notes..."
+                placeholder="Search by title or content..."
                 placeholderTextColor={themeColors.text.tertiary}
                 style={[styles.searchInput, { color: themeColors.text.primary }]}
                 accessibilityLabel="Search notes"
               />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={() => setSearchQuery('')} accessibilityLabel="Clear search">
+                  <Icon name="close" size={18} color={themeColors.text.tertiary} />
+                </TouchableOpacity>
+              )}
             </View>
             {loading ? (
               <View style={styles.center}>
@@ -265,9 +273,16 @@ const Notes = () => {
             {selectedNote ? (
               <>
                 <View style={[styles.toolbar, { borderBottomColor: themeColors.border.primary }]}>
-                  <Text style={[styles.updated, { color: themeColors.text.tertiary }]}>
-                    {selectedNote.updatedAt ? `Last updated ${formatDate(selectedNote.updatedAt)}` : ''}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={[styles.updated, { color: themeColors.text.tertiary, marginRight: 8 }]}>
+                      {selectedNote.updatedAt ? formatDate(selectedNote.updatedAt) : ''}
+                    </Text>
+                    {saving ? (
+                      <ActivityIndicator size="small" color={themeColors.primary} />
+                    ) : (
+                      <Text style={[styles.savedText, { color: themeColors.text.tertiary }]}>Saved</Text>
+                    )}
+                  </View>
                   <View style={styles.toolbarActions}>
                     <TouchableOpacity onPress={shareNote} style={[styles.actionButton, { borderColor: `${themeColors.primary}66` }]}>
                       <Icon name="share" size={16} color={themeColors.primary} />
@@ -318,6 +333,15 @@ const Notes = () => {
             )}
           </View>
         </View>
+        <TouchableOpacity
+          onPress={handleCreateNote}
+          disabled={saving}
+          style={[styles.fab, { backgroundColor: themeColors.primary }]}
+          accessibilityRole="button"
+          accessibilityLabel="Create new note"
+        >
+          <Icon name="add" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -327,13 +351,13 @@ const styles = StyleSheet.create({
   safe: { flex: 1 },
   flex: { flex: 1 },
   header: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, gap: 12 },
-  backButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9 },
+  backButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 9 },
   backText: { fontSize: 14, fontWeight: '600' },
   headerCopy: { flex: 1 },
-  heading: { fontSize: 26, fontWeight: '800' },
-  subtitle: { fontSize: 12, marginTop: 2 },
-  newButton: { flexDirection: 'row', alignItems: 'center', gap: 4, borderRadius: 10, paddingHorizontal: 13, paddingVertical: 10 },
-  newButtonText: { color: '#FFFFFF', fontWeight: '700', fontSize: 14 },
+  heading: { fontSize: 24, fontWeight: '800' },
+  subtitle: { fontSize: 13, marginTop: 2 },
+  headerRight: { minWidth: 70, alignItems: 'flex-end' },
+  noteCount: { fontSize: 13, fontWeight: '700' },
   body: { flex: 1 },
   bodyWide: { flexDirection: 'row' },
   sidebar: { flex: 0.92, borderRightWidth: 1 },
@@ -341,26 +365,51 @@ const styles = StyleSheet.create({
   search: { flexDirection: 'row', alignItems: 'center', margin: 12, paddingHorizontal: 12, borderWidth: 1, borderRadius: 11 },
   searchInput: { flex: 1, minHeight: 42, paddingHorizontal: 9, fontSize: 14 },
   listContent: { paddingHorizontal: 12, paddingBottom: 20, gap: 9 },
-  noteCard: { borderWidth: 1, borderRadius: 12, padding: 13 },
+  noteCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 13,
+    shadowColor: '#000',
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 3,
+  },
   noteTitle: { fontSize: 15, fontWeight: '700' },
-  notePreview: { fontSize: 13, lineHeight: 18, marginTop: 5 },
+  notePreview: { fontSize: 13, lineHeight: 18, marginTop: 6, color: '#444' },
   noteDate: { fontSize: 11, marginTop: 8 },
   editor: { flex: 1.08 },
   editorNarrow: { flex: 1 },
   toolbar: { minHeight: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, borderBottomWidth: 1, gap: 8 },
   toolbarActions: { flexDirection: 'row', gap: 8 },
-  updated: { flex: 1, fontSize: 11 },
-  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
-  actionText: { fontSize: 12, fontWeight: '700' },
-  editorContent: { padding: 18, paddingBottom: 100 },
-  titleInput: { fontSize: 25, fontWeight: '800', paddingVertical: 10, borderBottomWidth: 2, marginBottom: 18 },
-  contentInput: { minHeight: 260, fontSize: 16, lineHeight: 25, paddingVertical: 8 },
+  updated: { fontSize: 12 },
+  savedText: { fontSize: 12, fontWeight: '600' },
+  actionButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
+  actionText: { fontSize: 13, fontWeight: '700' },
+  editorContent: { padding: 18, paddingBottom: 140 },
+  titleInput: { fontSize: 26, fontWeight: '800', paddingVertical: 10, borderBottomWidth: 2, marginBottom: 18 },
+  contentInput: { minHeight: 300, fontSize: 16, lineHeight: 25, paddingVertical: 8, backgroundColor: 'transparent' },
   center: { alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 },
   helper: { fontSize: 14, textAlign: 'center' },
   emptySmall: { textAlign: 'center', padding: 24, lineHeight: 20 },
   emptyEditor: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   emptyIcon: { fontSize: 54, marginBottom: 12 },
   emptyTitle: { fontSize: 21, fontWeight: '800', marginBottom: 7 },
+  fab: {
+    position: 'absolute',
+    right: 18,
+    bottom: 28,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
 });
 
 export default Notes;
