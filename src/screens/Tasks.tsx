@@ -24,8 +24,7 @@ type Task = {
   _id: string;
   text: string;
   completed: boolean;
-  reminderTime?: string;
-  reminderTimezone?: string;
+  taskTime?: string;
 };
 
 type Filter = 'all' | 'active' | 'completed';
@@ -37,10 +36,9 @@ const Tasks = () => {
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
   const [loading, setLoading] = useState(true);
-  const [reminderTime, setReminderTime] = useState<Date | null>(null);
-  const [showReminderPicker, setShowReminderPicker] = useState(false);
-  const [taskReminderPickerId, setTaskReminderPickerId] = useState<string | null>(null);
-  const reminderTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const [taskTime, setTaskTime] = useState<Date | null>(null);
+  const [showTaskPicker, setShowTaskPicker] = useState(false);
+  const [taskTimePickerId, setTaskTimePickerId] = useState<string | null>(null);
 
   const loadTasks = useCallback(async () => {
     try {
@@ -79,19 +77,18 @@ const Tasks = () => {
     try {
       const response = await api.post('/tasks', {
         text,
-        reminderTime: reminderTime ? `${String(reminderTime.getHours()).padStart(2, '0')}:${String(reminderTime.getMinutes()).padStart(2, '0')}` : null,
-        reminderTimezone: reminderTime ? reminderTimezone : null,
+        taskTime: taskTime ? taskTime.toISOString() : null,
       });
       if (response.data.success) {
         setTasks((current) => [response.data.task, ...current]);
         setNewTask('');
-        setReminderTime(null);
+        setTaskTime(null);
       }
     } catch (error) {
       console.error('Error creating task:', error);
       Alert.alert('Tasks', 'Failed to create task.');
     }
-  }, [newTask, reminderTime, reminderTimezone]);
+  }, [newTask, taskTime]);
 
   const handleToggleTask = useCallback(async (id: string) => {
     const task = tasks.find((item) => item._id === id);
@@ -110,24 +107,20 @@ const Tasks = () => {
     }
   }, [loadTasks, tasks]);
 
-  const handleTaskReminderChange = useCallback(async (id: string, value: Date | null) => {
-    const time = value
-      ? `${String(value.getHours()).padStart(2, '0')}:${String(value.getMinutes()).padStart(2, '0')}`
-      : null;
+  const handleTaskTimeChange = useCallback(async (id: string, value: Date | null) => {
     try {
       const response = await api.put(`/tasks/${id}`, {
-        reminderTime: time,
-        reminderTimezone: time ? reminderTimezone : null,
+        taskTime: value ? value.toISOString() : null,
       });
       if (response.data.success) {
         setTasks((current) => current.map((task) => task._id === id ? response.data.task : task));
       }
     } catch (error) {
       console.error('Error updating task reminder:', error);
-      Alert.alert('Tasks', 'Failed to update task reminder.');
+      Alert.alert('Tasks', 'Failed to update task time.');
       loadTasks();
     }
-  }, [loadTasks, reminderTimezone]);
+  }, [loadTasks]);
 
   const handleDeleteTask = useCallback(async (id: string) => {
     try {
@@ -201,29 +194,32 @@ const Tasks = () => {
           </View>
           <View style={styles.reminderRow}>
             <TouchableOpacity
-              onPress={() => setShowReminderPicker(true)}
+              onPress={() => setShowTaskPicker(true)}
               style={[styles.reminderButton, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.primary }]}
               accessibilityRole="button"
-              accessibilityLabel="Set daily reminder time"
+              accessibilityLabel="Set task date and time"
             >
               <Icon name="notifications-none" size={18} color={themeColors.text.primary} />
               <Text style={[styles.reminderText, { color: themeColors.text.primary }]}>
-                {reminderTime ? `Remind daily at ${reminderTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Set daily reminder'}
+                {taskTime ? `Schedule for ${taskTime.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}` : 'Set task date and time'}
               </Text>
             </TouchableOpacity>
-            {reminderTime && (
-              <TouchableOpacity onPress={() => setReminderTime(null)} accessibilityRole="button" accessibilityLabel="Clear reminder">
+            {taskTime && (
+              <TouchableOpacity onPress={() => setTaskTime(null)} accessibilityRole="button" accessibilityLabel="Clear task time">
                 <Text style={[styles.clearReminderText, { color: themeColors.status.error }]}>Clear</Text>
               </TouchableOpacity>
             )}
           </View>
-          {showReminderPicker && (
+          <Text style={[styles.scheduleHint, { color: themeColors.text.secondary }]}>
+            Alerts arrive 30 minutes before, 15 minutes before, and at the scheduled time.
+          </Text>
+          {showTaskPicker && (
             <DateTimePicker
-              value={reminderTime || new Date()}
-              mode="time"
+              value={taskTime || new Date(Date.now() + 60 * 60 * 1000)}
+              mode="datetime"
               onChange={(_, value) => {
-                setShowReminderPicker(Platform.OS === 'ios');
-                if (value) setReminderTime(value);
+                setShowTaskPicker(Platform.OS === 'ios');
+                if (value) setTaskTime(value);
               }}
             />
           )}
@@ -275,20 +271,20 @@ const Tasks = () => {
                     </Pressable>
                     <View style={styles.taskDetails}>
                       <Text style={[styles.taskText, { color: themeColors.text.primary }, task.completed && styles.completedText]}>{task.text}</Text>
-                      {task.reminderTime && (
+                      {task.taskTime && (
                         <Text style={[styles.reminderMeta, { color: themeColors.text.secondary }]}>
-                          Daily reminder at {task.reminderTime}
+                          Alerts 30 min before, 15 min before, and at {new Date(task.taskTime).toLocaleString()}
                         </Text>
                       )}
                       <TouchableOpacity
-                        onPress={() => setTaskReminderPickerId(task._id)}
+                        onPress={() => setTaskTimePickerId(task._id)}
                         style={[styles.taskReminderButton, { borderColor: themeColors.border.primary }]}
                         accessibilityRole="button"
-                        accessibilityLabel={`Set reminder for ${task.text}`}
+                        accessibilityLabel={`Set task time for ${task.text}`}
                       >
                         <Icon name="schedule" size={14} color={themeColors.text.secondary} />
                         <Text style={[styles.taskReminderButtonText, { color: themeColors.text.secondary }]}>
-                          {task.reminderTime || 'Set time'}
+                          {task.taskTime ? new Date(task.taskTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Set time'}
                         </Text>
                       </TouchableOpacity>
                     </View>
@@ -298,21 +294,17 @@ const Tasks = () => {
                   </View>
                 ))}
               </View>
-              {taskReminderPickerId && (() => {
-                const task = tasks.find((item) => item._id === taskReminderPickerId);
+              {taskTimePickerId && (() => {
+                const task = tasks.find((item) => item._id === taskTimePickerId);
                 if (!task) return null;
-                const value = new Date();
-                if (task.reminderTime) {
-                  const [hours, minutes] = task.reminderTime.split(':').map(Number);
-                  value.setHours(hours, minutes, 0, 0);
-                }
+                const value = task.taskTime ? new Date(task.taskTime) : new Date(Date.now() + 60 * 60 * 1000);
                 return (
                   <DateTimePicker
                     value={value}
-                    mode="time"
+                    mode="datetime"
                     onChange={(_, selected) => {
-                      setTaskReminderPickerId(Platform.OS === 'ios' ? task._id : null);
-                      if (selected) handleTaskReminderChange(task._id, selected);
+                      setTaskTimePickerId(Platform.OS === 'ios' ? task._id : null);
+                      if (selected) handleTaskTimeChange(task._id, selected);
                     }}
                   />
                 );
@@ -355,6 +347,7 @@ const styles = StyleSheet.create({
   reminderButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 },
   reminderText: { fontSize: 13, fontWeight: '600' },
   clearReminderText: { fontSize: 13, fontWeight: '600' },
+  scheduleHint: { fontSize: 12, lineHeight: 18, marginTop: -10, marginBottom: 18 },
   input: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, fontSize: 16 },
   addButton: { justifyContent: 'center', borderRadius: 12, paddingHorizontal: 16 },
   addButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },

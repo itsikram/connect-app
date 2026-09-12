@@ -1376,7 +1376,7 @@ const AIAgentModal: React.FC<Props> = ({
     async (speechLanguage: AgentSpeechLanguage) => {
       await transcribe.stop({ discard: true });
       await restoreChatPlaybackAudioMode();
-      await speechControllerRef.current?.stop();
+      void speechControllerRef.current?.stop();
       const speechController = createAgentSpeechController(speechLanguage);
       speechControllerRef.current = speechController;
       speechController.update('Listening', speechLanguage);

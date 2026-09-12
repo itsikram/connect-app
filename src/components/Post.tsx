@@ -110,9 +110,10 @@ const renderMentionBody = (
   onProfilePress: (profileId: string) => void,
   textStyle: any,
   mentionStyle: any,
+  onHashtagPress?: (hashtag: string) => void,
 ) => {
   const value = String(body || '');
-  const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+  const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)|(^|[^\p{L}\p{N}_])(#[\p{L}\p{N}_]{1,50})/giu;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -125,15 +126,23 @@ const renderMentionBody = (
         </Text>,
       );
     }
-    parts.push(
-      <Text
-        key={`mention-${match.index}`}
-        style={mentionStyle}
-        onPress={() => onProfilePress(match![2])}
-      >
-        @{match[1].trim()}
-      </Text>,
-    );
+    if (match[1]) {
+      parts.push(
+        <Text key={`mention-${match.index}`} style={mentionStyle} onPress={() => onProfilePress(match![2])}>
+          @{match[1].trim()}
+        </Text>,
+      );
+    } else {
+      parts.push(
+        <Text
+          key={`hashtag-${match.index}`}
+          style={mentionStyle}
+          onPress={() => onHashtagPress?.(match![4])}
+        >
+          {match[3]}{match[4]}
+        </Text>,
+      );
+    }
     lastIndex = match.index + match[0].length;
   }
 
@@ -1676,7 +1685,13 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   }
                 }}
               >
-                {post.caption}
+                {renderMentionBody(
+                  post.caption,
+                  profileId =>
+                    navigation.navigate('ConnectProfile', { connectId: profileId }),
+                  { color: textColor },
+                  { color: accentColor, fontWeight: '600' },
+                )}
               </Text>
             </TouchableOpacity>
             {captionHasMore || showFullCaption ? (

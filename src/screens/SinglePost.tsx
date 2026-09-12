@@ -184,9 +184,15 @@ const commentAuthorName = (comment: any) =>
     [comment?.author?.user?.firstName, comment?.author?.user?.surname].filter(Boolean).join(' ').trim() ||
     'User';
 
-const renderMentionBody = (body: string, onProfilePress: (profileId: string) => void, textStyle: any, mentionStyle: any) => {
+const renderMentionBody = (
+    body: string,
+    onProfilePress: (profileId: string) => void,
+    textStyle: any,
+    mentionStyle: any,
+    onHashtagPress?: (hashtag: string) => void,
+) => {
     const value = String(body || '');
-    const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)/gi;
+    const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)|(^|[^\p{L}\p{N}_])(#[\p{L}\p{N}_]{1,50})/giu;
     const parts: React.ReactNode[] = [];
     let lastIndex = 0;
     let match: RegExpExecArray | null;
@@ -194,15 +200,23 @@ const renderMentionBody = (body: string, onProfilePress: (profileId: string) => 
         if (match.index > lastIndex) {
             parts.push(<Text key={`text-${lastIndex}`} style={textStyle}>{value.slice(lastIndex, match.index)}</Text>);
         }
-        parts.push(
-            <Text
-                key={`mention-${match.index}`}
-                style={mentionStyle}
-                onPress={() => onProfilePress(match![2])}
-            >
-                {match[1].trim()}
-            </Text>,
-        );
+        if (match[1]) {
+            parts.push(
+                <Text key={`mention-${match.index}`} style={mentionStyle} onPress={() => onProfilePress(match![2])}>
+                    @{match[1].trim()}
+                </Text>,
+            );
+        } else {
+            parts.push(
+                <Text
+                    key={`hashtag-${match.index}`}
+                    style={mentionStyle}
+                    onPress={() => onHashtagPress?.(match![4])}
+                >
+                    {match[3]}{match[4]}
+                </Text>,
+            );
+        }
         lastIndex = match.index + match[0].length;
     }
     if (lastIndex < value.length) {
@@ -1604,8 +1618,18 @@ const SinglePost = () => {
                         <View style={styles.contentSection}>
                             <Text style={styles.postContent}>
                                 {showFullContent || post.caption.length <= 200 
-                                    ? post.caption 
-                                    : post.caption.substring(0, 200) + '...'
+                                    ? renderMentionBody(
+                                        post.caption,
+                                        (profileId) => navigation.navigate('ConnectProfile', { connectId: profileId }),
+                                        styles.postContent,
+                                        { color: themeColors.primary, fontWeight: '600' },
+                                    )
+                                    : renderMentionBody(
+                                        post.caption.substring(0, 200) + '...',
+                                        (profileId) => navigation.navigate('ConnectProfile', { connectId: profileId }),
+                                        styles.postContent,
+                                        { color: themeColors.primary, fontWeight: '600' },
+                                    )
                                 }
                             </Text>
                             {post.caption.length > 200 && (

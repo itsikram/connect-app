@@ -11,6 +11,7 @@ import ProfileImage from './ProfileImage';
 import { useFeedTokens } from '../theme/feedTokens';
 import KeyboardSafeView from './KeyboardSafeView';
 import VoiceTextInput from './VoiceTextInput';
+import MentionTextInput from './MentionTextInput';
 import { generatePostCaption } from '../services/aiAgentService';
 
 type CreatePostProps = {
@@ -532,7 +533,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   style={{ flex: 1, marginLeft: 8 }}
                 />
               </View>
-              <VoiceTextInput
+              <MentionTextInput
+                myProfileId={user?.profile?._id || user?._id}
                 style={[styles.captionInput, { backgroundColor: inputBg, color: inputText, borderColor }]}
                 placeholder={textInputPlaceholder}
                 placeholderTextColor={isDarkMode ? themeColors.gray[400] : themeColors.gray[600]}

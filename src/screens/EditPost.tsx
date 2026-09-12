@@ -24,6 +24,7 @@ import { RootState } from '../store';
 import CacheManager from '../utils/cacheManager';
 import { emitPostUpdated } from '../utils/postEvents';
 import VoiceTextInput from '../components/VoiceTextInput';
+import MentionTextInput from '../components/MentionTextInput';
 import { AUDIENCE_OPTIONS, getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
 
@@ -735,7 +736,8 @@ const EditPost = () => {
                     <View style={styles.formSection}>
                         <Text style={styles.sectionTitle}>What's on your mind?</Text>
                         <View style={styles.inputContainer}>
-                            <VoiceTextInput
+                            <MentionTextInput
+                                myProfileId={myProfile?._id}
                                 style={[styles.textInput, styles.multilineInput]}
                                 value={caption}
                                 onChangeText={setCaption}
