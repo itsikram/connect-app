@@ -362,12 +362,16 @@ export const connectAPI = {
     api.get('/connects/getConnects', { params: { profile: profileId } }),
   getConnectRequest: (profileId: string): Promise<AxiosResponse> =>
     api.get('/connects/getRequest', { params: { profileId } }),
+  getRequestStatus: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/connects/request-status', { params: { profileId } }),
+  getRelationships: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/connects/relationships', { params: { profileId } }),
   getConnectSuggestions: (profileId: string): Promise<AxiosResponse> =>
     api.get('/connects/getSuggetions', { params: { profile: profileId } }),
-  sendConnectRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.post('/connects/sendRequest', { profile: profileId }),
-  acceptConnectRequest: (profileId: string): Promise<AxiosResponse> =>
-    api.post(`/connects/reqAccept`, { profile: profileId }),
+  sendConnectRequest: (profileId: string, relationTypes: string[]): Promise<AxiosResponse> =>
+    api.post('/connects/sendRequest', { profile: profileId, relationTypes }),
+  acceptConnectRequest: (profileId: string, relationTypes: string[]): Promise<AxiosResponse> =>
+    api.post(`/connects/reqAccept`, { profile: profileId, relationTypes }),
   deleteConnectRequest: (profileId: string): Promise<AxiosResponse> =>
     api.post(`/connects/reqDelete`, { profile: profileId }),
   cancelConnectRequest: (profileId: string): Promise<AxiosResponse> =>

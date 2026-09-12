@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { DeviceEventEmitter } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { connectAPI } from '../lib/api';
 import { useNavigation } from '@react-navigation/native';
@@ -22,6 +22,8 @@ import ConnectCacheManager, {
 } from '../utils/connectCacheManager';
 import VerifiedName from '../components/VerifiedName';
 import { profileDisplayName } from '../utils/reactTypes';
+import { setProfile } from '../reducers/profileReducer';
+import RelationshipPickerModal from '../components/RelationshipPickerModal';
 
 const uniqueById = (items: any[]) => {
   const seen = new Set<string>();
@@ -45,6 +47,7 @@ const Connects = () => {
   const removeBtnBg = themeColors.surface.secondary;
   const removeBtnText = themeColors.text.primary;
   const myProfile = useSelector((state: RootState) => state.profile);
+  const dispatch = useDispatch();
 
   const [connectRequests, setConnectRequests] = useState<any[]>([]);
   const [connectSuggestions, setConnectSuggestions] = useState<any[]>([]);
@@ -52,6 +55,7 @@ const Connects = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<{ id: string; action: string } | null>(null);
   const [profileLoadingId, setProfileLoadingId] = useState<string | null>(null);
+  const [relationshipTarget, setRelationshipTarget] = useState<{ id: string; action: 'send' | 'accept' } | null>(null);
 
   const fetchConnectData = useCallback(async () => {
     if (!myProfile?._id) return;
@@ -116,11 +120,11 @@ const Connects = () => {
     };
   }, [fetchConnectData]);
 
-  const handleSendConnectRequest = async (connectId: string) => {
+  const handleSendConnectRequest = async (connectId: string, relationTypes: string[]) => {
     if (actionLoading) return;
     setActionLoading({ id: connectId, action: 'send' });
     try {
-      const res = await connectAPI.sendConnectRequest(connectId);
+      const res = await connectAPI.sendConnectRequest(connectId, relationTypes);
       console.log(res.data);
       setConnectSuggestions(prev => prev.filter((f: any) => f._id !== connectId));
       if (myProfile?._id)
@@ -141,6 +145,9 @@ const Connects = () => {
     try {
       const res = await connectAPI.disconnect(connectId);
       console.log(res.data);
+      if (res.data?.myProfile) {
+        dispatch(setProfile({ ...myProfile, ...res.data.myProfile }));
+      }
       // Hide from suggestions if present
       setConnectSuggestions(prev => prev.filter((f: any) => f._id !== connectId));
       if (myProfile?._id)
@@ -156,12 +163,15 @@ const Connects = () => {
     }
   };
 
-  const handleAcceptConnectRequest = async (connectId: string) => {
+  const handleAcceptConnectRequest = async (connectId: string, relationTypes: string[]) => {
     if (actionLoading) return;
     setActionLoading({ id: connectId, action: 'accept' });
     console.log('accept connect request', connectId);
     try {
-      const res = await connectAPI.acceptConnectRequest(connectId);
+      const res = await connectAPI.acceptConnectRequest(connectId, relationTypes);
+      if (res.data?.myProfile) {
+        dispatch(setProfile({ ...myProfile, ...res.data.myProfile }));
+      }
       console.log(res.data);
       // Remove the accepted request from the list
       setConnectRequests(prev => prev.filter((f: any) => f._id !== connectId));
@@ -270,7 +280,7 @@ const Connects = () => {
                         { backgroundColor: buttonBg },
                       ]}
                       onPress={() => {
-                        handleAcceptConnectRequest(connect._id);
+                        setRelationshipTarget({ id: connect._id, action: 'accept' });
                       }}
                       accessibilityLabel="Accept connect request"
                       disabled={Boolean(actionLoading)}
@@ -356,7 +366,7 @@ const Connects = () => {
                         { backgroundColor: buttonBg },
                       ]}
                       onPress={() => {
-                        handleSendConnectRequest(connect._id);
+                        setRelationshipTarget({ id: connect._id, action: 'send' });
                       }}
                       accessibilityLabel="Add connect"
                       disabled={Boolean(actionLoading)}
@@ -395,6 +405,14 @@ const Connects = () => {
           )}
         </View>
       </View>
+      <RelationshipPickerModal visible={Boolean(relationshipTarget)} colors={themeColors}
+        loading={Boolean(actionLoading)} onCancel={() => setRelationshipTarget(null)}
+        onSubmit={(types: string[]) => {
+          const target = relationshipTarget;
+          setRelationshipTarget(null);
+          if (target?.action === 'send') handleSendConnectRequest(target.id, types);
+          else if (target) handleAcceptConnectRequest(target.id, types);
+        }} />
     </ScrollView>
   );
 };

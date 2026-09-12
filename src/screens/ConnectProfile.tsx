@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter, Alert, ActivityIndicator } from 'react-native'
-import { useSelector } from 'react-redux'
+import { useDispatch, useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
 import { useTheme } from '../contexts/ThemeContext'
@@ -19,6 +19,8 @@ import ConnectCacheManager from '../utils/connectCacheManager'
 import VerifiedName from '../components/VerifiedName'
 import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat'
 import config from '../lib/config'
+import { setProfile } from '../reducers/profileReducer'
+import RelationshipPickerModal from '../components/RelationshipPickerModal'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -128,6 +130,7 @@ const ConnectProfile = () => {
     const { colors: themeColors } = useTheme();
     
     const myProfile = useSelector((state: RootState) => state.profile)
+    const dispatch = useDispatch()
     const [activeTab, setActiveTab] = React.useState<TabKey>('About')
     const { width } = useWindowDimensions()
 
@@ -144,6 +147,7 @@ const ConnectProfile = () => {
     const [refreshing, setRefreshing] = React.useState<boolean>(false)
     const [connectActionLoading, setConnectActionLoading] = React.useState<string | null>(null)
     const [messageLoading, setMessageLoading] = React.useState(false)
+    const [relationshipMode, setRelationshipMode] = React.useState<'send' | 'accept' | null>(null)
 
     const connectsCount = Array.isArray(connectData?.connects ?? connectData?.friends)
         ? (connectData.connects ?? connectData.friends).length
@@ -158,6 +162,7 @@ const ConnectProfile = () => {
     const [imageViewerOpen, setImageViewerOpen] = React.useState(false)
     const [imageViewerIndex, setImageViewerIndex] = React.useState(0)
     const [connects, setConnects] = React.useState<any[]>([])
+    const [relationshipTypes, setRelationshipTypes] = React.useState<string[]>([])
     const [connectsLoading, setConnectsLoading] = React.useState<boolean>(false)
     const [videos, setVideos] = React.useState<any[]>([])
     const [videosLoading, setVideosLoading] = React.useState<boolean>(false)
@@ -177,11 +182,12 @@ const ConnectProfile = () => {
         setVideos([]);
         
         try {
-            const [profileRes, postsRes, connectsRes, videosRes] = await Promise.all([
+            const [profileRes, postsRes, connectsRes, videosRes, relationshipsRes] = await Promise.all([
                 api.get('/profile', { params: { profileId: connectId } }),
                 api.get('/post/myPosts', { params: { profile: connectId } }),
                 api.get('/connects/getConnects', { params: { profile: connectId } }),
-                api.get('/watch/profileWatch', { params: { profile: connectId, pageNumber: 1 } })
+                api.get('/watch/profileWatch', { params: { profile: connectId, pageNumber: 1 } }),
+                connectAPI.getRelationships(connectId),
             ]);
             if (requestId !== fetchRequestRef.current) return;
             
@@ -219,6 +225,11 @@ const ConnectProfile = () => {
                         : [],
                 );
             }
+            setRelationshipTypes(
+                Array.isArray(relationshipsRes.data?.relationTypes)
+                    ? relationshipsRes.data.relationTypes
+                    : [],
+            );
         } catch (err) {
             if (requestId !== fetchRequestRef.current) return;
             console.error('Error fetching connect data:', err);
@@ -296,19 +307,11 @@ const ConnectProfile = () => {
         
         const updateStatus = async () => {
             try {
-                const [incomingRes, profileRes] = await Promise.all([
-                    connectAPI.getConnectRequest(myProfile._id),
-                    api.get('/profile', { params: { profileId: connectId } }),
-                ]);
+                const statusRes = await connectAPI.getRequestStatus(connectId);
                 if (!isMounted) return;
-                const incoming = Array.isArray(incomingRes.data) &&
-                    incomingRes.data.some((req: any) => String(req?._id) === String(connectId));
-                const targetProfile = profileRes.data;
-                const outgoing = Array.isArray(targetProfile?.connectReqs) &&
-                    targetProfile.connectReqs.some((id: any) => String(id?._id || id) === String(myProfile._id));
-                const myConnects = myProfile.connects ?? myProfile.friends;
-                const isInConnectsList = Array.isArray(myConnects) &&
-                    myConnects.some((f: any) => String(f?._id || f) === String(connectId));
+                const incoming = Boolean(statusRes.data?.incoming);
+                const outgoing = Boolean(statusRes.data?.outgoing);
+                const isInConnectsList = Boolean(statusRes.data?.connected);
                 setIsConnect(isInConnectsList);
                 setConnectStatus(isInConnectsList ? 'connects' : incoming ? 'incoming' : outgoing ? 'outgoing' : 'none');
             } catch (error) {
@@ -380,13 +383,13 @@ const ConnectProfile = () => {
         };
     }, [connectId, posts.length]); // Only depend on posts.length, not the entire posts array
 
-    const handleSendConnectRequest = async () => {
+    const handleSendConnectRequest = async (relationTypes: string[]) => {
         if (!connectId || !myProfile?._id) return;
         if (connectActionLoading) return;
         setConnectActionLoading('send');
         
         try {
-            await connectAPI.sendConnectRequest(connectId);
+            await connectAPI.sendConnectRequest(connectId, relationTypes);
             setConnectStatus('outgoing');
             await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
         } catch (error) {
@@ -396,13 +399,16 @@ const ConnectProfile = () => {
         }
     };
 
-    const handleAcceptConnectRequest = async () => {
+    const handleAcceptConnectRequest = async (relationTypes: string[]) => {
         if (!connectId || !myProfile?._id) return;
         if (connectActionLoading) return;
         setConnectActionLoading('accept');
         
         try {
-            await connectAPI.acceptConnectRequest(connectId);
+            const response = await connectAPI.acceptConnectRequest(connectId, relationTypes);
+            if (response.data?.myProfile) {
+                dispatch(setProfile({ ...myProfile, ...response.data.myProfile }));
+            }
             setConnectStatus('connects');
             setIsConnect(true);
             await Promise.all([
@@ -437,7 +443,22 @@ const ConnectProfile = () => {
         setConnectActionLoading('disconnect');
         
         try {
-            await connectAPI.disconnect(connectId);
+            const response = await connectAPI.disconnect(connectId);
+            if (response.data?.myProfile) {
+                dispatch(setProfile({ ...myProfile, ...response.data.myProfile }));
+            }
+            setConnectData((previous: any) => {
+                const current = previous?.connects ?? previous?.friends;
+                if (!Array.isArray(current)) return previous;
+                const next = current.filter((item: any) =>
+                    String(item?._id || item) !== String(myProfile._id),
+                );
+                return { ...previous, connects: next, friends: previous?.friends ? next : previous.friends };
+            });
+            setConnects(previous => previous.filter((item: any) =>
+                String(item?._id || item) !== String(myProfile._id),
+            ));
+            setRelationshipTypes([]);
             setConnectStatus('none');
             setIsConnect(false);
             await ConnectCacheManager.removeProfile(myProfile._id, 'suggestions', connectId);
@@ -459,7 +480,7 @@ const ConnectProfile = () => {
                 );
             case 'incoming':
                 return (
-                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleAcceptConnectRequest} disabled={Boolean(connectActionLoading)}>
+                    <Pressable style={[styles.button, styles.primaryButton]} onPress={() => setRelationshipMode('accept')} disabled={Boolean(connectActionLoading)}>
                         {connectActionLoading === 'accept' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="check" size={18} color={themeColors.text.inverse} />
                         <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Accept Request</Text></>}
                     </Pressable>
@@ -473,7 +494,7 @@ const ConnectProfile = () => {
                 );
             default:
                 return (
-                    <Pressable style={[styles.button, styles.primaryButton]} onPress={handleSendConnectRequest} disabled={Boolean(connectActionLoading)}>
+                    <Pressable style={[styles.button, styles.primaryButton]} onPress={() => setRelationshipMode('send')} disabled={Boolean(connectActionLoading)}>
                         {connectActionLoading === 'send' ? <ActivityIndicator size="small" color={themeColors.text.inverse} /> : <><Icon name="person-add" size={18} color={themeColors.text.inverse} />
                         <Text style={[styles.buttonText, { color: themeColors.text.inverse }]}>Add Connect</Text></>}
                     </Pressable>
@@ -594,6 +615,7 @@ const ConnectProfile = () => {
                                             )}
                                         </View>
                                         <Text style={[styles.connectName, { color: themeColors.text.primary }]} numberOfLines={1}>{userName}</Text>
+                                        {f.relationshipTypes?.length > 0 && <Text style={{ color: themeColors.text.secondary, fontSize: 12 }} numberOfLines={1}>{f.relationshipTypes.join(', ')}</Text>}
                                     </TouchableOpacity>
                                 )
                             })}
@@ -738,6 +760,11 @@ const ConnectProfile = () => {
                             textStyle={[styles.fullName, isSmall ? { fontSize: 20 } : null, { color: themeColors.text.primary }]}
                             numberOfLines={2}
                         />
+                            {relationshipTypes.length > 0 && (
+                                <Text style={[styles.connectsCount, { color: themeColors.text.secondary }]}>
+                                    Relationship: {relationshipTypes.join(', ')}
+                                </Text>
+                            )}
                             {connectsCount > 0 ? (
                                 <Text style={[styles.connectsCount, { color: themeColors.text.secondary }]}>{connectsCount} connects</Text>
                             ) : null}
@@ -807,6 +834,14 @@ const ConnectProfile = () => {
                                 </View>
                             </Pressable>
                         ))}
+                    <RelationshipPickerModal visible={Boolean(relationshipMode)} colors={themeColors}
+                        loading={Boolean(connectActionLoading)} onCancel={() => setRelationshipMode(null)}
+                        onSubmit={(types: string[]) => {
+                            const mode = relationshipMode;
+                            setRelationshipMode(null);
+                            if (mode === 'send') handleSendConnectRequest(types);
+                            if (mode === 'accept') handleAcceptConnectRequest(types);
+                        }} />
                     </ScrollView>
                     <View style={[styles.optionsMenu, { backgroundColor: themeColors.surface.secondary }]}><Icon name="more-horiz" size={22} color={themeColors.text.secondary} /></View>
                 </View>
