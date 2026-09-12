@@ -132,6 +132,7 @@ export async function streamAgentReply(
       activeConversation?: { userId?: string; name?: string };
       knownConnects?: Array<{ id: string; name: string; username?: string; bio?: string }>;
     };
+    preferredLanguage?: 'eng' | 'bn';
   },
   imageDataUrl?: string,
 ): Promise<string> {
@@ -178,8 +179,12 @@ export async function streamAgentReply(
     provider: providerConfig.provider,
     model: providerConfig.model,
     system: isOllama
-      ? `${SYSTEM_PROMPT}${ollamaMemoryContext}`.slice(0, 5000)
-      : SYSTEM_PROMPT + profileContext + memoryContext + connectsContext,
+      ? `${SYSTEM_PROMPT}\nPreferred response language: ${
+          providerOptions?.preferredLanguage === 'bn' ? 'Bangla' : 'English'
+        }.${ollamaMemoryContext}`.slice(0, 5000)
+      : `${SYSTEM_PROMPT}\nPreferred response language: ${
+          providerOptions?.preferredLanguage === 'bn' ? 'Bangla' : 'English'
+        }.${profileContext}${memoryContext}${connectsContext}`,
     messages: [
       ...(isOllama
         ? toPayloadMessages(history.slice(-4)).map(item => ({
@@ -269,8 +274,24 @@ export const fetchAIProviderStatus = async (): Promise<AIProviderStatus> => {
   };
 };
 
-const fallbackPostCaption = (userRequest = '') => {
+const fallbackPostCaption = (
+  userRequest = '',
+  preferredLanguage: 'eng' | 'bn' = 'eng',
+) => {
   const request = String(userRequest || '').trim().toLowerCase();
+  if (preferredLanguage === 'bn') {
+    if (request.includes('funny') || request.includes('witty')) {
+      return 'ভালো সময়, দারুণ গল্প আর একটু মজার বিশৃঙ্খলা 😄';
+    }
+    if (request.includes('video')) return 'এই মুহূর্তটি আবার দেখার মতো 🎬';
+    if (request.includes('photo') || request.includes('image')) {
+      return 'কিছু মুহূর্ত ধরে রাখতেই হয় ✨';
+    }
+    if (request.includes('improve') || request.includes('finish')) {
+      return 'এই মুহূর্তে একটু বাড়তি ঝলক ✨';
+    }
+    return 'ছোট ছোট মুহূর্ত, বড় বড় স্মৃতি ✨';
+  }
   if (request.includes('funny') || request.includes('witty')) {
     return 'Good vibes, great stories, and a little chaos 😄';
   }
@@ -327,6 +348,7 @@ export const generatePostCaption = async (
   userRequest = '',
   signal?: AbortSignal,
   imageDataUrl?: string,
+  preferredLanguage: 'eng' | 'bn' = 'eng',
 ): Promise<string> => {
   const request = String(userRequest || '').trim();
   const providerStatus = await fetchAIProviderStatus().catch(() => null);
@@ -335,13 +357,13 @@ export const generatePostCaption = async (
   );
 
   if (!providerStatus || !hasConfiguredProvider) {
-    return fallbackPostCaption(request);
+    return fallbackPostCaption(request, preferredLanguage);
   }
 
   try {
     const prompt = request
-      ? `Write one original social-media caption for Connect. Match the user's language and keep it engaging. Use this request as your guide: ${request}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`
-      : 'Write one original social-media caption for Connect. Match the user\'s language and keep it engaging. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.';
+      ? `Write one original social-media caption for Connect. Use the user's preferred language: ${preferredLanguage === 'bn' ? 'Bangla' : 'English'}. If the user explicitly writes in another language, follow that language. Use this request as your guide: ${request}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`
+      : `Write one original social-media caption for Connect. Use the user's preferred language: ${preferredLanguage === 'bn' ? 'Bangla' : 'English'}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`;
 
     const response = await streamAgentReply(
       prompt,
@@ -353,16 +375,18 @@ export const generatePostCaption = async (
       }],
       () => undefined,
       signal,
-      undefined,
+      { preferredLanguage },
       undefined,
       imageDataUrl,
     );
 
     const caption = extractCaptionText(response);
-    return caption ? caption.slice(0, 500) : fallbackPostCaption(request);
+    return caption
+      ? caption.slice(0, 500)
+      : fallbackPostCaption(request, preferredLanguage);
   } catch (error) {
     console.warn('Caption generation failed, using fallback caption:', error);
-    return fallbackPostCaption(request);
+    return fallbackPostCaption(request, preferredLanguage);
   }
 };
 

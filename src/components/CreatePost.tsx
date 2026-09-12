@@ -13,6 +13,7 @@ import KeyboardSafeView from './KeyboardSafeView';
 import VoiceTextInput from './VoiceTextInput';
 import MentionTextInput from './MentionTextInput';
 import { generatePostCaption } from '../services/aiAgentService';
+import { useSettings } from '../contexts/SettingsContext';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -39,9 +40,18 @@ type PostData = {
   audience: number;
 };
 
+type TagProfile = {
+  _id: string;
+  fullName?: string;
+  displayName?: string;
+  username?: string;
+  profilePic?: string;
+};
+
 const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) => {
   const { user } = useContext(AuthContext);
   const { colors: themeColors, isDarkMode } = useTheme();
+  const { settings } = useSettings();
   const { showToast } = useModernToast();
   
   const [isModalVisible, setModalVisible] = useState(false);
@@ -51,6 +61,9 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [isFeelingsPickerVisible, setIsFeelingsPickerVisible] = useState(false);
   const [isAudiencePickerVisible, setIsAudiencePickerVisible] = useState(false);
+  const [isTagPickerVisible, setIsTagPickerVisible] = useState(false);
+  const [tagProfiles, setTagProfiles] = useState<TagProfile[]>([]);
+  const [isLoadingTagProfiles, setIsLoadingTagProfiles] = useState(false);
   const [postData, setPostData] = useState<PostData>({
     caption: '',
     urls: null,
@@ -155,6 +168,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           hint,
           undefined,
           postData.type === 'image' ? postData.imageDataUrl : undefined,
+          settings.language === 'bn' ? 'bn' : 'eng',
         );
       if (caption) {
         setPostData((prev) => ({ ...prev, caption }));
@@ -174,6 +188,42 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   const closeFeelingsPicker = () => setIsFeelingsPickerVisible(false);
   const openAudiencePicker = () => setIsAudiencePickerVisible(true);
   const closeAudiencePicker = () => setIsAudiencePickerVisible(false);
+  const openTagPicker = async () => {
+    setIsTagPickerVisible(true);
+    if (tagProfiles.length || isLoadingTagProfiles) return;
+
+    const profileId = user?.profile?._id || user?._id;
+    if (!profileId) return;
+
+    setIsLoadingTagProfiles(true);
+    try {
+      const response = await api.get('/connects/getConnects', { params: { profile: profileId } });
+      setTagProfiles(
+        Array.isArray(response.data)
+          ? response.data.filter((profile): profile is TagProfile => Boolean(profile?._id))
+          : [],
+      );
+    } catch (error) {
+      console.error('Unable to load profiles for post tags:', error);
+      showToast({
+        type: 'error',
+        title: 'Profiles unavailable',
+        message: 'We could not load your connected profiles right now.',
+      });
+    } finally {
+      setIsLoadingTagProfiles(false);
+    }
+  };
+  const closeTagPicker = () => setIsTagPickerVisible(false);
+  const selectTagProfile = (profile: TagProfile) => {
+    const displayName = profile.fullName || profile.displayName || profile.username || 'User';
+    const mention = `@[${displayName}](${profile._id})`;
+    setPostData((prev) => ({
+      ...prev,
+      caption: `${prev.caption}${prev.caption ? ' ' : ''}${mention} `,
+    }));
+    closeTagPicker();
+  };
   const selectFeeling = (value: string) => {
     handleFeelingsChange(value);
     closeFeelingsPicker();
@@ -509,17 +559,44 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                   />
                 </View>
               </View>
-              <View style={styles.audienceContainer}>
-                <Text style={[styles.label, { color: textColor }]}>Audience:</Text>
-                <TouchableOpacity
-                  onPress={openAudiencePicker}
-                  style={[styles.input, { backgroundColor: inputBg, borderColor, flexDirection: 'row', alignItems: 'center' }]}
-                >
-                  <Icon name={audienceOptions.find(a => a.value === postData.audience)?.icon || 'public'} size={18} color={themeColors.primary} />
-                  <Text style={{ marginLeft: 8, color: inputText }}>
-                    {audienceOptions.find(a => a.value === postData.audience)?.label || 'Public'}
-                  </Text>
-                </TouchableOpacity>
+              <View style={styles.tagAudienceRow}>
+                <View style={styles.tagContainer}>
+                  <Text style={[styles.label, { color: textColor }]}>Tag:</Text>
+                  <TouchableOpacity
+                    onPress={openTagPicker}
+                    style={[
+                      styles.metaPill,
+                      {
+                        backgroundColor: postData.caption.includes('@[')
+                          ? `${themeColors.primary}22`
+                          : inputBg,
+                        borderColor: postData.caption.includes('@[')
+                          ? themeColors.primary
+                          : borderColor,
+                      },
+                    ]}
+                    activeOpacity={0.75}
+                    accessibilityRole="button"
+                    accessibilityLabel="Tag profiles"
+                  >
+                    <Icon name="person-add" size={17} color={themeColors.primary} />
+                    <Text numberOfLines={1} style={[styles.metaPillText, { color: inputText }]}>
+                      {postData.caption.includes('@[') ? 'Profiles tagged' : 'Tag profiles'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                <View style={styles.audienceContainer}>
+                  <Text style={[styles.label, { color: textColor }]}>Audience:</Text>
+                  <TouchableOpacity
+                    onPress={openAudiencePicker}
+                    style={[styles.input, { backgroundColor: inputBg, borderColor, flexDirection: 'row', alignItems: 'center' }]}
+                  >
+                    <Icon name={audienceOptions.find(a => a.value === postData.audience)?.icon || 'public'} size={18} color={themeColors.primary} />
+                    <Text numberOfLines={1} style={{ marginLeft: 8, color: inputText }}>
+                      {audienceOptions.find(a => a.value === postData.audience)?.label || 'Public'}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
               </View>
               <View style={styles.captionActionRow}>
                 <Text style={[styles.label, { color: textColor }]}>Caption:</Text>
@@ -720,6 +797,52 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
               </View>
             </View>
           ) : null}
+          {isTagPickerVisible ? (
+            <View style={[StyleSheet.absoluteFill, styles.pickerOverlay]}>
+              <Pressable style={[StyleSheet.absoluteFill, styles.pickerBackdrop]} onPress={closeTagPicker} />
+              <View style={[styles.modalContent, styles.pickerContent, { backgroundColor: modalBg }]}>
+                <Text style={[styles.modalTitle, { color: textColor }]}>Tag profiles</Text>
+                {isLoadingTagProfiles ? (
+                  <ActivityIndicator color={themeColors.primary} />
+                ) : (
+                  <FlatList
+                    data={tagProfiles}
+                    keyExtractor={(item) => item._id}
+                    ListEmptyComponent={
+                      <Text style={[styles.emptyPickerText, { color: themeColors.gray[500] }]}>
+                        No connected profiles to tag yet.
+                      </Text>
+                    }
+                    renderItem={({ item }) => {
+                      const displayName = item.fullName || item.displayName || item.username || 'User';
+                      return (
+                        <TouchableOpacity
+                          onPress={() => selectTagProfile(item)}
+                          style={styles.tagProfileOption}
+                          activeOpacity={0.7}
+                        >
+                          {item.profilePic ? (
+                            <ProfileImage uri={item.profilePic} pixelSize={64} style={styles.tagProfileImage} />
+                          ) : (
+                            <View style={[styles.tagProfileFallback, { backgroundColor: `${themeColors.primary}22` }]}>
+                              <Icon name="person" size={20} color={themeColors.primary} />
+                            </View>
+                          )}
+                          <View style={styles.tagProfileCopy}>
+                            <Text style={{ color: textColor, fontSize: 16, fontWeight: '600' }}>{displayName}</Text>
+                            {item.username ? (
+                              <Text style={{ color: themeColors.gray[500], marginTop: 2 }}>@{item.username}</Text>
+                            ) : null}
+                          </View>
+                        </TouchableOpacity>
+                      );
+                    }}
+                    ItemSeparatorComponent={() => <View style={{ height: 1, backgroundColor: borderColor }} />}
+                  />
+                )}
+              </View>
+            </View>
+          ) : null}
         </View>
         </KeyboardSafeView>
       </Modal>
@@ -841,6 +964,31 @@ const styles = StyleSheet.create({
     zIndex: 1,
     elevation: 21,
   },
+  tagProfileOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  tagProfileImage: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+  },
+  tagProfileFallback: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tagProfileCopy: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  emptyPickerText: {
+    paddingVertical: 18,
+    textAlign: 'center',
+  },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -870,6 +1018,29 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     marginBottom: 8,
   },
+  tagAudienceRow: {
+    flexDirection: 'row',
+    marginBottom: 8,
+    gap: 8,
+  },
+  tagContainer: {
+    flex: 1,
+  },
+  metaPill: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 44,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 12,
+  },
+  metaPillText: {
+    marginLeft: 6,
+    flexShrink: 1,
+    fontSize: 14,
+  },
   captionActionRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -883,7 +1054,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   audienceContainer: {
-    marginBottom: 8,
+    flex: 1,
   },
   label: {
     fontSize: 12,

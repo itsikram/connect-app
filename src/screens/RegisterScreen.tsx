@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from 'react-native-paper';
+import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Logo from '../components/Logo';
 import { useTheme } from '../contexts/ThemeContext';
@@ -32,6 +33,7 @@ const RegisterScreen = () => {
     email: '',
     DOB: null as Date | null,
     gender: '',
+    language: 'eng',
     password: '',
     confirmPassword: '',
   });
@@ -236,6 +238,7 @@ const RegisterScreen = () => {
         email: formData.email.toLowerCase().trim(),
         DOB: formData.DOB,
         gender: formData.gender,
+        language: formData.language,
         password: formData.password,
       };
       
@@ -393,6 +396,18 @@ const RegisterScreen = () => {
                   {(['male', 'female', 'other'] as const).map((value) => <TouchableOpacity key={value} onPress={() => handleFieldChange('gender', value)} style={[styles.genderOption, formData.gender === value && { backgroundColor: `${themeColors.primary}22` }]}><Text style={{ color: themeColors.text.primary }}>{value[0].toUpperCase() + value.slice(1)}</Text></TouchableOpacity>)}
                 </View>
                 <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.gender || ' '}</Text>
+                <Text style={[styles.label, { color: themeColors.text.secondary }]}>Language</Text>
+                <View style={[styles.input, styles.select, { borderColor: themeColors.border.secondary, backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)' }]}>
+                  <Picker
+                    selectedValue={formData.language}
+                    onValueChange={(value) => handleFieldChange('language', value)}
+                    style={{ color: themeColors.text.primary }}
+                    dropdownIconColor={themeColors.text.primary}
+                  >
+                    <Picker.Item label="English" value="eng" />
+                    <Picker.Item label="Bangla" value="bn" />
+                  </Picker>
+                </View>
                 <View style={styles.actionRow}><TouchableOpacity onPress={handleBack}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>← Back</Text></TouchableOpacity><TouchableOpacity onPress={handleNext} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Next Step  →</Text></TouchableOpacity></View>
               </View>
             )}
@@ -486,6 +501,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
     marginBottom: 6,
+  },
+  label: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  select: {
+    paddingHorizontal: 8,
   },
   halfInput: { flex: 1 },
   nativeInput: { flex: 1, fontSize: 16, marginLeft: 12, paddingVertical: 0 },

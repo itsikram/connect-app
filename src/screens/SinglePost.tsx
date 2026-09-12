@@ -55,6 +55,7 @@ import CacheManager from '../utils/cacheManager';
 import { POST_UPDATED_EVENT, emitPostUpdated } from '../utils/postEvents';
 import { getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
+import config from '../lib/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
@@ -63,7 +64,7 @@ interface Post {
     _id: string;
     caption: string;
     photos?: string | string[];
-    gallery?: string[];
+    gallery?: string[] | string;
     type?: string;
     feelings?: string;
     location?: string;
@@ -379,7 +380,10 @@ const SinglePost = () => {
             width: '49%',
         },
         multiImage: {
+            width: '100%',
+            aspectRatio: 1,
             borderRadius: 8,
+            backgroundColor: themeColors.gray[100],
         },
         imageOverlay: {
             position: 'absolute',
@@ -967,17 +971,38 @@ const SinglePost = () => {
         },
     });
 
-    const isValidImageUrl = (url?: string | string[]): boolean => {
+    const getAssetUrl = (path?: string): string => {
+        if (!path) return '';
+        if (path.startsWith('http://') || path.startsWith('https://')) return path;
+        return `${config.SOCKET_BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
+    };
+
+    const normalizeImageUrls = (value?: string | string[]): string[] => {
+        if (!value) return [];
+        if (Array.isArray(value)) return value;
+        const trimmedValue = value.trim();
+        if (trimmedValue.startsWith('[')) {
+            try {
+                const parsed = JSON.parse(trimmedValue);
+                return Array.isArray(parsed) ? parsed : [value];
+            } catch {
+                return [value];
+            }
+        }
+        return [value];
+    };
+
+    const isValidImageUrl = (url?: string): boolean => {
         if (!url) return false;
-        const imageUrl = typeof url === 'string' ? url : url[0];
+        const imageUrl = url.trim();
         if (!imageUrl || imageUrl.trim() === '') return false;
         // Check if it's a valid URL format
         return imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/');
     };
 
     const postImageUrls = [
-        ...(Array.isArray(post?.photos) ? post.photos : [post?.photos]),
-        ...(Array.isArray(post?.gallery) ? post.gallery : []),
+        ...normalizeImageUrls(post?.photos),
+        ...normalizeImageUrls(post?.gallery),
     ].filter((url): url is string => isValidImageUrl(url));
 
     const fetchPost = useCallback(async () => {
@@ -1270,7 +1295,7 @@ const SinglePost = () => {
     };
 
     const openImageModal = (imageUrl: string) => {
-        setSelectedImage(imageUrl);
+        setSelectedImage(getAssetUrl(imageUrl));
         setShowImageModal(true);
     };
 
@@ -1647,7 +1672,7 @@ const SinglePost = () => {
                         <View style={styles.attachmentContainer}>
                             {post.type === 'profilePic' ? (
                                 <TouchableOpacity onPress={() => openImageModal(postImageUrls[0])}>
-                                    <Image source={{ uri: postImageUrls[0] }} style={styles.postProfilePic} />
+                                    <Image source={{ uri: getAssetUrl(postImageUrls[0]) }} style={styles.postProfilePic} />
                                 </TouchableOpacity>
                             ) : (
                                 <View style={postImageUrls.length > 1 ? styles.multiImageContainer : undefined}>
@@ -1658,7 +1683,7 @@ const SinglePost = () => {
                                             style={postImageUrls.length > 1 ? styles.multiImageItem : undefined}
                                         >
                                             <Image
-                                                source={{ uri: imageUrl }}
+                                                source={{ uri: getAssetUrl(imageUrl) }}
                                                 style={postImageUrls.length > 1 ? styles.multiImage : styles.postImage}
                                                 onError={() => console.log('Failed to load post image')}
                                             />

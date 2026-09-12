@@ -19,6 +19,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSettings } from '../contexts/SettingsContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
 import { useChessGame } from '../contexts/ChessGameContext';
@@ -178,6 +179,7 @@ const AIAgentModal: React.FC<Props> = ({
   const { colors } = useTheme();
   const { logout, user } = React.useContext(AuthContext);
   const profile = useSelector((state: RootState) => state.profile);
+  const { settings } = useSettings();
   const profileContext = React.useMemo(
     () => ({
       ...(user?.profile && typeof user.profile === 'object'
@@ -210,6 +212,7 @@ const AIAgentModal: React.FC<Props> = ({
     Array<{ id: string; name: string; username?: string; bio?: string }>
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
+  const [voiceTranscript, setVoiceTranscript] = React.useState('');
   const [speechEnabled, setSpeechEnabled] = React.useState(false);
   const [voiceLanguageMenuOpen, setVoiceLanguageMenuOpen] =
     React.useState(false);
@@ -233,6 +236,7 @@ const AIAgentModal: React.FC<Props> = ({
     [requestLudoInvite],
   );
   const voiceStartKeyRef = React.useRef<string | null>(null);
+  const voiceStartInFlightRef = React.useRef(false);
   const voiceInputBaseRef = React.useRef('');
   const updateAutoActionRunning = React.useCallback((running: boolean) => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -799,6 +803,7 @@ const AIAgentModal: React.FC<Props> = ({
       const next = mergeTranscriptText(voiceInputBaseRef.current, text);
       voiceInputBaseRef.current = next;
       setInput(next);
+      setVoiceTranscript(next);
       if (!voiceConversation) return;
       clearVoiceAutoSend();
       voiceAutoSendTimerRef.current = setTimeout(() => {
@@ -807,7 +812,9 @@ const AIAgentModal: React.FC<Props> = ({
       }, 1200);
     },
     onInterim: text => {
-      setInput(mergeTranscriptText(voiceInputBaseRef.current, text));
+      const next = mergeTranscriptText(voiceInputBaseRef.current, text);
+      setInput(next);
+      setVoiceTranscript(next);
     },
   });
 
@@ -954,6 +961,7 @@ const AIAgentModal: React.FC<Props> = ({
           provider: selectedProvider,
           model: providerStatus?.models[selectedProvider],
           memory: agentMemoryRef.current,
+          preferredLanguage: settings.language === 'bn' ? 'bn' : 'eng',
         },
       );
       if (generation !== generationRef.current) return;
@@ -1398,6 +1406,7 @@ const AIAgentModal: React.FC<Props> = ({
         return;
       }
       setVoiceConversation(true);
+      setVoiceTranscript('');
       if (speechEnabled) {
         await announceListening(nextLanguage);
       }
@@ -1427,17 +1436,24 @@ const AIAgentModal: React.FC<Props> = ({
     setLanguage(autoStartVoiceLanguage);
     setMinimized(true);
     setVoiceConversation(true);
+    setVoiceTranscript('');
     setSpeechEnabled(true);
     setVoiceLanguageMenuOpen(false);
     void (async () => {
+      if (voiceStartInFlightRef.current || transcribe.listening) return;
+      voiceStartInFlightRef.current = true;
       // Start capture before any optional voice prompt so a shake never
       // delays microphone activation while TTS is playing.
-      await speechControllerRef.current?.stop();
-      const started = await transcribe.start(
-        autoStartVoiceLanguage === 'auto' ? undefined : autoStartVoiceLanguage,
-        { skipStop: true },
-      );
-      if (!started) setVoiceConversation(false);
+      try {
+        await speechControllerRef.current?.stop();
+        const started = await transcribe.start(
+          autoStartVoiceLanguage === 'auto' ? undefined : autoStartVoiceLanguage,
+          { skipStop: true },
+        );
+        if (!started) setVoiceConversation(false);
+      } finally {
+        voiceStartInFlightRef.current = false;
+      }
     })();
   }, [
     announceListening,
@@ -1455,11 +1471,19 @@ const AIAgentModal: React.FC<Props> = ({
       await transcribe.stop();
       return;
     }
+    if (voiceStartInFlightRef.current) return;
+    voiceStartInFlightRef.current = true;
     setVoiceConversation(true);
+    setVoiceTranscript('');
     setVoiceLanguageMenuOpen(true);
-    const started = await transcribe.start(
-      language === 'auto' ? undefined : language,
-    );
+    let started = false;
+    try {
+      started = await transcribe.start(
+        language === 'auto' ? undefined : language,
+      );
+    } finally {
+      voiceStartInFlightRef.current = false;
+    }
     if (!started) {
       setVoiceConversation(false);
       setVoiceLanguageMenuOpen(false);
@@ -1492,6 +1516,7 @@ const AIAgentModal: React.FC<Props> = ({
     setSpeechEnabled(true);
     if (transcribe.listening) {
       setVoiceConversation(true);
+      setVoiceTranscript('');
       return;
     }
     setVoiceConversation(true);
@@ -2188,7 +2213,11 @@ const AIAgentModal: React.FC<Props> = ({
                   { color: colors.text.secondary },
                 ]}
               >
-                {autoActionRunning ? 'Running action...' : 'Tap to restore'}
+                {autoActionRunning
+                  ? 'Running action...'
+                  : transcribe.listening
+                    ? voiceTranscript || 'Listening...'
+                    : 'Tap to restore'}
               </Text>
             </View>
           </Pressable>

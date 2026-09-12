@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useMemo, useRef, useState } from 'react';
 import { Text, TextInput, TouchableOpacity, View, ViewStyle, TextInputProps } from 'react-native';
 import api from '../lib/api';
+import { useTheme } from '../contexts/ThemeContext';
 import VoiceTextInput from './VoiceTextInput';
 
 type Profile = {
@@ -52,6 +53,7 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
   voiceEnabled = true,
   ...props
 }, ref) => {
+  const { colors, isDarkMode } = useTheme();
   const [connects, setConnects] = useState<Profile[]>([]);
   const [activeQuery, setActiveQuery] = useState<string | null>(null);
   const inputRef = useRef<TextInput>(null);
@@ -105,7 +107,7 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
   };
 
   return (
-    <View style={[{ flex: 1, minWidth: 0, position: 'relative', zIndex: 20 }, wrapperStyle]}>
+    <View style={[styles.inputWrapper, wrapperStyle]}>
       <VoiceTextInput
         ref={(node) => {
           inputRef.current = node;
@@ -121,17 +123,21 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
         }}
       />
       {activeQuery !== null && matches.length > 0 ? (
-        <View style={styles.suggestions}>
+        <View style={[styles.suggestions, {
+          backgroundColor: colors.surface.elevated || colors.surface.primary,
+          borderColor: colors.border.primary,
+          shadowColor: isDarkMode ? '#000' : '#334155',
+        }]}>
           {matches.map(profile => (
             <TouchableOpacity
               key={profile._id}
               onPress={() => selectProfile(profile)}
-              style={styles.suggestion}
+              style={[styles.suggestion, { backgroundColor: colors.surface.elevated || colors.surface.primary }]}
               accessibilityRole="button"
               accessibilityLabel={`Mention ${getName(profile)}`}
             >
-              <Text style={styles.name}>{getName(profile)}</Text>
-              {profile.username ? <Text style={styles.username}>@{profile.username}</Text> : null}
+              <Text style={[styles.name, { color: colors.text.primary }]}>{getName(profile)}</Text>
+              {profile.username ? <Text style={[styles.username, { color: colors.text.secondary }]}>@{profile.username}</Text> : null}
             </TouchableOpacity>
           ))}
         </View>
@@ -145,9 +151,11 @@ const styles = {
     position: 'absolute' as const,
     left: 0,
     right: 0,
-    bottom: 44,
+    top: '100%' as const,
+    marginTop: 6,
+    maxHeight: 240,
     backgroundColor: '#fff',
-    borderRadius: 10,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#d1d5db',
     shadowColor: '#000',
@@ -155,8 +163,22 @@ const styles = {
     shadowRadius: 8,
     elevation: 8,
     overflow: 'hidden' as const,
+    zIndex: 30,
   },
-  suggestion: { paddingHorizontal: 12, paddingVertical: 10 },
+  inputWrapper: {
+    flex: 1,
+    minWidth: 0,
+    position: 'relative' as const,
+    zIndex: 1000,
+    elevation: 1000,
+    overflow: 'visible' as const,
+  },
+  suggestion: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(148,163,184,0.18)',
+  },
   name: { color: '#111827', fontSize: 14, fontWeight: '600' as const },
   username: { color: '#6b7280', fontSize: 12, marginTop: 2 },
 };

@@ -8,6 +8,7 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from '../lib/config';
+import { useSettings } from '../contexts/SettingsContext';
 
 const TARGET_SAMPLE_RATE = 16000;
 const STREAM_POLL_MS = 80;
@@ -41,11 +42,6 @@ export async function setChatRecordingAudioMode() {
 }
 
 export async function restoreChatPlaybackAudioMode() {
-  try {
-    await Audio.setIsEnabledAsync(true);
-  } catch {
-    // ignore
-  }
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
@@ -306,6 +302,7 @@ export default function useComposerLiveTranscribe({
   preserveAudioSession = false,
   captureEnabled = true,
 }: TranscribeHandlers = {}) {
+  const { settings } = useSettings();
   const [listening, setListening] = useState(false);
   const onFinalRef = useRef(onFinal);
   const onInterimRef = useRef(onInterim);
@@ -541,10 +538,6 @@ export default function useComposerLiveTranscribe({
         /* ignore */
       }
     }
-    if (!preserveAudioSession) {
-      await Audio.setIsEnabledAsync(true);
-      await setChatRecordingAudioMode();
-    }
     const recording = new Audio.Recording();
     await recording.prepareToRecordAsync(PCM_RECORDING_OPTIONS);
     recordingRef.current = recording;
@@ -738,7 +731,9 @@ export default function useComposerLiveTranscribe({
           sendJson({ type: 'ping' });
         }, PING_INTERVAL_MS);
 
-        const language = toDeepgramLang(langCode);
+        const language = toDeepgramLang(
+          langCode || (settings.language === 'bn' ? 'bn' : 'en'),
+        );
         languageRef.current = language;
         usedStreamRef.current = false;
         startSpeechSession(language);
@@ -786,6 +781,7 @@ export default function useComposerLiveTranscribe({
       preserveAudioSession,
       sendJson,
       startSpeechSession,
+      settings.language,
       stop,
       streamGrowingFile,
       streamPipelinedChunks,

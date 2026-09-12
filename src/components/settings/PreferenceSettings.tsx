@@ -19,6 +19,11 @@ const THEME_OPTIONS = [
   { label: 'Purple', value: 'purple' },
 ];
 
+const LANGUAGE_OPTIONS = [
+  { label: 'English', value: 'eng' },
+  { label: 'Bangla', value: 'bn' },
+];
+
 const toWebTheme = (mode?: string) => {
   if (
     mode === 'light' ||
@@ -39,10 +44,12 @@ const PreferenceSettings = () => {
   const { showSuccess, showError } = useToast();
   const [isSaving, setIsSaving] = useState(false);
   const [themeMode, setThemeMode] = useState(toWebTheme(settings.themeMode || currentTheme));
+  const [language, setLanguage] = useState(settings.language || 'eng');
 
   React.useEffect(() => {
     setThemeMode(toWebTheme(settings.themeMode || currentTheme));
-  }, [settings.themeMode, currentTheme]);
+    setLanguage(settings.language || 'eng');
+  }, [settings.themeMode, settings.language, currentTheme]);
 
   const handleThemeChange = (value: string) => {
     setThemeMode(value);
@@ -52,7 +59,7 @@ const PreferenceSettings = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const success = await updateSettings({ themeMode });
+      const success = await updateSettings({ themeMode, language });
       if (success) {
         setTheme(themeMode as ExtendedThemeType);
         showSuccess('Preference settings saved');
@@ -78,6 +85,14 @@ const PreferenceSettings = () => {
           value={themeMode}
           onValueChange={handleThemeChange}
           options={THEME_OPTIONS}
+          variant="list"
+        />
+      </SettingsField>
+      <SettingsField label="Language">
+        <SettingsPicker
+          value={language}
+          onValueChange={setLanguage}
+          options={LANGUAGE_OPTIONS}
           variant="list"
         />
       </SettingsField>

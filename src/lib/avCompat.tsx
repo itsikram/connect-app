@@ -7,7 +7,6 @@ import {
   requestRecordingPermissionsAsync,
   getRecordingPermissionsAsync,
   setAudioModeAsync as setExpoAudioModeAsync,
-  setIsAudioActiveAsync,
 } from 'expo-audio';
 import AudioModuleNative from 'expo-audio/build/AudioModule';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -159,7 +158,10 @@ export const Audio = {
   RecordingOptionsPresets: RecordingPresets,
   requestPermissionsAsync: requestRecordingPermissionsAsync,
   getPermissionsAsync: getRecordingPermissionsAsync,
-  setIsEnabledAsync: setIsAudioActiveAsync,
+  // expo-av's enabled flag has no direct equivalent for expo-audio. Calling
+  // setIsAudioActiveAsync(true) can fail while iOS is switching sessions;
+  // players and recorders activate the session when they are actually used.
+  setIsEnabledAsync: async (_enabled: boolean) => undefined,
   setAudioModeAsync: async (mode: any) => setExpoAudioModeAsync({
     allowsRecording: mode.allowsRecording ?? mode.allowsRecordingIOS,
     playsInSilentMode: mode.playsInSilentMode ?? mode.playsInSilentModeIOS,

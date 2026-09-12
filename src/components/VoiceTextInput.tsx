@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
+import { useSettings } from '../contexts/SettingsContext';
 import useComposerLiveTranscribe, {
   mergeTranscriptText,
 } from '../hooks/useComposerLiveTranscribe';
@@ -38,7 +39,10 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(
     ref,
   ) => {
     const { colors } = useTheme();
-    const [language, setLanguage] = useState<'bn-BD' | 'en-US'>('en-US');
+    const { settings } = useSettings();
+    const [language, setLanguage] = useState<'bn-BD' | 'en-US'>(
+      settings.language === 'bn' ? 'bn-BD' : 'en-US',
+    );
     const baseTextRef = useRef(String(value || ''));
     const transcriptUpdateRef = useRef(false);
 
@@ -62,6 +66,10 @@ const VoiceTextInput = forwardRef<TextInput, VoiceTextInputProps>(
         onChangeText?.(next);
       },
     });
+
+    useEffect(() => {
+      setLanguage(settings.language === 'bn' ? 'bn-BD' : 'en-US');
+    }, [settings.language]);
 
     useEffect(() => {
       if (transcriptUpdateRef.current) {
