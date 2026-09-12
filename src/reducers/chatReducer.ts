@@ -77,7 +77,6 @@ export const fetchChatList = createAsyncThunk(
   'chat/fetchChatList',
   async (profileId: string) => {
     const response = await chatAPI.getChatList(profileId);
-    console.log('🔍 Chat list response:', response);
     return response.data;
   }
 );

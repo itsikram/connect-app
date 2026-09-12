@@ -149,7 +149,10 @@ const Tasks = () => {
   const title = filter === 'completed' ? 'No completed tasks' : filter === 'active' ? 'No active tasks' : 'No tasks yet';
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: themeColors.background.primary }]}>
+    <SafeAreaView
+      edges={['left', 'right', 'bottom']}
+      style={[styles.safe, { backgroundColor: themeColors.background.primary }]}
+    >
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <ScrollView
           contentContainerStyle={styles.content}

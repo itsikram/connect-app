@@ -173,10 +173,6 @@ if (typeof global !== 'undefined' && !global.HermesInternal) {
   };
 }
 
-// Keep verbose informational logs out of the Expo console while preserving warnings and errors.
-if (typeof console !== 'undefined') {
-  console.log = () => {};
-}
 // Ensure vector icon fonts are loaded early to avoid missing icons on Android/iOS
 try {
   // MaterialIcons
