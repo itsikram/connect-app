@@ -1089,7 +1089,7 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
       previous = { x, y, z };
 
       const now = Date.now();
-      if (delta < 2.2 || now - lastShakeAt < 1500) return;
+      if (delta < 1.6 || now - lastShakeAt < 1500) return;
       lastShakeAt = now;
       setPendingAiVoiceLanguage('auto');
       setAiVoiceStartRequest(request => request + 1);

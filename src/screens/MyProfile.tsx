@@ -742,9 +742,9 @@ const MyProfile = () => {
                       onPress={() => {
                         if (connectProfileLoadingId || disconnectLoadingId) return;
                         setConnectProfileLoadingId(f._id);
-                        (navigation as any).navigate('Message', {
-                          screen: 'ConnectProfile',
-                          params: { connectId: f._id, connectData: f },
+                        (navigation as any).navigate('ConnectProfile', {
+                          connectId: String(f._id),
+                          connectData: f,
                         });
                       }}
                       disabled={Boolean(connectProfileLoadingId || disconnectLoadingId)}
@@ -786,6 +786,17 @@ const MyProfile = () => {
                       >
                         {userName}
                       </Text>
+                      {Array.isArray(f.relationshipTypes) && f.relationshipTypes.length > 0 && (
+                        <Text
+                          style={[
+                            styles.connectRelationship,
+                            { color: themeColors.text.secondary },
+                          ]}
+                          numberOfLines={2}
+                        >
+                          {f.relationshipTypes.join(', ')}
+                        </Text>
+                      )}
                     </TouchableOpacity>
                     <TouchableOpacity
                       style={[
@@ -1715,6 +1726,11 @@ const styles = StyleSheet.create({
   connectName: {
     fontWeight: '600',
     // color will be set dynamically
+  },
+  connectRelationship: {
+    marginTop: 3,
+    fontSize: 12,
+    textAlign: 'center',
   },
   disconnectButton: {
     width: '100%',

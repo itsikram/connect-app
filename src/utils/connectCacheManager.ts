@@ -3,10 +3,10 @@ import { DeviceEventEmitter } from 'react-native';
 
 export const CONNECT_CACHE_EVENT = 'connects-cache-updated';
 
-type ConnectList = 'requests' | 'suggestions';
+type ConnectList = 'requests' | 'suggestions' | 'sentRequests';
 type ConnectItem = Record<string, any> & { _id?: string };
 
-const CACHE_VERSION = '1.0';
+const CACHE_VERSION = '1.1';
 const CACHE_VERSION_KEY = 'connect_cache_version';
 const CACHE_DURATION = 15 * 60 * 1000;
 
@@ -37,7 +37,8 @@ class ConnectCacheManager {
     if (version !== CACHE_VERSION) {
       const keys = await AsyncStorage.getAllKeys();
       const connectKeys = keys.filter((key) =>
-        key.startsWith('cached_connect_') || key.startsWith('connect_requests_timestamp_') ||
+        key.startsWith('cached_connect_') || key.startsWith('connect_') ||
+        key.startsWith('connect_requests_timestamp_') ||
         key.startsWith('connect_suggestions_timestamp_'),
       );
       if (connectKeys.length) await AsyncStorage.multiRemove(connectKeys);

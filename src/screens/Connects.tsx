@@ -24,6 +24,7 @@ import VerifiedName from '../components/VerifiedName';
 import { profileDisplayName } from '../utils/reactTypes';
 import { setProfile } from '../reducers/profileReducer';
 import RelationshipPickerModal from '../components/RelationshipPickerModal';
+import { useSocket } from '../contexts/SocketContext';
 
 const uniqueById = (items: any[]) => {
   const seen = new Set<string>();
@@ -48,8 +49,10 @@ const Connects = () => {
   const removeBtnText = themeColors.text.primary;
   const myProfile = useSelector((state: RootState) => state.profile);
   const dispatch = useDispatch();
+  const { on: onSocketEvent, off: offSocketEvent } = useSocket();
 
   const [connectRequests, setConnectRequests] = useState<any[]>([]);
+  const [sentRequests, setSentRequests] = useState<any[]>([]);
   const [connectSuggestions, setConnectSuggestions] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -62,17 +65,21 @@ const Connects = () => {
 
     try {
       setLoading(true);
-      const [connectRequestsRes, connectSuggestionsRes] = await Promise.all([
+      const [connectRequestsRes, sentRequestsRes, connectSuggestionsRes] = await Promise.all([
         connectAPI.getConnectRequest(myProfile._id),
+        connectAPI.getSentConnectRequest(myProfile._id),
         connectAPI.getConnectSuggestions(myProfile._id),
       ]);
 
       const requests = uniqueById(connectRequestsRes.data);
+      const sent = uniqueById(sentRequestsRes.data);
       const suggestions = uniqueById(connectSuggestionsRes.data);
       setConnectRequests(requests);
+      setSentRequests(sent);
       setConnectSuggestions(suggestions);
       await Promise.all([
         ConnectCacheManager.setCached(myProfile._id, 'requests', requests),
+        ConnectCacheManager.setCached(myProfile._id, 'sentRequests', sent),
         ConnectCacheManager.setCached(myProfile._id, 'suggestions', suggestions),
       ]);
     } catch (error) {
@@ -92,12 +99,14 @@ const Connects = () => {
     let mounted = true;
     const loadConnectData = async () => {
       if (!myProfile?._id) return;
-      const [cachedRequests, cachedSuggestions] = await Promise.all([
+      const [cachedRequests, cachedSent, cachedSuggestions] = await Promise.all([
         ConnectCacheManager.getCached(myProfile._id, 'requests'),
+        ConnectCacheManager.getCached(myProfile._id, 'sentRequests'),
         ConnectCacheManager.getCached(myProfile._id, 'suggestions'),
       ]);
-      if (mounted && cachedRequests && cachedSuggestions) {
+      if (mounted && cachedRequests && cachedSent && cachedSuggestions) {
         setConnectRequests(cachedRequests);
+        setSentRequests(cachedSent);
         setConnectSuggestions(cachedSuggestions);
         setLoading(false);
       }
@@ -110,15 +119,39 @@ const Connects = () => {
         if (!mounted || event?.profileId !== myProfile?._id) return;
         if (event.list === 'requests')
           setConnectRequests(uniqueById(event.items));
+        if (event.list === 'sentRequests')
+          setSentRequests(uniqueById(event.items));
         if (event.list === 'suggestions')
           setConnectSuggestions(uniqueById(event.items));
       },
     );
+    const handleSocketCacheUpdate = async (event: any) => {
+      if (!mounted || String(event?.profileId) !== String(myProfile?._id)) return;
+      const list = event?.list as 'requests' | 'suggestions' | 'sentRequests';
+      if (!['requests', 'suggestions', 'sentRequests'].includes(list)) return;
+      if (event.action === 'remove' && event.targetProfileId) {
+        await ConnectCacheManager.removeProfile(myProfile._id, list, event.targetProfileId);
+        return;
+      }
+      if (event.action !== 'refresh') return;
+      const response = list === 'requests'
+        ? await connectAPI.getConnectRequest(myProfile._id)
+        : list === 'sentRequests'
+          ? await connectAPI.getSentConnectRequest(myProfile._id)
+          : await connectAPI.getConnectSuggestions(myProfile._id);
+      const items = uniqueById(response.data);
+      if (list === 'requests') setConnectRequests(items);
+      if (list === 'suggestions') setConnectSuggestions(items);
+      if (list === 'sentRequests') setSentRequests(items);
+      await ConnectCacheManager.setCached(myProfile._id, list, items);
+    };
+    onSocketEvent('connectCacheUpdate', handleSocketCacheUpdate);
     return () => {
       mounted = false;
       subscription.remove();
+      offSocketEvent('connectCacheUpdate', handleSocketCacheUpdate);
     };
-  }, [fetchConnectData]);
+  }, [fetchConnectData, myProfile?._id, onSocketEvent, offSocketEvent]);
 
   const handleSendConnectRequest = async (connectId: string, relationTypes: string[]) => {
     if (actionLoading) return;
@@ -127,6 +160,10 @@ const Connects = () => {
       const res = await connectAPI.sendConnectRequest(connectId, relationTypes);
       console.log(res.data);
       setConnectSuggestions(prev => prev.filter((f: any) => f._id !== connectId));
+      const sent = await connectAPI.getSentConnectRequest(myProfile._id);
+      const nextSent = uniqueById(sent.data);
+      setSentRequests(nextSent);
+      await ConnectCacheManager.setCached(myProfile._id, 'sentRequests', nextSent);
       if (myProfile?._id)
         await ConnectCacheManager.removeProfile(
           myProfile._id,
@@ -158,6 +195,21 @@ const Connects = () => {
         );
     } catch (error) {
       console.log(error);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelSentRequest = async (connectId: string) => {
+    if (actionLoading) return;
+    setActionLoading({ id: connectId, action: 'cancel' });
+    try {
+      await connectAPI.cancelConnectRequest(connectId);
+      setSentRequests(prev => prev.filter(item => item._id !== connectId));
+      if (myProfile?._id)
+        await ConnectCacheManager.removeProfile(myProfile._id, 'sentRequests', connectId);
+    } catch (error) {
+      console.error('Error cancelling connect request:', error);
     } finally {
       setActionLoading(null);
     }
@@ -215,9 +267,11 @@ const Connects = () => {
 
   const navigateToConnectProfile = (connect: any) => {
     if (profileLoadingId) return;
-    setProfileLoadingId(connect._id);
+    const id = String(connect?._id || '');
+    if (!id) return;
+    setProfileLoadingId(id);
     (navigation as any).navigate('ConnectProfile', {
-      connectId: connect._id,
+      connectId: id,
       connectData: connect,
     });
   };
@@ -250,21 +304,32 @@ const Connects = () => {
           {!loading &&
             connectRequests.length > 0 &&
             connectRequests.map((connect: any) => (
-              <TouchableOpacity
+              <View
                 key={connect._id}
                 style={[styles.connectGridItem, { backgroundColor: cardBg }]}
-                onPress={() => navigateToConnectProfile(connect)}
-                disabled={Boolean(profileLoadingId)}
               >
-                <View style={styles.profilePictureWrapper}>
-                  <ProfileImage
-                    uri={connect.profilePic}
-                    pixelSize={200}
-                    style={styles.profilePicture}
-                  />
-                </View>
+                <TouchableOpacity
+                  style={styles.profileLink}
+                  onPress={() => navigateToConnectProfile(connect)}
+                  disabled={Boolean(profileLoadingId)}
+                  accessibilityRole="link"
+                  accessibilityLabel={`View ${profileDisplayName(connect)} profile`}
+                >
+                  <View style={styles.profilePictureWrapper}>
+                    <ProfileImage
+                      uri={connect.profilePic}
+                      pixelSize={200}
+                      style={styles.profilePicture}
+                    />
+                  </View>
+                </TouchableOpacity>
                 <View style={styles.gridBody}>
-                  <View style={styles.profileNameContainer}>
+                  <TouchableOpacity
+                    style={styles.profileNameContainer}
+                    onPress={() => navigateToConnectProfile(connect)}
+                    disabled={Boolean(profileLoadingId)}
+                    accessibilityRole="link"
+                  >
                     <VerifiedName
                       name={profileDisplayName(connect)}
                       verified={connect.isVerified}
@@ -272,7 +337,7 @@ const Connects = () => {
                       numberOfLines={2}
                       style={styles.profileNameRow}
                     />
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
                       style={[
@@ -310,11 +375,65 @@ const Connects = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))}
           {!loading && connectRequests.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
               You don't have any Connect Request to show
+            </Text>
+          )}
+        </View>
+      </View>
+
+      <View style={[styles.sectionContainer, { backgroundColor: cardBg }]}>
+        <View style={styles.headingRow}>
+          <Text style={[styles.headingTitle, { color: textColor }]}>Sent Requests</Text>
+        </View>
+        <View style={styles.connectGridContainer}>
+          {loading && <ConnectCardSkeleton count={4} />}
+          {!loading && sentRequests.map((connect: any) => (
+            <View key={connect._id} style={[styles.connectGridItem, { backgroundColor: cardBg }]}>
+              <TouchableOpacity
+                style={styles.profileLink}
+                onPress={() => navigateToConnectProfile(connect)}
+                disabled={Boolean(profileLoadingId)}
+                accessibilityRole="link"
+              >
+                <View style={styles.profilePictureWrapper}>
+                  <ProfileImage uri={connect.profilePic} pixelSize={200} style={styles.profilePicture} />
+                </View>
+              </TouchableOpacity>
+              <View style={styles.gridBody}>
+                <TouchableOpacity
+                  style={styles.profileNameContainer}
+                  onPress={() => navigateToConnectProfile(connect)}
+                  disabled={Boolean(profileLoadingId)}
+                  accessibilityRole="link"
+                >
+                  <VerifiedName
+                    name={profileDisplayName(connect)}
+                    verified={connect.isVerified}
+                    textStyle={[styles.profileName, { color: textColor }]}
+                    numberOfLines={2}
+                    style={styles.profileNameRow}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.connectionActionBtn, { backgroundColor: removeBtnBg }]}
+                  onPress={() => handleCancelSentRequest(connect._id)}
+                  disabled={Boolean(actionLoading)}
+                  accessibilityLabel="Cancel sent connect request"
+                >
+                  {actionLoading?.id === connect._id && actionLoading.action === 'cancel'
+                    ? <ActivityIndicator size="small" color={removeBtnText} />
+                    : <Text style={{ color: removeBtnText, fontWeight: '600' }}>Cancel</Text>}
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+          {!loading && sentRequests.length === 0 && (
+            <Text style={[styles.dataNotFound, { color: subTextColor }]}>
+              You haven't sent any Connect Requests
             </Text>
           )}
         </View>
@@ -336,21 +455,32 @@ const Connects = () => {
           {!loading &&
             connectSuggestions.length > 0 &&
             connectSuggestions.map((connect: any) => (
-              <TouchableOpacity
+              <View
                 key={connect._id}
                 style={[styles.connectGridItem, { backgroundColor: cardBg }]}
-                onPress={() => navigateToConnectProfile(connect)}
-                disabled={Boolean(profileLoadingId)}
               >
-                <View style={styles.profilePictureWrapper}>
-                  <ProfileImage
-                    uri={connect.profilePic}
-                    pixelSize={200}
-                    style={styles.profilePicture}
-                  />
-                </View>
+                <TouchableOpacity
+                  style={styles.profileLink}
+                  onPress={() => navigateToConnectProfile(connect)}
+                  disabled={Boolean(profileLoadingId)}
+                  accessibilityRole="link"
+                  accessibilityLabel={`View ${profileDisplayName(connect)} profile`}
+                >
+                  <View style={styles.profilePictureWrapper}>
+                    <ProfileImage
+                      uri={connect.profilePic}
+                      pixelSize={200}
+                      style={styles.profilePicture}
+                    />
+                  </View>
+                </TouchableOpacity>
                 <View style={styles.gridBody}>
-                  <View style={styles.profileNameContainer}>
+                  <TouchableOpacity
+                    style={styles.profileNameContainer}
+                    onPress={() => navigateToConnectProfile(connect)}
+                    disabled={Boolean(profileLoadingId)}
+                    accessibilityRole="link"
+                  >
                     <VerifiedName
                       name={profileDisplayName(connect)}
                       verified={connect.isVerified}
@@ -358,7 +488,7 @@ const Connects = () => {
                       numberOfLines={2}
                       style={styles.profileNameRow}
                     />
-                  </View>
+                  </TouchableOpacity>
                   <View style={styles.buttonRow}>
                     <TouchableOpacity
                       style={[
@@ -396,7 +526,7 @@ const Connects = () => {
                     </TouchableOpacity>
                   </View>
                 </View>
-              </TouchableOpacity>
+              </View>
             ))}
           {!loading && connectSuggestions.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
@@ -483,6 +613,10 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 10,
     backgroundColor: '#eee',
+  },
+  profileLink: {
+    alignItems: 'center',
+    width: '100%',
   },
   profilePicture: {
     width: '100%',

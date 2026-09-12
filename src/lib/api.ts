@@ -362,6 +362,8 @@ export const connectAPI = {
     api.get('/connects/getConnects', { params: { profile: profileId } }),
   getConnectRequest: (profileId: string): Promise<AxiosResponse> =>
     api.get('/connects/getRequest', { params: { profileId } }),
+  getSentConnectRequest: (profileId: string): Promise<AxiosResponse> =>
+    api.get('/connects/getSentRequest', { params: { profileId } }),
   getRequestStatus: (profileId: string): Promise<AxiosResponse> =>
     api.get('/connects/request-status', { params: { profileId } }),
   getRelationships: (profileId: string): Promise<AxiosResponse> =>

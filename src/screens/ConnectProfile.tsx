@@ -601,9 +601,9 @@ const ConnectProfile = () => {
                                         key={f._id || userName} 
                                         style={[styles.connectItem, { backgroundColor: themeColors.surface.secondary, borderColor: themeColors.border.secondary }]}
                                         onPress={() => {
-                                            (navigation as any).navigate('Message', {
-                                                screen: 'ConnectProfile',
-                                                params: { connectId: f._id, connectData: f }
+                                            (navigation as any).navigate('ConnectProfile', {
+                                                connectId: String(f._id),
+                                                connectData: f,
                                             });
                                         }}
                                     >

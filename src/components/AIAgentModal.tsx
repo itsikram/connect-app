@@ -512,7 +512,9 @@ const AIAgentModal: React.FC<Props> = ({
     api
       .get('/connects/getConnects', { params: { profile: ownId } })
       .then(response => {
-        const raw = Array.isArray(response.data?.connects)
+        const raw = Array.isArray(response.data)
+          ? response.data
+          : Array.isArray(response.data?.connects)
           ? response.data.connects
           : Array.isArray(response.data?.data?.connects)
           ? response.data.data.connects
@@ -541,6 +543,9 @@ const AIAgentModal: React.FC<Props> = ({
               username:
                 String(item.username || nested.username || '') || undefined,
               bio: String(item.bio || nested.bio || '') || undefined,
+              relationshipTypes: Array.isArray(item.relationshipTypes)
+              ? item.relationshipTypes
+              : [],
             };
           })
           .filter(item => item.id && item.name);
@@ -1425,7 +1430,9 @@ const AIAgentModal: React.FC<Props> = ({
     setSpeechEnabled(true);
     setVoiceLanguageMenuOpen(false);
     void (async () => {
-      await announceListening(autoStartVoiceLanguage);
+      // Start capture before any optional voice prompt so a shake never
+      // delays microphone activation while TTS is playing.
+      await speechControllerRef.current?.stop();
       const started = await transcribe.start(
         autoStartVoiceLanguage === 'auto' ? undefined : autoStartVoiceLanguage,
         { skipStop: true },
