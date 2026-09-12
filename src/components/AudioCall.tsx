@@ -141,7 +141,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       const creds = await prefetchAgoraJoin(channelName, numericUid);
       if (isTerminating.current) return;
       pendingJoinRef.current = creds;
-      engineRef.current?.join({ ...creds, isAudio: true });
+      engineRef.current?.join({ ...creds, isAudio: true, publishAudio: true });
     } catch (error: any) {
       console.error('AudioCall: failed to start', error);
       Alert.alert('Call failed', error?.message || 'Could not start the audio call.');
@@ -252,7 +252,6 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setEngineWarm(true);
     prefetchAgoraJoin(channelName, numericUid).catch(() => {});
     configureInCallAudio(true).catch(() => {});
-    engineRef.current?.preview(true);
     startIncomingCallAlert({
       callerId,
       callerName: name,
@@ -478,11 +477,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
 
   const handleEngineEvent = useCallback((event: any) => {
     if (event.type === 'ready') {
-      if (receivingCallRef.current && !callAcceptedRef.current) {
-        engineRef.current?.preview(true);
-      }
       if (pendingJoinRef.current) {
-        engineRef.current?.join({ ...pendingJoinRef.current, isAudio: true });
+        engineRef.current?.join({ ...pendingJoinRef.current, isAudio: true, publishAudio: true });
       }
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {

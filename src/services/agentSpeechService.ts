@@ -4,11 +4,18 @@ import * as Speech from 'expo-speech';
 export type AgentSpeechLanguage = 'auto' | 'bn-BD' | 'en-US';
 
 const BENGALI_CHAR = /[\u0980-\u09FF]/;
+const BENGALI_LETTER = /[\u0980-\u09FF]/gu;
+const LATIN_LETTER = /[A-Za-z]/g;
 
 export const detectAgentSpeechLanguage = (
   text: string,
-): Exclude<AgentSpeechLanguage, 'auto'> =>
-  BENGALI_CHAR.test(text) ? 'bn-BD' : 'en-US';
+): Exclude<AgentSpeechLanguage, 'auto'> => {
+  const value = String(text || '').normalize('NFC');
+  if (!BENGALI_CHAR.test(value)) return 'en-US';
+  const bengaliLetters = value.match(BENGALI_LETTER)?.length || 0;
+  const latinLetters = value.match(LATIN_LETTER)?.length || 0;
+  return bengaliLetters >= Math.max(2, latinLetters * 0.2) ? 'bn-BD' : 'en-US';
+};
 
 const normalize = (text: string) =>
   String(text || '')
@@ -19,19 +26,29 @@ const chooseVoice = (voices: Speech.Voice[], language: string) => {
   const wanted = language.toLowerCase().replace('_', '-');
   const prefix = wanted.split('-')[0];
   const candidates = voices.filter(voice => {
-    const voiceLanguage = String(voice.language || '').toLowerCase().replace('_', '-');
+    const voiceLanguage = String(voice.language || '')
+      .toLowerCase()
+      .replace('_', '-');
     return voiceLanguage === wanted || voiceLanguage.startsWith(prefix);
   });
   return candidates.sort((left, right) => {
     const score = (voice: Speech.Voice) => {
       const details = voice as Speech.Voice & { quality?: string };
-      const voiceLanguage = String(voice.language || '').toLowerCase().replace('_', '-');
-      const name = `${voice.name || ''} ${voice.identifier || ''}`.toLowerCase();
+      const voiceLanguage = String(voice.language || '')
+        .toLowerCase()
+        .replace('_', '-');
+      const name = `${voice.name || ''} ${
+        voice.identifier || ''
+      }`.toLowerCase();
       return (
         (voiceLanguage === wanted ? 100 : 0) +
         (prefix === 'bn' && voiceLanguage === 'bn-in' ? 25 : 0) +
         (details.quality?.toLowerCase() === 'enhanced' ? 30 : 0) +
-        (name.includes('neural') || name.includes('natural') || name.includes('premium') ? 20 : 0)
+        (name.includes('neural') ||
+        name.includes('natural') ||
+        name.includes('premium')
+          ? 20
+          : 0)
       );
     };
     return score(right) - score(left);
@@ -57,7 +74,13 @@ const speak = (
       language,
       voice,
       pitch: 0.96,
-      rate: Platform.OS === 'ios' ? 0.58 : 0.9,
+      rate: language.toLowerCase().startsWith('bn')
+        ? Platform.OS === 'ios'
+          ? 0.72
+          : 1.05
+        : Platform.OS === 'ios'
+        ? 0.64
+        : 0.95,
       onDone: finish,
       onStopped: finish,
       onError: finish,
@@ -78,6 +101,7 @@ export function createAgentSpeechController(
   let draining = false;
   let flushRequested = false;
   let availableVoices: Speech.Voice[] | null = null;
+  let voicesPromise: Promise<Speech.Voice[]> | null = null;
 
   const currentGeneration = () => generation;
 
@@ -109,9 +133,10 @@ export function createAgentSpeechController(
         const resolvedLanguage =
           language === 'auto' ? detectAgentSpeechLanguage(chunk) : language;
         if (!availableVoices) {
-          availableVoices = await Speech.getAvailableVoicesAsync().catch(
+          voicesPromise ||= Speech.getAvailableVoicesAsync().catch(
             () => [] as Speech.Voice[],
           );
+          availableVoices = await voicesPromise;
         }
         const voices = availableVoices;
         const voice = chooseVoice(voices, resolvedLanguage);

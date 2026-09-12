@@ -144,11 +144,13 @@ const styles = StyleSheet.create({
   },
   hiddenAudio: {
     position: 'absolute',
-    width: 64,
-    height: 64,
-    left: -200,
+    // Keep WKWebView attached to a live on-screen surface. iOS may suspend
+    // microphone capture for a WebView that is completely off-screen.
+    width: 1,
+    height: 1,
+    left: 0,
     top: 0,
-    opacity: 1,
+    opacity: 0.01,
     overflow: 'hidden',
   },
   webview: {

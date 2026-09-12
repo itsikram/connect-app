@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useTheme } from '../contexts/ThemeContext';
 import { fitnessApi } from '../services/fitnessApi';
@@ -40,7 +40,7 @@ type SelectOption = { label: string; value: string };
 
 const SelectField = ({ label, value, onValueChange, options }: { label: string; value: string; onValueChange: (value: string) => void; options: SelectOption[] }) => {
   const { colors } = useTheme();
-  return <View style={styles.field}><Text style={[styles.label, { color: colors.text.secondary }]}>{label}</Text><View style={[styles.input, styles.select, { borderColor: colors.border.primary, backgroundColor: colors.surface.primary }]}><Picker selectedValue={value} onValueChange={onValueChange} style={{ color: colors.text.primary }} dropdownIconColor={colors.text.primary}>{options.map((option) => <Picker.Item key={option.value} label={option.label} value={option.value} />)}</Picker></View></View>;
+  return <View style={styles.field}><Text style={[styles.label, { color: colors.text.secondary }]}>{label}</Text><View style={[styles.input, styles.select, { borderColor: colors.border.primary, backgroundColor: colors.surface.primary }]}><Picker selectedValue={value} onValueChange={onValueChange} style={{ color: colors.text.primary, backgroundColor: colors.surface.primary }} itemStyle={{ color: colors.text.primary, backgroundColor: colors.surface.primary }} dropdownIconColor={colors.text.primary}>{options.map((option) => <Picker.Item key={option.value} label={option.label} value={option.value} color={colors.text.primary} />)}</Picker></View></View>;
 };
 
 const Button = ({ label, loadingLabel = 'Loading...', onPress, secondary = false }: { label: string; loadingLabel?: string; onPress: () => void | Promise<void>; secondary?: boolean }) => {
@@ -67,7 +67,14 @@ export const FitnessOnboarding = ({ navigation }: Props) => {
 export const FitnessDashboard = ({ navigation }: Props) => {
   const [data, setData] = useState<any>(null);
   const { colors } = useTheme();
-  useEffect(() => { fitnessApi.getDashboard().then((response) => setData(response.data)).catch(() => {}); }, []);
+  useEffect(() => {
+    const refresh = () => {
+      fitnessApi.getDashboard().then((response) => setData(response.data)).catch(() => {});
+    };
+    refresh();
+    const unsubscribe = navigation?.addListener?.('focus', refresh);
+    return unsubscribe;
+  }, [navigation]);
   if (!data?.profile) return <FitnessPage title="Fitness" navigation={navigation}><Text style={[styles.help, { color: colors.text.secondary }]}>Create a profile to get safe daily targets.</Text><Button label="Start setup" onPress={() => navigation.navigate('FitnessOnboarding')} /></FitnessPage>;
   const profile = data.profile;
   const totals = data.totals || {};
@@ -112,13 +119,14 @@ export const FitnessMeal = ({ navigation, route }: Props) => {
   const analyze = async () => {
     try {
       if (!imageUri) {
-        const response = await fitnessApi.analyzeMeal({ name: form.name });
+        const response = await fitnessApi.analyzeMeal({ name: form.name, mealType: form.mealType });
         setForm((old: any) => ({ ...old, ...response.data.analysis }));
         setSource(response.data.provider || 'gemini');
         return;
       }
       const body = new FormData();
       body.append('name', form.name || 'meal');
+      body.append('mealType', form.mealType);
       body.append('image', { uri: imageUri, name: 'meal.jpg', type: 'image/jpeg' } as any);
       const response = await fitnessApi.analyzeMeal(body);
       setForm((old: any) => ({ ...old, ...response.data.analysis }));
@@ -128,13 +136,13 @@ export const FitnessMeal = ({ navigation, route }: Props) => {
     }
   };
   const save = async () => { try { await fitnessApi.createMeal({ ...form, source, imageUrl: imageUri || undefined, date: new Date().toISOString() }); navigation.goBack(); } catch (error: any) { Alert.alert('Meal', error?.response?.data?.message || 'Please complete nutrition fields'); } };
-  return <FitnessPage title="Add meal" navigation={navigation}>{source === 'gemini' ? <Text style={[styles.help, { color: colors.text.secondary }]}>AI filled these values as estimates. Review and edit them before saving.</Text> : null}<Field label="Food name" value={form.name} onChangeText={set('name')} placeholder="e.g. chicken rice bowl" /><Button label={imageUri ? 'Photo selected - analyze' : 'Choose food photo'} onPress={choosePhoto} secondary /><Button label="Take food photo" onPress={takePhoto} secondary /><Button label="Analyze food (optional)" loadingLabel="Analyzing meal with AI..." onPress={analyze} secondary /><Field label="Calories" value={form.calories} onChangeText={set('calories')} keyboardType="decimal-pad" /><Field label="Protein (g)" value={form.proteinG} onChangeText={set('proteinG')} keyboardType="decimal-pad" /><Field label="Carbs (g)" value={form.carbsG} onChangeText={set('carbsG')} keyboardType="decimal-pad" /><Field label="Fat (g)" value={form.fatG} onChangeText={set('fatG')} keyboardType="decimal-pad" /><Field label="Fiber (g)" value={form.fiberG} onChangeText={set('fiberG')} keyboardType="decimal-pad" /><Button label="Save meal" onPress={save} /></FitnessPage>;
+  return <FitnessPage title="Add meal" navigation={navigation}>{source === 'gemini' ? <Text style={[styles.help, { color: colors.text.secondary }]}>AI filled these values as estimates. Review and edit them before saving.</Text> : null}<Field label="Food name" value={form.name} onChangeText={set('name')} placeholder="e.g. chicken rice bowl" /><SelectField label="Meal type" value={form.mealType} onValueChange={set('mealType')} options={[{ label: 'Breakfast', value: 'breakfast' }, { label: 'Lunch', value: 'lunch' }, { label: 'Dinner', value: 'dinner' }, { label: 'Snack', value: 'snack' }]} /><Button label={imageUri ? 'Photo selected - analyze' : 'Choose food photo'} onPress={choosePhoto} secondary /><Button label="Take food photo" onPress={takePhoto} secondary />{imageUri ? <View style={[styles.mealImagePreview, { backgroundColor: colors.surface.secondary, borderColor: colors.border.primary }]}><Image source={{ uri: imageUri }} style={styles.mealImage} resizeMode="cover" /><Text style={[styles.help, { color: colors.text.secondary }]}>Review this meal photo before analyzing or saving.</Text></View> : null}<Button label="Analyze food (optional)" loadingLabel="Analyzing meal with AI..." onPress={analyze} secondary /><Field label="Calories" value={form.calories} onChangeText={set('calories')} keyboardType="decimal-pad" /><Field label="Protein (g)" value={form.proteinG} onChangeText={set('proteinG')} keyboardType="decimal-pad" /><Field label="Carbs (g)" value={form.carbsG} onChangeText={set('carbsG')} keyboardType="decimal-pad" /><Field label="Fat (g)" value={form.fatG} onChangeText={set('fatG')} keyboardType="decimal-pad" /><Field label="Fiber (g)" value={form.fiberG} onChangeText={set('fiberG')} keyboardType="decimal-pad" /><Button label="Save meal" onPress={save} /></FitnessPage>;
 };
 
 export const FitnessConfirmation = ({ navigation, route }: Props) => {
   const { colors } = useTheme();
   const analysis = route?.params?.analysis || {};
-  const [form, setForm] = useState<any>(analysis);
+  const [form, setForm] = useState<any>({ mealType: 'snack', ...analysis });
   const set = (key: string) => (value: string) => setForm((old: any) => ({ ...old, [key]: ['calories', 'proteinG', 'carbsG', 'fatG', 'fiberG'].includes(key) ? Number(value) || '' : value }));
   const save = async () => {
     try {
@@ -144,7 +152,7 @@ export const FitnessConfirmation = ({ navigation, route }: Props) => {
       Alert.alert('Meal', error?.response?.data?.message || 'Please correct the nutrition values');
     }
   };
-  return <FitnessPage title="Confirm nutrition" navigation={navigation}><Text style={[styles.help, { color: colors.text.secondary }]}>AI estimates may be inaccurate. Review and edit every value before confirming.</Text><Field label="Food name" value={form.name} onChangeText={set('name')} /><Field label="Calories" value={form.calories} onChangeText={set('calories')} keyboardType="decimal-pad" /><Field label="Protein (g)" value={form.proteinG} onChangeText={set('proteinG')} keyboardType="decimal-pad" /><Field label="Carbs (g)" value={form.carbsG} onChangeText={set('carbsG')} keyboardType="decimal-pad" /><Field label="Fat (g)" value={form.fatG} onChangeText={set('fatG')} keyboardType="decimal-pad" /><Field label="Fiber (g)" value={form.fiberG} onChangeText={set('fiberG')} keyboardType="decimal-pad" /><Button label="Confirm meal" onPress={save} /><Button label="Cancel" onPress={() => navigation.goBack()} secondary /></FitnessPage>;
+  return <FitnessPage title="Confirm nutrition" navigation={navigation}><Text style={[styles.help, { color: colors.text.secondary }]}>AI estimates may be inaccurate. Review and edit every value before confirming.</Text><Field label="Food name" value={form.name} onChangeText={set('name')} /><SelectField label="Meal type" value={form.mealType} onValueChange={set('mealType')} options={[{ label: 'Breakfast', value: 'breakfast' }, { label: 'Lunch', value: 'lunch' }, { label: 'Dinner', value: 'dinner' }, { label: 'Snack', value: 'snack' }]} /><Field label="Calories" value={form.calories} onChangeText={set('calories')} keyboardType="decimal-pad" /><Field label="Protein (g)" value={form.proteinG} onChangeText={set('proteinG')} keyboardType="decimal-pad" /><Field label="Carbs (g)" value={form.carbsG} onChangeText={set('carbsG')} keyboardType="decimal-pad" /><Field label="Fat (g)" value={form.fatG} onChangeText={set('fatG')} keyboardType="decimal-pad" /><Field label="Fiber (g)" value={form.fiberG} onChangeText={set('fiberG')} keyboardType="decimal-pad" /><Button label="Confirm meal" onPress={save} /><Button label="Cancel" onPress={() => navigation.goBack()} secondary /></FitnessPage>;
 };
 
 export const FitnessWeight = ({ navigation }: Props) => {
@@ -273,6 +281,8 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, marginBottom: 6 },
   input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 16 },
   select: { paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' },
+  mealImagePreview: { borderWidth: 1, borderRadius: 12, padding: 10, marginTop: 10, marginBottom: 6 },
+  mealImage: { width: '100%', height: 220, borderRadius: 8 },
   button: { borderWidth: 1, borderRadius: 10, padding: 14, alignItems: 'center', marginTop: 10, marginBottom: 4 },
   buttonContent: { minHeight: 19, justifyContent: 'center', alignItems: 'center' },
   buttonText: { fontWeight: '700' },

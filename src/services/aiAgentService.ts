@@ -362,7 +362,7 @@ export const generatePostCaption = async (
 
   try {
     const prompt = request
-      ? `Write one original social-media caption for Connect. Use the user's preferred language: ${preferredLanguage === 'bn' ? 'Bangla' : 'English'}. If the user explicitly writes in another language, follow that language. Use this request as your guide: ${request}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`
+      ? `Write one original social-media caption for Connect. Use the user's preferred language: ${preferredLanguage === 'bn' ? 'Bangla' : 'English'}. If the user explicitly writes in another language, follow that language. Treat the following request as the user's current caption context: preserve its meaning, tone, and important details, then improve or complete it. Use the attached image as additional context when provided. Current caption context: ${request}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`
       : `Write one original social-media caption for Connect. Use the user's preferred language: ${preferredLanguage === 'bn' ? 'Bangla' : 'English'}. Return ONLY the caption — no quotes, no preamble, no hashtags unless they fit naturally. Max 180 characters.`;
 
     const response = await streamAgentReply(

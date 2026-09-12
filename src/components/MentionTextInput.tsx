@@ -16,6 +16,7 @@ type Props = TextInputProps & {
   myProfileId?: string;
   wrapperStyle?: ViewStyle;
   voiceEnabled?: boolean;
+  rightAccessory?: React.ReactNode;
 };
 
 const getName = (profile?: Profile | null) =>
@@ -51,6 +52,7 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
   myProfileId,
   wrapperStyle,
   voiceEnabled = true,
+  rightAccessory,
   ...props
 }, ref) => {
   const { colors, isDarkMode } = useTheme();
@@ -117,6 +119,7 @@ const MentionTextInput = forwardRef<TextInput, Props>(({
         {...props}
         value={toDisplayValue(String(value))}
         voiceEnabled={voiceEnabled}
+        rightAccessory={rightAccessory}
         onChangeText={text => {
           setActiveQuery(getMentionQuery(text));
           onChangeText?.(toStoredValue(text, String(value)));

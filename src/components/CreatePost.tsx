@@ -156,10 +156,11 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
 
     setIsWritingCaption(true);
     try {
-      const hint = postData.caption
-        ? `Improve or finish this caption: ${postData.caption}`
+      const currentCaption = postData.caption.trim();
+      const hint = currentCaption
+        ? `Improve this current caption while preserving its meaning, tone, and key details. Use the attached image as additional context when available. Current caption draft: "${currentCaption}"`
         : postData.type === 'image'
-          ? 'Write a warm caption for a photo I just uploaded.'
+          ? 'Write a warm caption for the attached photo.'
           : postData.type === 'video'
             ? 'Write a short caption for a video I just uploaded.'
             : 'Write a short natural caption for Connect.';
@@ -183,7 +184,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
     } finally {
       setIsWritingCaption(false);
     }
-  }, [isUploading, isWritingCaption, postData.caption, postData.imageDataUrl, postData.type, showToast]);
+  }, [isUploading, isWritingCaption, postData.caption, postData.imageDataUrl, postData.type, settings.language, showToast]);
   const openFeelingsPicker = () => setIsFeelingsPickerVisible(true);
   const closeFeelingsPicker = () => setIsFeelingsPickerVisible(false);
   const openAudiencePicker = () => setIsAudiencePickerVisible(true);
@@ -600,15 +601,6 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
               </View>
               <View style={styles.captionActionRow}>
                 <Text style={[styles.label, { color: textColor }]}>Caption:</Text>
-                <ModernButton
-                  title={isWritingCaption ? 'Writing...' : 'Write caption with AI'}
-                  onPress={handleWriteCaption}
-                  disabled={isWritingCaption || isUploading}
-                  variant="glass"
-                  size="small"
-                  icon={<Icon name="auto-awesome" size={18} color={themeColors.primary} />}
-                  style={{ flex: 1, marginLeft: 8 }}
-                />
               </View>
               <MentionTextInput
                 myProfileId={user?.profile?._id || user?._id}
@@ -618,6 +610,22 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
                 value={postData.caption}
                 onChangeText={handleCaptionChange}
                 multiline
+                rightAccessory={
+                  <TouchableOpacity
+                    onPress={handleWriteCaption}
+                    disabled={isWritingCaption || isUploading}
+                    accessibilityRole="button"
+                    accessibilityLabel={isWritingCaption ? 'Writing caption with AI' : 'Write caption with AI'}
+                    hitSlop={8}
+                    style={{ paddingHorizontal: 8 }}
+                  >
+                    <Icon
+                      name="auto-awesome"
+                      size={20}
+                      color={isWritingCaption ? themeColors.gray[400] : themeColors.primary}
+                    />
+                  </TouchableOpacity>
+                }
               />
               {postData.type === 'image' && postData.urls && (
                 <View style={styles.attachmentGalleryPreview}>
