@@ -979,6 +979,7 @@ const SingleMessage = () => {
     typeof setInterval
   > | null>(null);
   const serverRequestInFlightRef = React.useRef(false);
+  const cameraCaptureInFlightRef = React.useRef(false);
   const serverRequestSeqRef = React.useRef(0);
   const serverRequestTimeoutRef = React.useRef<ReturnType<
     typeof setTimeout
@@ -2737,6 +2738,10 @@ const SingleMessage = () => {
         console.log('[SingleMessage] ⏸️ Skipping frame - request in flight');
         return;
       }
+      if (cameraCaptureInFlightRef.current) {
+        console.log('[SingleMessage] ⏸️ Skipping frame - camera capture in flight');
+        return;
+      }
 
       if (!cameraRef.current) {
         console.log(
@@ -2767,18 +2772,13 @@ const SingleMessage = () => {
         return;
       }
 
-      // More lenient: if ref exists, try to capture even if not marked ready
-      // The ready flag might be incorrectly set
+      // Native capture must wait for Expo's onCameraReady callback.
       if (!isCameraReadyRef.current) {
-        console.log(
-          '[SingleMessage] ⚠️ Camera not marked ready, but attempting capture anyway',
-        );
-        // Try to mark as ready if ref exists
-        if (cameraRef.current) {
-          isCameraReadyRef.current = true;
-        }
+        console.log('[SingleMessage] ⏸️ Camera is not ready yet');
+        return;
       }
 
+      cameraCaptureInFlightRef.current = true;
       try {
         const reqId = ++serverRequestSeqRef.current;
         detectionStatsRef.current.captureAttempts += 1;
@@ -2867,6 +2867,8 @@ const SingleMessage = () => {
           );
           // Don't stop, just log
         }
+      } finally {
+        cameraCaptureInFlightRef.current = false;
       }
     };
 
@@ -2881,8 +2883,8 @@ const SingleMessage = () => {
       }
 
       // Optimized adaptive detection frequency - faster for quick emotion changes
-      let detectionInterval = 600; // Reduced to 600ms for faster emotion change detection
-      let frameSkipCounter = 0;
+      // Keep polling responsive; the in-flight guard prevents stale queues.
+      const detectionInterval = 250;
 
       emotionDetectionIntervalRef.current = setInterval(async () => {
         detectionStatsRef.current.intervalTicks += 1;
@@ -2915,8 +2917,9 @@ const SingleMessage = () => {
           return;
         }
 
-        // Adaptive frame skipping for performance
-        // BUT: Don't skip frames when emotions are actively changing (for fast response)
+        // Do not add idle-time skips here: a change can happen at any time and
+        // the in-flight guard already provides the required backpressure.
+        /*
         const timeSinceLastChange =
           Date.now() - lastEmotionTimestampRef.current;
 
@@ -2933,6 +2936,7 @@ const SingleMessage = () => {
           // Recent change detected - don't skip frames for fast response
           frameSkipCounter = 0; // Reset when active
         }
+        */
 
         // Check camera availability before attempting capture
         if (!cameraRef.current) {
@@ -2983,21 +2987,11 @@ const SingleMessage = () => {
           return;
         }
 
-        // More lenient check - if ref exists and device/permission are OK, try to capture
-        // The ready flag might not be set correctly, but we can still try
+        // Never force this flag: native capture throws CameraNotReadyException
+        // until Expo invokes onCameraReady.
         if (!isCameraReadyRef.current) {
-          console.log(
-            '[SingleMessage] ⏸️ Camera not marked ready in interval, but attempting capture anyway',
-          );
-          // Try to mark as ready if ref exists (might have been missed)
-          if (cameraRef.current) {
-            console.log(
-              '[SingleMessage] 🔄 Attempting to mark camera as ready',
-            );
-            isCameraReadyRef.current = true;
-          } else {
-            return;
-          }
+          console.log('[SingleMessage] ⏸️ Camera not ready in interval');
+          return;
         }
 
         try {
@@ -3168,7 +3162,7 @@ const SingleMessage = () => {
         'connectId:',
         currentConnectId,
       );
-      console.log('[SingleMessage] 📊 Detection will start in 600ms intervals');
+      console.log('[SingleMessage] 📊 Detection will poll every 250ms with capture backpressure');
 
       // Give camera a bit more time to initialize before starting detection
       // This ensures the camera ref is properly attached
@@ -3223,6 +3217,7 @@ const SingleMessage = () => {
 
       // Reset server request tracking
       serverRequestInFlightRef.current = false;
+      cameraCaptureInFlightRef.current = false;
       // Reset camera ready state
       isCameraReadyRef.current = false;
 
