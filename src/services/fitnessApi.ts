@@ -14,6 +14,12 @@ export type FitnessProfile = {
   macros?: { proteinG: number; carbsG: number; fatG: number };
 };
 
+type AnalyzeMealPayload = FormData | {
+  name: string;
+  mealType?: string;
+  imageUrl?: string;
+};
+
 export const fitnessApi = {
   getProfile: () => api.get('/fitness/profile'),
   saveProfile: (profile: Partial<FitnessProfile>) => api.put('/fitness/profile', profile),
@@ -22,7 +28,7 @@ export const fitnessApi = {
   askCoach: (question: string) => api.post('/fitness/coach', { question }, { timeout: 30000 }),
   getRecommendations: () => api.get('/fitness/recommendations', { timeout: 30000 }),
   getMeals: (date?: string) => api.get('/fitness/meals', { params: date ? { date } : undefined }),
-  analyzeMeal: (payload: FormData | { name: string; imageUrl?: string }) =>
+  analyzeMeal: (payload: AnalyzeMealPayload) =>
     api.post('/fitness/analyze-food', payload, { timeout: 30000 }),
   createMeal: (meal: Record<string, any>) => api.post('/fitness/meals', meal),
   getMeal: (id: string) => api.get(`/fitness/meals/${id}`),

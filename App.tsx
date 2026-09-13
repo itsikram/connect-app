@@ -6,18 +6,42 @@
  */
 
 import * as React from 'react';
-import { NavigationContainer, useNavigation, useRoute, getFocusedRouteNameFromRoute, useNavigationState } from '@react-navigation/native';
-import { navigationRef, markNavigationReady } from './src/lib/navigationService';
+import {
+  NavigationContainer,
+  useNavigation,
+  useRoute,
+  getFocusedRouteNameFromRoute,
+  useNavigationState,
+} from '@react-navigation/native';
+import {
+  navigationRef,
+  markNavigationReady,
+} from './src/lib/navigationService';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { StatusBar, useColorScheme, ActivityIndicator, View, Alert, Platform, Linking, AppState, Text, DeviceEventEmitter } from 'react-native';
+import {
+  StatusBar,
+  useColorScheme,
+  ActivityIndicator,
+  View,
+  Alert,
+  Platform,
+  Linking,
+  AppState,
+  Text,
+  DeviceEventEmitter,
+} from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
 import { Accelerometer } from 'expo-sensors';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import ProfessionalTabBar from './src/components/ProfessionalTabBar';
-import { hideTabBarForChat, restoreTabBarAfterChat, useChatScreenChrome } from './src/lib/chatScreenChrome';
+import {
+  hideTabBarForChat,
+  restoreTabBarAfterChat,
+  useChatScreenChrome,
+} from './src/lib/chatScreenChrome';
 import { colors } from './src/theme/colors';
 import { AuthProvider, AuthContext } from './src/contexts/AuthContext';
 import { ThemeProvider, ThemeContext } from './src/contexts/ThemeContext';
@@ -63,11 +87,17 @@ import GalleryPreview from './src/screens/GalleryPreview';
 // Socket context
 import { SocketProvider, useSocket } from './src/contexts/SocketContext';
 import { ToastProvider, useToast } from './src/contexts/ToastContext';
-import { UserToastProvider, useUserToast } from './src/contexts/UserToastContext';
+import {
+  UserToastProvider,
+  useUserToast,
+} from './src/contexts/UserToastContext';
 import { ModernToastProvider } from './src/contexts/ModernToastContext';
 import { SettingsProvider } from './src/contexts/SettingsContext';
 import { LudoGameProvider, useLudoGame } from './src/contexts/LudoGameContext';
-import { ChessGameProvider, useChessGame } from './src/contexts/ChessGameContext';
+import {
+  ChessGameProvider,
+  useChessGame,
+} from './src/contexts/ChessGameContext';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import LoadingScreen from './src/components/LoadingScreen';
 import FacebookHeader from './src/components/FacebookHeader';
@@ -84,7 +114,9 @@ import PaymentPendingConfirmationScreen from './src/screens/PaymentPendingConfir
 import WalletScreen from './src/screens/WalletScreen';
 import SubscriptionScreen from './src/screens/SubscriptionScreen';
 import WatchPipPlayer from './src/components/watch/WatchPipPlayer';
-import TopNavigationProgress, { TopNavigationProgressRef } from './src/components/TopNavigationProgress';
+import TopNavigationProgress, {
+  TopNavigationProgressRef,
+} from './src/components/TopNavigationProgress';
 import SwipeTabsOverlay from './src/components/SwipeTabsOverlay';
 import PermissionsInitializer from './src/components/PermissionsInitializer';
 import ExpoGoFallback from './src/components/ExpoGoFallback';
@@ -94,9 +126,15 @@ import * as Speech from 'expo-speech';
 import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
 import { addNotifications } from './src/reducers/notificationReducer';
 import { addNewMessage } from './src/reducers/chatReducer';
-import { setConnectOnline, setConnectOffline, setConnectLastSeen } from './src/reducers/presenceReducer';
+import {
+  setConnectOnline,
+  setConnectOffline,
+  setConnectLastSeen,
+} from './src/reducers/presenceReducer';
 import api, { connectAPI, userAPI } from './src/lib/api';
-import ConnectCacheManager, { CONNECT_CACHE_EVENT } from './src/utils/connectCacheManager';
+import ConnectCacheManager, {
+  CONNECT_CACHE_EVENT,
+} from './src/utils/connectCacheManager';
 import FloatingButton from './src/components/FloatingButton';
 // Background services removed for Expo compatibility
 import UpdateModal from './src/components/UpdateModal';
@@ -114,14 +152,13 @@ const ExpoGoSafeNotificationSetup = React.memo(() => {
 
   React.useEffect(() => {
     if (isAndroidExpoGo()) return;
-    import('./src/components/NotificationSetup').then((module) => {
+    import('./src/components/NotificationSetup').then(module => {
       setSetup(() => module.default);
     });
   }, []);
 
   return Setup ? <Setup /> : null;
 });
-
 
 // Stack navigator for Message tab
 function MessageStack() {
@@ -143,7 +180,7 @@ function MessageStack() {
           contentStyle: { flex: 1, height: '100%' },
         }}
         listeners={({ navigation }) => ({
-          transitionStart: (e) => {
+          transitionStart: e => {
             if (!e.data.closing) hideTabBarForChat(navigation);
           },
           beforeRemove: () => restoreTabBarAfterChat(navigation),
@@ -202,74 +239,87 @@ function ConnectsStack() {
 }
 
 // Safe dynamic import wrapper for screens that might fail to load
-const SafeScreen = React.memo(({ screenName, navigation, route, ...rest }: { screenName: string; navigation: any; route?: any } & Record<string, any>) => {
-  const [ScreenComponent, setScreenComponent] = React.useState<React.ComponentType<any> | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+const SafeScreen = React.memo(
+  ({
+    screenName,
+    navigation,
+    route,
+    ...rest
+  }: { screenName: string; navigation: any; route?: any } & Record<
+    string,
+    any
+  >) => {
+    const [ScreenComponent, setScreenComponent] =
+      React.useState<React.ComponentType<any> | null>(null);
+    const [error, setError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    const loadScreen = async () => {
-      try {
-        let component;
-        switch (screenName) {
-          case 'VideoLibrary':
-            component = await import('./src/screens/VideoLibraryScreen');
-            break;
-          case 'Downloads':
-            component = await import('./src/screens/DownloadsScreen');
-            break;
-          case 'MediaPlayer':
-            component = await import('./src/screens/MediaPlayer');
-            break;
-          case 'Facebook':
-            component = await import('./src/screens/FacebookScreen');
-            break;
-          case 'YouTube':
-            component = await import('./src/screens/YouTubeScreen');
-            break;
-          case 'VpnBrowser':
-            component = await import('./src/screens/VpnBrowserScreen');
-            break;
-          case 'Cricbuzz':
-            component = await import('./src/screens/CricbuzzScreen');
-            break;
-          case 'GoogleMaps':
-            component = await import('./src/screens/GoogleMapsScreen');
-            break;
-          case 'GoogleContacts':
-            component = await import('./src/screens/GoogleContactsScreen');
-            break;
-          default:
-            throw new Error(`Unknown screen: ${screenName}`);
+    React.useEffect(() => {
+      const loadScreen = async () => {
+        try {
+          let component;
+          switch (screenName) {
+            case 'VideoLibrary':
+              component = await import('./src/screens/VideoLibraryScreen');
+              break;
+            case 'Downloads':
+              component = await import('./src/screens/DownloadsScreen');
+              break;
+            case 'MediaPlayer':
+              component = await import('./src/screens/MediaPlayer');
+              break;
+            case 'Facebook':
+              component = await import('./src/screens/FacebookScreen');
+              break;
+            case 'YouTube':
+              component = await import('./src/screens/YouTubeScreen');
+              break;
+            case 'VpnBrowser':
+              component = await import('./src/screens/VpnBrowserScreen');
+              break;
+            case 'Cricbuzz':
+              component = await import('./src/screens/CricbuzzScreen');
+              break;
+            case 'GoogleMaps':
+              component = await import('./src/screens/GoogleMapsScreen');
+              break;
+            case 'GoogleContacts':
+              component = await import('./src/screens/GoogleContactsScreen');
+              break;
+            default:
+              throw new Error(`Unknown screen: ${screenName}`);
+          }
+          setScreenComponent(() => component.default);
+        } catch (err) {
+          console.error(`Failed to load screen ${screenName}:`, err);
+          setError(screenName);
         }
-        setScreenComponent(() => component.default);
-      } catch (err) {
-        console.error(`Failed to load screen ${screenName}:`, err);
-        setError(screenName);
-      }
-    };
+      };
 
-    loadScreen();
-  }, [screenName]);
+      loadScreen();
+    }, [screenName]);
 
-  if (error) {
-    return (
-      <ExpoGoFallback 
-        featureName={error} 
-        onGoBack={() => navigation?.goBack()} 
-      />
-    );
-  }
+    if (error) {
+      return (
+        <ExpoGoFallback
+          featureName={error}
+          onGoBack={() => navigation?.goBack()}
+        />
+      );
+    }
 
-  if (!ScreenComponent) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text style={{ color: '#666' }}>Loading...</Text>
-      </View>
-    );
-  }
+    if (!ScreenComponent) {
+      return (
+        <View
+          style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}
+        >
+          <Text style={{ color: '#666' }}>Loading...</Text>
+        </View>
+      );
+    }
 
-  return <ScreenComponent navigation={navigation} route={route} {...rest} />;
-});
+    return <ScreenComponent navigation={navigation} route={route} {...rest} />;
+  },
+);
 
 function MenuStack() {
   return (
@@ -286,14 +336,26 @@ function MenuStack() {
       <Stack.Screen name="FitnessOnboarding" component={FitnessOnboarding} />
       <Stack.Screen name="FitnessDashboard" component={FitnessDashboard} />
       <Stack.Screen name="FitnessMeal" component={FitnessMeal} />
-      <Stack.Screen name="FitnessConfirmation" component={FitnessConfirmation} />
+      <Stack.Screen
+        name="FitnessConfirmation"
+        component={FitnessConfirmation}
+      />
       <Stack.Screen name="FitnessWeight" component={FitnessWeight} />
       <Stack.Screen name="FitnessProgress" component={FitnessProgress} />
       <Stack.Screen name="FitnessReminders" component={FitnessReminders} />
       <Stack.Screen name="FitnessCoach" component={FitnessCoach} />
-      <Stack.Screen name="FitnessRecommendations" component={FitnessRecommendations} />
-      <Stack.Screen name="PaymentInstructions" component={PaymentInstructionsScreen} />
-      <Stack.Screen name="PaymentSubmission" component={PaymentSubmissionScreen} />
+      <Stack.Screen
+        name="FitnessRecommendations"
+        component={FitnessRecommendations}
+      />
+      <Stack.Screen
+        name="PaymentInstructions"
+        component={PaymentInstructionsScreen}
+      />
+      <Stack.Screen
+        name="PaymentSubmission"
+        component={PaymentSubmissionScreen}
+      />
       <Stack.Screen
         name="PaymentPendingConfirmation"
         component={PaymentPendingConfirmationScreen}
@@ -301,29 +363,29 @@ function MenuStack() {
       <Stack.Screen name="Wallet" component={WalletScreen} />
       <Stack.Screen name="Subscriptions" component={SubscriptionScreen} />
       <Stack.Screen name="VideoLibrary">
-        {(props) => <SafeScreen {...props} screenName="VideoLibrary" />}
+        {props => <SafeScreen {...props} screenName="VideoLibrary" />}
       </Stack.Screen>
       <Stack.Screen name="Downloads">
-        {(props) => <SafeScreen {...props} screenName="Downloads" />}
+        {props => <SafeScreen {...props} screenName="Downloads" />}
       </Stack.Screen>
       <Stack.Screen name="MediaPlayer">
-        {(props) => <SafeScreen {...props} screenName="MediaPlayer" />}
+        {props => <SafeScreen {...props} screenName="MediaPlayer" />}
       </Stack.Screen>
       <Stack.Screen name="Facebook">
-        {(props) => <SafeScreen {...props} screenName="Facebook" />}
+        {props => <SafeScreen {...props} screenName="Facebook" />}
       </Stack.Screen>
       <Stack.Screen name="YouTube" component={YouTubeScreen} />
       <Stack.Screen name="VpnBrowser">
-        {(props) => <SafeScreen {...props} screenName="VpnBrowser" />}
+        {props => <SafeScreen {...props} screenName="VpnBrowser" />}
       </Stack.Screen>
       <Stack.Screen name="Cricbuzz">
-        {(props) => <SafeScreen {...props} screenName="Cricbuzz" />}
+        {props => <SafeScreen {...props} screenName="Cricbuzz" />}
       </Stack.Screen>
       <Stack.Screen name="GoogleMaps">
-        {(props) => <SafeScreen {...props} screenName="GoogleMaps" />}
+        {props => <SafeScreen {...props} screenName="GoogleMaps" />}
       </Stack.Screen>
       <Stack.Screen name="GoogleContacts">
-        {(props) => <SafeScreen {...props} screenName="GoogleContacts" />}
+        {props => <SafeScreen {...props} screenName="GoogleContacts" />}
       </Stack.Screen>
     </Stack.Navigator>
   );
@@ -333,17 +395,40 @@ function MenuStack() {
 function getDeepestRouteName(state: any): string {
   let current = state;
   let name = '';
-  while (current?.routes && typeof current.index === 'number' && current.routes[current.index]) {
+  while (
+    current?.routes &&
+    typeof current.index === 'number' &&
+    current.routes[current.index]
+  ) {
     name = current.routes[current.index].name;
     current = current.routes[current.index].state;
   }
   return name;
 }
 
+function getActiveRouteIdentity(state: any): string {
+  const routeKeys: string[] = [];
+  let current = state;
+
+  while (
+    current?.routes &&
+    typeof current.index === 'number' &&
+    current.routes[current.index]
+  ) {
+    const route = current.routes[current.index];
+    routeKeys.push(route.key || route.name);
+    current = route.state;
+  }
+
+  return routeKeys.join('/');
+}
+
 function TabBarWithLudoCheck(props: any) {
   const { isLudoGameActive } = useLudoGame();
   const { isChessGameActive } = useChessGame();
-  const unreadMessageCount = useSelector((state: RootState) => state.chat.unreadMessageCount);
+  const unreadMessageCount = useSelector(
+    (state: RootState) => state.chat.unreadMessageCount,
+  );
   const myProfile = useSelector((state: RootState) => state.profile);
   const [connectRequestCount, setConnectRequestCount] = React.useState(0);
   const chatScreenActive = useChatScreenChrome();
@@ -360,7 +445,10 @@ function TabBarWithLudoCheck(props: any) {
     }
 
     const updateFromCache = async () => {
-      const cachedRequests = await ConnectCacheManager.getCached(profileId, 'requests');
+      const cachedRequests = await ConnectCacheManager.getCached(
+        profileId,
+        'requests',
+      );
       if (mounted && cachedRequests) {
         setConnectRequestCount(cachedRequests.length);
       }
@@ -370,9 +458,15 @@ function TabBarWithLudoCheck(props: any) {
       try {
         const response = await connectAPI.getConnectRequest(profileId);
         if (mounted) {
-          setConnectRequestCount(Array.isArray(response.data) ? response.data.length : 0);
+          setConnectRequestCount(
+            Array.isArray(response.data) ? response.data.length : 0,
+          );
         }
-        await ConnectCacheManager.setCached(profileId, 'requests', response.data);
+        await ConnectCacheManager.setCached(
+          profileId,
+          'requests',
+          response.data,
+        );
       } catch (error) {
         console.error('Error fetching connect request count:', error);
       }
@@ -386,12 +480,14 @@ function TabBarWithLudoCheck(props: any) {
           String(event?.profileId) === String(profileId) &&
           event?.list === 'requests'
         ) {
-          setConnectRequestCount(Array.isArray(event.items) ? event.items.length : 0);
+          setConnectRequestCount(
+            Array.isArray(event.items) ? event.items.length : 0,
+          );
         }
       },
     );
     updateFromCache()
-      .catch((error) => {
+      .catch(error => {
         console.error('Error reading connect request cache:', error);
       })
       .then(refreshRequestCount);
@@ -401,37 +497,129 @@ function TabBarWithLudoCheck(props: any) {
       subscription.remove();
     };
   }, [myProfile?._id]);
-  
+
   // Debug navigation state
   React.useEffect(() => {
-    console.log('🚀 TabBarWithLudoCheck - User state:', props.user ? 'Logged in' : 'Not logged in');
+    console.log(
+      '🚀 TabBarWithLudoCheck - User state:',
+      props.user ? 'Logged in' : 'Not logged in',
+    );
     console.log('🚀 TabBarWithLudoCheck - Ludo game active:', isLudoGameActive);
   }, [props.user, isLudoGameActive]);
-  
+
   // Hide tab bar if Ludo or Chess game is active
   if (isLudoGameActive || isChessGameActive) {
     return null;
   }
-  
-  const routeName = getDeepestRouteName(props.state) || getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) || '';
-  
+
+  const routeName =
+    getDeepestRouteName(props.state) ||
+    getFocusedRouteNameFromRoute(props.state.routes[props.state.index]) ||
+    '';
+
   // Hide tab bar for specific screens
-  if (chatScreenActive || routeName === 'SingleMessage' || routeName === 'SinglePost' || routeName === 'SingleVideo' || routeName === 'SingleWatch' || routeName === 'EditPost' || routeName === 'Camera' || routeName === 'MediaPlayer' || routeName === 'Facebook' || routeName === 'YouTube' || routeName === 'Cricbuzz' || routeName === 'GoogleMaps' || routeName === 'GoogleContacts') {
+  if (
+    chatScreenActive ||
+    routeName === 'SingleMessage' ||
+    routeName === 'SinglePost' ||
+    routeName === 'SingleVideo' ||
+    routeName === 'SingleWatch' ||
+    routeName === 'EditPost' ||
+    routeName === 'Camera' ||
+    routeName === 'MediaPlayer' ||
+    routeName === 'Facebook' ||
+    routeName === 'YouTube' ||
+    routeName === 'Cricbuzz' ||
+    routeName === 'GoogleMaps' ||
+    routeName === 'GoogleContacts'
+  ) {
     return null;
   }
-  
-  const tabs = props.user ? [
-    // Order to match web header: Home, Connects, Videos, Message, Downloads/Menu
-    { name: 'Home', icon: 'home', label: 'Home', component: HomeStack, color: '#4CAF50', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Connects', icon: 'user-friends', label: 'Connects', component: ConnectsStack, color: '#2196F3', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: connectRequestCount },
-    { name: 'Videos', icon: 'play-circle', label: 'Videos', component: VideosStack, color: '#FF9800', haptic: false, iconSet: 'fa5', faStyle: 'regular' },
-    { name: 'Message', icon: 'envelope', label: 'Message', component: MessageStack, color: '#9C27B0', haptic: false, iconSet: 'fa5', faStyle: 'regular', badge: unreadMessageCount },
-    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
-  ] : [
-    { name: 'Login', icon: 'login', label: 'Login', component: LoginScreen, color: '#4CAF50', iconSet: 'material' },
-    { name: 'Register', icon: 'person-add', label: 'Register', component: RegisterScreen, color: '#2196F3', iconSet: 'material' },
-    { name: 'Menu', icon: 'bars', label: 'Menu', component: MenuStack, color: '#607D8B', haptic: false, iconSet: 'fa5', faStyle: 'solid' },
-  ];
+
+  const tabs = props.user
+    ? [
+        // Order to match web header: Home, Connects, Videos, Message, Downloads/Menu
+        {
+          name: 'Home',
+          icon: 'home',
+          label: 'Home',
+          component: HomeStack,
+          color: '#4CAF50',
+          haptic: false,
+          iconSet: 'fa5',
+          faStyle: 'regular',
+        },
+        {
+          name: 'Connects',
+          icon: 'user-friends',
+          label: 'Connects',
+          component: ConnectsStack,
+          color: '#2196F3',
+          haptic: false,
+          iconSet: 'fa5',
+          faStyle: 'regular',
+          badge: connectRequestCount,
+        },
+        {
+          name: 'Videos',
+          icon: 'play-circle',
+          label: 'Videos',
+          component: VideosStack,
+          color: '#FF9800',
+          haptic: false,
+          iconSet: 'fa5',
+          faStyle: 'regular',
+        },
+        {
+          name: 'Message',
+          icon: 'envelope',
+          label: 'Message',
+          component: MessageStack,
+          color: '#9C27B0',
+          haptic: false,
+          iconSet: 'fa5',
+          faStyle: 'regular',
+          badge: unreadMessageCount,
+        },
+        {
+          name: 'Menu',
+          icon: 'bars',
+          label: 'Menu',
+          component: MenuStack,
+          color: '#607D8B',
+          haptic: false,
+          iconSet: 'fa5',
+          faStyle: 'solid',
+        },
+      ]
+    : [
+        {
+          name: 'Login',
+          icon: 'login',
+          label: 'Login',
+          component: LoginScreen,
+          color: '#4CAF50',
+          iconSet: 'material',
+        },
+        {
+          name: 'Register',
+          icon: 'person-add',
+          label: 'Register',
+          component: RegisterScreen,
+          color: '#2196F3',
+          iconSet: 'material',
+        },
+        {
+          name: 'Menu',
+          icon: 'bars',
+          label: 'Menu',
+          component: MenuStack,
+          color: '#607D8B',
+          haptic: false,
+          iconSet: 'fa5',
+          faStyle: 'solid',
+        },
+      ];
   return <ProfessionalTabBar {...props} tabs={tabs} />;
 }
 
@@ -439,6 +627,7 @@ function TabBarWithLudoCheck(props: any) {
 function AppWithTopProgress() {
   const progressRef = React.useRef<TopNavigationProgressRef>(null);
   const readyRef = React.useRef(false);
+  const activeRouteIdentityRef = React.useRef('');
   const themeContext = React.useContext(ThemeContext);
 
   const applyStatusBarDefaults = React.useCallback(() => {
@@ -466,11 +655,19 @@ function AppWithTopProgress() {
       ref={navigationRef}
       onReady={() => {
         readyRef.current = true;
+        activeRouteIdentityRef.current = getActiveRouteIdentity(
+          navigationRef.getRootState(),
+        );
         applyStatusBarDefaults();
         markNavigationReady();
       }}
-      onStateChange={() => {
-        if (readyRef.current) {
+      onStateChange={state => {
+        const nextRouteIdentity = getActiveRouteIdentity(state);
+        const routeChanged =
+          nextRouteIdentity !== activeRouteIdentityRef.current;
+        activeRouteIdentityRef.current = nextRouteIdentity;
+
+        if (readyRef.current && routeChanged) {
           progressRef.current?.trigger();
         }
         // Enforce consistent, non-translucent status bar on every navigation change
@@ -551,7 +748,6 @@ async function requestLocationPermission() {
 
 // Component to handle profile data fetching
 function AppContent() {
-
   const { connect, isConnected, emit, on, off } = useSocket();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { showMessageToast, showNotificationToast } = useUserToast();
@@ -573,17 +769,23 @@ function AppContent() {
   React.useEffect(() => {
     activeIncomingCallRef.current = activeIncomingCall;
   }, [activeIncomingCall]);
-  const incomingCallTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const incomingCallTimeoutRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const currentScreenRef = React.useRef<string>('');
-  const callEndDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callEndDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const isCallEndingRef = React.useRef<boolean>(false);
   // After a call ends or is accepted, ignore any incoming-call events briefly to avoid ghost navigations
   const ignoreIncomingCallsUntilRef = React.useRef<number>(0);
   const dispatch = useDispatch();
-  const [updateModalVisible, setUpdateModalVisible] = React.useState<boolean>(false);
+  const [updateModalVisible, setUpdateModalVisible] =
+    React.useState<boolean>(false);
   const [serverVersion, setServerVersion] = React.useState<string>('');
   const [apkUrl, setApkUrl] = React.useState<string>('');
-  const [isDownloadingUpdate, setIsDownloadingUpdate] = React.useState<boolean>(false);
+  const [isDownloadingUpdate, setIsDownloadingUpdate] =
+    React.useState<boolean>(false);
 
   const getCurrentAppVersion = React.useCallback((): string => {
     try {
@@ -598,9 +800,10 @@ function AppContent() {
 
   const compareVersions = React.useCallback((a: string, b: string): number => {
     // Normalize like 1.2.3 vs 1.2.10; ignore non-numeric suffixes
-    const toNums = (v: string) => (v || '')
-      .split('.')
-      .map(part => parseInt(String(part).replace(/[^0-9].*$/, ''), 10) || 0);
+    const toNums = (v: string) =>
+      (v || '')
+        .split('.')
+        .map(part => parseInt(String(part).replace(/[^0-9].*$/, ''), 10) || 0);
     const aa = toNums(a);
     const bb = toNums(b);
     const len = Math.max(aa.length, bb.length);
@@ -616,41 +819,51 @@ function AppContent() {
   // Helper functions to track update modal shows per day
   const getTodayDateString = React.useCallback((): string => {
     const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
+      2,
+      '0',
+    )}-${String(today.getDate()).padStart(2, '0')}`;
   }, []);
 
   // Check if we can show the modal and increment count atomically
-  const checkAndIncrementUpdateModalCount = React.useCallback(async (): Promise<boolean> => {
-    try {
-      const storageKey = 'updateModalShowCount';
-      const today = getTodayDateString();
-      const stored = await AsyncStorage.getItem(storageKey);
-      
-      let count = 0;
-      if (stored) {
-        const data = JSON.parse(stored);
-        if (data.date === today) {
-          count = data.count || 0;
-        }
-      }
+  const checkAndIncrementUpdateModalCount =
+    React.useCallback(async (): Promise<boolean> => {
+      try {
+        const storageKey = 'updateModalShowCount';
+        const today = getTodayDateString();
+        const stored = await AsyncStorage.getItem(storageKey);
 
-      // Check if shown less than 2 times today
-      if (count < 2) {
-        // Increment and save
-        await AsyncStorage.setItem(storageKey, JSON.stringify({
-          date: today,
-          count: count + 1
-        }));
+        let count = 0;
+        if (stored) {
+          const data = JSON.parse(stored);
+          if (data.date === today) {
+            count = data.count || 0;
+          }
+        }
+
+        // Check if shown less than 2 times today
+        if (count < 2) {
+          // Increment and save
+          await AsyncStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              date: today,
+              count: count + 1,
+            }),
+          );
+          return true;
+        }
+
+        return false;
+      } catch (error) {
+        console.warn(
+          'Error checking/incrementing update modal show count:',
+          error,
+        );
+        // On error, allow showing (fail open)
         return true;
       }
-
-      return false;
-    } catch (error) {
-      console.warn('Error checking/incrementing update modal show count:', error);
-      // On error, allow showing (fail open)
-      return true;
-    }
-  }, [getTodayDateString]);
+    }, [getTodayDateString]);
 
   // Consume remote config set by index.js (/connect) and decide update prompt
   React.useEffect(() => {
@@ -665,7 +878,10 @@ function AppContent() {
 
       if (Platform.OS === 'android' && serverApkUrl) {
         const currentVersion = getCurrentAppVersion();
-        const newer = serverIsNew || (serverAppVersion && compareVersions(serverAppVersion, currentVersion) > 0);
+        const newer =
+          serverIsNew ||
+          (serverAppVersion &&
+            compareVersions(serverAppVersion, currentVersion) > 0);
         if (newer) {
           // Check if we can show the modal (max 2 times per day) and increment count atomically
           const canShow = await checkAndIncrementUpdateModalCount();
@@ -681,38 +897,52 @@ function AppContent() {
       if (initial) applyConfig(initial);
     } catch (_) {}
 
-    const unsubscribe = subscribeRemoteConfig((cfg) => applyConfig(cfg));
+    const unsubscribe = subscribeRemoteConfig(cfg => applyConfig(cfg));
     return () => {
-      try { unsubscribe && unsubscribe(); } catch (_) {}
+      try {
+        unsubscribe && unsubscribe();
+      } catch (_) {}
     };
-  }, [compareVersions, getCurrentAppVersion, checkAndIncrementUpdateModalCount]);
+  }, [
+    compareVersions,
+    getCurrentAppVersion,
+    checkAndIncrementUpdateModalCount,
+  ]);
 
-  const ensureStoragePermission = React.useCallback(async (): Promise<boolean> => {
-    try {
-      const MediaLibrary = await import('expo-media-library/legacy');
-      const { status } = await MediaLibrary.requestPermissionsAsync();
-      return status === 'granted';
-    } catch (_) {
-      return false;
-    }
-  }, []);
+  const ensureStoragePermission =
+    React.useCallback(async (): Promise<boolean> => {
+      try {
+        const MediaLibrary = await import('expo-media-library/legacy');
+        const { status } = await MediaLibrary.requestPermissionsAsync();
+        return status === 'granted';
+      } catch (_) {
+        return false;
+      }
+    }, []);
 
   const downloadAndInstallApk = React.useCallback(async () => {
     if (!apkUrl) return;
     if (Platform.OS !== 'android') {
-      try { Linking.openURL(apkUrl); } catch (_) {}
+      try {
+        Linking.openURL(apkUrl);
+      } catch (_) {}
       return;
     }
 
     const hasPerm = await ensureStoragePermission();
     if (!hasPerm) {
-      try { Linking.openURL(apkUrl); } catch (_) {}
+      try {
+        Linking.openURL(apkUrl);
+      } catch (_) {}
       return;
     }
 
     try {
       setIsDownloadingUpdate(true);
-      const safeVersion = (serverVersion || 'latest').replace(/[^0-9A-Za-z._-]/g, '');
+      const safeVersion = (serverVersion || 'latest').replace(
+        /[^0-9A-Za-z._-]/g,
+        '',
+      );
       const fileName = `Connect-${safeVersion}-${Date.now()}.apk`;
       const destPath = `file:///tmp/Connect/${fileName}`;
 
@@ -720,10 +950,12 @@ function AppContent() {
         apkUrl,
         destPath,
         {},
-        (downloadProgressInfo) => {
-          const progress = downloadProgressInfo.totalBytesWritten / downloadProgressInfo.totalBytesExpectedToWrite;
+        downloadProgressInfo => {
+          const progress =
+            downloadProgressInfo.totalBytesWritten /
+            downloadProgressInfo.totalBytesExpectedToWrite;
           console.log(`Download progress: ${Math.round(progress * 100)}%`);
-        }
+        },
       );
       const result = await task.downloadAsync();
       if (result && result.status === 200) {
@@ -731,13 +963,19 @@ function AppContent() {
           await Linking.openURL(`file://${destPath}`);
         } catch (e) {
           // Fallback to open the original URL (browser/DM)
-          try { await Linking.openURL(apkUrl); } catch (_) {}
+          try {
+            await Linking.openURL(apkUrl);
+          } catch (_) {}
         }
       } else {
-        try { await Linking.openURL(apkUrl); } catch (_) {}
+        try {
+          await Linking.openURL(apkUrl);
+        } catch (_) {}
       }
     } catch (e) {
-      try { await Linking.openURL(apkUrl); } catch (_) {}
+      try {
+        await Linking.openURL(apkUrl);
+      } catch (_) {}
     } finally {
       setIsDownloadingUpdate(false);
     }
@@ -759,27 +997,31 @@ function AppContent() {
   React.useEffect(() => {
     // Use navigation state to get current route
     const unsubscribe = navigation.addListener('state', () => {
-      const currentRoute = navigation.getState()?.routes[navigation.getState()?.index || 0];
+      const currentRoute =
+        navigation.getState()?.routes[navigation.getState()?.index || 0];
       const screenName = currentRoute?.name || '';
       console.log('🧭 Navigation state changed to:', screenName);
       setScreen(screenName);
       currentScreenRef.current = screenName;
     });
-    
+
     return unsubscribe;
   }, [navigation]);
 
   // Stop background service when app is closed/terminated
   React.useEffect(() => {
-    const subscription = AppState.addEventListener('change', async (nextAppState) => {
-      if (nextAppState === 'inactive' || nextAppState === 'background') {
-        // App is going to background - keep service running for notifications
-        console.log('📱 App moved to background, keeping service running');
-      } else if (nextAppState === 'active') {
-        // App is active - service can continue running
-        console.log('📱 App is active');
-      }
-    });
+    const subscription = AppState.addEventListener(
+      'change',
+      async nextAppState => {
+        if (nextAppState === 'inactive' || nextAppState === 'background') {
+          // App is going to background - keep service running for notifications
+          console.log('📱 App moved to background, keeping service running');
+        } else if (nextAppState === 'active') {
+          // App is active - service can continue running
+          console.log('📱 App is active');
+        }
+      },
+    );
 
     // Cleanup: Stop background service when component unmounts (app is closed)
     return () => {
@@ -798,17 +1040,20 @@ function AppContent() {
       console.log('⏸️ Socket connection skipped: profile ID not available');
       return;
     }
-    console.log('🔌 Attempting socket connection with profile ID:', myProfile._id);
+    console.log(
+      '🔌 Attempting socket connection with profile ID:',
+      myProfile._id,
+    );
     connect(myProfile._id)
       .then(() => {
         console.log('✅ Socket connected successfully in AppContent');
       })
-      .catch((error) => {
+      .catch(error => {
         console.error('❌ Failed to connect socket in AppContent:', error);
         console.error('❌ Error details:', {
           message: error?.message,
           stack: error?.stack,
-          profileId: myProfile._id
+          profileId: myProfile._id,
         });
         // Don't show alert immediately - socket will retry automatically
         // Alert.alert('Connection Error', 'Failed to connect to real-time service. The app will retry automatically.');
@@ -819,15 +1064,14 @@ function AppContent() {
   React.useEffect(() => {
     if (myProfile?._id) {
       // emit('fetchNotifications', myProfile._id);
-      api.get('/notification/').then((res) => {
-        dispatch(addNotifications(res.data))
-        console.log('notifications', res.data)
-      })
+      api.get('/notification/').then(res => {
+        dispatch(addNotifications(res.data));
+        console.log('notifications', res.data);
+      });
     }
   }, [myProfile?._id, emit]);
 
   React.useEffect(() => {
-
     if (!isConnected) return;
 
     let handleBumpUser = (data: any) => {
@@ -836,15 +1080,15 @@ function AppContent() {
         fullName: data.myProfileData.fullName,
         message: `${data.myProfileData.fullName} bumped you`,
         onPress: () => {
-          (navigation as any).navigate('Message', { 
+          (navigation as any).navigate('Message', {
             screen: 'SingleMessage',
-            params: { connect: data.friendProfileData }
-          })
+            params: { connect: data.friendProfileData },
+          });
         },
-      })
-    }
+      });
+    };
 
-    on('bumpUser', handleBumpUser)
+    on('bumpUser', handleBumpUser);
 
     // Incoming/outgoing audio and video calls are handled by the global
     // AudioCall and VideoCall overlays (same socket events as the web app).
@@ -862,7 +1106,11 @@ function AppContent() {
         dispatch(setConnectOffline(String(connectProfileId)));
       }
     };
-    const handleIsActive = (isUserActive: boolean, lastLogin: Date, activeProfileId: string) => {
+    const handleIsActive = (
+      isUserActive: boolean,
+      lastLogin: Date,
+      activeProfileId: string,
+    ) => {
       if (!activeProfileId) return;
       if (isUserActive === true) {
         dispatch(setConnectOnline(String(activeProfileId)));
@@ -870,8 +1118,15 @@ function AppContent() {
         dispatch(setConnectOffline(String(activeProfileId)));
       }
       try {
-        const iso = lastLogin ? new Date(lastLogin as any).toISOString() : undefined;
-        dispatch(setConnectLastSeen({ profileId: String(activeProfileId), lastLogin: iso }));
+        const iso = lastLogin
+          ? new Date(lastLogin as any).toISOString()
+          : undefined;
+        dispatch(
+          setConnectLastSeen({
+            profileId: String(activeProfileId),
+            lastLogin: iso,
+          }),
+        );
       } catch (_) {}
     };
     on('friend_online', handleConnectOnline);
@@ -882,7 +1137,11 @@ function AppContent() {
     const handleConnectLocationUpdate = (data: any) => {
       const { profileId: connectProfileId, location } = data;
       if (connectProfileId && location) {
-        console.log('📍 Connect location update received:', connectProfileId, location);
+        console.log(
+          '📍 Connect location update received:',
+          connectProfileId,
+          location,
+        );
         // You can dispatch this to Redux or handle it as needed
         // For example, update connect location in Redux store
         // dispatch(updateConnectLocation({ profileId: connectProfileId, location }));
@@ -891,78 +1150,97 @@ function AppContent() {
     on('friend_location_update', handleConnectLocationUpdate);
 
     const handleConnectCacheUpdate = async (data: any) => {
-      if (!myProfile?._id || String(data?.profileId) !== String(myProfile._id)) return;
-      const list = data?.list === 'requests' || data?.list === 'suggestions' ? data.list : null;
+      if (!myProfile?._id || String(data?.profileId) !== String(myProfile._id))
+        return;
+      const list =
+        data?.list === 'requests' || data?.list === 'suggestions'
+          ? data.list
+          : null;
       if (!list) return;
       if (data.action === 'remove' && data.targetProfileId) {
-        await ConnectCacheManager.removeProfile(myProfile._id, list, data.targetProfileId);
+        await ConnectCacheManager.removeProfile(
+          myProfile._id,
+          list,
+          data.targetProfileId,
+        );
         return;
       }
       if (data.action === 'refresh') {
-        const response = list === 'requests'
-          ? await connectAPI.getConnectRequest(myProfile._id)
-          : await connectAPI.getConnectSuggestions(myProfile._id);
+        const response =
+          list === 'requests'
+            ? await connectAPI.getConnectRequest(myProfile._id)
+            : await connectAPI.getConnectSuggestions(myProfile._id);
         await ConnectCacheManager.setCached(myProfile._id, list, response.data);
       }
     };
     on('friendCacheUpdate', handleConnectCacheUpdate);
 
     let handleNewMessage = (data: any, allowToast = false) => {
-      let {updatedMessage, senderName, senderPP, friendProfile} = data || {};
+      let { updatedMessage, senderName, senderPP, friendProfile } = data || {};
       updatedMessage = updatedMessage || data;
       if (!updatedMessage) return;
 
       try {
         const myId = String(myProfile?._id || '');
-        const senderId = String(updatedMessage.senderId || friendProfile?._id || '');
+        const senderId = String(
+          updatedMessage.senderId || friendProfile?._id || '',
+        );
         const receiverId = String(updatedMessage.receiverId || '');
         const chatId = senderId && senderId === myId ? receiverId : senderId;
         if (myId && chatId) {
-          dispatch(addNewMessage({
-            chatId,
-            message: {
-              _id: updatedMessage._id || String(Date.now()),
-              room: updatedMessage.room || `${myId}_${chatId}`,
-              senderId: updatedMessage.senderId || senderId,
-              receiverId: updatedMessage.receiverId || receiverId || myId,
-              message: updatedMessage.message || '',
-              attachment: updatedMessage.attachment || false,
-              reacts: updatedMessage.reacts || [],
-              isSeen: Boolean(updatedMessage.isSeen),
-              timestamp: updatedMessage.timestamp || new Date().toISOString(),
-              __v: 0,
-              messageType: updatedMessage.messageType,
-              callType: updatedMessage.callType,
-              callEvent: updatedMessage.callEvent,
-            },
-            currentUserId: myId,
-          }));
+          dispatch(
+            addNewMessage({
+              chatId,
+              message: {
+                _id: updatedMessage._id || String(Date.now()),
+                room: updatedMessage.room || `${myId}_${chatId}`,
+                senderId: updatedMessage.senderId || senderId,
+                receiverId: updatedMessage.receiverId || receiverId || myId,
+                message: updatedMessage.message || '',
+                attachment: updatedMessage.attachment || false,
+                reacts: updatedMessage.reacts || [],
+                isSeen: Boolean(updatedMessage.isSeen),
+                timestamp: updatedMessage.timestamp || new Date().toISOString(),
+                __v: 0,
+                messageType: updatedMessage.messageType,
+                callType: updatedMessage.callType,
+                callEvent: updatedMessage.callEvent,
+              },
+              currentUserId: myId,
+            }),
+          );
         }
-      } catch (_) { }
+      } catch (_) {}
 
       const isOwn = String(updatedMessage?.senderId) === String(myProfile?._id);
       if (!allowToast || isOwn) return;
 
-      if (currentScreenRef.current === 'MessageList' || currentScreenRef.current === 'SingleMessage') {
+      if (
+        currentScreenRef.current === 'MessageList' ||
+        currentScreenRef.current === 'SingleMessage'
+      ) {
         return;
       }
 
-      const preview = updatedMessage?.messageType === 'call'
-        ? (updatedMessage.message || 'Call')
-        : `${(updatedMessage?.message || '').substring(0, 40)}${(updatedMessage?.message || '').length > 40 ? '...' : ''}`;
+      const preview =
+        updatedMessage?.messageType === 'call'
+          ? updatedMessage.message || 'Call'
+          : `${(updatedMessage?.message || '').substring(0, 40)}${
+              (updatedMessage?.message || '').length > 40 ? '...' : ''
+            }`;
 
       showMessageToast({
         userProfilePic: senderPP,
-        fullName:  `${senderName || 'Someone'} messaged you`,
+        fullName: `${senderName || 'Someone'} messaged you`,
         message: preview,
         onPress: () => {
-          (navigation as any).navigate('Message', { 
+          (navigation as any).navigate('Message', {
             screen: 'SingleMessage',
-            params: { connect: friendProfile }
-          })
+            params: { connect: friendProfile },
+          });
         },
-      })
-    }
+      });
+    };
 
     const handleRoomMessage = (data: any) => handleNewMessage(data, false);
     const handleUserMessage = (data: any) => handleNewMessage(data, true);
@@ -992,28 +1270,28 @@ function AppContent() {
                 (navigation as any).navigate('Home');
               }
             }
-          }
+          },
         });
       } catch (e) {
         // Fallback to basic toast if user toast is unavailable
         showInfo(notification.text || 'New notification');
       }
-    }
+    };
 
-    on('newNotification', handleNewNotification)
+    on('newNotification', handleNewNotification);
 
     return () => {
-      off('bumpUser',handleBumpUser)
-      off('newMessage', handleRoomMessage)
-      off('newMessageToUser', handleUserMessage)
-      off('newNotification', handleNewNotification)
-      off('friend_online', handleConnectOnline)
-      off('friend_offline', handleConnectOffline)
-      off('is_active', handleIsActive)
-      off('friend_location_update', handleConnectLocationUpdate)
-      off('friendCacheUpdate', handleConnectCacheUpdate)
-    }
-  }, [isConnected, on, off, myProfile?._id])
+      off('bumpUser', handleBumpUser);
+      off('newMessage', handleRoomMessage);
+      off('newMessageToUser', handleUserMessage);
+      off('newNotification', handleNewNotification);
+      off('friend_online', handleConnectOnline);
+      off('friend_offline', handleConnectOffline);
+      off('is_active', handleIsActive);
+      off('friend_location_update', handleConnectLocationUpdate);
+      off('friendCacheUpdate', handleConnectCacheUpdate);
+    };
+  }, [isConnected, on, off, myProfile?._id]);
 
   // Cleanup timeout on unmount
   React.useEffect(() => {
@@ -1040,7 +1318,11 @@ function AppContent() {
         const { user, isInitializing } = ctx;
         return (
           <>
-            <AppContentInner user={user} isInitializing={isInitializing} isDarkMode={isDarkMode} />
+            <AppContentInner
+              user={user}
+              isInitializing={isInitializing}
+              isDarkMode={isDarkMode}
+            />
             {/* Initialize notifications */}
             <ExpoGoSafeNotificationSetup />
             {/* Request required permissions on app start */}
@@ -1068,29 +1350,49 @@ function AppContent() {
 }
 
 // Inner component that can use hooks
-function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isInitializing: boolean, isDarkMode: boolean }) {
+function AppContentInner({
+  user,
+  isInitializing,
+  isDarkMode,
+}: {
+  user: any;
+  isInitializing: boolean;
+  isDarkMode: boolean;
+}) {
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
-  const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = React.useState<AgentSpeechLanguage | null>(null);
+  const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] =
+    React.useState<AgentSpeechLanguage | null>(null);
   const [aiVoiceStartRequest, setAiVoiceStartRequest] = React.useState(0);
   const previousUserRef = React.useRef(user);
 
   React.useEffect(() => {
     if (!user || isInitializing) return undefined;
 
-    Accelerometer.setUpdateInterval(100);
-    let previous = { x: 0, y: 0, z: 0 };
+    Accelerometer.setUpdateInterval(20);
+    let previous: { x: number; y: number; z: number } | null = null;
     let lastShakeAt = 0;
+    let shakeHits: number[] = [];
     const subscription = Accelerometer.addListener(({ x, y, z }) => {
+      if (!previous) {
+        previous = { x, y, z };
+        return;
+      }
+
       const delta = Math.sqrt(
-        (x - previous.x) ** 2 +
-        (y - previous.y) ** 2 +
-        (z - previous.z) ** 2,
+        (x - previous.x) ** 2 + (y - previous.y) ** 2 + (z - previous.z) ** 2,
       );
       previous = { x, y, z };
 
       const now = Date.now();
-      if (delta < 1.6 || now - lastShakeAt < 1500) return;
+      if (now - lastShakeAt < 1500) return;
+      shakeHits = shakeHits.filter(timestamp => now - timestamp <= 700);
+      if (delta < 1.6) return;
+
+      shakeHits.push(now);
+      if (shakeHits.length < 3) return;
+
       lastShakeAt = now;
+      shakeHits = [];
       setPendingAiVoiceLanguage('auto');
       setAiVoiceStartRequest(request => request + 1);
       setAiAgentVisible(true);
@@ -1101,9 +1403,15 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
 
   // Debug user state changes
   React.useEffect(() => {
-    console.log('🔄 AppContentInner - User state changed:', user ? 'User logged in' : 'No user');
+    console.log(
+      '🔄 AppContentInner - User state changed:',
+      user ? 'User logged in' : 'No user',
+    );
     console.log('🔄 AppContentInner - Initialization state:', isInitializing);
-    console.log('🔄 AppContentInner - Will render:', isInitializing ? 'LoadingScreen' : 'Main App');
+    console.log(
+      '🔄 AppContentInner - Will render:',
+      isInitializing ? 'LoadingScreen' : 'Main App',
+    );
   }, [user, isInitializing]);
 
   React.useEffect(() => {
@@ -1128,7 +1436,9 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
   // Always call hooks unconditionally; the hook internally no-ops without a valid id
   useProfileData(user?.profile || null);
 
-  const deepestRoute = useNavigationState((state) => (state ? getDeepestRouteName(state) : ''));
+  const deepestRoute = useNavigationState(state =>
+    state ? getDeepestRouteName(state) : '',
+  );
   const isAuthScreen = deepestRoute === 'Login' || deepestRoute === 'Register';
   const chatScreenActive = useChatScreenChrome();
   const isChatThread = deepestRoute === 'SingleMessage' || chatScreenActive;
@@ -1141,173 +1451,205 @@ function AppContentInner({ user, isInitializing, isDarkMode }: { user: any, isIn
     : isChatThread
     ? []
     : isMessageInbox
-      ? (Platform.OS === 'ios' ? (['top'] as const) : [])
-      : (Platform.OS === 'ios' ? (['top', 'right', 'left'] as const) : []);
+    ? Platform.OS === 'ios'
+      ? (['top'] as const)
+      : []
+    : Platform.OS === 'ios'
+    ? (['top', 'right', 'left'] as const)
+    : [];
 
   return (
     <ThemeContext.Consumer>
-      {(themeContext) => {
+      {themeContext => {
         if (!themeContext) return null;
-        const { colors: themeColors, isDarkMode: themeIsDarkMode } = themeContext;
+        const { colors: themeColors, isDarkMode: themeIsDarkMode } =
+          themeContext;
         return (
-        <>
-        <SafeAreaView
-          edges={appSafeAreaEdges}
-          style={{
-            flex: 1,
-            backgroundColor: themeIsDarkMode ? themeColors.background.primary : themeColors.background.primary
-          }}
-        >
-            <StatusBar 
-              barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'}
-              backgroundColor={isAuthScreen ? 'transparent' : themeColors.background.primary}
-              translucent={isAuthScreen}
-            />
-            {isInitializing ? (
-              <LoadingScreen message="Initializing app..." />
-            ) : (
-              <Tab.Navigator
-                key={user ? 'authenticated' : 'anonymous'}
-                initialRouteName={user ? 'Home' : 'Login'}
-                tabBar={(props) => <TabBarWithLudoCheck {...props} user={user} />}
-                safeAreaInsets={isChatPage ? { top: 0, right: 0, bottom: 0, left: 0 } : undefined}
-                screenOptions={({ route }) => ({
-                  tabBarStyle:
-                    route.name === 'Login' || route.name === 'Register'
-                      ? { display: 'none', height: 0 }
-                      : undefined,
-                  headerShown: route.name === 'Home' || route.name === 'Connects' || route.name === 'Videos',
-                  header: route.name === 'Home' || route.name === 'Connects' || route.name === 'Videos'
-                    ? () => (
-                      <FacebookHeader
-                        onOpenAIAgent={() => {
-                          setPendingAiVoiceLanguage(null);
-                          setAiAgentVisible(true);
-                        }}
-                        onLongPressAIAgent={() => {
-                          setPendingAiVoiceLanguage('auto');
-                          setAiVoiceStartRequest(request => request + 1);
-                          setAiAgentVisible(true);
+          <>
+            <SafeAreaView
+              edges={appSafeAreaEdges}
+              style={{
+                flex: 1,
+                backgroundColor: themeIsDarkMode
+                  ? themeColors.background.primary
+                  : themeColors.background.primary,
+              }}
+            >
+              <StatusBar
+                barStyle={themeIsDarkMode ? 'light-content' : 'dark-content'}
+                backgroundColor={
+                  isAuthScreen ? 'transparent' : themeColors.background.primary
+                }
+                translucent={isAuthScreen}
+              />
+              {isInitializing ? (
+                <LoadingScreen message="Initializing app..." />
+              ) : (
+                <Tab.Navigator
+                  key={user ? 'authenticated' : 'anonymous'}
+                  initialRouteName={user ? 'Home' : 'Login'}
+                  tabBar={props => (
+                    <TabBarWithLudoCheck {...props} user={user} />
+                  )}
+                  safeAreaInsets={
+                    isChatPage
+                      ? { top: 0, right: 0, bottom: 0, left: 0 }
+                      : undefined
+                  }
+                  screenOptions={({ route }) => ({
+                    tabBarStyle:
+                      route.name === 'Login' || route.name === 'Register'
+                        ? { display: 'none', height: 0 }
+                        : undefined,
+                    headerShown:
+                      route.name === 'Home' ||
+                      route.name === 'Connects' ||
+                      route.name === 'Videos',
+                    header:
+                      route.name === 'Home' ||
+                      route.name === 'Connects' ||
+                      route.name === 'Videos'
+                        ? () => (
+                            <FacebookHeader
+                              onOpenAIAgent={() => {
+                                setPendingAiVoiceLanguage(null);
+                                setAiAgentVisible(true);
+                              }}
+                              onLongPressAIAgent={() => {
+                                setPendingAiVoiceLanguage('auto');
+                                setAiVoiceStartRequest(request => request + 1);
+                                setAiAgentVisible(true);
+                              }}
+                            />
+                          )
+                        : undefined,
+                  })}
+                >
+                  {user ? (
+                    <>
+                      <Tab.Screen
+                        name="Home"
+                        component={HomeStack}
+                        options={{
+                          tabBarLabel: 'Home',
                         }}
                       />
-                    )
-                    : undefined,
-                })}
-              >
-                {user ? (
-                  <>
-                    <Tab.Screen
-                      name="Home"
-                      component={HomeStack}
-                      options={{
-                        tabBarLabel: 'Home',
-                      }}
-                    />
-                    <Tab.Screen
-                      name="Connects"
-                      component={ConnectsStack}
-                      options={{
-                        tabBarLabel: 'Connects',
-                        headerShown: true,
-                      }}
-                    />
-                    <Tab.Screen
-                      name="Videos"
-                      component={VideosStack}
-                      options={{
-                        tabBarLabel: 'Videos',
-                        headerShown: true,
-                      }}
-                    />
-                    <Tab.Screen
-                      name="Message"
-                      component={MessageStack}
-                      options={({ route }) => {
-                        const nested = getFocusedRouteNameFromRoute(route) ?? 'MessageList';
-                        const hideTab = nested === 'SingleMessage' || (route.params as any)?.screen === 'SingleMessage';
-                        return {
-                          tabBarLabel: 'Message',
-                          headerShown: false,
-                          tabBarStyle: hideTab
-                            ? { display: 'none', height: 0, position: 'absolute' }
-                            : { position: 'absolute' },
-                          safeAreaInsets: hideTab
-                            ? { bottom: 0, top: 0, left: 0, right: 0 }
-                            : { bottom: 0, left: 0, right: 0 },
-                        };
-                      }}
-                    />
+                      <Tab.Screen
+                        name="Connects"
+                        component={ConnectsStack}
+                        options={{
+                          tabBarLabel: 'Connects',
+                          headerShown: true,
+                        }}
+                      />
+                      <Tab.Screen
+                        name="Videos"
+                        component={VideosStack}
+                        options={{
+                          tabBarLabel: 'Videos',
+                          headerShown: true,
+                        }}
+                      />
+                      <Tab.Screen
+                        name="Message"
+                        component={MessageStack}
+                        options={({ route }) => {
+                          const nested =
+                            getFocusedRouteNameFromRoute(route) ??
+                            'MessageList';
+                          const hideTab =
+                            nested === 'SingleMessage' ||
+                            (route.params as any)?.screen === 'SingleMessage';
+                          return {
+                            tabBarLabel: 'Message',
+                            headerShown: false,
+                            tabBarStyle: hideTab
+                              ? {
+                                  display: 'none',
+                                  height: 0,
+                                  position: 'absolute',
+                                }
+                              : { position: 'absolute' },
+                            safeAreaInsets: hideTab
+                              ? { bottom: 0, top: 0, left: 0, right: 0 }
+                              : { bottom: 0, left: 0, right: 0 },
+                          };
+                        }}
+                      />
 
-                    <Tab.Screen
-                      name="Menu"
-                      component={MenuStack}
-                      options={({ route }) => {
-                        const nested = getFocusedRouteNameFromRoute(route) ?? 'MenuHome';
-                        const showHeader = nested === 'Settings';
+                      <Tab.Screen
+                        name="Menu"
+                        component={MenuStack}
+                        options={({ route }) => {
+                          const nested =
+                            getFocusedRouteNameFromRoute(route) ?? 'MenuHome';
+                          const showHeader = nested === 'Settings';
 
-                        return {
+                          return {
+                            tabBarLabel: 'Menu',
+                            headerShown: showHeader,
+                            header: showHeader
+                              ? () => (
+                                  <FacebookHeader
+                                    onOpenAIAgent={() => {
+                                      setPendingAiVoiceLanguage(null);
+                                      setAiAgentVisible(true);
+                                    }}
+                                    onLongPressAIAgent={() => {
+                                      setPendingAiVoiceLanguage('auto');
+                                      setAiVoiceStartRequest(
+                                        request => request + 1,
+                                      );
+                                      setAiAgentVisible(true);
+                                    }}
+                                  />
+                                )
+                              : undefined,
+                          };
+                        }}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Tab.Screen
+                        name="Login"
+                        component={LoginScreen}
+                        options={{
+                          tabBarLabel: 'Login',
+                        }}
+                      />
+                      <Tab.Screen
+                        name="Register"
+                        component={RegisterScreen}
+                        options={{
+                          tabBarLabel: 'Register',
+                        }}
+                      />
+                      <Tab.Screen
+                        name="Menu"
+                        component={MenuStack}
+                        options={{
                           tabBarLabel: 'Menu',
-                          headerShown: showHeader,
-                          header: showHeader
-                            ? () => (
-                              <FacebookHeader
-                                onOpenAIAgent={() => {
-                                  setPendingAiVoiceLanguage(null);
-                                  setAiAgentVisible(true);
-                                }}
-                                onLongPressAIAgent={() => {
-                                  setPendingAiVoiceLanguage('auto');
-                                  setAiVoiceStartRequest(request => request + 1);
-                                  setAiAgentVisible(true);
-                                }}
-                              />
-                            )
-                            : undefined,
-                        };
-                      }}
-                    />
-                  </>
-                ) : (
-                  <>
-                    <Tab.Screen
-                      name="Login"
-                      component={LoginScreen}
-                      options={{
-                        tabBarLabel: 'Login',
-                      }}
-                    />
-                    <Tab.Screen
-                      name="Register"
-                      component={RegisterScreen}
-                      options={{
-                        tabBarLabel: 'Register',
-                      }}
-                    />
-                    <Tab.Screen
-                      name="Menu"
-                      component={MenuStack}
-                      options={{
-                        tabBarLabel: 'Menu',
-                        headerShown: false,
-                      }}
-                    />
-                  </>
-                )}
-              </Tab.Navigator>
-            )}
-            <WatchPipPlayer />
-        </SafeAreaView>
-        <MinimizedCallBar />
-        <AIAgentModal
-          visible={aiAgentVisible}
-          autoStartVoiceLanguage={pendingAiVoiceLanguage}
-          voiceStartRequest={aiVoiceStartRequest}
-          onClose={() => {
-            setAiAgentVisible(false);
-            setPendingAiVoiceLanguage(null);
-          }}
-        />
-        </>
+                          headerShown: false,
+                        }}
+                      />
+                    </>
+                  )}
+                </Tab.Navigator>
+              )}
+              <WatchPipPlayer />
+            </SafeAreaView>
+            <MinimizedCallBar />
+            <AIAgentModal
+              visible={aiAgentVisible}
+              autoStartVoiceLanguage={pendingAiVoiceLanguage}
+              voiceStartRequest={aiVoiceStartRequest}
+              onClose={() => {
+                setAiAgentVisible(false);
+                setPendingAiVoiceLanguage(null);
+              }}
+            />
+          </>
         );
       }}
     </ThemeContext.Consumer>
@@ -1336,51 +1678,49 @@ function App() {
 
   // Send HTTP request to yt-dl service on app start
   React.useEffect(() => {
-    fetch('https://yt-dl-tyyw.onrender.com')
-      .catch(() => {
-        // Silently fail - fire and forget
-      });
-    fetch('https://emotion-detection-z1b2.onrender.com/')
-      .catch(() => {
-        // Silently fail - fire and forget
-      });
+    fetch('https://yt-dl-tyyw.onrender.com').catch(() => {
+      // Silently fail - fire and forget
+    });
+    fetch('https://emotion-detection-z1b2.onrender.com/').catch(() => {
+      // Silently fail - fire and forget
+    });
   }, []);
 
   return (
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
-        <Provider store={store}>
-          <PaperProvider>
-            <ThemeProvider>
-              <FeatureFlagProvider>
-                <AuthProvider>
-                <SocketProvider>
-                  <CallMinimizeProvider>
-                    <ToastProvider>
-                      <UserToastProvider>
-                        <ModernToastProvider>
-                          <SettingsProvider>
-                            <LudoGameProvider>
-                              <ChessGameProvider>
-                                <HeaderVisibilityProvider>
-                                  <WatchPipProvider>
-                                    <AppWithTopProgress />
-                                  </WatchPipProvider>
-                                </HeaderVisibilityProvider>
-                              </ChessGameProvider>
-                            </LudoGameProvider>
-                          </SettingsProvider>
-                        </ModernToastProvider>
-                      </UserToastProvider>
-                    </ToastProvider>
-                  </CallMinimizeProvider>
-                </SocketProvider>
-                </AuthProvider>
-              </FeatureFlagProvider>
-            </ThemeProvider>
-          </PaperProvider>
-        </Provider>
+          <Provider store={store}>
+            <PaperProvider>
+              <ThemeProvider>
+                <FeatureFlagProvider>
+                  <AuthProvider>
+                    <SocketProvider>
+                      <CallMinimizeProvider>
+                        <ToastProvider>
+                          <UserToastProvider>
+                            <ModernToastProvider>
+                              <SettingsProvider>
+                                <LudoGameProvider>
+                                  <ChessGameProvider>
+                                    <HeaderVisibilityProvider>
+                                      <WatchPipProvider>
+                                        <AppWithTopProgress />
+                                      </WatchPipProvider>
+                                    </HeaderVisibilityProvider>
+                                  </ChessGameProvider>
+                                </LudoGameProvider>
+                              </SettingsProvider>
+                            </ModernToastProvider>
+                          </UserToastProvider>
+                        </ToastProvider>
+                      </CallMinimizeProvider>
+                    </SocketProvider>
+                  </AuthProvider>
+                </FeatureFlagProvider>
+              </ThemeProvider>
+            </PaperProvider>
+          </Provider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>

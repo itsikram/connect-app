@@ -939,7 +939,6 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     profileInfo: {
-        marginLeft: -20,
         flex: 1,
         flexDirection: 'column',
         alignItems: 'center',
@@ -947,11 +946,14 @@ const styles = StyleSheet.create({
     },
     profileNameBlock: {
         flexDirection: 'column',
+        width: '100%',
+        alignItems: 'center',
         marginTop: 10,
     },
     fullName: {
         fontWeight: 'bold',
         fontSize: 22,
+        textAlign: 'center',
         textTransform: 'capitalize',
     },
     connectsCount: {

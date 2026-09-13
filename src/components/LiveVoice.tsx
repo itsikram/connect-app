@@ -13,7 +13,11 @@ import { RootState } from '../store';
 import api from '../lib/api';
 import { hashProfileUid } from '../lib/agoraUid';
 import { configureLiveVoiceAudio } from '../lib/callRingtone';
-import { isCallBusy } from '../lib/callSession';
+import {
+  getActiveCallKind,
+  isCallBusy,
+  setActiveCallKind,
+} from '../lib/callSession';
 import {
   LIVE_VOICE_EVENTS,
   LiveVoiceStartDetail,
@@ -193,6 +197,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
 
       clearDurationTimer();
       ensureLeave();
+      setActiveCallKind(null);
 
       isJoiningRef.current = false;
       isActiveRef.current = false;
@@ -240,6 +245,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       notifyPeer?: boolean;
     }) => {
       if (!to || !channelName || !myId) return;
+      const activeKind = getActiveCallKind();
+      if (activeKind && activeKind !== 'liveVoice') return;
 
       if (
         isActiveRef.current &&
@@ -283,6 +290,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       setIsOpen(true);
       setIsConnecting(true);
       setIsActive(false);
+      setActiveCallKind('liveVoice');
       setDuration(0);
       setConnectionQuality(4);
       // Start loading the Agora WebView immediately so incoming (web → app)

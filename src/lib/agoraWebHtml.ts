@@ -153,6 +153,42 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         }
       }
 
+      async function publishAudioWithRetry() {
+        if (!client || !joinedChannel) throw new Error('Agora client is not joined');
+        var lastError = null;
+        for (var attempt = 0; attempt < 3; attempt++) {
+          var audioTrack = null;
+          try {
+            audioTrack = localTracks.find(function (t) {
+              return t.trackMediaType === 'audio';
+            });
+            if (!audioTrack) {
+              audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
+                AEC: true,
+                ANS: true,
+              });
+              localTracks.push(audioTrack);
+            }
+            await audioTrack.setEnabled(true);
+            await client.publish([audioTrack]);
+            post({ type: 'audio-enabled' });
+            return;
+          } catch (e) {
+            lastError = e;
+            if (audioTrack && attempt < 2) {
+              try { await client.unpublish(audioTrack); } catch (unpublishError) {}
+              try { audioTrack.stop && audioTrack.stop(); } catch (stopError) {}
+              try { await audioTrack.close(); } catch (closeError) {}
+              localTracks = localTracks.filter(function (t) { return t !== audioTrack; });
+            }
+            if (attempt < 2) {
+              await new Promise(function (resolve) { setTimeout(resolve, 300); });
+            }
+          }
+        }
+        throw lastError || new Error('Microphone publish failed');
+      }
+
       function bindClientEvents(c) {
         c.on('user-published', async function (user, mediaType) {
           try {
@@ -199,8 +235,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
         if (client && joinedChannel === channelName && joinedUid === uid) {
           try {
-            if (publishAudio && !localTracks.length) await createLocalTracks(isAudio);
-            if (localTracks.length) await client.publish(localTracks);
+            if (publishAudio) await publishAudioWithRetry();
           } catch (e) {
             post({ type: 'error', message: 'microphone publish failed: ' + (e && e.message) });
           }
@@ -229,13 +264,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           tryResumeAudio();
 
           try {
-            if (publishAudio && !localTracks.length) await createLocalTracks(isAudio);
-            if (publishAudio && localTracks.length) {
-              await client.publish(localTracks);
-            }
+            if (publishAudio) await publishAudioWithRetry();
           } catch (micErr) {
             post({ type: 'error', message: 'microphone publish failed: ' + (micErr && micErr.message) });
-            await stopTracks();
             throw micErr;
           }
 
@@ -283,13 +314,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
       async function enableAudio() {
         if (!client || !joinedChannel) throw new Error('Live voice is not connected');
-        var track = localTracks.find(function (t) { return t.trackMediaType === 'audio'; });
-        if (!track) {
-          track = await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true });
-          localTracks.push(track);
-        }
-        await client.publish([track]);
-        post({ type: 'audio-enabled' });
+        await publishAudioWithRetry();
       }
 
       function resumeAudio() {

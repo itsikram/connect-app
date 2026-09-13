@@ -83,7 +83,8 @@ import {
   MINIMIZED_CALL_BAR_TOP_GAP,
 } from '../components/MinimizedCallBar';
 import { io, Socket } from 'socket.io-client';
-import config from '../lib/config';
+import { getExplicitFaceServiceUrl } from '../lib/config';
+import { getSocket } from '../socket/socket';
 import {
   emitStartAudioCall,
   emitStartVideoCall,
@@ -2058,12 +2059,9 @@ const SingleMessage = () => {
       }
 
       try {
-        // Face login is proxied through the app server. Resolve the
-        // same live Python service URL before opening its Socket.IO
-        // namespace, rather than maintaining a second hard-coded URL.
-        // In a local development build, the phone must reach the
-        // computer over the LAN rather than through localhost or a
-        // tunnel. Production builds continue using the live config.
+        // Face login is proxied through the app server. Resolve the same
+        // active Python service URL before opening its Socket.IO namespace.
+        // Only an explicit development override may bypass that source of truth.
         let pythonServerUrl = '';
         let faceServiceSocketToken =
           process.env.EXPO_PUBLIC_FACE_SERVICE_KEY || '';
@@ -2084,8 +2082,13 @@ const SingleMessage = () => {
             error?.message || error,
           );
         }
-        if (!pythonServerUrl) {
-          pythonServerUrl = (config.FACE_SERVICE_URL || '').trim();
+        if (!pythonServerUrl && __DEV__) {
+          pythonServerUrl = getExplicitFaceServiceUrl();
+          if (pythonServerUrl) {
+            console.warn(
+              '[SingleMessage] ⚠️ Using explicit development face service URL override',
+            );
+          }
         }
         if (!pythonServerUrl) {
           console.warn(
@@ -2149,6 +2152,7 @@ const SingleMessage = () => {
             '[SingleMessage] ⚠️ Disconnected from Python emotion detection server:',
             reason,
           );
+          serverRequestInFlightRef.current = false;
           logDetectionProgress('socket_disconnected', { reason });
         });
 
@@ -2206,8 +2210,17 @@ const SingleMessage = () => {
             handleEmotionServerResponseRef.current(data);
           }
         });
+        emotionServerSocketRef.current.onAny((event, data) => {
+          if (event !== 'expression_update' && event !== 'expression_error') {
+            console.log('[SingleMessage] 📥 Python expression socket event:', {
+              event,
+              data,
+            });
+          }
+        });
         emotionServerSocketRef.current.on('expression_error', data => {
           console.warn('[SingleMessage] ❌ Python expression_error:', data);
+          serverRequestInFlightRef.current = false;
           logDetectionProgress('expression_error', { error: data });
         });
       } catch (error) {
@@ -2226,6 +2239,13 @@ const SingleMessage = () => {
       payload: Record<string, unknown>,
       context: Record<string, unknown>,
     ) => {
+      if (payload.connectRelayed === true) {
+        console.log(
+          '[SingleMessage] ⏭️ Expression was already relayed by face-login server',
+          context,
+        );
+        return;
+      }
       const profileId = String(payload.profileId || '');
       if (!profileId) {
         console.warn(
@@ -2236,7 +2256,8 @@ const SingleMessage = () => {
       }
 
       try {
-        if (!isConnectedRef.current) {
+        let applicationSocket = getSocket();
+        if (!applicationSocket?.connected) {
           console.warn(
             '[SingleMessage] 🔌 Main socket disconnected; reconnecting before detection emit',
             {
@@ -2245,17 +2266,25 @@ const SingleMessage = () => {
             },
           );
           await socketConnect(profileId);
+          applicationSocket = getSocket();
+        }
+
+        if (!applicationSocket?.connected) {
+          throw new Error(
+            'Application socket is not connected after reconnect attempt',
+          );
         }
 
         console.log(
           '[SingleMessage] 📡 Sending detection to application server',
           {
-            connected: isConnectedRef.current,
+            connected: applicationSocket.connected,
+            socketId: applicationSocket.id,
             ...payload,
             ...context,
           },
         );
-        emit('emotion_change', payload, (result: any) => {
+        applicationSocket.emit('emotion_change', payload, (result: any) => {
           console.log(
             '[SingleMessage] 📡 Application server detection acknowledgement:',
             {
@@ -2358,6 +2387,7 @@ const SingleMessage = () => {
                 confidence,
                 quality: confidence,
                 expression: action,
+                connectRelayed: data.connect_relayed === true,
               },
               {
                 connectId: currentConnectId,
@@ -2528,6 +2558,7 @@ const SingleMessage = () => {
                   latestExpressionData.detectedExpressions || [],
                 // Include all emotion scores
                 emotionScores: latestExpressionData.allEmotions || {},
+                connectRelayed: data.connect_relayed === true,
               },
               {
                 connectId: currentConnectId,
@@ -2667,7 +2698,11 @@ const SingleMessage = () => {
 
       try {
         // Send frame to Python server via socket.io
-        emotionServerSocketRef.current.emit('frame', { image: base64Image });
+        emotionServerSocketRef.current.emit('frame', {
+          image: base64Image,
+          profileId: String(myProfile?._id || ''),
+          connectId: String(connect?._id || ''),
+        });
         lastFrameSentAtRef.current = t0;
         console.log(
           `[SingleMessage] 📤 Sent frame to Python server (req ${reqId})`,
@@ -3193,6 +3228,7 @@ const SingleMessage = () => {
 
       if (emotionServerSocketRef.current) {
         emotionServerSocketRef.current.off('expression_update');
+        emotionServerSocketRef.current.offAny();
         emotionServerSocketRef.current.disconnect();
         emotionServerSocketRef.current = null;
       }

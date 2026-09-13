@@ -87,10 +87,13 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
         socket = io(config.SOCKET_BASE_URL, {
             transports: ['websocket', 'polling'],
             query: { profile: effectiveProfileId },
+            auth: { profile: effectiveProfileId },
             timeout: 20000,
             forceNew: true,
             reconnection: true,
-            reconnectionAttempts: 5,
+            // Keep retrying indefinitely so a web client recovers after the
+            // local nodemon server restarts during development.
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
         });

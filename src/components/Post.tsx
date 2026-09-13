@@ -205,6 +205,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [comments, setComments] = useState<any[]>(() =>
     normalizeComments(post.comments),
   );
+  const [newCommentIds, setNewCommentIds] = useState<string[]>([]);
   const [loadingComments, setLoadingComments] = useState<boolean>(false);
   const [type, setType] = useState<string>(post.type || 'post');
   const [replyingTo, setReplyingTo] = useState<any>(null);
@@ -334,6 +335,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   useEffect(() => {
     commentsFetchedRef.current = null;
     setShowAllComments(false);
+    setNewCommentIds([]);
     const next = normalizeComments(post.comments);
     setComments(next);
     setTotalComments(
@@ -700,7 +702,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           createdAt: res.data.createdAt || new Date().toISOString(),
         };
         console.log('Processed comment:', newComment);
-        setComments(prev => [newComment, ...normalizeComments(prev)]);
+        setComments(prev => [...normalizeComments(prev), newComment]);
+        if (newComment._id) {
+          setNewCommentIds(prev =>
+            prev.includes(newComment._id) ? prev : [...prev, newComment._id],
+          );
+        }
         setTotalComments(count => count + 1);
         setCommentText('');
       }
@@ -1679,11 +1686,6 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               <Text
                 style={[styles.caption, { color: textColor }]}
                 numberOfLines={showFullCaption ? undefined : 2}
-                onTextLayout={event => {
-                  if (!showFullCaption) {
-                    setCaptionHasMore(event.nativeEvent.lines.length > 2);
-                  }
-                }}
               >
                 {renderMentionBody(
                   post.caption,
@@ -1694,6 +1696,25 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 )}
               </Text>
             </TouchableOpacity>
+            <Text
+              pointerEvents="none"
+              style={[
+                styles.caption,
+                styles.captionMeasure,
+                { color: textColor },
+              ]}
+              onTextLayout={event => {
+                setCaptionHasMore(event.nativeEvent.lines.length > 2);
+              }}
+            >
+              {renderMentionBody(
+                post.caption,
+                profileId =>
+                  navigation.navigate('ConnectProfile', { connectId: profileId }),
+                { color: textColor },
+                { color: accentColor, fontWeight: '600' },
+              )}
+            </Text>
             {captionHasMore || showFullCaption ? (
               <TouchableOpacity
                 onPress={() => setShowFullCaption(expanded => !expanded)}
@@ -1958,9 +1979,20 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               No comments yet
             </Text>
           ) : (
-            (showAllComments ? comments : comments.slice(0, 2)).map(c =>
-              renderCommentThread(c),
-            )
+            (showAllComments
+              ? comments
+              : [
+                  ...comments.slice(0, 2),
+                  ...comments.filter(
+                    comment =>
+                      comment?._id &&
+                      newCommentIds.includes(comment._id) &&
+                      !comments.slice(0, 2).some(
+                        visible => visible?._id === comment?._id,
+                      ),
+                  ),
+                ]
+            ).map(c => renderCommentThread(c))
           )}
           {comments.length > 2 ? (
             <TouchableOpacity
@@ -2243,6 +2275,12 @@ const styles = StyleSheet.create({
     paddingBottom: 12,
     fontSize: 15,
     lineHeight: 21.5,
+  },
+  captionMeasure: {
+    position: 'absolute',
+    left: 0,
+    width: '100%',
+    opacity: 0,
   },
   seeMoreButton: {
     alignSelf: 'flex-start',

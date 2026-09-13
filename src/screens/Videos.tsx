@@ -686,18 +686,25 @@ const Videos = () => {
     if (append) setLoadingMore(true);
     else setLoading(true);
     try {
-      const res = await api.get(`watch/profileWatch?pageNumber=${pageNum}`);
+      const res = await api.get('/feed/watches', {
+        params: { page: pageNum, limit: 10 },
+      });
       if (res.status === 200) {
         const data = res.data || {};
-        const items: Video[] = Array.isArray(data.watchs)
-          ? data.watchs
-          : Array.isArray(data)
-          ? data
+        const items: Video[] = Array.isArray(data.watches)
+          ? data.watches
           : [];
-        const more =
-          typeof data.hasNewWatch === 'boolean' ? data.hasNewWatch : false;
+        const more = data.hasMore === true;
         setHasMore(more);
-        setVideos(prev => (append ? [...prev, ...items] : items));
+        setVideos(prev => {
+          const next = append ? [...prev, ...items] : items;
+          const seen = new Set<string>();
+          return next.filter(item => {
+            if (!item?._id || seen.has(item._id)) return false;
+            seen.add(item._id);
+            return true;
+          });
+        });
       }
     } catch (e) {
       console.log('Failed to load videos', e);

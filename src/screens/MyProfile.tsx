@@ -1560,11 +1560,14 @@ const styles = StyleSheet.create({
   },
   profileNameBlock: {
     flexDirection: 'column',
+    width: '100%',
+    alignItems: 'center',
     marginTop: 10,
   },
   fullName: {
     fontWeight: 'bold',
     fontSize: 22,
+    textAlign: 'center',
     textTransform: 'capitalize',
   },
   connectsCount: {

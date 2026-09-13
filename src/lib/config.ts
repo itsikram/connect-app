@@ -71,6 +71,9 @@ const getDevMediapipeServerUrl = (): string =>
   process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() ||
   'http://192.168.1.102:5001';
 
+export const getExplicitFaceServiceUrl = (): string =>
+  process.env.EXPO_PUBLIC_FACE_SERVICE_URL?.trim() || '';
+
 // Development server URLs (local network)
 const devServerUrl = getDevServerUrl();
 const devMediapipeServerUrl = getDevMediapipeServerUrl();

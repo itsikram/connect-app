@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import {
   Audio,
   InterruptionModeAndroid,
@@ -9,6 +9,7 @@ import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config from '../lib/config';
 import { useSettings } from '../contexts/SettingsContext';
+import { isCallBusy } from '../lib/callSession';
 
 const TARGET_SAMPLE_RATE = 16000;
 const STREAM_POLL_MS = 80;
@@ -698,6 +699,9 @@ export default function useComposerLiveTranscribe({
   const start = useCallback(
     async (langCode?: string, options?: { skipStop?: boolean }) => {
       if (!captureEnabled) return false;
+      // Agora owns the microphone during calls/live voice. Only call captions
+      // explicitly opt into the shared audio session.
+      if (isCallBusy() && !preserveAudioSession) return false;
       if (!options?.skipStop) await stop();
       ignoreResultsRef.current = false;
       lastPartialRef.current = '';
@@ -796,6 +800,19 @@ export default function useComposerLiveTranscribe({
     },
     [closeSocket, stopCurrentRecording],
   );
+
+  useEffect(() => {
+    if (preserveAudioSession) return;
+    const subscription = DeviceEventEmitter.addListener(
+      'communication-session-active',
+      (active: boolean) => {
+        if (active && wantListenRef.current) {
+          void stop({ discard: true });
+        }
+      },
+    );
+    return () => subscription.remove();
+  }, [preserveAudioSession, stop]);
 
   return {
     listening,

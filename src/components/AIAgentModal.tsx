@@ -44,6 +44,7 @@ import {
   parseAgentIntent,
 } from '../services/agentActionCatalog';
 import { Audio } from '../lib/avCompat';
+import { isCallBusy } from '../lib/callSession';
 import {
   AgentSpeechLanguage,
   createAgentSpeechController,
@@ -1485,6 +1486,10 @@ const AIAgentModal: React.FC<Props> = ({
     setSpeechEnabled(true);
     setVoiceLanguageMenuOpen(false);
     void (async () => {
+      if (isCallBusy()) {
+        setVoiceConversation(false);
+        return;
+      }
       if (voiceStartInFlightRef.current || transcribe.listening) return;
       voiceStartInFlightRef.current = true;
       try {
@@ -1516,6 +1521,13 @@ const AIAgentModal: React.FC<Props> = ({
   ]);
 
   const toggleVoice = async () => {
+    if (!transcribe.listening && isCallBusy()) {
+      Alert.alert(
+        'Voice input unavailable',
+        'Voice input is unavailable during an audio, video, or live voice session.',
+      );
+      return;
+    }
     if (transcribe.listening) {
       setVoiceConversation(false);
       setVoiceLanguageMenuOpen(false);
@@ -1558,6 +1570,10 @@ const AIAgentModal: React.FC<Props> = ({
     await announceListening(speechLanguage);
 
     if (voiceConversation) {
+      if (isCallBusy()) {
+        setVoiceConversation(false);
+        return;
+      }
       const started = await transcribe.start(speechLanguage, {
         skipStop: true,
       });
@@ -1565,6 +1581,10 @@ const AIAgentModal: React.FC<Props> = ({
     }
   };
   const restoreAndListen = async () => {
+    if (isCallBusy()) {
+      setVoiceConversation(false);
+      return;
+    }
     setMinimized(false);
     setSpeechEnabled(true);
     if (transcribe.listening) {
