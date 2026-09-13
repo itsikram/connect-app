@@ -33,6 +33,9 @@ const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
 const STORAGE_KEY = '@connect/feature-flags';
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 
+const isBrowserOffline = (): boolean =>
+  typeof navigator !== 'undefined' && navigator.onLine === false;
+
 const parseFeatureFlags = (value: unknown): FeatureFlags => {
   const source =
     value && typeof value === 'object' && 'featureFlags' in value
@@ -70,6 +73,11 @@ export function FeatureFlagProvider({
   const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
+    if (isBrowserOffline()) {
+      setIsLoading(false);
+      return;
+    }
+
     try {
       const response = await api.get('/config/flags');
       const nextFlags = parseFeatureFlags(response.data);

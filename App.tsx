@@ -734,6 +734,10 @@ function AppWithTopProgress() {
   );
 }
 async function requestLocationPermission() {
+  if (Platform.OS === 'web') {
+    return;
+  }
+
   try {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status === 'granted') {
@@ -1671,19 +1675,12 @@ function App() {
     }
   }, []);
 
-  // Request location permission on app initialization
+  // Request native permissions only. Browser builds must remain usable offline
+  // and do not expose the native location permission API.
   React.useEffect(() => {
-    requestLocationPermission();
-  }, []);
-
-  // Send HTTP request to yt-dl service on app start
-  React.useEffect(() => {
-    fetch('https://yt-dl-tyyw.onrender.com').catch(() => {
-      // Silently fail - fire and forget
-    });
-    fetch('https://emotion-detection-z1b2.onrender.com/').catch(() => {
-      // Silently fail - fire and forget
-    });
+    if (Platform.OS !== 'web') {
+      void requestLocationPermission();
+    }
   }, []);
 
   return (
