@@ -13,6 +13,7 @@ import {
   Alert,
 } from 'react-native';
 import { useSelector } from 'react-redux';
+import * as ImagePicker from 'expo-image-picker';
 import moment from 'moment';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -113,7 +114,8 @@ const renderMentionBody = (
   onHashtagPress?: (hashtag: string) => void,
 ) => {
   const value = String(body || '');
-  const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)|(^|[^\p{L}\p{N}_])(#[\p{L}\p{N}_]{1,50})/giu;
+  const tokenPattern =
+    /@\[([^\]]+)\]\(([a-f\d]{24})\)|(^|[^\p{L}\p{N}_])(#[\p{L}\p{N}_]{1,50})/giu;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match: RegExpExecArray | null;
@@ -128,7 +130,11 @@ const renderMentionBody = (
     }
     if (match[1]) {
       parts.push(
-        <Text key={`mention-${match.index}`} style={mentionStyle} onPress={() => onProfilePress(match![2])}>
+        <Text
+          key={`mention-${match.index}`}
+          style={mentionStyle}
+          onPress={() => onProfilePress(match![2])}
+        >
           @{match[1].trim()}
         </Text>,
       );
@@ -139,7 +145,8 @@ const renderMentionBody = (
           style={mentionStyle}
           onPress={() => onHashtagPress?.(match![4])}
         >
-          {match[3]}{match[4]}
+          {match[3]}
+          {match[4]}
         </Text>,
       );
     }
@@ -211,15 +218,27 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [replyText, setReplyText] = useState<string>('');
   const [isPostingComment, setIsPostingComment] = useState<boolean>(false);
+  const [commentAttachment, setCommentAttachment] = useState<{
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  } | null>(null);
+  const [isUploadingCommentAttachment, setIsUploadingCommentAttachment] =
+    useState<boolean>(false);
   const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
-  const [updatingCommentId, setUpdatingCommentId] = useState<string | null>(null);
+  const [updatingCommentId, setUpdatingCommentId] = useState<string | null>(
+    null,
+  );
   const [likingCommentId, setLikingCommentId] = useState<string | null>(null);
   const [showFullCaption, setShowFullCaption] = useState<boolean>(false);
   const [captionHasMore, setCaptionHasMore] = useState<boolean>(false);
+  const [captionWidth, setCaptionWidth] = useState<number>(0);
+  const captionMayOverflow =
+    captionHasMore || String(post.caption || '').trim().length > 80;
   const [showAllComments, setShowAllComments] = useState<boolean>(false);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
   const [imageLoading, setImageLoading] = useState<boolean>(true);
@@ -661,6 +680,40 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     commentInputRef.current?.focus();
   };
 
+  const handleCommentAttachment = async () => {
+    if (isPostingComment || isUploadingCommentAttachment) return;
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          'Permission needed',
+          'Photo library permission is required to attach an image.',
+        );
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const asset = result.assets[0];
+        setCommentAttachment({
+          uri: asset.uri,
+          fileName: asset.fileName || 'comment.jpg',
+          mimeType: asset.mimeType || 'image/jpeg',
+        });
+      }
+    } catch (error) {
+      console.log('Failed to select comment attachment:', error);
+      Alert.alert(
+        'Attachment failed',
+        'Unable to select an image. Please try again.',
+      );
+    }
+  };
+
   const handlePostImageLoad = (event: any) => {
     setImageLoading(false);
     setImageLoadError(false);
@@ -680,13 +733,28 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
 
   // Handle posting a comment
   const handlePostComment = async () => {
-    if (!commentText.trim() || isPostingComment) return;
+    if ((!commentText.trim() && !commentAttachment) || isPostingComment) return;
     setIsPostingComment(true);
     try {
+      let attachmentUrl = '';
+      if (commentAttachment) {
+        setIsUploadingCommentAttachment(true);
+        const formData = new FormData();
+        formData.append('image', {
+          uri: commentAttachment.uri,
+          name: commentAttachment.fileName || 'comment.jpg',
+          type: commentAttachment.mimeType || 'image/jpeg',
+        } as any);
+        const uploadRes = await api.post('/upload/', formData);
+        attachmentUrl = uploadRes.data?.secure_url || uploadRes.data?.url || '';
+        if (uploadRes.status !== 200 || !attachmentUrl) {
+          throw new Error('Comment attachment upload failed');
+        }
+      }
       const res = await api.post('/comment/addComment', {
-        body: commentText,
+        body: commentText.trim(),
         post: post._id,
-        // attachment: '', // Add support for image/file attachment if needed
+        attachment: attachmentUrl,
       });
       if (res.status === 200 && res.data) {
         console.log('Comment response data:', res.data);
@@ -699,6 +767,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             _id: myProfile?._id,
           },
           text: res.data.text || res.data.body || commentText,
+          attachment: res.data.attachment || attachmentUrl,
           createdAt: res.data.createdAt || new Date().toISOString(),
         };
         console.log('Processed comment:', newComment);
@@ -710,10 +779,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         }
         setTotalComments(count => count + 1);
         setCommentText('');
+        setCommentAttachment(null);
       }
     } catch (e) {
-      console.log(e);
+      console.log('Failed to post comment:', e);
+      Alert.alert(
+        'Comment failed',
+        'Unable to post your comment. Please try again.',
+      );
     } finally {
+      setIsUploadingCommentAttachment(false);
       setIsPostingComment(false);
     }
   };
@@ -723,9 +798,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     setReplyingTo(comment);
     const authorId = commentAuthorId(comment);
     setReplyText(
-      authorId
-        ? `@[${commentAuthorName(comment)}](${authorId}) `
-        : '',
+      authorId ? `@[${commentAuthorName(comment)}](${authorId}) ` : '',
     );
   };
 
@@ -818,7 +891,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const startEditing = (comment: any) => {
     setCommentMenuId(null);
     setEditingCommentId(comment._id);
-    setEditingText(comment.text || comment.body || comment.content || comment.message || '');
+    setEditingText(
+      comment.text || comment.body || comment.content || comment.message || '',
+    );
   };
 
   const cancelEditing = () => {
@@ -1002,22 +1077,46 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                     multiline
                     maxLength={255}
                     editable={updatingCommentId !== c._id}
-                    style={[styles.commentEditInput, { color: textColor, borderColor }]}
-                    placeholder={isReply ? 'Edit your reply' : 'Edit your comment'}
+                    style={[
+                      styles.commentEditInput,
+                      { color: textColor, borderColor },
+                    ]}
+                    placeholder={
+                      isReply ? 'Edit your reply' : 'Edit your comment'
+                    }
                     placeholderTextColor={subTextColor}
                   />
                   <View style={styles.commentEditActions}>
-                    <TouchableOpacity onPress={cancelEditing} disabled={updatingCommentId === c._id}>
-                      <Text style={[styles.fbReactLink, { color: commentActionColor }]}>Cancel</Text>
+                    <TouchableOpacity
+                      onPress={cancelEditing}
+                      disabled={updatingCommentId === c._id}
+                    >
+                      <Text
+                        style={[
+                          styles.fbReactLink,
+                          { color: commentActionColor },
+                        ]}
+                      >
+                        Cancel
+                      </Text>
                     </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleUpdateComment(c, isReply)}
-                      disabled={!editingText.trim() || updatingCommentId === c._id}
+                      disabled={
+                        !editingText.trim() || updatingCommentId === c._id
+                      }
                     >
                       {updatingCommentId === c._id ? (
                         <ActivityIndicator size="small" color={accentColor} />
                       ) : (
-                        <Text style={[styles.fbReactLink, { color: accentColor, fontWeight: '700' }]}>Save</Text>
+                        <Text
+                          style={[
+                            styles.fbReactLink,
+                            { color: accentColor, fontWeight: '700' },
+                          ]}
+                        >
+                          Save
+                        </Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -1027,7 +1126,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   {renderMentionBody(
                     body,
                     profileId =>
-                      navigation.navigate('ConnectProfile', { connectId: profileId }),
+                      navigation.navigate('ConnectProfile', {
+                        connectId: profileId,
+                      }),
                     { color: textColor },
                     { color: accentColor, fontWeight: '600' },
                   )}
@@ -1059,7 +1160,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                         onPress={() => startEditing(c)}
                         disabled={!!updatingCommentId}
                       >
-                        <Text style={[styles.fbOptionsText, { color: textColor }]}>
+                        <Text
+                          style={[styles.fbOptionsText, { color: textColor }]}
+                        >
                           {isReply ? 'Edit Reply' : 'Edit Comment'}
                         </Text>
                       </TouchableOpacity>
@@ -1681,41 +1784,74 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
       </View>
       <View style={styles.body}>
         {post.caption ? (
-          <View>
+          <View
+            onLayout={event => setCaptionWidth(event.nativeEvent.layout.width)}
+          >
             <TouchableOpacity onPress={openSinglePost} activeOpacity={0.85}>
               <Text
                 style={[styles.caption, { color: textColor }]}
                 numberOfLines={showFullCaption ? undefined : 2}
+                onTextLayout={event => {
+                  const lines = event.nativeEvent.lines;
+                  const lastLine = lines[lines.length - 1];
+                  if (
+                    lines.length > 2 ||
+                    (lines.length === 2 &&
+                      /(?:…|\.\.\.)$/.test(lastLine?.text?.trim() || ''))
+                  ) {
+                    setCaptionHasMore(true);
+                  }
+                }}
               >
                 {renderMentionBody(
                   post.caption,
                   profileId =>
-                    navigation.navigate('ConnectProfile', { connectId: profileId }),
+                    navigation.navigate('ConnectProfile', {
+                      connectId: profileId,
+                    }),
                   { color: textColor },
                   { color: accentColor, fontWeight: '600' },
                 )}
               </Text>
             </TouchableOpacity>
             <Text
+              key={`${post._id}-${post.caption}`}
               pointerEvents="none"
               style={[
                 styles.caption,
                 styles.captionMeasure,
                 { color: textColor },
+                captionWidth > 24
+                  ? { width: captionWidth - 24, paddingHorizontal: 0 }
+                  : null,
               ]}
               onTextLayout={event => {
-                setCaptionHasMore(event.nativeEvent.lines.length > 2);
+                if (event.nativeEvent.lines.length > 2) {
+                  setCaptionHasMore(true);
+                }
               }}
             >
               {renderMentionBody(
                 post.caption,
                 profileId =>
-                  navigation.navigate('ConnectProfile', { connectId: profileId }),
+                  navigation.navigate('ConnectProfile', {
+                    connectId: profileId,
+                  }),
                 { color: textColor },
                 { color: accentColor, fontWeight: '600' },
               )}
             </Text>
-            {captionHasMore || showFullCaption ? (
+            {captionMayOverflow && !showFullCaption ? (
+              <TouchableOpacity
+                onPress={() => setShowFullCaption(true)}
+                style={[styles.seeMoreInline, { backgroundColor: cardBg }]}
+              >
+                <Text style={[styles.seeMoreText, { color: accentColor }]}>
+                  See more
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            {showFullCaption ? (
               <TouchableOpacity
                 onPress={() => setShowFullCaption(expanded => !expanded)}
                 style={styles.seeMoreButton}
@@ -1735,10 +1871,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               gallerySize === 2
                 ? styles.postGallery2
                 : gallerySize === 3
-                  ? styles.postGallery3
-                  : gallerySize === 4
-                    ? styles.postGallery4
-                    : styles.postGallery5,
+                ? styles.postGallery3
+                : gallerySize === 4
+                ? styles.postGallery4
+                : styles.postGallery5,
             ]}
           >
             {postImageUrls.slice(0, 5).map((url, index) => (
@@ -1748,7 +1884,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 activeOpacity={0.9}
                 style={[
                   styles.postGalleryItem,
-                  gallerySize === 3 && index === 0 ? styles.postGalleryLead : null,
+                  gallerySize === 3 && index === 0
+                    ? styles.postGalleryLead
+                    : null,
                 ]}
               >
                 <Image
@@ -1758,7 +1896,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 />
                 {index === 4 && postImageUrls.length > 5 ? (
                   <View style={styles.postGalleryMore}>
-                    <Text style={styles.postGalleryMoreText}>+{postImageUrls.length - 5}</Text>
+                    <Text style={styles.postGalleryMoreText}>
+                      +{postImageUrls.length - 5}
+                    </Text>
                   </View>
                 ) : null}
               </TouchableOpacity>
@@ -1787,9 +1927,17 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             {imageLoading && (
               <SkeletonBlock
                 width={postType === 'profilePic' ? PROFILE_PIC_SIZE : '100%'}
-                height={postType === 'profilePic' ? PROFILE_PIC_SIZE : imageHeight}
-                borderRadius={postType === 'profilePic' ? PROFILE_PIC_SIZE / 2 : 0}
-                style={postType === 'profilePic' ? styles.postProfilePic : styles.postImage}
+                height={
+                  postType === 'profilePic' ? PROFILE_PIC_SIZE : imageHeight
+                }
+                borderRadius={
+                  postType === 'profilePic' ? PROFILE_PIC_SIZE / 2 : 0
+                }
+                style={
+                  postType === 'profilePic'
+                    ? styles.postProfilePic
+                    : styles.postImage
+                }
               />
             )}
             {imageLoadError ? (
@@ -1807,9 +1955,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               <Image
                 key={imageRetryKey}
                 source={{
-                  uri: getAssetUrl(
-                    postImageUrls[0],
-                  ),
+                  uri: getAssetUrl(postImageUrls[0]),
                 }}
                 style={[
                   postType === 'profilePic'
@@ -1987,9 +2133,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                     comment =>
                       comment?._id &&
                       newCommentIds.includes(comment._id) &&
-                      !comments.slice(0, 2).some(
-                        visible => visible?._id === comment?._id,
-                      ),
+                      !comments
+                        .slice(0, 2)
+                        .some(visible => visible?._id === comment?._id),
                   ),
                 ]
             ).map(c => renderCommentThread(c))
@@ -2019,6 +2165,34 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 { backgroundColor: inputBg, borderColor },
               ]}
             >
+              {commentAttachment ? (
+                <View
+                  style={[
+                    styles.commentAttachmentPreview,
+                    { backgroundColor: inputBg, borderColor },
+                  ]}
+                >
+                  <Image
+                    source={{ uri: commentAttachment.uri }}
+                    style={styles.commentAttachmentThumb}
+                  />
+                  <View style={styles.commentAttachmentBadge}>
+                    <FAIcon name="image" size={10} color="#fff" solid />
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => setCommentAttachment(null)}
+                    style={styles.commentAttachmentRemove}
+                    disabled={isPostingComment}
+                  >
+                    <Icon name="close" size={14} color="#fff" />
+                  </TouchableOpacity>
+                  {isUploadingCommentAttachment ? (
+                    <View style={styles.commentAttachmentLoading}>
+                      <ActivityIndicator size="small" color="#fff" />
+                    </View>
+                  ) : null}
+                </View>
+              ) : null}
               <MentionTextInput
                 myProfileId={myProfileId}
                 ref={commentInputRef}
@@ -2039,6 +2213,18 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 returnKeyType="send"
                 onSubmitEditing={handlePostComment}
               />
+              <TouchableOpacity
+                style={styles.fbFieldAttachment}
+                onPress={handleCommentAttachment}
+                disabled={isPostingComment || isUploadingCommentAttachment}
+              >
+                <FAIcon
+                  name="image"
+                  size={15}
+                  color={accentColor}
+                  solid={false}
+                />
+              </TouchableOpacity>
               <TouchableOpacity
                 style={styles.fbFieldSend}
                 onPress={handlePostComment}
@@ -2293,6 +2479,17 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(0, 212, 255, 0.35)',
     backgroundColor: 'rgba(0, 212, 255, 0.10)',
+  },
+  seeMoreInline: {
+    position: 'absolute',
+    right: 0,
+    bottom: 12,
+    minWidth: 104,
+    paddingLeft: 8,
+    paddingRight: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    backgroundColor: '#1d1d1f',
   },
   seeMoreText: {
     fontSize: 12,
@@ -2610,8 +2807,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  sharePrimaryButton: {
-  },
+  sharePrimaryButton: {},
   sharePrimaryText: {
     color: '#FFFFFF',
     fontSize: 16,
@@ -2820,6 +3016,62 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginTop: 6,
     backgroundColor: '#eee',
+  },
+  commentAttachmentPreview: {
+    position: 'absolute',
+    left: 10,
+    bottom: 44,
+    width: 76,
+    height: 76,
+    padding: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 4,
+    zIndex: 2,
+  },
+  commentAttachmentThumb: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 8,
+  },
+  commentAttachmentBadge: {
+    position: 'absolute',
+    left: 8,
+    bottom: 8,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#00bcd4',
+  },
+  commentAttachmentRemove: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ef4444',
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  commentAttachmentLoading: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
   },
   // Delete confirmation modal styles
   deleteConfirmModal: {
@@ -3110,7 +3362,7 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 12,
     borderRadius: 18,
-    maxWidth: '100%',
+    maxWidth: '90%',
   },
   fbAuthorName: {
     fontWeight: '600',
@@ -3125,6 +3377,7 @@ const styles = StyleSheet.create({
   fbOptionsWrap: {
     marginLeft: 4,
     position: 'relative',
+    alignSelf: 'center',
   },
   fbOptionsBtn: {
     width: 24,
@@ -3220,6 +3473,7 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   fbCommentField: {
+    position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: 40,
@@ -3236,6 +3490,12 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     minHeight: 38,
     paddingVertical: 8,
+  },
+  fbFieldAttachment: {
+    width: 30,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   fbFieldSend: {
     width: 34,

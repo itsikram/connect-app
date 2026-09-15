@@ -11,6 +11,7 @@ import {
     StyleSheet,
     ActivityIndicator,
     Modal,
+    Platform,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -27,6 +28,8 @@ import VoiceTextInput from '../components/VoiceTextInput';
 import MentionTextInput from '../components/MentionTextInput';
 import { AUDIENCE_OPTIONS, getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
+import { generatePostCaption } from '../services/aiAgentService';
+import { useSettings } from '../contexts/SettingsContext';
 
 interface Post {
     _id: string;
@@ -66,6 +69,7 @@ const EditPost = () => {
     const { colors: themeColors, isDarkMode } = useTheme();
     const myProfile = useSelector((state: RootState) => state.profile);
     const { showToast } = useModernToast();
+    const { settings } = useSettings();
     
     const [post, setPost] = useState<Post | null>(null);
     const [loading, setLoading] = useState(true);
@@ -85,6 +89,7 @@ const EditPost = () => {
     const [newImageUri, setNewImageUri] = useState<string | null>(null);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
     const [imageRemoved, setImageRemoved] = useState(false);
+    const [isWritingCaption, setIsWritingCaption] = useState(false);
     
     // Feelings options
     const feelingsOptions = [
@@ -161,6 +166,22 @@ const EditPost = () => {
             fontSize: 18,
             fontWeight: '600',
             marginBottom: 12,
+        },
+        captionHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+        },
+        aiCaptionButton: {
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 8,
+            backgroundColor: themeColors.primary + '18',
+            borderWidth: 1,
+            borderColor: themeColors.primary + '55',
         },
         inputContainer: {
             marginBottom: 16,
@@ -488,6 +509,40 @@ const EditPost = () => {
         }
     };
 
+    const handleRegenerateCaption = async () => {
+        if (isWritingCaption || saving) return;
+        setIsWritingCaption(true);
+        try {
+            const currentCaption = caption.trim();
+            const hint = currentCaption
+                ? `Generate a fresh alternative caption for this post. Preserve the meaning, tone, and key details, but use noticeably different wording from the current caption. Current caption draft: "${currentCaption}"`
+                : 'Write a short natural caption for this post.';
+            const nextCaption = await generatePostCaption(
+                hint,
+                undefined,
+                undefined,
+                settings.language === 'bn' ? 'bn' : 'eng',
+            );
+            if (nextCaption) {
+                setCaption(nextCaption.slice(0, 500));
+                showToast({
+                    type: 'success',
+                    title: 'Caption regenerated',
+                    message: 'Your caption draft has been updated.',
+                });
+            }
+        } catch (error) {
+            console.warn('Caption regeneration failed:', error);
+            showToast({
+                type: 'error',
+                title: 'Caption not ready',
+                message: 'We could not regenerate the caption right now.',
+            });
+        } finally {
+            setIsWritingCaption(false);
+        }
+    };
+
     const removeImage = () => {
         Alert.alert(
             'Remove Image',
@@ -545,7 +600,7 @@ const EditPost = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <StatusBar 
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
@@ -560,7 +615,7 @@ const EditPost = () => {
 
     if (error || !post) {
         return (
-            <SafeAreaView style={styles.container}>
+            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
                 <StatusBar 
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
@@ -584,7 +639,7 @@ const EditPost = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
             <StatusBar 
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                 backgroundColor={themeColors.surface.header} 
@@ -612,7 +667,10 @@ const EditPost = () => {
                 </TouchableOpacity>
             </View>
 
-            <KeyboardSafeView nested>
+            <KeyboardSafeView
+                nested
+                extraOffset={Platform.OS === 'ios' ? 8 : 0}
+            >
                 <ScrollView style={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
                     {/* Author Info */}
                     <View style={styles.authorSection}>
@@ -734,7 +792,33 @@ const EditPost = () => {
 
                     {/* Caption */}
                     <View style={styles.formSection}>
-                        <Text style={styles.sectionTitle}>What's on your mind?</Text>
+                        <View style={styles.captionHeader}>
+                            <Text style={styles.sectionTitle}>What's on your mind?</Text>
+                            <TouchableOpacity
+                                onPress={handleRegenerateCaption}
+                                disabled={isWritingCaption || saving}
+                                accessibilityRole="button"
+                                accessibilityLabel={
+                                    isWritingCaption
+                                        ? 'Regenerating caption with AI'
+                                        : 'Regenerate caption with AI'
+                                }
+                                style={styles.aiCaptionButton}
+                            >
+                                {isWritingCaption ? (
+                                    <ActivityIndicator
+                                        size="small"
+                                        color={themeColors.primary}
+                                    />
+                                ) : (
+                                    <Icon
+                                        name="auto-awesome"
+                                        size={20}
+                                        color={themeColors.primary}
+                                    />
+                                )}
+                            </TouchableOpacity>
+                        </View>
                         <View style={styles.inputContainer}>
                             <MentionTextInput
                                 myProfileId={myProfile?._id}

@@ -935,7 +935,9 @@ const AIAgentModal: React.FC<Props> = ({
     setMessages(previous => [...previous, user, stream]);
     setLoading(true);
     const controller = new AbortController();
-    const speechController = createAgentSpeechController(speechLanguage);
+    const speechController = createAgentSpeechController(speechLanguage, {
+      onSpeechStart: () => transcribe.stop({ discard: true }),
+    });
     const shouldSpeak = speechEnabled;
     if (shouldSpeak) {
       await transcribe.stop({ discard: true });
@@ -1168,7 +1170,9 @@ const AIAgentModal: React.FC<Props> = ({
             if (shouldSpeak) {
               await transcribe.stop({ discard: true });
               await restoreChatPlaybackAudioMode();
-              const reader = createAgentSpeechController(speechLanguage);
+              const reader = createAgentSpeechController(speechLanguage, {
+                onSpeechStart: () => transcribe.stop({ discard: true }),
+              });
               reader.update(value, speechLanguage);
               await reader.finish();
               speechControllerRef.current = reader;
@@ -1418,7 +1422,9 @@ const AIAgentModal: React.FC<Props> = ({
       await transcribe.stop({ discard: true });
       await restoreChatPlaybackAudioMode();
       void speechControllerRef.current?.stop();
-      const speechController = createAgentSpeechController(speechLanguage);
+      const speechController = createAgentSpeechController(speechLanguage, {
+        onSpeechStart: () => transcribe.stop({ discard: true }),
+      });
       speechControllerRef.current = speechController;
       speechController.update(
         speechLanguage === 'bn-BD' ? 'আমি শুনছি' : 'Listening',
@@ -1829,11 +1835,8 @@ const AIAgentModal: React.FC<Props> = ({
 
   return (
     <>
-      <Modal
-        visible={visible && !minimized}
-        animationType="slide"
-        onRequestClose={close}
-      >
+      {visible && !minimized && (
+        <Modal animationType="slide" onRequestClose={close}>
         <SafeAreaView
           style={[styles.safe, { backgroundColor: colors.background.primary }]}
         >
@@ -2257,7 +2260,8 @@ const AIAgentModal: React.FC<Props> = ({
             </View>
           </KeyboardAvoidingView>
         </SafeAreaView>
-      </Modal>
+        </Modal>
+      )}
       {visible && minimized && (
         <Animated.View
           {...miniPanResponder.panHandlers}

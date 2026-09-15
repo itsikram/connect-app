@@ -1444,6 +1444,7 @@ function AppContentInner({
     state ? getDeepestRouteName(state) : '',
   );
   const isAuthScreen = deepestRoute === 'Login' || deepestRoute === 'Register';
+  const isEditPostScreen = deepestRoute === 'EditPost';
   const chatScreenActive = useChatScreenChrome();
   const isChatThread = deepestRoute === 'SingleMessage' || chatScreenActive;
   const isMessageInbox = deepestRoute === 'MessageList';
@@ -1458,6 +1459,8 @@ function AppContentInner({
     ? Platform.OS === 'ios'
       ? (['top'] as const)
       : []
+    : isEditPostScreen
+    ? []
     : Platform.OS === 'ios'
     ? (['top', 'right', 'left'] as const)
     : [];
@@ -1500,19 +1503,24 @@ function AppContentInner({
                       ? { top: 0, right: 0, bottom: 0, left: 0 }
                       : undefined
                   }
-                  screenOptions={({ route }) => ({
-                    tabBarStyle:
-                      route.name === 'Login' || route.name === 'Register'
-                        ? { display: 'none', height: 0 }
-                        : undefined,
-                    headerShown:
-                      route.name === 'Home' ||
-                      route.name === 'Connects' ||
-                      route.name === 'Videos',
-                    header:
-                      route.name === 'Home' ||
-                      route.name === 'Connects' ||
-                      route.name === 'Videos'
+                  screenOptions={({ route }) => {
+                    const nestedRouteName =
+                      getDeepestRouteName(
+                        (route as unknown as { state?: unknown }).state,
+                      ) || deepestRoute;
+                    const showFacebookHeader =
+                      nestedRouteName !== 'EditPost' &&
+                      (route.name === 'Home' ||
+                        route.name === 'Connects' ||
+                        route.name === 'Videos');
+
+                    return {
+                      tabBarStyle:
+                        route.name === 'Login' || route.name === 'Register'
+                          ? { display: 'none', height: 0 }
+                          : undefined,
+                      headerShown: showFacebookHeader,
+                      header: showFacebookHeader
                         ? () => (
                             <FacebookHeader
                               onOpenAIAgent={() => {
@@ -1526,33 +1534,44 @@ function AppContentInner({
                               }}
                             />
                           )
-                        : undefined,
-                  })}
+                        : () => null,
+                    };
+                  }}
                 >
                   {user ? (
                     <>
                       <Tab.Screen
                         name="Home"
                         component={HomeStack}
-                        options={{
+                        options={({ route }) => ({
                           tabBarLabel: 'Home',
-                        }}
+                          headerShown:
+                            getDeepestRouteName(
+                              (route as unknown as { state?: unknown }).state,
+                            ) !== 'EditPost',
+                        })}
                       />
                       <Tab.Screen
                         name="Connects"
                         component={ConnectsStack}
-                        options={{
+                        options={({ route }) => ({
                           tabBarLabel: 'Connects',
-                          headerShown: true,
-                        }}
+                          headerShown:
+                            getDeepestRouteName(
+                              (route as unknown as { state?: unknown }).state,
+                            ) !== 'EditPost',
+                        })}
                       />
                       <Tab.Screen
                         name="Videos"
                         component={VideosStack}
-                        options={{
+                        options={({ route }) => ({
                           tabBarLabel: 'Videos',
-                          headerShown: true,
-                        }}
+                          headerShown:
+                            getDeepestRouteName(
+                              (route as unknown as { state?: unknown }).state,
+                            ) !== 'EditPost',
+                        })}
                       />
                       <Tab.Screen
                         name="Message"

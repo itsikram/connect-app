@@ -2,6 +2,9 @@ import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
 
 export type AgentSpeechLanguage = 'auto' | 'bn-BD' | 'en-US';
+type AgentSpeechControllerOptions = {
+  onSpeechStart?: () => void | Promise<void>;
+};
 
 const BENGALI_CHAR = /[\u0980-\u09FF]/;
 const BENGALI_LETTER = /[\u0980-\u09FF]/gu;
@@ -93,6 +96,7 @@ const speak = (
  */
 export function createAgentSpeechController(
   initialLanguage: AgentSpeechLanguage = 'auto',
+  options: AgentSpeechControllerOptions = {},
 ) {
   let generation = 0;
   let lastText = '';
@@ -102,6 +106,7 @@ export function createAgentSpeechController(
   let flushRequested = false;
   let availableVoices: Speech.Voice[] | null = null;
   let voicesPromise: Promise<Speech.Voice[]> | null = null;
+  let speechStartNotified = false;
 
   const currentGeneration = () => generation;
 
@@ -110,6 +115,7 @@ export function createAgentSpeechController(
     pending = '';
     lastText = '';
     flushRequested = false;
+    speechStartNotified = false;
     try {
       await Speech.stop();
     } catch {
@@ -147,6 +153,10 @@ export function createAgentSpeechController(
           voice?.language && voice.language.toLowerCase().startsWith('bn')
             ? voice.language
             : resolvedLanguage;
+        if (!speechStartNotified) {
+          speechStartNotified = true;
+          await options.onSpeechStart?.();
+        }
         await speak(
           chunk,
           spokenLanguage as any,

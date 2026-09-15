@@ -405,19 +405,17 @@ const SingleWatch = () => {
             <Icon name="arrow-back" size={24} color={t.chromeText} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: t.chromeText }]}>Watch</Text>
-          {!isOwn ? (
-            <TouchableOpacity onPress={handleDownload} style={styles.headerBtn}>
-              {downloadJob?.status === 'downloading' ? (
-                <ActivityIndicator size="small" color={t.primary} />
-              ) : (
-                <Icon
-                  name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
-                  size={22}
-                  color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
-                />
-              )}
-            </TouchableOpacity>
-          ) : null}
+          <TouchableOpacity onPress={handleDownload} style={styles.headerBtn}>
+            {downloadJob?.status === 'downloading' ? (
+              <ActivityIndicator size="small" color={t.primary} />
+            ) : (
+              <Icon
+                name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                size={22}
+                color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+              />
+            )}
+          </TouchableOpacity>
           {isOwn ? (
             <TouchableOpacity onPress={handleDelete} style={styles.headerBtn}>
               <Icon name="trash-outline" size={22} color={t.error} />
@@ -550,24 +548,24 @@ const SingleWatch = () => {
                     </View>
                     <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>Share</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={handleDownload} style={styles.action}>
-                    <View style={chromeBtn}>
-                      {downloadJob?.status === 'downloading' ? (
-                        <ActivityIndicator size="small" color={t.primary} />
-                      ) : (
-                        <Icon
-                          name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
-                          size={20}
-                          color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
-                        />
-                      )}
-                    </View>
-                    <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>
-                      {downloadJob?.status === 'downloading' ? `${Math.round(downloadJob.percent)}%` : 'Save'}
-                    </Text>
-                  </TouchableOpacity>
                 </>
               ) : null}
+              <TouchableOpacity onPress={handleDownload} style={styles.action}>
+                <View style={chromeBtn}>
+                  {downloadJob?.status === 'downloading' ? (
+                    <ActivityIndicator size="small" color={t.primary} />
+                  ) : (
+                    <Icon
+                      name={downloadJob?.status === 'completed' ? 'checkmark' : 'download-outline'}
+                      size={20}
+                      color={downloadJob?.status === 'completed' ? t.success : t.chromeText}
+                    />
+                  )}
+                </View>
+                <Text style={[styles.actionLabel, { color: t.chromeMuted }]}>
+                  {downloadJob?.status === 'downloading' ? `${Math.round(downloadJob.percent)}%` : 'Save'}
+                </Text>
+              </TouchableOpacity>
               <TouchableOpacity onPress={handleOpenPip} style={styles.action}>
                 <View style={chromeBtn}>
                   <Icon name="tv-outline" size={20} color={t.chromeText} />
