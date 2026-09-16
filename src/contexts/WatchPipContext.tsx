@@ -89,7 +89,13 @@ export const WatchPipProvider = ({ children }: { children: ReactNode }) => {
   }, []);
 
   const updatePip = useCallback((updates: Partial<PipState>) => {
-    setPip((prev) => (prev ? { ...prev, ...updates } : prev));
+    setPip((prev) => {
+      if (!prev) return prev;
+      const hasChanges = Object.keys(updates).some(
+        (key) => prev[key as keyof PipState] !== updates[key as keyof PipState],
+      );
+      return hasChanges ? { ...prev, ...updates } : prev;
+    });
   }, []);
 
   const closePip = useCallback(() => setPip(null), []);

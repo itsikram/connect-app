@@ -41,7 +41,7 @@ import {
   TURN_TRANSITION_DELAY_MS,
 } from '../lib/ludo/constants';
 import { adjustHexColor } from '../lib/ludo/colorUtils';
-import { DiceSVG } from '../lib/ludo/DiceSVG';
+import { Dice3D } from '../lib/ludo/DiceSVG';
 import { GameBoard } from '../lib/ludo/GameBoard';
 import { GameHeader } from '../lib/ludo/GameHeader';
 import {
@@ -147,6 +147,7 @@ const LudoGameSVG = () => {
   const playWithComputerRef = useRef(playWithComputer);
   const gameIdRef = useRef(gameId);
   const onlineModeRef = useRef(onlineMode);
+  const latestSnapshotVersionRef = useRef(0);
   const lastRollTimeRef = useRef(0);
   const lastLocalDiceRollTimeRef = useRef(0);
   const isRollingRef = useRef(false);
@@ -291,6 +292,7 @@ const LudoGameSVG = () => {
       playersSeq: Date.now(),
       lastActionType: actionType,
     };
+    latestSnapshotVersionRef.current = snapshot.playersSeq || 0;
     emit('ludo:players', snapshot);
     api.post('/ludo/save', snapshot).catch(() => null);
   }, [emit]);
@@ -857,6 +859,19 @@ const LudoGameSVG = () => {
 
   const applyRemoteSnapshot = useCallback((payload: GameSnapshot) => {
     if (!payload || String(payload.gameId) !== String(gameIdRef.current)) return;
+    const snapshotVersion = Math.max(
+      Number(payload.playersSeq || 0),
+      Number(payload.stateVersion || 0),
+    );
+    if (
+      snapshotVersion > 0 &&
+      snapshotVersion < latestSnapshotVersionRef.current
+    ) {
+      return;
+    }
+    if (snapshotVersion > 0) {
+      latestSnapshotVersionRef.current = snapshotVersion;
+    }
     if (Array.isArray(payload.players)) {
       playersRef.current = payload.players;
       setPlayers(payload.players);
@@ -898,6 +913,36 @@ const LudoGameSVG = () => {
 
   useEffect(() => {
     const onPlayers = (payload: GameSnapshot) => applyRemoteSnapshot(payload);
+    const onAccepted = (payload: any) => {
+      if (String(payload?.gameId || '') !== String(gameIdRef.current)) return;
+      const connect = payload?.connect;
+      const slotIndex = Number(payload?.slotIndex);
+      if (!connect?._id || !Number.isInteger(slotIndex) || slotIndex < 1) return;
+      setPlayers((prev) => {
+        const copy = clonePlayers(prev);
+        if (!copy[slotIndex]) return prev;
+        copy[slotIndex] = {
+          ...copy[slotIndex],
+          name: connect.fullName || copy[slotIndex].name,
+          avatar: connect.profilePic || copy[slotIndex].avatar,
+          cover: connect.coverPic || connect.cover || copy[slotIndex].cover,
+          profileId: String(connect._id),
+          isActive: true,
+          isOffline: false,
+        };
+        playersRef.current = copy;
+        return copy;
+      });
+      emit('ludo:players:get', { gameId: gameIdRef.current });
+    };
+    const onGameRemoved = (payload: any) => {
+      if (String(payload?.gameId || '') !== String(gameIdRef.current)) return;
+      setWaitingForPlayers(false);
+      setGameId(null);
+      gameIdRef.current = null;
+      setOnlineMode(false);
+      setLudoGameActive(false);
+    };
     const onInvite = (payload: LudoInvite) => {
       if (!payload?.gameId) return;
       if (String(payload.to || '') !== String(myProfile?._id || '')) return;
@@ -947,18 +992,28 @@ const LudoGameSVG = () => {
       if (list[0]) setIncomingInviteRequest(list[0]);
     };
     on('ludo:players', onPlayers);
+    on('ludo:accepted', onAccepted);
+    on('ludo:game:removed', onGameRemoved);
     on('ludo:invite', onInvite);
     on('ludo:invites', onInvites);
     on('ludo:roll', onRoll);
     on('ludo:move', onMove);
     return () => {
       off('ludo:players', onPlayers);
+      off('ludo:accepted', onAccepted);
+      off('ludo:game:removed', onGameRemoved);
       off('ludo:invite', onInvite);
       off('ludo:invites', onInvites);
       off('ludo:roll', onRoll);
       off('ludo:move', onMove);
     };
-  }, [on, off, applyRemoteSnapshot, myProfile?._id, setDiceValueImmediate]);
+  }, [on, off, emit, applyRemoteSnapshot, myProfile?._id, setDiceValueImmediate, setLudoGameActive]);
+
+  useEffect(() => {
+    if (!isConnected || !onlineMode || !gameId) return;
+    emit('ludo:join', { gameId });
+    emit('ludo:players:get', { gameId });
+  }, [isConnected, onlineMode, gameId, emit]);
 
   const getNextOpenSlot = useCallback(() => {
     const max = Math.max(2, Math.min(4, selectedPlayerCount));
@@ -1254,6 +1309,40 @@ const LudoGameSVG = () => {
 
   useEffect(() => {
     if (pendingLudoInvite?.id && !autoStartLudoInviteRef.current) {
+      if (pendingLudoInvite.gameId) {
+        const acceptedInvite = pendingLudoInvite;
+        const acceptedGameId = acceptedInvite.gameId;
+        const acceptedSlot = Number.isInteger(acceptedInvite.slotIndex)
+          ? Number(acceptedInvite.slotIndex)
+          : 1;
+
+        autoStartLudoInviteRef.current = true;
+        setOnlineMode(true);
+        setGameId(acceptedGameId);
+        gameIdRef.current = acceptedGameId;
+        setSelectedPlayerCount(Number(acceptedInvite.playerCount) || 4);
+        setMyPlayerIndex(acceptedSlot);
+        myPlayerIndexRef.current = acceptedSlot;
+        setShowPlayerSelection(false);
+        setGameStarted(true);
+        gameStartedRef.current = true;
+        setWaitingForPlayers(true);
+        consumeLudoInvite();
+        emit('ludo:join', { gameId: acceptedGameId });
+        emit('ludo:accept', {
+          gameId: acceptedGameId,
+          slotIndex: acceptedSlot,
+          by: myProfile?._id,
+          connect: {
+            fullName: myProfile?.fullName,
+            profilePic: myProfile?.profilePic,
+            coverPic: myProfile?.coverPic,
+          },
+        });
+        emit('ludo:players:get', { gameId: acceptedGameId });
+        return;
+      }
+
       const connect: ConnectUser = {
         _id: pendingLudoInvite.id,
         fullName: pendingLudoInvite.name,
@@ -1269,7 +1358,54 @@ const LudoGameSVG = () => {
       autoStartLudoInviteRef.current = false;
       confirmPlayerCount();
     }
-  }, [pendingLudoInvite, selectedConnects, consumeLudoInvite]);
+  }, [pendingLudoInvite, selectedConnects, consumeLudoInvite, emit, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, myProfile?.coverPic]);
+
+  const resetLocalGameState = useCallback(() => {
+    moveTimersRef.current.forEach((timer) => clearTimeout(timer));
+    moveTimersRef.current = [];
+    if (botTurnTimerRef.current) {
+      clearTimeout(botTurnTimerRef.current);
+      botTurnTimerRef.current = null;
+    }
+    isRollingRef.current = false;
+    isMovingRef.current = false;
+    isAutoMovingRef.current = false;
+    botActingRef.current = false;
+    botActingPlayerIndexRef.current = null;
+    autoStartLudoInviteRef.current = false;
+    latestSnapshotVersionRef.current = 0;
+    recentMovesRef.current.clear();
+    gameIdRef.current = null;
+    newGameDraftIdRef.current = null;
+    onlineModeRef.current = false;
+    gameStartedRef.current = false;
+    gameEndedRef.current = false;
+    currentPlayerRef.current = 0;
+    myPlayerIndexRef.current = 0;
+    diceValueRef.current = 0;
+    playersRef.current = [];
+    winnersRef.current = [];
+    setGameId(null);
+    setOnlineMode(false);
+    setPlayWithComputer(false);
+    setGameStarted(false);
+    setGameEnded(false);
+    setCurrentPlayer(0);
+    setMyPlayerIndex(0);
+    setDiceValueImmediate(0);
+    setPlayers([]);
+    setConsecutiveSixes({});
+    setWinner(null);
+    setWinners([]);
+    setWaitingForPlayers(false);
+    setCanRollDice(false);
+    setShowWinnerModal(false);
+    setSelectedConnects([]);
+    setInvitedStatusByConnectId({});
+    setInvitedSlotByConnectId({});
+    setIncomingInviteRequest(null);
+    consumeLudoInvite();
+  }, [consumeLudoInvite, setDiceValueImmediate]);
 
   const startNewGame = () => {
     if (gameIdRef.current) {
@@ -1279,26 +1415,7 @@ const LudoGameSVG = () => {
         playerIndex: myPlayerIndexRef.current,
       });
     }
-    setGameId(null);
-    gameIdRef.current = null;
-    newGameDraftIdRef.current = null;
-    setOnlineMode(false);
-    setPlayWithComputer(false);
-    setGameStarted(false);
-    gameStartedRef.current = false;
-    setCurrentPlayer(0);
-    setDiceValueImmediate(0);
-    setWinner(null);
-    setWinners([]);
-    winnersRef.current = [];
-    setGameEnded(false);
-    gameEndedRef.current = false;
-    setWaitingForPlayers(false);
-    setCanRollDice(false);
-    setShowWinnerModal(false);
-    setSelectedConnects([]);
-    setInvitedStatusByConnectId({});
-    setInvitedSlotByConnectId({});
+    resetLocalGameState();
     initializeGame(selectedPlayerCount, []);
     setShowPlayerSelection(true);
   };
@@ -1323,6 +1440,7 @@ const LudoGameSVG = () => {
               });
               api.post('/ludo/leave', { gameId: gameIdRef.current }).catch(() => null);
             }
+            resetLocalGameState();
             setLudoGameActive(false);
           },
         },
@@ -1715,13 +1833,13 @@ const LudoGameSVG = () => {
                       />
                     )
                   ) : (
-                    <Animated.View style={diceSpinStyle}>
-                      <DiceSVG
-                        value={isRollingRef.current ? diceSpin || 1 : effectiveDiceForUi || 1}
-                        size={diceSize}
-                        strokeColor={players[effectiveCurrentPlayer]?.color || THEME.accent}
-                      />
-                    </Animated.View>
+                    <Dice3D
+                      value={isRollingRef.current ? diceSpin || 1 : effectiveDiceForUi || 1}
+                      size={diceSize}
+                      strokeColor={players[effectiveCurrentPlayer]?.color || THEME.accent}
+                      rolling={isRollingRef.current}
+                      durationMs={onlineMode ? 700 : DICE_ROLL_ANIMATION_MS}
+                    />
                   )}
                 </View>
               </TouchableOpacity>

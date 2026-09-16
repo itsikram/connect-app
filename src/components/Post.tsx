@@ -12,6 +12,7 @@ import {
   Dimensions,
   Alert,
   ScrollView,
+  DeviceEventEmitter,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import * as ImagePicker from 'expo-image-picker';
@@ -55,6 +56,11 @@ const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
 
 const sameId = (a: any, b: any) =>
   String(a?._id || a || '') === String(b?._id || b || '');
+
+const getProfileId = (profile: any): string => {
+  const id = profile?._id || profile?.id || profile;
+  return typeof id === 'string' || typeof id === 'number' ? String(id) : '';
+};
 
 const uniqueReactTypes = (reacts: any[] = []) => uniquePlacedReacts(reacts);
 
@@ -158,21 +164,23 @@ const renderMentionBody = (
       );
     }
     if (match[1]) {
+      const mentionProfileId = match[2];
       parts.push(
         <Text
           key={`mention-${match.index}`}
           style={mentionStyle}
-          onPress={() => onProfilePress(match![2])}
+          onPress={() => onProfilePress(mentionProfileId)}
         >
           @{match[1].trim()}
         </Text>,
       );
     } else {
+      const hashtag = match[4];
       parts.push(
         <Text
           key={`hashtag-${match.index}`}
           style={mentionStyle}
-          onPress={() => onHashtagPress?.(match![4])}
+          onPress={() => onHashtagPress?.(hashtag)}
         >
           {match[3]}
           {match[4]}
@@ -309,6 +317,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const accentColor = feed.postAccent;
 
   const isAuth = sameId(post.author, myProfileId);
+  const authorId = getProfileId(post.author);
   const postType = post.type || type || 'post';
   const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
   const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
@@ -712,6 +721,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   // Handle comment button tap
   const handleCommentPress = () => {
     commentInputRef.current?.focus();
+  };
+
+  const handleHashtagPress = (hashtag: string) => {
+    DeviceEventEmitter.emit('open-hashtag-search', hashtag);
   };
 
   const handleCommentAttachment = async () => {
@@ -1197,6 +1210,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                       }),
                     { color: textColor },
                     { color: accentColor, fontWeight: '600' },
+                    handleHashtagPress,
                   )}
                 </Text>
               ) : null}
@@ -1368,6 +1382,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   value={replyText}
                   onChangeText={setReplyText}
                   editable={!isPostingReply}
+                  multiline
                   returnKeyType="send"
                   onSubmitEditing={handlePostReply}
                 />
@@ -1444,9 +1459,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         <View style={styles.authorInfo}>
           <TouchableOpacity
             onPress={() => {
-              if (post.author?._id && post.author._id !== myProfileId) {
+              if (authorId && authorId !== String(myProfileId || '')) {
                 (navigation as any).navigate('ConnectProfile', {
-                  connectId: post.author._id,
+                  connectId: authorId,
                 });
               }
             }}
@@ -1460,9 +1475,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
           <View style={styles.headerInfo}>
             <TouchableOpacity
               onPress={() => {
-                if (post.author?._id && post.author._id !== myProfileId) {
+                if (authorId && authorId !== String(myProfileId || '')) {
                   (navigation as any).navigate('ConnectProfile', {
-                    connectId: post.author._id,
+                    connectId: authorId,
                   });
                 }
               }}
@@ -1903,6 +1918,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                     }),
                   { color: textColor },
                   { color: accentColor, fontWeight: '600' },
+                  handleHashtagPress,
                 )}
               </Text>
             </TouchableOpacity>
@@ -1931,6 +1947,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                   }),
                 { color: textColor },
                 { color: accentColor, fontWeight: '600' },
+                handleHashtagPress,
               )}
             </Text>
             {captionMayOverflow && !showFullCaption ? (
@@ -2335,6 +2352,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 value={commentText}
                 onChangeText={setCommentText}
                 editable={!isPostingComment}
+                multiline
                 returnKeyType="send"
                 onSubmitEditing={handlePostComment}
               />
@@ -3631,7 +3649,7 @@ const styles = StyleSheet.create({
   fbCommentField: {
     position: 'relative',
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     minHeight: 40,
     borderRadius: 22,
     borderWidth: 1,
@@ -3646,6 +3664,7 @@ const styles = StyleSheet.create({
     fontSize: 14.5,
     minHeight: 38,
     paddingVertical: 8,
+    textAlignVertical: 'top',
   },
   fbFieldAttachment: {
     width: 30,

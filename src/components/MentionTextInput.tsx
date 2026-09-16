@@ -166,14 +166,14 @@ const styles = {
     shadowRadius: 8,
     elevation: 8,
     overflow: 'hidden' as const,
-    zIndex: 30,
+    zIndex: 10000,
   },
   inputWrapper: {
     flex: 1,
     minWidth: 0,
     position: 'relative' as const,
-    zIndex: 1000,
-    elevation: 1000,
+    zIndex: 10000,
+    elevation: 10000,
     overflow: 'visible' as const,
   },
   suggestion: {

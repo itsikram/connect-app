@@ -217,21 +217,23 @@ const renderMentionBody = (
       );
     }
     if (match[1]) {
+      const mentionProfileId = match[2];
       parts.push(
         <Text
           key={`mention-${match.index}`}
           style={mentionStyle}
-          onPress={() => onProfilePress(match![2])}
+          onPress={() => onProfilePress(mentionProfileId)}
         >
           @{match[1].trim()}
         </Text>,
       );
     } else {
+      const hashtag = match[4];
       parts.push(
         <Text
           key={`hashtag-${match.index}`}
           style={mentionStyle}
-          onPress={() => onHashtagPress?.(match![4])}
+          onPress={() => onHashtagPress?.(hashtag)}
         >
           {match[3]}
           {match[4]}
@@ -263,6 +265,10 @@ const SinglePost = () => {
   const { showToast } = useModernToast();
   const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
   const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
+
+  const handleHashtagPress = (hashtag: string) => {
+    DeviceEventEmitter.emit('open-hashtag-search', hashtag);
+  };
 
   const [post, setPost] = useState<Post | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1698,6 +1704,7 @@ const SinglePost = () => {
                       }),
                     { color: themeColors.text.primary },
                     { color: themeColors.primary, fontWeight: '600' },
+                    handleHashtagPress,
                   )}
                 </Text>
               )}
@@ -1948,6 +1955,7 @@ const SinglePost = () => {
                           }),
                         styles.postContent,
                         { color: themeColors.primary, fontWeight: '600' },
+                        handleHashtagPress,
                       )
                     : renderMentionBody(
                         post.caption.substring(0, 200) + '...',
@@ -1957,6 +1965,7 @@ const SinglePost = () => {
                           }),
                         styles.postContent,
                         { color: themeColors.primary, fontWeight: '600' },
+                        handleHashtagPress,
                       )}
                 </Text>
                 {post.caption.length > 200 && (

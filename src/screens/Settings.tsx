@@ -15,6 +15,7 @@ import {
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -99,7 +100,7 @@ const Settings = () => {
         { backgroundColor: themeColors.background.primary },
       ]}
     >
-      <KeyboardSafeView nested>
+      <KeyboardSafeView nested extraOffset={Platform.OS === 'ios' ? 57 : 45}>
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
         <View style={styles.shell}>

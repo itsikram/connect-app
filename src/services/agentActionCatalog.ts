@@ -590,7 +590,13 @@ export async function executeAgentActions(
       ].includes(action.action);
       let resolvedUserId = String(parameters.userId || parameters.profileId || '');
       let resolvedUserName = String(parameters.userName || action.targetName || '');
-      let resolvedProfilePic: string | undefined;
+      let resolvedProfilePic =
+        String(
+          parameters.profilePic ||
+            parameters.profilePicture ||
+            parameters.avatar ||
+            '',
+        ).trim() || undefined;
       if (requiresUser && !resolvedUserId && resolvedUserName && adapter.resolveUser) {
         const resolved = await adapter.resolveUser(resolvedUserName);
         resolvedUserId = resolved?.id || '';
@@ -619,11 +625,14 @@ export async function executeAgentActions(
       } else if (action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL') {
         let userId = resolvedUserId;
         let resolvedName = resolvedUserName;
-        if (!userId && resolvedName && adapter.resolveUser) {
+        // The model may provide an ID without the avatar. Resolve by name as
+        // well so outgoing call overlays can receive the callee's picture.
+        if (resolvedName && adapter.resolveUser && !resolvedProfilePic) {
           const resolved = await adapter.resolveUser(resolvedName);
-          userId = resolved?.id || '';
+          if (!userId) userId = resolved?.id || '';
           resolvedName = resolved?.name || resolvedName;
           resolvedProfilePic = resolved?.profilePic;
+          if (resolved?.id) options.onResolvedUser?.(resolved);
         }
         if (!userId) throw new Error('I need the person’s resolved user ID before starting the call.');
         const channelName = String(parameters.channelName || userId);

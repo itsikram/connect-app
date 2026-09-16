@@ -21,7 +21,8 @@ import {
   AVPlaybackStatus,
   supportsNativeVideoBackgroundPlayback,
 } from '../../lib/avCompat';
-import { useWatchPip } from '../../contexts/WatchPipContext';
+import { useWatchPipOptional } from '../../contexts/WatchPipContext';
+import type { PipState } from '../../contexts/WatchPipContext';
 import { clampPlayCount } from '../../utils/videoPlayerLibrary';
 import { getPipPlaylistIndex } from '../../utils/watchPipHelpers';
 import { navigate } from '../../lib/navigationService';
@@ -35,6 +36,8 @@ import {
 
 const EDGE_PAD = 8;
 const CLOSE_LONG_PRESS_MS = 500;
+const noopClosePip = () => {};
+const noopUpdatePip = (_updates: Partial<PipState>) => {};
 
 const colorFromSeed = (seed: string, offset: number) => {
   let hash = offset;
@@ -114,7 +117,10 @@ const snapToDock = (
 
 const WatchPipPlayer = () => {
   const t = useWatchTokens();
-  const { pip, closePip, updatePip } = useWatchPip();
+  const pipContext = useWatchPipOptional();
+  const pip = pipContext?.pip ?? null;
+  const closePip = pipContext?.closePip ?? noopClosePip;
+  const updatePip = pipContext?.updatePip ?? noopUpdatePip;
   const insets = useSafeAreaInsets();
   const { width: winW, height: winH } = useWindowDimensions();
   const videoRef = useRef<any | null>(null);
@@ -132,6 +138,9 @@ const WatchPipPlayer = () => {
   const sizeRef = useRef({ width: 280, height: 220 });
   const posRef = useRef<{ x: number; y: number } | null>(null);
   const currentTimeRef = useRef(0);
+  const pipRef = useRef(pip);
+  const lastReportedTimeRef = useRef<number | null>(null);
+  const lastGradientRef = useRef<[string, string, string] | null>(null);
   const resumeAppliedRef = useRef('');
   const endedKeyRef = useRef('');
   const handleEndedRef = useRef<() => void>(() => {});
@@ -147,6 +156,7 @@ const WatchPipPlayer = () => {
   const pipTrackKey = pip
     ? `${pip.source}:${pip.watchId || pip.libraryVideoId}:${pip.videoUrl}`
     : '';
+  pipRef.current = pip;
 
   useEffect(() => {
     configurePipAudioMode().catch(() => {});
@@ -158,9 +168,17 @@ const WatchPipPlayer = () => {
     setVideoDuration(0);
     resumeAppliedRef.current = '';
     endedKeyRef.current = '';
+    lastReportedTimeRef.current = null;
+    lastGradientRef.current = null;
     setPaused(pip?.playing === false);
     setGradientColors(getGradientColors(pip?.thumbnail || pipTrackKey || 'watch-pip'));
   }, [pipTrackKey]);
+
+  useEffect(() => {
+    const nextPlaying = pip?.playing !== false;
+    wantPlayingRef.current = nextPlaying;
+    setPaused(!nextPlaying);
+  }, [pipTrackKey, pip?.playing]);
 
   const expandedWidth = Math.min(winW - 24, isLibrary ? 420 : 240);
   const videoHeight = isLibrary
@@ -175,7 +193,7 @@ const WatchPipPlayer = () => {
   }, [playerWidth, playerHeight]);
 
   useEffect(() => {
-    if (!pip) {
+    if (!pipTrackKey) {
       setPos(null);
       setMinimized(false);
       return;
@@ -189,9 +207,10 @@ const WatchPipPlayer = () => {
         winW,
         winH,
       );
+      if (prev?.x === next.x && prev?.y === next.y) return prev;
       return next;
     });
-  }, [pip, playerWidth, playerHeight, winW, winH, insets.bottom]);
+  }, [pipTrackKey, playerWidth, playerHeight, winW, winH, insets.bottom]);
 
   useEffect(() => {
     posRef.current = pos;
@@ -392,13 +411,12 @@ const WatchPipPlayer = () => {
   }, [pip, playlist, looping, updatePip, replayCurrent, pauseCurrent, switchPlaylistByOffset]);
 
   handleEndedRef.current = handleEnded;
-  wantPlayingRef.current = pip?.playing !== false;
 
   useEffect(() => {
-    if (pip) return undefined;
+    if (pipTrackKey) return undefined;
     stopBackgroundSound();
     return undefined;
-  }, [pip, stopBackgroundSound]);
+  }, [pipTrackKey, stopBackgroundSound]);
 
   useEffect(() => {
     const sub = AppState.addEventListener('change', async (next: AppStateStatus) => {
@@ -429,8 +447,8 @@ const WatchPipPlayer = () => {
   }, [pipTrackKey]);
 
   const togglePlay = () => {
-    if (paused) playCurrent();
-    else pauseCurrent();
+    if (wantPlayingRef.current) pauseCurrent();
+    else playCurrent();
   };
 
   const formatTime = (seconds: number) => {
@@ -556,35 +574,58 @@ const WatchPipPlayer = () => {
 
   const onPlaybackStatusUpdate = useCallback((status: AVPlaybackStatus) => {
     if (!status.isLoaded) return;
+    const currentPip = pipRef.current;
     setMediaReady(true);
+    if (!bgActiveRef.current && typeof status.isPlaying === 'boolean') {
+      setPaused(!status.isPlaying);
+    }
     const nextPosition = (status.positionMillis || 0) / 1000;
     const nextDuration = Math.max(0, (Number(status.durationMillis) || 0) / 1000);
     if (!bgActiveRef.current) {
+      const positionChanged = currentTimeRef.current !== nextPosition;
       currentTimeRef.current = nextPosition;
-      setVideoPosition(nextPosition);
+      if (positionChanged) setVideoPosition(nextPosition);
     }
     if (nextDuration > 0) setVideoDuration(nextDuration);
     const duration = nextDuration * 1000;
     const progress = duration > 0
       ? Math.min(1, Math.max(0, (status.positionMillis || 0) / duration))
       : 0;
-    if (pip && !bgActiveRef.current) updatePip({ currentTime: nextPosition });
-    setGradientColors(getGradientColors(pip?.thumbnail || pipTrackKey || 'watch-pip', progress));
+    if (
+      currentPip &&
+      !bgActiveRef.current &&
+      (lastReportedTimeRef.current === null ||
+        Math.abs(lastReportedTimeRef.current - nextPosition) >= 0.25)
+    ) {
+      lastReportedTimeRef.current = nextPosition;
+      updatePip({ currentTime: nextPosition });
+    }
+    const nextGradient = getGradientColors(
+      currentPip?.thumbnail || pipTrackKey || 'watch-pip',
+      progress,
+    );
+    if (
+      !lastGradientRef.current ||
+      lastGradientRef.current.some((color, index) => color !== nextGradient[index])
+    ) {
+      lastGradientRef.current = nextGradient;
+      setGradientColors(nextGradient);
+    }
     if (status.didJustFinish && !bgActiveRef.current && endedKeyRef.current !== pipTrackKey) {
       endedKeyRef.current = pipTrackKey;
       handleEndedRef.current();
     }
 
-    if (resumeAppliedRef.current !== pipTrackKey && pip) {
+    if (resumeAppliedRef.current !== pipTrackKey && currentPip) {
       resumeAppliedRef.current = pipTrackKey;
-      const resumeAt = Number(pip.currentTime) || 0;
+      const resumeAt = Number(currentPip.currentTime) || 0;
       if (resumeAt > 0.2) {
         Promise.resolve(
           videoRef.current?.setPositionAsync(resumeAt * 1000),
         ).catch(() => {});
       }
     }
-  }, [pipTrackKey, pip, updatePip]);
+  }, [pipTrackKey, updatePip]);
 
   const handleSeekTo = useCallback(async (value: number) => {
     if (!pip || !Number.isFinite(value)) return;

@@ -1383,7 +1383,10 @@ const MediaPlayer = ({ route, navigation }: any) => {
     setVideoPosition(nextPos);
     if (nextDuration > 0) setVideoDuration(nextDuration);
     if (pendingResumePositionRef.current === null) persistPlaybackState();
-    if (status.didJustFinish && endedKeyRef.current !== currentTrackKey) {
+    const reachedEnd =
+      status.didJustFinish ||
+      (status.isPlaying === false && nextDuration > 0 && nextPos >= nextDuration - 0.25);
+    if (reachedEnd && endedKeyRef.current !== currentTrackKey) {
       endedKeyRef.current = currentTrackKey;
       handleVideoEndRef.current();
     }
@@ -2045,7 +2048,7 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: '700',
   },
-  scroll: { paddingHorizontal: 14, paddingBottom: 40, gap: 14 },
+  scroll: { paddingHorizontal: 14, paddingBottom: 100, gap: 14 },
   stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
   statPill: {
     fontSize: 12,

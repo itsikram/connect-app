@@ -13,6 +13,11 @@ export interface LudoInviteRequest {
   name?: string;
   profilePic?: string;
   coverPic?: string;
+  gameId?: string;
+  by?: string;
+  playerCount?: number;
+  slotIndex?: number;
+  inviteId?: string;
 }
 
 const LudoGameContext = createContext<LudoGameContextType | undefined>(undefined);

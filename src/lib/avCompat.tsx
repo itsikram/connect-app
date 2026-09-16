@@ -230,7 +230,7 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
 
   useEffect(() => {
     if (!onPlaybackStatusUpdate) return undefined;
-    const emitStatus = (timeUpdate?: { currentTime?: number }) => {
+    const emitStatus = (timeUpdate?: { currentTime?: number }, didJustFinish = false) => {
       const duration = Number(player.duration) || 0;
       const position = Number(timeUpdate?.currentTime ?? player.currentTime) || 0;
       onPlaybackStatusUpdate({
@@ -240,15 +240,17 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
         durationMillis: duration * 1000,
         isLooping: player.loop,
         isMuted: player.muted,
-        didJustFinish: duration > 0 && position >= duration - 0.1 && !player.playing,
+        didJustFinish: didJustFinish || (duration > 0 && position >= duration - 0.1 && !player.playing),
       });
     };
     const statusSubscription = player.addListener('statusChange', () => emitStatus());
     const timeSubscription = player.addListener('timeUpdate', (payload: any) => emitStatus(payload));
+    const endSubscription = player.addListener('playToEnd', () => emitStatus(undefined, true));
     emitStatus();
     return () => {
       statusSubscription.remove();
       timeSubscription.remove();
+      endSubscription.remove();
     };
   }, [player, onPlaybackStatusUpdate]);
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -9,6 +9,7 @@ import {
   Alert,
   StatusBar,
   Pressable,
+  PanResponder,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../contexts/AuthContext';
@@ -27,6 +28,8 @@ import VerifiedName from '../components/VerifiedName';
 import AIAgentModal from '../components/AIAgentModal';
 import { type AgentSpeechLanguage } from '../services/agentSpeechService';
 import { sampleApps, AppItem } from '../data/appData';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { userAPI } from '../lib/api';
 import LudoGameSVG from './LudoGameSVG';
 
 const WORKING_APP_IDS = new Set([
@@ -53,6 +56,114 @@ const APP_SECTIONS: { title: string; ids: string[] }[] = [
   { title: 'Media', ids: ['mediaPlayer', 'youtube', 'camera', 'gallery', 'downloads', 'facebook'] },
   { title: 'Tools', ids: ['vpnBrowser', 'maps', 'contacts', 'gmail', 'calendar', 'drive', 'photos'] },
 ];
+const APP_MENU_ORDER_KEY = 'appMenuOrder';
+const APP_ORDER_ALIASES: Record<string, string> = {
+  Ludu: 'ludo',
+  Chess: 'chess',
+  mediaPlayer: 'video-player',
+  downloads: 'saved-videos',
+};
+const getAppOrderKey = (id: string) => APP_ORDER_ALIASES[id] || id;
+
+interface ShortcutItem {
+  id: string;
+  label: string;
+  hint: string;
+  icon: string;
+  color: string;
+  onPress: () => void;
+}
+
+const SortableShortcutCard = ({
+  item,
+  index,
+  total,
+  onReorder,
+  themeColors,
+}: {
+  item: ShortcutItem;
+  index: number;
+  total: number;
+  onReorder: (fromIndex: number, toIndex: number) => void;
+  themeColors: any;
+}) => {
+  const dragStart = useRef({ x: 0, y: 0 });
+  const dragging = useRef(false);
+  const longPressReady = useRef(false);
+  const responder = PanResponder.create({
+    onStartShouldSetPanResponder: () => false,
+    onMoveShouldSetPanResponderCapture: (_event, gesture) =>
+      longPressReady.current && Math.hypot(gesture.dx, gesture.dy) > 8,
+    onPanResponderGrant: (event) => {
+      dragStart.current = {
+        x: event.nativeEvent.pageX,
+        y: event.nativeEvent.pageY,
+      };
+      dragging.current = false;
+    },
+    onPanResponderMove: (event) => {
+      dragging.current =
+        Math.hypot(
+          event.nativeEvent.pageX - dragStart.current.x,
+          event.nativeEvent.pageY - dragStart.current.y,
+        ) > 10;
+    },
+    onPanResponderRelease: (event) => {
+      if (dragging.current) {
+        const dx = event.nativeEvent.pageX - dragStart.current.x;
+        const dy = event.nativeEvent.pageY - dragStart.current.y;
+        const toIndex = Math.max(
+          0,
+          Math.min(total - 1, index + Math.round(dy / 100) * 2 + Math.round(dx / 170)),
+        );
+        if (toIndex !== index) onReorder(index, toIndex);
+      }
+      dragging.current = false;
+      longPressReady.current = false;
+    },
+    onPanResponderTerminationRequest: () => false,
+    onPanResponderTerminate: () => {
+      dragging.current = false;
+      longPressReady.current = false;
+    },
+  });
+
+  return (
+    <View style={styles.shortcutCardWrapper} {...responder.panHandlers}>
+      <Pressable
+        onPress={item.onPress}
+        onLongPress={() => {
+          longPressReady.current = true;
+        }}
+        onPressOut={() => {
+          if (!dragging.current) longPressReady.current = false;
+        }}
+        delayLongPress={450}
+        accessibilityRole="button"
+        accessibilityLabel={item.label}
+        style={({ pressed }) => [
+          styles.shortcutCard,
+          styles.shortcutCardContent,
+          {
+            backgroundColor: themeColors.surface.primary,
+            borderColor: themeColors.border.primary,
+            opacity: pressed ? 0.88 : 1,
+          },
+        ]}
+      >
+        <View style={[styles.shortcutIcon, { backgroundColor: item.color + '22' }]}>
+          <Icon name={item.icon} size={20} color={item.color} />
+        </View>
+        <Text style={[styles.shortcutLabel, { color: themeColors.text.primary }]}>
+          {item.label}
+        </Text>
+        <Text style={[styles.shortcutHint, { color: themeColors.text.tertiary }]} numberOfLines={1}>
+          {item.hint}
+        </Text>
+      </Pressable>
+    </View>
+  );
+};
 
 const Menu = () => {
   const { user, logout } = useContext(AuthContext);
@@ -66,10 +177,34 @@ const Menu = () => {
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [aiAgentVisible, setAiAgentVisible] = useState(false);
   const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = useState<AgentSpeechLanguage | null>(null);
+  const [appOrder, setAppOrder] = useState<string[]>([]);
 
   const profileConnects = myProfile?.connects ?? myProfile?.friends;
   const connectsCount = Array.isArray(profileConnects) ? profileConnects.length : 0;
   const normalizedQuery = query.trim().toLowerCase();
+
+  useEffect(() => {
+    let active = true;
+    AsyncStorage.getItem(APP_MENU_ORDER_KEY).then((stored) => {
+      if (active && stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) setAppOrder(parsed.filter((id) => typeof id === 'string'));
+        } catch (error) {
+          console.warn('Unable to restore app menu order:', error);
+        }
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (Array.isArray(myProfile?.appMenuOrder) && myProfile.appMenuOrder.length > 0) {
+      setAppOrder(myProfile.appMenuOrder);
+    }
+  }, [myProfile?.appMenuOrder]);
 
   const goToProfile = () => {
     (navigation as any).navigate('MyProfile');
@@ -167,19 +302,77 @@ const Menu = () => {
   const matchesQuery = (app: AppItem) =>
     !normalizedQuery || app.name.toLowerCase().includes(normalizedQuery);
 
+  const orderedApps = useMemo(() => {
+    const orderIndex = new Map(appOrder.map((id, index) => [id, index]));
+    return [...appsWithActions].sort(
+      (a, b) =>
+        (orderIndex.get(getAppOrderKey(a.id)) ?? Number.MAX_SAFE_INTEGER) -
+        (orderIndex.get(getAppOrderKey(b.id)) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [appsWithActions, appOrder]);
+
+  const persistMenuOrder = useCallback(async (nextOrder: string[]) => {
+    await AsyncStorage.setItem(APP_MENU_ORDER_KEY, JSON.stringify(nextOrder));
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try {
+        await userAPI.updateProfile({ appMenuOrder: nextOrder });
+        return;
+      } catch (error) {
+        const status =
+          typeof error === 'object' &&
+          error !== null &&
+          'response' in error &&
+          typeof error.response === 'object' &&
+          error.response !== null &&
+          'status' in error.response
+            ? error.response.status
+            : undefined;
+        if (status !== 503 || attempt === 2) {
+          console.error('Unable to save app menu order to the server:', error);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+      }
+    }
+  }, []);
+
+  const reorderApps = useCallback((sectionIds: string[], fromIndex: number, toIndex: number) => {
+    setAppOrder((currentOrder) => {
+      const appIds = orderedApps.map((app) => getAppOrderKey(app.id));
+      const current = [
+        ...appOrder.filter((id) => !appIds.includes(id)),
+        ...appIds,
+      ];
+      const normalizedSectionIds = sectionIds.map(getAppOrderKey);
+      const sectionOrder = normalizedSectionIds.filter((id) => current.includes(id));
+      const [moved] = sectionOrder.splice(fromIndex, 1);
+      sectionOrder.splice(toIndex, 0, moved);
+      const slots = current.reduce<number[]>((result, id, index) => {
+        if (normalizedSectionIds.includes(id)) result.push(index);
+        return result;
+      }, []);
+      const nextOrder = [...current];
+      slots.forEach((slot, index) => {
+        nextOrder[slot] = sectionOrder[index];
+      });
+      void persistMenuOrder(nextOrder);
+      return nextOrder;
+    });
+  }, [appOrder, orderedApps, persistMenuOrder]);
+
   const sectionApps = useMemo(() => {
     return APP_SECTIONS.map((section) => ({
       ...section,
-      apps: appsWithActions.filter((app) => section.ids.includes(app.id) && matchesQuery(app)),
+      apps: orderedApps.filter((app) => section.ids.includes(app.id) && matchesQuery(app)),
     })).filter((section) => section.apps.length > 0);
-  }, [appsWithActions, normalizedQuery]);
+  }, [orderedApps, normalizedQuery]);
 
   const comingSoonApps = useMemo(
     () =>
-      appsWithActions.filter(
+      orderedApps.filter(
         (app) => !WORKING_APP_IDS.has(app.id) && app.id !== 'settings' && matchesQuery(app)
       ),
-    [appsWithActions, normalizedQuery]
+    [orderedApps, normalizedQuery]
   );
 
   const handleLogout = () => {
@@ -203,16 +396,7 @@ const Menu = () => {
     ]);
   };
 
-  if (isLudoGameActive) {
-    return <LudoGameSVG />;
-  }
-
-  if (isChessGameActive) {
-    const ChessGame = require('./ChessGame').default;
-    return <ChessGame />;
-  }
-
-  const shortcuts = [
+  const shortcuts: ShortcutItem[] = [
     { id: 'settings', label: 'Settings', hint: 'Privacy & account', icon: 'settings', color: '#607D8B', onPress: goToSettings },
     { id: 'connects', label: 'Connects', hint: 'People you know', icon: 'people', color: '#2196F3', onPress: () => (navigation as any).navigate('Connects') },
     { id: 'messages', label: 'Messages', hint: 'Chats & calls', icon: 'chat', color: '#9C27B0', onPress: () => (navigation as any).navigate('Message') },
@@ -224,8 +408,36 @@ const Menu = () => {
       ? [{ id: 'wallet', label: 'Wallet', hint: 'View your coins', icon: 'monetization-on', color: '#F59E0B', onPress: goToWallet }]
       : []),
   ];
+  const orderedShortcuts = useMemo(() => {
+    const orderIndex = new Map(appOrder.map((id, index) => [id, index]));
+    return [...shortcuts].sort(
+      (a, b) =>
+        (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
+        (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER),
+    );
+  }, [appOrder, walletEnabled]);
+
+  const reorderShortcuts = useCallback((fromIndex: number, toIndex: number) => {
+    const nextShortcuts = [...orderedShortcuts];
+    const [moved] = nextShortcuts.splice(fromIndex, 1);
+    nextShortcuts.splice(toIndex, 0, moved);
+    const shortcutIds = new Set(shortcuts.map((shortcut) => shortcut.id));
+    const nextOrder = [...appOrder].filter((id) => !shortcutIds.has(id));
+    nextOrder.push(...nextShortcuts.map((shortcut) => shortcut.id));
+    setAppOrder(nextOrder);
+    void persistMenuOrder(nextOrder);
+  }, [appOrder, orderedShortcuts, persistMenuOrder, shortcuts]);
 
   const showComingSoonSection = comingSoonApps.length > 0 && (showComingSoon || Boolean(normalizedQuery));
+
+  if (isLudoGameActive) {
+    return <LudoGameSVG />;
+  }
+
+  if (isChessGameActive) {
+    const ChessGame = require('./ChessGame').default;
+    return <ChessGame />;
+  }
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: themeColors.background.primary }]} edges={[]}>
@@ -369,29 +581,15 @@ const Menu = () => {
             </Pressable>
 
             <View style={styles.shortcutGrid}>
-              {shortcuts.map((item) => (
-                <Pressable
+              {orderedShortcuts.map((item, index) => (
+                <SortableShortcutCard
                   key={item.id}
-                  onPress={item.onPress}
-                  accessibilityRole="button"
-                  accessibilityLabel={item.label}
-                  style={({ pressed }) => [
-                    styles.shortcutCard,
-                    {
-                      backgroundColor: themeColors.surface.primary,
-                      borderColor: themeColors.border.primary,
-                      opacity: pressed ? 0.88 : 1,
-                    },
-                  ]}
-                >
-                  <View style={[styles.shortcutIcon, { backgroundColor: item.color + '22' }]}>
-                    <Icon name={item.icon} size={20} color={item.color} />
-                  </View>
-                  <Text style={[styles.shortcutLabel, { color: themeColors.text.primary }]}>{item.label}</Text>
-                  <Text style={[styles.shortcutHint, { color: themeColors.text.tertiary }]} numberOfLines={1}>
-                    {item.hint}
-                  </Text>
-                </Pressable>
+                  item={item}
+                  index={index}
+                  total={orderedShortcuts.length}
+                  onReorder={reorderShortcuts}
+                  themeColors={themeColors}
+                />
               ))}
             </View>
           </>
@@ -424,7 +622,15 @@ const Menu = () => {
             ]}
           >
             {sectionApps.map((section) => (
-              <AppGrid key={section.title} title={section.title} apps={section.apps} columns={4} />
+              <AppGrid
+                key={section.title}
+                title={section.title}
+                apps={section.apps}
+                columns={4}
+                onReorder={(fromIndex, toIndex) =>
+                  reorderApps(section.apps.map((app) => app.id), fromIndex, toIndex)
+                }
+              />
             ))}
 
             {comingSoonApps.length > 0 && !normalizedQuery && (
@@ -446,7 +652,14 @@ const Menu = () => {
 
             {showComingSoonSection && (
               <View style={styles.comingSoonWrap}>
-                <AppGrid title={normalizedQuery ? 'Other apps' : 'Coming soon'} apps={comingSoonApps} columns={4} />
+                <AppGrid
+                  title={normalizedQuery ? 'Other apps' : 'Coming soon'}
+                  apps={comingSoonApps}
+                  columns={4}
+                  onReorder={(fromIndex, toIndex) =>
+                    reorderApps(comingSoonApps.map((app) => app.id), fromIndex, toIndex)
+                  }
+                />
               </View>
             )}
           </View>
@@ -643,6 +856,16 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 14,
     padding: 12,
+  },
+  shortcutCardWrapper: {
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '47%',
+  },
+  shortcutCardContent: {
+    width: '100%',
+    flexGrow: 0,
+    flexBasis: 'auto',
   },
   shortcutIcon: {
     width: 36,

@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   ActivityIndicator,
   Alert,
@@ -14,11 +15,13 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTheme } from '../contexts/ThemeContext';
 import api from '../lib/api';
 import VoiceTextInput from '../components/VoiceTextInput';
+import { RootState } from '../store';
+import { useSelector } from 'react-redux';
 
 type Task = {
   _id: string;
@@ -29,35 +32,81 @@ type Task = {
 
 type Filter = 'all' | 'active' | 'completed';
 
+const taskMemoryCache = new Map<string, Task[]>();
+
+const getTaskCacheKey = (profileId?: string) => `cached_tasks_${profileId || 'unknown'}`;
+
+const saveCachedTasks = async (cacheKey: string, nextTasks: Task[]) => {
+  taskMemoryCache.set(cacheKey, nextTasks);
+  try {
+    await AsyncStorage.setItem(cacheKey, JSON.stringify(nextTasks));
+  } catch (error) {
+    console.error('Error caching tasks:', error);
+  }
+};
+
 const Tasks = () => {
   const navigation = useNavigation();
   const { colors: themeColors, isDarkMode } = useTheme();
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const profileId = useSelector((state: RootState) => state.profile?._id);
+  const taskCacheKey = getTaskCacheKey(profileId ? String(profileId) : undefined);
+  const [tasks, setTasks] = useState<Task[]>(() => taskMemoryCache.get(taskCacheKey) || []);
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !taskMemoryCache.has(taskCacheKey));
   const [taskTime, setTaskTime] = useState<Date | null>(null);
   const [showTaskPicker, setShowTaskPicker] = useState(false);
   const [taskTimePickerId, setTaskTimePickerId] = useState<string | null>(null);
 
+  const updateTasks = useCallback((nextTasks: Task[]) => {
+    setTasks(nextTasks);
+    void saveCachedTasks(taskCacheKey, nextTasks);
+  }, [taskCacheKey]);
+
   const loadTasks = useCallback(async () => {
-    try {
+    const cachedTasks = taskMemoryCache.get(taskCacheKey);
+    if (cachedTasks) {
+      setTasks(cachedTasks);
+      setLoading(false);
+    } else {
+      setTasks([]);
       setLoading(true);
+      try {
+        const storedTasks = await AsyncStorage.getItem(taskCacheKey);
+        if (storedTasks) {
+          const parsedTasks: unknown = JSON.parse(storedTasks);
+          if (Array.isArray(parsedTasks)) {
+            const validTasks = parsedTasks as Task[];
+            taskMemoryCache.set(taskCacheKey, validTasks);
+            setTasks(validTasks);
+            setLoading(false);
+          }
+        }
+      } catch (error) {
+        console.error('Error loading cached tasks:', error);
+      }
+    }
+
+    try {
       const response = await api.get('/tasks');
       if (response.data.success) {
-        setTasks(response.data.tasks || []);
+        updateTasks(response.data.tasks || []);
       }
     } catch (error) {
       console.error('Error loading tasks:', error);
-      Alert.alert('Tasks', 'Failed to load tasks.');
+      if (!taskMemoryCache.has(taskCacheKey)) {
+        Alert.alert('Tasks', 'Failed to load tasks.');
+      }
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [taskCacheKey, updateTasks]);
 
-  useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+  useFocusEffect(
+    useCallback(() => {
+      loadTasks();
+    }, [loadTasks])
+  );
 
   const filteredTasks = useMemo(
     () =>
@@ -80,7 +129,11 @@ const Tasks = () => {
         taskTime: taskTime ? taskTime.toISOString() : null,
       });
       if (response.data.success) {
-        setTasks((current) => [response.data.task, ...current]);
+        setTasks((current) => {
+          const nextTasks = [response.data.task, ...current];
+          void saveCachedTasks(taskCacheKey, nextTasks);
+          return nextTasks;
+        });
         setNewTask('');
         setTaskTime(null);
       }
@@ -88,24 +141,32 @@ const Tasks = () => {
       console.error('Error creating task:', error);
       Alert.alert('Tasks', 'Failed to create task.');
     }
-  }, [newTask, taskTime]);
+  }, [newTask, taskTime, taskCacheKey]);
 
   const handleToggleTask = useCallback(async (id: string) => {
     const task = tasks.find((item) => item._id === id);
     if (!task) return;
     const completed = !task.completed;
-    setTasks((current) => current.map((item) => item._id === id ? { ...item, completed } : item));
+    setTasks((current) => {
+      const nextTasks = current.map((item) => item._id === id ? { ...item, completed } : item);
+      void saveCachedTasks(taskCacheKey, nextTasks);
+      return nextTasks;
+    });
     try {
       const response = await api.put(`/tasks/${id}`, { completed });
       if (response.data.success) {
-        setTasks((current) => current.map((item) => item._id === id ? response.data.task : item));
+        setTasks((current) => {
+          const nextTasks = current.map((item) => item._id === id ? response.data.task : item);
+          void saveCachedTasks(taskCacheKey, nextTasks);
+          return nextTasks;
+        });
       }
     } catch (error) {
       console.error('Error updating task:', error);
       Alert.alert('Tasks', 'Failed to update task.');
       loadTasks();
     }
-  }, [loadTasks, tasks]);
+  }, [loadTasks, taskCacheKey, tasks]);
 
   const handleTaskTimeChange = useCallback(async (id: string, value: Date | null) => {
     try {
@@ -113,38 +174,50 @@ const Tasks = () => {
         taskTime: value ? value.toISOString() : null,
       });
       if (response.data.success) {
-        setTasks((current) => current.map((task) => task._id === id ? response.data.task : task));
+        setTasks((current) => {
+          const nextTasks = current.map((task) => task._id === id ? response.data.task : task);
+          void saveCachedTasks(taskCacheKey, nextTasks);
+          return nextTasks;
+        });
       }
     } catch (error) {
       console.error('Error updating task reminder:', error);
       Alert.alert('Tasks', 'Failed to update task time.');
       loadTasks();
     }
-  }, [loadTasks]);
+  }, [loadTasks, taskCacheKey]);
 
   const handleDeleteTask = useCallback(async (id: string) => {
     try {
       const response = await api.delete(`/tasks/${id}`);
       if (response.data.success) {
-        setTasks((current) => current.filter((task) => task._id !== id));
+        setTasks((current) => {
+          const nextTasks = current.filter((task) => task._id !== id);
+          void saveCachedTasks(taskCacheKey, nextTasks);
+          return nextTasks;
+        });
       }
     } catch (error) {
       console.error('Error deleting task:', error);
       Alert.alert('Tasks', 'Failed to delete task.');
     }
-  }, []);
+  }, [taskCacheKey]);
 
   const handleClearCompleted = useCallback(async () => {
     try {
       const response = await api.delete('/tasks/completed/all');
       if (response.data.success) {
-        setTasks((current) => current.filter((task) => !task.completed));
+        setTasks((current) => {
+          const nextTasks = current.filter((task) => !task.completed);
+          void saveCachedTasks(taskCacheKey, nextTasks);
+          return nextTasks;
+        });
       }
     } catch (error) {
       console.error('Error clearing completed tasks:', error);
       Alert.alert('Tasks', 'Failed to clear completed tasks.');
     }
-  }, []);
+  }, [taskCacheKey]);
 
   const title = filter === 'completed' ? 'No completed tasks' : filter === 'active' ? 'No active tasks' : 'No tasks yet';
 
@@ -351,14 +424,14 @@ const styles = StyleSheet.create({
   statValue: { fontWeight: '700' },
   inputRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -10, marginBottom: 28 },
-  reminderButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 },
+  reminderButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, marginBottom: 0 },
   reminderText: { fontSize: 13, fontWeight: '600' },
   clearReminderText: { fontSize: 13, fontWeight: '600' },
   scheduleHint: { fontSize: 12, lineHeight: 18, marginTop: -10, marginBottom: 18 },
-  input: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, fontSize: 16 },
+  input: { flex: 1, minHeight: 48, borderWidth: 1, borderRadius: 12, paddingHorizontal: 16, fontSize: 16,  },
   addButton: { justifyContent: 'center', borderRadius: 12, paddingHorizontal: 16 },
   addButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
-  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 18 },
+  filters: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10, marginBottom: 18 },
   filterButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 9 },
   filterText: { fontSize: 13, fontWeight: '600' },
   taskList: { gap: 10, marginBottom: 18 },
@@ -367,7 +440,7 @@ const styles = StyleSheet.create({
   taskText: { flex: 1, fontSize: 16 },
   taskDetails: { flex: 1, gap: 3 },
   reminderMeta: { fontSize: 12 },
-  taskReminderButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4 },
+  taskReminderButton: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 4, marginBottom: 0 },
   taskReminderButtonText: { fontSize: 12 },
   completedText: { textDecorationLine: 'line-through', opacity: 0.7 },
   deleteButton: { borderWidth: 1, borderRadius: 6, paddingHorizontal: 9, paddingVertical: 6 },

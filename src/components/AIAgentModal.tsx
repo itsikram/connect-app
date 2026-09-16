@@ -3,7 +3,6 @@ import {
   Alert,
   FlatList,
   Image,
-  LayoutAnimation,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -52,7 +51,7 @@ import {
 import { AgentMessage } from '../types/aiAgent';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
-import api, { connectAPI, profileAPI } from '../lib/api';
+import api, { connectAPI, profileAPI, userAPI } from '../lib/api';
 import { emitStartAudioCall, emitStartVideoCall } from '../lib/callEvents';
 import { navigate as navigateWithQueue } from '../lib/navigationService';
 import { extractYouTubeVideoId, toWatchUrl } from '../lib/ytDownload';
@@ -215,7 +214,13 @@ const AIAgentModal: React.FC<Props> = ({
     AgentActionIntent[]
   >([]);
   const knownConnectsRef = React.useRef<
-    Array<{ id: string; name: string; username?: string; bio?: string }>
+    Array<{
+      id: string;
+      name: string;
+      username?: string;
+      bio?: string;
+      profilePic?: string;
+    }>
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
   const [voiceTranscript, setVoiceTranscript] = React.useState('');
@@ -246,7 +251,6 @@ const AIAgentModal: React.FC<Props> = ({
   const listeningPromptShownRef = React.useRef(false);
   const voiceInputBaseRef = React.useRef('');
   const updateAutoActionRunning = React.useCallback((running: boolean) => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setAutoActionRunning(running);
   }, []);
   const autoReplyRulesRef = React.useRef<
@@ -296,6 +300,7 @@ const AIAgentModal: React.FC<Props> = ({
       name: string;
       username?: string;
       bio?: string;
+      profilePic?: string;
     }>;
   }>({});
   const listRef = React.useRef<FlatList<AgentMessage>>(null);
@@ -505,6 +510,7 @@ const AIAgentModal: React.FC<Props> = ({
           String(
             match.profilePic ||
               match.profilePicture ||
+              match.avatar ||
               nestedUser.profilePic ||
               nestedUser.profilePicture ||
               nestedUser.avatar ||
@@ -554,6 +560,16 @@ const AIAgentModal: React.FC<Props> = ({
               username:
                 String(item.username || nested.username || '') || undefined,
               bio: String(item.bio || nested.bio || '') || undefined,
+              profilePic:
+                String(
+                  item.profilePic ||
+                    item.profilePicture ||
+                    item.avatar ||
+                    nested.profilePic ||
+                    nested.profilePicture ||
+                    nested.avatar ||
+                    '',
+                ) || undefined,
               relationshipTypes: Array.isArray(item.relationshipTypes)
                 ? item.relationshipTypes
                 : [],
@@ -592,8 +608,42 @@ const AIAgentModal: React.FC<Props> = ({
   }, [profile]);
 
   const callAdapter = React.useMemo(
-    () => ({
-      resolveUser: async (query: string) => {
+    () => {
+      const getCallProfilePic = async (
+        userId: string,
+        profilePic?: string,
+      ): Promise<string | undefined> => {
+        if (profilePic) return profilePic;
+        try {
+          const response = await userAPI.getProfile(userId);
+          const data =
+            response.data && typeof response.data === 'object'
+              ? (response.data as Record<string, unknown>)
+              : {};
+          const nestedProfile =
+            data.profile && typeof data.profile === 'object'
+              ? (data.profile as Record<string, unknown>)
+              : {};
+          return (
+            String(
+              data.profilePic ||
+                data.profilePicture ||
+                data.avatar ||
+                nestedProfile.profilePic ||
+                nestedProfile.profilePicture ||
+                nestedProfile.avatar ||
+                '',
+            ).trim() || undefined
+          );
+        } catch (error) {
+          if (__DEV__) {
+            console.warn('[AI] Failed to load callee profile picture:', error);
+          }
+          return undefined;
+        }
+      };
+      return {
+        resolveUser: async (query: string) => {
         const normalized = query.trim().toLowerCase();
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
@@ -625,7 +675,7 @@ const AIAgentModal: React.FC<Props> = ({
           if (active?.id) return { id: active.id, name: active.name };
         }
         return resolveUser(query);
-      },
+        },
       startAudioCall: async (
         userId: string,
         channelName: string,
@@ -633,6 +683,7 @@ const AIAgentModal: React.FC<Props> = ({
         profilePic?: string,
       ) => {
         setMinimized(true);
+        const calleeProfilePic = await getCallProfilePic(userId, profilePic);
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
         );
@@ -642,7 +693,7 @@ const AIAgentModal: React.FC<Props> = ({
           to: userId,
           channelName: effectiveChannel,
           calleeName: userName,
-          calleeProfilePic: profilePic,
+          calleeProfilePic,
         });
         startAudioCall(userId, effectiveChannel);
       },
@@ -653,6 +704,7 @@ const AIAgentModal: React.FC<Props> = ({
         profilePic?: string,
       ) => {
         setMinimized(true);
+        const calleeProfilePic = await getCallProfilePic(userId, profilePic);
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
         );
@@ -662,7 +714,7 @@ const AIAgentModal: React.FC<Props> = ({
           to: userId,
           channelName: effectiveChannel,
           calleeName: userName,
-          calleeProfilePic: profilePic,
+          calleeProfilePic,
         });
         startVideoCall(userId, effectiveChannel);
       },
@@ -751,7 +803,8 @@ const AIAgentModal: React.FC<Props> = ({
           JSON.stringify(rules),
         );
       },
-    }),
+      };
+    },
     [
       onClose,
       profile,
@@ -939,6 +992,7 @@ const AIAgentModal: React.FC<Props> = ({
       onSpeechStart: () => transcribe.stop({ discard: true }),
     });
     const shouldSpeak = speechEnabled;
+    let callActionStarted = false;
     if (shouldSpeak) {
       await transcribe.stop({ discard: true });
       await restoreChatPlaybackAudioMode();
@@ -1207,6 +1261,12 @@ const AIAgentModal: React.FC<Props> = ({
               action.action === 'START_VIDEO_CALL',
           ),
         );
+        callActionStarted = startsCall;
+        if (startsCall) {
+          setVoiceConversation(false);
+          await transcribe.stop({ discard: true });
+          await restoreChatPlaybackAudioMode();
+        }
         if (autoMode && intent.actions?.length) {
           updateAutoActionRunning(true);
           // Paint the compact overlay before starting potentially slow action work.
@@ -1214,9 +1274,9 @@ const AIAgentModal: React.FC<Props> = ({
         }
         const results = await executeAgentActions(intent.actions, adapter, {
           // Sensitive actions always require an explicit confirmation, including
-          // hands-free mode. This prevents an accidental transcript from sending
-          // messages, starting calls, logging out, or deleting chat history.
-          skipConfirmation: false,
+          // manual mode. Auto mode intentionally executes actions without a
+          // confirmation prompt.
+          skipConfirmation: autoMode,
           onResolvedUser: resolved => {
             agentMemoryRef.current = {
               ...agentMemoryRef.current,
@@ -1363,7 +1423,11 @@ const AIAgentModal: React.FC<Props> = ({
     } finally {
       updateAutoActionRunning(false);
       if (generation === generationRef.current) setLoading(false);
-      if (voiceConversation && generation === generationRef.current) {
+      if (
+        voiceConversation &&
+        !callActionStarted &&
+        generation === generationRef.current
+      ) {
         if (shouldSpeak) {
           await speechController.finish();
         }
@@ -1743,21 +1807,29 @@ const AIAgentModal: React.FC<Props> = ({
     );
   };
   const runPendingAction = async (action: AgentActionIntent) => {
-    const adapter = createMobileAgentActionAdapter({
-      ...callAdapter,
-      startLudo: openLudo,
-      inviteLudoPlayer,
-      startChess: () => setChessGameActive(true),
-      logout,
-      clearAgentChat: clearChat,
-    });
-    if (autoMode) {
-      updateAutoActionRunning(true);
-      await new Promise<void>(resolve => setTimeout(resolve, 0));
-    }
     try {
+      const adapter = createMobileAgentActionAdapter({
+        ...callAdapter,
+        startLudo: openLudo,
+        inviteLudoPlayer,
+        startChess: () => setChessGameActive(true),
+        logout,
+        clearAgentChat: clearChat,
+      });
+      if (autoMode) {
+        updateAutoActionRunning(true);
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+      }
+      const startsCall =
+        action.action === 'START_AUDIO_CALL' ||
+        action.action === 'START_VIDEO_CALL';
+      if (startsCall) {
+        setVoiceConversation(false);
+        await transcribe.stop({ discard: true });
+        await restoreChatPlaybackAudioMode();
+      }
       const results = await executeAgentActions([action], adapter, {
-        skipConfirmation: false,
+        skipConfirmation: autoMode,
         confirm: definition =>
           new Promise<boolean>(resolve => {
             Alert.alert(

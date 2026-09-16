@@ -54,4 +54,33 @@ describe('agent action intents', () => {
     expect(searchYoutube).toHaveBeenCalledWith('lofi music');
     expect(downloadYoutube).toHaveBeenCalledWith(expect.objectContaining({ query: 'lofi music' }));
   });
+
+  it('hydrates the callee profile picture when the action already has a user ID', async () => {
+    const startAudioCall = jest.fn();
+    const resolveUser = jest.fn().mockResolvedValue({
+      id: 'user-1',
+      name: 'Alex',
+      profilePic: 'https://example.com/alex.jpg',
+    });
+
+    const results = await executeAgentActions(
+      [
+        {
+          action: 'START_AUDIO_CALL',
+          parameters: { userId: 'user-1', userName: 'Alex' },
+        },
+      ],
+      { resolveUser, startAudioCall },
+      { skipConfirmation: true },
+    );
+
+    expect(results[0].ok).toBe(true);
+    expect(resolveUser).toHaveBeenCalledWith('Alex');
+    expect(startAudioCall).toHaveBeenCalledWith(
+      'user-1',
+      'user-1',
+      'Alex',
+      'https://example.com/alex.jpg',
+    );
+  });
 });

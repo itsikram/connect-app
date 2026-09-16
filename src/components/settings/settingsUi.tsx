@@ -1,7 +1,8 @@
-import React, { createContext, useContext, useRef, useState } from 'react';
+import React, { createContext, useContext, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   findNodeHandle,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
@@ -9,6 +10,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../../contexts/ThemeContext';
 import VoiceTextInput from '../VoiceTextInput';
@@ -89,6 +91,12 @@ export const SettingsInput = ({
   const { colors } = useTheme();
   const inputRef = useRef<React.ElementRef<typeof VoiceTextInput>>(null);
   const settingsScrollRef = useContext(SettingsScrollContext);
+  const insets = useSafeAreaInsets();
+  const keyboardOffset = useMemo(() => {
+    const EXTRA_KEYBOARD_OFFSET = 45;
+    const baseOffset = Platform.OS === 'ios' ? 88 : 52;
+    return baseOffset + insets.bottom + EXTRA_KEYBOARD_OFFSET;
+  }, [insets.bottom]);
 
   const handleFocus = () => {
     const input = inputRef.current;
@@ -109,7 +117,7 @@ export const SettingsInput = ({
       if (!activeScrollView || !inputNode) return;
       activeScrollView.scrollResponderScrollNativeHandleToKeyboard?.(
         inputNode,
-        80,
+        keyboardOffset,
         true,
       );
     }, 100);

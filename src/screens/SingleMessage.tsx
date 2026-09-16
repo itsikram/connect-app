@@ -101,6 +101,7 @@ import {
 import useConnectChatSettings from '../hooks/useConnectChatSettings';
 import { isRomanticMessage, QUICK_REACTION_PRESETS } from '../utils/chatThemes';
 import ChatSettingsModal from '../components/ChatSettingsModal';
+import EditConnectionModal from '../components/EditConnectionModal';
 import SearchModal from '../components/SearchModal';
 import LoveEmojiRain from '../components/LoveEmojiRain';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -1024,6 +1025,11 @@ const SingleMessage = () => {
     timestamp: number;
   } | null>(null);
   const [optionMenuVisible, setOptionMenuVisible] = useState(false);
+  const [editConnectionOpen, setEditConnectionOpen] = useState(false);
+  const [editConnectionLoading, setEditConnectionLoading] = useState(false);
+  const [relationshipTypes, setRelationshipTypes] = useState<string[]>(
+    Array.isArray(connect?.relationshipTypes) ? connect.relationshipTypes : [],
+  );
   const [callMenuVisible, setCallMenuVisible] = useState(false);
   const [userInfoData, setUserInfoData] = useState<any>(null);
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
@@ -1036,6 +1042,23 @@ const SingleMessage = () => {
   const [isBlocked, setIsBlocked] = useState<boolean>(() =>
     listHasId(myProfile?.blockedUsers, connect?._id),
   );
+
+  useEffect(() => {
+    if (!connect?._id) return;
+    let isMounted = true;
+    connectAPI.getRelationships(String(connect._id))
+      .then(response => {
+        if (isMounted && Array.isArray(response.data?.relationTypes)) {
+          setRelationshipTypes(response.data.relationTypes);
+        }
+      })
+      .catch(error => {
+        console.error('Error loading connection relationship:', error);
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [connect?._id]);
 
   // Emotion detection state
   const emotionServerSocketRef = React.useRef<Socket | null>(null);
@@ -4064,6 +4087,24 @@ const SingleMessage = () => {
     );
   };
 
+  const handleEditConnection = async (nextRelationshipTypes: string[]) => {
+    if (!connect?._id || editConnectionLoading) return;
+    setEditConnectionLoading(true);
+    try {
+      await connectAPI.updateRelationships(String(connect._id), nextRelationshipTypes);
+      setRelationshipTypes(nextRelationshipTypes);
+      setEditConnectionOpen(false);
+    } catch (error: any) {
+      console.error('Error updating connection relationship:', error);
+      Alert.alert(
+        'Unable to update connection',
+        error?.response?.data?.message || 'Please try again.',
+      );
+    } finally {
+      setEditConnectionLoading(false);
+    }
+  };
+
   const likeOrUnlikeMessage = (reactionType = '👍') => {
     if (!selectedMessage) return;
     const messageId = selectedMessage._id;
@@ -6726,6 +6767,55 @@ const SingleMessage = () => {
                 </TouchableOpacity>
 
                 <TouchableOpacity
+                  key="edit-connection"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 15,
+                    borderBottomWidth: 1,
+                    borderBottomColor: themeColors.border.primary,
+                  }}
+                  onPress={() => {
+                    setOptionMenuVisible(false);
+                    setEditConnectionOpen(true);
+                  }}
+                >
+                  <View
+                    style={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 20,
+                      backgroundColor: themeColors.primary + '15',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 15,
+                    }}
+                  >
+                    <Icon name="edit" size={20} color={themeColors.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: 16,
+                        fontWeight: '500',
+                        color: themeColors.text.primary,
+                      }}
+                    >
+                      Edit connection
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: 12,
+                        color: themeColors.text.secondary,
+                        marginTop: 2,
+                      }}
+                    >
+                      Update relationship settings
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+
+                <TouchableOpacity
                   key="chat-appearance"
                   style={{
                     flexDirection: 'row',
@@ -8662,6 +8752,14 @@ const SingleMessage = () => {
         onRequestClose={() => setIsChatSettingsOpen(false)}
         connectId={connect?._id}
         connectProfile={connect}
+      />
+      <EditConnectionModal
+        visible={editConnectionOpen}
+        initialRelationshipTypes={relationshipTypes}
+        colors={themeColors}
+        loading={editConnectionLoading}
+        onCancel={() => setEditConnectionOpen(false)}
+        onSave={handleEditConnection}
       />
       <SearchModal
         visible={hashtagSearchQuery !== null}

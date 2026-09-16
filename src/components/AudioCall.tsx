@@ -67,6 +67,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const callStartTime = useRef<number | null>(null);
   const callSeenStatusSentRef = useRef(false);
   const callIgnoredStatusSentRef = useRef(false);
+  const microphonePublishedRef = useRef(false);
   const pendingAutoAcceptRef = useRef(false);
   const answerCallRef = useRef<(() => void) | null>(null);
   const pendingJoinRef = useRef<{ appId: string; token: string; channelName: string; uid: number } | null>(null);
@@ -114,6 +115,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setCallDuration(0);
     setIsMinimized(false);
     setIsMuted(false);
+    microphonePublishedRef.current = false;
     callStartTime.current = null;
     callSeenStatusSentRef.current = false;
     callIgnoredStatusSentRef.current = false;
@@ -133,6 +135,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (!callStartTime.current) callStartTime.current = Date.now();
       if (isJoiningOrJoined.current) return;
       isJoiningOrJoined.current = true;
+      microphonePublishedRef.current = false;
       setActiveCallKind('audio');
       setMediaActive(true);
       setEngineWarm(true);
@@ -484,6 +487,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
       cleanupAudioCall();
+    }
+    if (event.type === 'audio-enabled') {
+      microphonePublishedRef.current = true;
+    }
+    if (event.type === 'joined' && !microphonePublishedRef.current) {
+      // Keep the microphone publishing if the initial join publish raced
+      // WebView media startup or was interrupted by the platform.
+      engineRef.current?.enableAudio();
     }
     if (event.type === 'joined' || event.type === 'user-published') {
       engineRef.current?.resumeAudio();

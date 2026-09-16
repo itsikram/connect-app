@@ -21,6 +21,7 @@ import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat'
 import config from '../lib/config'
 import { setProfile } from '../reducers/profileReducer'
 import RelationshipPickerModal from '../components/RelationshipPickerModal'
+import EditConnectionModal from '../components/EditConnectionModal'
 
 function formatMonthYear(dateInput: any): string {
     try {
@@ -126,7 +127,12 @@ interface ConnectProfileRouteParams {
 const ConnectProfile = () => {
     const navigation = useNavigation();
     const route = useRoute();
-    const { connectId, connectData: initialConnectData } = route.params as ConnectProfileRouteParams;
+    const routeParams = (route.params || {}) as Partial<ConnectProfileRouteParams>;
+    const connectId = typeof routeParams.connectId === 'string' ? routeParams.connectId : '';
+    const initialConnectData =
+        routeParams.connectData && typeof routeParams.connectData === 'object'
+            ? routeParams.connectData
+            : undefined;
     const { colors: themeColors } = useTheme();
     
     const myProfile = useSelector((state: RootState) => state.profile)
@@ -148,6 +154,8 @@ const ConnectProfile = () => {
     const [connectActionLoading, setConnectActionLoading] = React.useState<string | null>(null)
     const [messageLoading, setMessageLoading] = React.useState(false)
     const [relationshipMode, setRelationshipMode] = React.useState<'send' | 'accept' | null>(null)
+    const [editConnectionOpen, setEditConnectionOpen] = React.useState(false)
+    const [editConnectionLoading, setEditConnectionLoading] = React.useState(false)
 
     const connectsCount = Array.isArray(connectData?.connects ?? connectData?.friends)
         ? (connectData.connects ?? connectData.friends).length
@@ -334,6 +342,14 @@ const ConnectProfile = () => {
             if (data.status === 'connects') {
                 setIsConnect(true);
                 setConnectStatus('connects');
+            } else if (data.status === 'updated') {
+                connectAPI.getRelationships(connectId).then(response => {
+                    if (Array.isArray(response.data?.relationTypes)) {
+                        setRelationshipTypes(response.data.relationTypes);
+                    }
+                }).catch(error => {
+                    console.error('Error refreshing connection relationship:', error);
+                });
             } else if (data.status === 'incoming') {
                 setConnectStatus(String(data.actorId) === String(myProfile?._id) ? 'outgoing' : 'incoming');
             } else if (data.status === 'none') {
@@ -466,6 +482,21 @@ const ConnectProfile = () => {
             console.error('Error disconnecting:', error);
         } finally {
             setConnectActionLoading(null);
+        }
+    };
+
+    const handleEditConnection = async (relationTypes: string[]) => {
+        if (!connectId || editConnectionLoading) return;
+        setEditConnectionLoading(true);
+        try {
+            await connectAPI.updateRelationships(connectId, relationTypes);
+            setRelationshipTypes(relationTypes);
+            setEditConnectionOpen(false);
+        } catch (error: any) {
+            console.error('Error updating connection relationship:', error);
+            Alert.alert('Unable to update connection', error?.response?.data?.message || 'Please try again.');
+        } finally {
+            setEditConnectionLoading(false);
         }
     };
 
@@ -843,13 +874,30 @@ const ConnectProfile = () => {
                             if (mode === 'accept') handleAcceptConnectRequest(types);
                         }} />
                     </ScrollView>
-                    <View style={[styles.optionsMenu, { backgroundColor: themeColors.surface.secondary }]}><Icon name="more-horiz" size={22} color={themeColors.text.secondary} /></View>
+                    {isConnect && (
+                        <Pressable
+                            style={[styles.optionsMenu, { backgroundColor: themeColors.surface.secondary }]}
+                            onPress={() => setEditConnectionOpen(true)}
+                            accessibilityRole="button"
+                            accessibilityLabel="Edit connection"
+                        >
+                            <Icon name="more-horiz" size={22} color={themeColors.text.secondary} />
+                        </Pressable>
+                    )}
                 </View>
             </View>
 
             <View style={styles.profileContentContainer}>
                 {tabs.find(t => t.key === activeTab)?.render()}
             </View>
+            <EditConnectionModal
+                visible={editConnectionOpen}
+                initialRelationshipTypes={relationshipTypes}
+                colors={themeColors}
+                loading={editConnectionLoading}
+                onCancel={() => setEditConnectionOpen(false)}
+                onSave={handleEditConnection}
+            />
         </ScrollView>
     )
 }
