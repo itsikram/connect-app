@@ -2,6 +2,7 @@ import React from 'react';
 import {
   View,
   Text,
+  TextInput,
   StyleSheet,
   Image,
   Pressable,
@@ -19,7 +20,7 @@ import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { RootState } from '../store';
 import { useTheme } from '../contexts/ThemeContext';
-import api, { connectAPI } from '../lib/api';
+import api, { connectAPI, userAPI } from '../lib/api';
 import PostItem from '../components/Post';
 import * as ImagePicker from 'expo-image-picker';
 import { useDispatch } from 'react-redux';
@@ -27,6 +28,7 @@ import {
   setProfile,
   updateProfilePic,
   updateCoverPic,
+  updateProfileField,
 } from '../reducers/profileReducer';
 import { useNavigation } from '@react-navigation/native';
 import ImageCropModal from '../components/ImageCropModal';
@@ -43,6 +45,7 @@ import CreateStoryModal from '../components/story/CreateStoryModal';
 import { POST_UPDATED_EVENT } from '../utils/postEvents';
 import { ResizeMode, Video as ExpoVideo } from '../lib/avCompat';
 import config from '../lib/config';
+import { useToast } from '../contexts/ToastContext';
 
 function formatMonthYear(dateInput: any): string {
   try {
@@ -163,6 +166,7 @@ type TabKey = 'Posts' | 'About' | 'Connects' | 'Images' | 'Videos';
 const MyProfile = () => {
   const navigation = useNavigation();
   const { colors: themeColors } = useTheme();
+  const { showSuccess, showError } = useToast();
   const myProfile = useSelector((state: RootState) => state.profile);
   const [activeTab, setActiveTab] = React.useState<TabKey>('About');
   const { width } = useWindowDimensions();
@@ -191,6 +195,9 @@ const MyProfile = () => {
   const [videos, setVideos] = React.useState<any[]>([]);
   const [videosLoading, setVideosLoading] = React.useState<boolean>(true);
   const [showFullBio, setShowFullBio] = React.useState<boolean>(false);
+  const [isEditingBio, setIsEditingBio] = React.useState<boolean>(false);
+  const [bioDraft, setBioDraft] = React.useState<string>('');
+  const [isSavingBio, setIsSavingBio] = React.useState<boolean>(false);
   const [refreshing, setRefreshing] = React.useState<boolean>(false);
   const [showProfileCropModal, setShowProfileCropModal] =
     React.useState<boolean>(false);
@@ -202,6 +209,39 @@ const MyProfile = () => {
   const displayedConnectsCount = connectsLoading ? connectsCount : connects.length;
   const followersCount = myProfile?.followersCount ?? myProfile?.followers?.length ?? 0;
   const followingCount = myProfile?.followingCount ?? myProfile?.following?.length ?? 0;
+
+  const handleEditBio = () => {
+    setBioDraft(myProfile?.bio || '');
+    setIsEditingBio(true);
+  };
+
+  const handleCancelBioEdit = () => {
+    setBioDraft(myProfile?.bio || '');
+    setIsEditingBio(false);
+  };
+
+  const handleSaveBio = async () => {
+    if (isSavingBio) return;
+
+    try {
+      setIsSavingBio(true);
+      const bio = bioDraft.trim();
+      const response = await userAPI.updateProfile({ bio });
+
+      if (response.status !== 200) {
+        throw new Error('Profile update failed');
+      }
+
+      dispatch(updateProfileField({ field: 'bio', value: bio }));
+      setIsEditingBio(false);
+      showSuccess('Bio updated successfully');
+    } catch (error) {
+      console.error('Error saving bio:', error);
+      showError('Failed to update bio. Please try again.');
+    } finally {
+      setIsSavingBio(false);
+    }
+  };
 
   const fetchProfileData = React.useCallback(async () => {
     if (!myProfile?._id) return;
@@ -639,7 +679,12 @@ const MyProfile = () => {
                   size={20}
                   color={themeColors.text.secondary}
                 />
-                <Text style={styles.detailsText}>
+                <Text
+                  style={[
+                    styles.detailsText,
+                    { color: themeColors.text.primary },
+                  ]}
+                >
                   From{' '}
                   <Text
                     style={[
@@ -1258,7 +1303,53 @@ const MyProfile = () => {
                 },
               ]}
             >
-              {myProfile?.bio ? (
+              {isEditingBio ? (
+                <View style={styles.bioEditor}>
+                  <TextInput
+                    value={bioDraft}
+                    onChangeText={setBioDraft}
+                    placeholder="Tell people about yourself"
+                    placeholderTextColor={themeColors.text.tertiary}
+                    multiline
+                    maxLength={500}
+                    autoFocus
+                    style={[
+                      styles.bioInput,
+                      {
+                        color: themeColors.text.primary,
+                        borderColor: themeColors.border.secondary,
+                        backgroundColor: themeColors.surface.primary,
+                      },
+                    ]}
+                  />
+                  <View style={styles.bioEditorActions}>
+                    <Pressable
+                      onPress={handleCancelBioEdit}
+                      disabled={isSavingBio}
+                      style={[
+                        styles.bioEditorButton,
+                        { borderColor: themeColors.border.secondary },
+                      ]}
+                    >
+                      <Text style={{ color: themeColors.text.secondary }}>
+                        Cancel
+                      </Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={handleSaveBio}
+                      disabled={isSavingBio}
+                      style={[
+                        styles.bioEditorButton,
+                        { backgroundColor: themeColors.primary },
+                      ]}
+                    >
+                      <Text style={{ color: themeColors.text.inverse }}>
+                        {isSavingBio ? 'Saving...' : 'Save'}
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : myProfile?.bio ? (
                 <>
                   <Text
                     style={[
@@ -1303,12 +1394,7 @@ const MyProfile = () => {
                   styles.editBioButton,
                   { backgroundColor: themeColors.surface.secondary },
                 ]}
-                onPress={() => {
-                  // Navigate to profile settings
-                  (navigation as any).navigate('Settings', {
-                    screen: 'ProfileSettings',
-                  });
-                }}
+                onPress={handleEditBio}
               >
                 <Icon
                   name="edit"
@@ -1873,6 +1959,32 @@ const styles = StyleSheet.create({
     width: '100%',
     alignSelf: 'center',
     minHeight: 60,
+  },
+  bioEditor: {
+    width: '100%',
+  },
+  bioInput: {
+    minHeight: 90,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 14,
+    textAlignVertical: 'top',
+  },
+  bioEditorActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+    marginTop: 10,
+  },
+  bioEditorButton: {
+    minWidth: 78,
+    alignItems: 'center',
+    borderRadius: 6,
+    borderWidth: 1,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
   },
   bioText: {
     fontSize: 14,

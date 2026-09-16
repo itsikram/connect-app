@@ -13,9 +13,12 @@ const CACHE_KEYS = {
 
 const CACHE_VERSION = '1.0';
 const CACHE_DURATION = 30 * 60 * 1000; // 30 minutes
+const STORIES_CACHE_DURATION = 10 * 60 * 1000; // Refresh stories at most every 10 minutes
 
 const storiesCacheKey = (profileId?: string | null) =>
   `homeStories_${profileId || 'guest'}`;
+const storiesTimestampKey = (profileId?: string | null) =>
+  `homeStories_timestamp_${profileId || 'guest'}`;
 
 const isAppCacheKey = (key: string) =>
   key === CACHE_KEYS.HOME_POSTS ||
@@ -199,8 +202,15 @@ class CacheManager {
 
   static async getCachedStories(profileId?: string | null): Promise<any[] | null> {
     try {
-      const raw = await AsyncStorage.getItem(storiesCacheKey(profileId));
-      if (!raw) return null;
+      const [[, raw], [, timestamp]] = await AsyncStorage.multiGet([
+        storiesCacheKey(profileId),
+        storiesTimestampKey(profileId),
+      ]);
+      if (!raw || !timestamp) return null;
+      const cachedAt = Number(timestamp);
+      if (!Number.isFinite(cachedAt) || Date.now() - cachedAt > STORIES_CACHE_DURATION) {
+        return null;
+      }
       const parsed = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed : null;
     } catch (error) {
@@ -211,7 +221,11 @@ class CacheManager {
 
   static async setCachedStories(profileId: string | null | undefined, stories: any[]) {
     try {
-      await AsyncStorage.setItem(storiesCacheKey(profileId), JSON.stringify(stories || []));
+      if (!Array.isArray(stories)) return false;
+      await AsyncStorage.multiSet([
+        [storiesCacheKey(profileId), JSON.stringify(stories)],
+        [storiesTimestampKey(profileId), Date.now().toString()],
+      ]);
       return true;
     } catch (error) {
       console.error('Error caching stories:', error);

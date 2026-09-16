@@ -9,10 +9,14 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 
 class IncomingCallRingService : Service() {
   private var player: MediaPlayer? = null
   private var currentNotificationId = DEFAULT_NOTIFICATION_ID
+  private val ringStopHandler = Handler(Looper.getMainLooper())
+  private val ringStopRunnable = Runnable { stopRinging() }
 
   override fun onBind(intent: Intent?): IBinder? = null
 
@@ -47,6 +51,8 @@ class IncomingCallRingService : Service() {
     }
 
     startRingtone(data["ringtoneId"] ?: "1")
+    ringStopHandler.removeCallbacks(ringStopRunnable)
+    ringStopHandler.postDelayed(ringStopRunnable, CALL_RING_DURATION_MS)
     return START_STICKY
   }
 
@@ -117,6 +123,7 @@ class IncomingCallRingService : Service() {
   }
 
   private fun stopRingingInternal() {
+    ringStopHandler.removeCallbacks(ringStopRunnable)
     try {
       player?.stop()
     } catch (_: Exception) {
@@ -133,6 +140,7 @@ class IncomingCallRingService : Service() {
   companion object {
     const val ACTION_STOP = "com.connect.app.STOP_INCOMING_CALL"
     const val DEFAULT_NOTIFICATION_ID = 41001
+    const val CALL_RING_DURATION_MS = 30_000L
 
     fun notificationIdFor(channelName: String): Int {
       if (channelName.isEmpty()) return DEFAULT_NOTIFICATION_ID

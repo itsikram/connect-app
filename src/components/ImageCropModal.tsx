@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, Alert } from 'react-na
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../contexts/ThemeContext';
+import { compatibleImagePickerOptions } from '../utils/imageUpload';
 
 interface ImageCropModalProps {
   visible: boolean;
@@ -33,6 +34,7 @@ const ImageCropModal: React.FC<ImageCropModalProps> = ({
       // Launch camera
       const result = await ImagePicker.launchCameraAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
         allowsEditing: true,
         aspect: aspectRatio || (type === 'profile' ? [1, 1] : [16, 9]),
         quality: 0.8,
@@ -60,6 +62,7 @@ const ImageCropModal: React.FC<ImageCropModalProps> = ({
       // Launch image library
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
         allowsEditing: true,
         aspect: aspectRatio || (type === 'profile' ? [1, 1] : [16, 9]),
         quality: 0.8,

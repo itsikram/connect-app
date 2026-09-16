@@ -14,6 +14,10 @@ import VoiceTextInput from './VoiceTextInput';
 import MentionTextInput from './MentionTextInput';
 import { generatePostCaption } from '../services/aiAgentService';
 import { useSettings } from '../contexts/SettingsContext';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../utils/imageUpload';
 
 type CreatePostProps = {
   onPostCreated?: (post: any) => void;
@@ -257,6 +261,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         mediaTypes: mediaType === 'image' 
           ? ImagePicker.MediaTypeOptions.Images 
           : ImagePicker.MediaTypeOptions.Videos,
+        ...(mediaType === 'image' ? compatibleImagePickerOptions : {}),
         quality: 0.7,
         base64: mediaType === 'image',
         allowsEditing: mediaType === 'video',
@@ -265,7 +270,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
       
       if (!result.canceled && result.assets && result.assets[0]) {
         const assets = result.assets;
-        const asset = assets[0];
+        const asset = mediaType === 'image' ? normalizeImageAsset(assets[0]) : assets[0];
         if (asset.uri) {
           setPostData((prev) => ({
             ...prev,
@@ -285,9 +290,8 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
               ? [
                   ...(prev.type === 'image' ? prev.imageAssets || [] : []),
                   ...assets.map((selectedAsset) => ({
+                  ...normalizeImageAsset(selectedAsset),
                   uri: selectedAsset.uri,
-                  fileName: selectedAsset.fileName,
-                  mimeType: selectedAsset.mimeType,
                   base64: selectedAsset.base64,
                   })),
                 ]
@@ -323,10 +327,11 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
             continue;
           }
           const formData = new FormData();
+          const normalizedAsset = normalizeImageAsset(imageAsset);
           const fileData = {
-            uri: imageAsset.uri,
-            name: imageAsset.fileName || 'upload.jpg',
-            type: imageAsset.mimeType || 'image/jpeg',
+            uri: normalizedAsset.uri,
+            name: normalizedAsset.fileName,
+            type: normalizedAsset.mimeType,
           } as any;
           formData.append('image', fileData);
           const uploadRes = await api.post('/upload/', formData, {
@@ -348,8 +353,20 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
         const formData = new FormData();
         const fileData = {
           uri: postData.urls,
-          name: postData.mediaFileName || `upload.${postData.type === 'image' ? 'jpg' : 'mp4'}`,
-          type: postData.mediaMimeType || (postData.type === 'image' ? 'image/jpeg' : 'video/mp4'),
+          name: postData.type === 'image'
+            ? normalizeImageAsset({
+                uri: postData.urls,
+                fileName: postData.mediaFileName,
+                mimeType: postData.mediaMimeType,
+              }).fileName
+            : postData.mediaFileName || 'upload.mp4',
+          type: postData.type === 'image'
+            ? normalizeImageAsset({
+                uri: postData.urls,
+                fileName: postData.mediaFileName,
+                mimeType: postData.mediaMimeType,
+              }).mimeType
+            : postData.mediaMimeType || 'video/mp4',
         } as any;
         
         // Validate file type

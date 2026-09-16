@@ -21,6 +21,10 @@ import {
   QUICK_REACTION_PRESETS,
 } from '../utils/chatThemes';
 import useConnectChatSettings from '../hooks/useConnectChatSettings';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../utils/imageUpload';
 
 interface Props {
   isOpen: boolean;
@@ -67,10 +71,13 @@ const ChatSettingsModal = ({
     try {
       const result: any = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
         selectionLimit: 1,
       });
       if (result.canceled) return;
-      const asset = result.assets?.[0];
+      const asset = result.assets?.[0]
+        ? normalizeImageAsset(result.assets[0])
+        : undefined;
       if (!asset?.uri) return;
       if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
         Alert.alert('Too large', 'Image must be less than 5MB');

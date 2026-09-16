@@ -42,12 +42,16 @@ const WORKING_APP_IDS = new Set([
   'vpnBrowser',
   'maps',
   'contacts',
+  'gmail',
+  'calendar',
+  'drive',
+  'photos',
 ]);
 
 const APP_SECTIONS: { title: string; ids: string[] }[] = [
   { title: 'Games', ids: ['Ludu', 'Chess', 'cricbuzz'] },
   { title: 'Media', ids: ['mediaPlayer', 'youtube', 'camera', 'gallery', 'downloads', 'facebook'] },
-  { title: 'Tools', ids: ['vpnBrowser', 'maps', 'contacts'] },
+  { title: 'Tools', ids: ['vpnBrowser', 'maps', 'contacts', 'gmail', 'calendar', 'drive', 'photos'] },
 ];
 
 const Menu = () => {
@@ -118,6 +122,22 @@ const Menu = () => {
     }
     if (app.id === 'contacts') {
       (navigation as any).navigate('Menu', { screen: 'GoogleContacts' });
+      return;
+    }
+    if (app.id === 'gmail') {
+      (navigation as any).navigate('Menu', { screen: 'GoogleMail' });
+      return;
+    }
+    if (app.id === 'calendar') {
+      (navigation as any).navigate('Menu', { screen: 'GoogleCalendar' });
+      return;
+    }
+    if (app.id === 'drive') {
+      (navigation as any).navigate('Menu', { screen: 'GoogleDrive' });
+      return;
+    }
+    if (app.id === 'photos') {
+      (navigation as any).navigate('Menu', { screen: 'GooglePhotos' });
       return;
     }
     if (app.id === 'cricbuzz') {

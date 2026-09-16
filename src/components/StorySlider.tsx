@@ -70,24 +70,42 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
     ? ['#242526', '#1a1c1e']
     : [themeColors.surface.secondary, themeColors.background.tertiary];
   const scrollViewRef = useRef<ScrollView>(null);
+  const requestIdRef = useRef(0);
+  const mountedRef = useRef(true);
 
   const fetchStories = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const requestedProfileId = profileId;
     try {
       const response = await storyAPI.getAllStories();
-      if (response.status === 200) {
+      if (
+        response.status === 200 &&
+        mountedRef.current &&
+        requestId === requestIdRef.current &&
+        requestedProfileId === profileId
+      ) {
         const nextStories = Array.isArray(response.data) ? response.data : [];
         setStories(nextStories);
-        CacheManager.setCachedStories(profileId, nextStories);
+        await CacheManager.setCachedStories(requestedProfileId, nextStories);
       }
     } catch (err) {
       console.error('Error fetching stories:', err);
     } finally {
-      setLoading(false);
+      if (
+        mountedRef.current &&
+        requestId === requestIdRef.current &&
+        requestedProfileId === profileId
+      ) {
+        setLoading(false);
+      }
     }
   }, [profileId]);
 
   useEffect(() => {
     let cancelled = false;
+    mountedRef.current = true;
+    setStories([]);
+    setLoading(true);
 
     const hydrate = async () => {
       const cached = await CacheManager.getCachedStories(profileId);
@@ -100,6 +118,8 @@ const StorySlider: React.FC<StorySliderProps> = ({ onStoryPress, refreshKey = 0 
     hydrate();
     return () => {
       cancelled = true;
+      mountedRef.current = false;
+      requestIdRef.current += 1;
     };
   }, [profileId]);
 

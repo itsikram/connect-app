@@ -939,6 +939,7 @@ const styles = StyleSheet.create({
         flex: 1,
     },
     profileInfo: {
+        width: '100%',
         flex: 1,
         flexDirection: 'column',
         alignItems: 'center',
@@ -1207,7 +1208,7 @@ const styles = StyleSheet.create({
         borderRadius: 12,
         borderWidth: 1,
         width: '100%',
-        alignSelf: 'center',
+        alignSelf: 'stretch',
         minHeight: 60,
     },
     bioText: {

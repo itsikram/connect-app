@@ -6,6 +6,10 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../../utils/imageUpload';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useSettings } from '../../contexts/SettingsContext';
@@ -63,11 +67,14 @@ const MessageSettings = () => {
     try {
       const result: any = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
         selectionLimit: 1,
         quality: 0.85,
       });
       if (result.canceled) return;
-      const asset = result.assets?.[0];
+      const asset = result.assets?.[0]
+        ? normalizeImageAsset(result.assets[0])
+        : undefined;
       if (!asset?.uri) return;
       if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
         showError('Image must be less than 5MB');

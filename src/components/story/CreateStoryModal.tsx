@@ -17,6 +17,10 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { useToast } from '../../contexts/ToastContext';
 import api, { storyAPI } from '../../lib/api';
 import UserPP from '../UserPP';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../../utils/imageUpload';
 
 const FALLBACK_BG = 'linear-gradient(135deg, #00D4FF 0%, #6366F1 100%)';
 
@@ -94,15 +98,17 @@ const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
         quality: 0.85,
         allowsEditing: false,
       });
 
       if (result.canceled || !result.assets?.[0]?.uri) return;
 
-      const uri = result.assets[0].uri;
-      const mime = result.assets[0].mimeType || 'image/jpeg';
-      const name = result.assets[0].fileName || `story_${Date.now()}.jpg`;
+      const asset = normalizeImageAsset(result.assets[0]);
+      const uri = asset.uri;
+      const mime = asset.mimeType;
+      const name = asset.fileName || `story_${Date.now()}.jpg`;
 
       setUploadError('');
       setLocalPreview(uri);

@@ -30,6 +30,10 @@ import { AUDIENCE_OPTIONS, getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
 import { generatePostCaption } from '../services/aiAgentService';
 import { useSettings } from '../contexts/SettingsContext';
+import {
+    compatibleImagePickerOptions,
+    normalizeImageAsset,
+} from '../utils/imageUpload';
 
 interface Post {
     _id: string;
@@ -88,7 +92,6 @@ const EditPost = () => {
     // Image editing states
     const [newImageUri, setNewImageUri] = useState<string | null>(null);
     const [isUploadingImage, setIsUploadingImage] = useState(false);
-    const [imageRemoved, setImageRemoved] = useState(false);
     const [isWritingCaption, setIsWritingCaption] = useState(false);
     
     // Feelings options
@@ -220,11 +223,26 @@ const EditPost = () => {
             flexWrap: 'wrap',
             gap: 6,
         },
-        multiImage: {
+        multiImageItem: {
             width: '49%',
+            position: 'relative',
+        },
+        multiImage: {
+            width: '100%',
             height: 150,
             borderRadius: 10,
             backgroundColor: themeColors.gray[100],
+        },
+        removeImageButton: {
+            position: 'absolute',
+            top: 6,
+            right: 6,
+            width: 30,
+            height: 30,
+            borderRadius: 15,
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.65)',
         },
         imagePlaceholder: {
             width: '100%',
@@ -417,7 +435,7 @@ const EditPost = () => {
     const handleSave = async () => {
         if (!post || !myProfile?._id) return;
         
-        const hasPhoto = Boolean(newImageUri || (currentImages.length > 0 && !imageRemoved));
+        const hasPhoto = Boolean(newImageUri || currentImages.length > 0);
         if (!caption.trim() && !hasPhoto) {
             Alert.alert('Error', 'Please add a caption or photo before saving');
             return;
@@ -431,9 +449,6 @@ const EditPost = () => {
             if (newImageUri) {
                 // Upload new image
                 newImageUrl = await uploadNewImage();
-            } else if (imageRemoved) {
-                // Image was removed
-                newImageUrl = '';
             }
             
             // Prepare update data
@@ -445,11 +460,14 @@ const EditPost = () => {
                 audience,
             };
             
-            // Add image URL if it was changed
+            const remainingImages = [...currentImages];
             if (newImageUrl !== null) {
-                updateData.photos = newImageUrl;
+                updateData.photos = newImageUrl || '';
+                updateData.gallery = remainingImages.slice(1);
+            } else {
+                updateData.photos = remainingImages[0] || '';
+                updateData.gallery = remainingImages.slice(1);
             }
-            updateData.gallery = imageRemoved ? [] : (post.gallery || []);
 
             const response = await api.post('/post/update', updateData);
 
@@ -460,7 +478,7 @@ const EditPost = () => {
                     feelings: feelings.trim() || '',
                     location: location.trim() || '',
                     audience,
-                    photos: newImageUrl !== null ? newImageUrl : post.photos,
+                    photos: updateData.photos,
                     gallery: updateData.gallery,
                 };
                 CacheManager.updateCachedPost(updatedPost);
@@ -492,15 +510,15 @@ const EditPost = () => {
         try {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ImagePicker.MediaTypeOptions.Images,
+                ...compatibleImagePickerOptions,
                 quality: 0.7,
                 allowsEditing: true,
             });
             
             if (!result.canceled && result.assets && result.assets[0]) {
-                const asset = result.assets[0];
+                const asset = normalizeImageAsset(result.assets[0]);
                 if (asset.uri) {
                     setNewImageUri(asset.uri);
-                    setImageRemoved(false);
                 }
             }
         } catch (error) {
@@ -543,7 +561,7 @@ const EditPost = () => {
         }
     };
 
-    const removeImage = () => {
+    const removeImage = (index: number) => {
         Alert.alert(
             'Remove Image',
             'Are you sure you want to remove this image?',
@@ -553,8 +571,11 @@ const EditPost = () => {
                     text: 'Remove',
                     style: 'destructive',
                     onPress: () => {
-                        setImageRemoved(true);
-                        setNewImageUri(null);
+                        setCurrentImages(images => {
+                            const remaining = images.filter((_, imageIndex) => imageIndex !== index);
+                            setCurrentImage(remaining[0] || '');
+                            return remaining;
+                        });
                     },
                 },
             ]
@@ -600,7 +621,7 @@ const EditPost = () => {
 
     if (loading) {
         return (
-            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar 
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
@@ -615,7 +636,7 @@ const EditPost = () => {
 
     if (error || !post) {
         return (
-            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+            <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
                 <StatusBar 
                     barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                     backgroundColor={themeColors.surface.header} 
@@ -639,7 +660,7 @@ const EditPost = () => {
     }
 
     return (
-        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+        <SafeAreaView style={styles.container} edges={['top', 'left', 'right', 'bottom']}>
             <StatusBar 
                 barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
                 backgroundColor={themeColors.surface.header} 
@@ -706,20 +727,32 @@ const EditPost = () => {
                     </View>
 
                     {/* Current Image */}
-                    {currentImages.length > 0 && !imageRemoved && (
+                    {currentImages.length > 0 && (
                         <View style={styles.imageContainer}>
                             <Text style={styles.label}>Current Image</Text>
                             <View style={styles.multiImageContainer}>
                                 {currentImages.map((imageUrl, index) => (
-                                    <Image
+                                    <View
                                         key={`${imageUrl}-${index}`}
+                                        style={styles.multiImageItem}
+                                    >
+                                        <Image
                                         source={{ uri: imageUrl }}
                                         style={[
                                             styles.multiImage,
                                             currentImages.length === 1 && styles.currentImage,
                                         ]}
                                         resizeMode="cover"
-                                    />
+                                        />
+                                        <TouchableOpacity
+                                            onPress={() => removeImage(index)}
+                                            style={styles.removeImageButton}
+                                            accessibilityRole="button"
+                                            accessibilityLabel={`Remove image ${index + 1}`}
+                                        >
+                                            <Icon name="close" size={18} color="#fff" />
+                                        </TouchableOpacity>
+                                    </View>
                                 ))}
                             </View>
                             <View style={styles.imageActions}>
@@ -735,19 +768,6 @@ const EditPost = () => {
                                     />
                                     <Text style={styles.imageActionButtonText}>
                                         Change Image
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={removeImage}
-                                    style={[styles.imageActionButton, styles.removeButton]}
-                                >
-                                    <Icon 
-                                        name="delete" 
-                                        size={16} 
-                                        color={themeColors.status.error} 
-                                    />
-                                    <Text style={[styles.imageActionButtonText, styles.removeButtonText]}>
-                                        Remove
                                     </Text>
                                 </TouchableOpacity>
                             </View>
@@ -770,7 +790,7 @@ const EditPost = () => {
                     )}
 
                     {/* No Image State */}
-                    {(!currentImage || imageRemoved) && !newImageUri && (
+                    {(!currentImage || currentImages.length === 0) && !newImageUri && (
                         <View style={styles.imageContainer}>
                             <Text style={styles.label}>Add Image</Text>
                             <TouchableOpacity

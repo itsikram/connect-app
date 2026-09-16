@@ -1,11 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, StatusBar, Platform, BackHandler, Linking } from 'react-native';
+import { StyleSheet, StatusBar, Platform, BackHandler, Linking } from 'react-native';
 import WebView from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingBackButton from '../components/FloatingBackButton';
 
-const GoogleContactsScreen = () => {
+export type GoogleWebScreenProps = {
+  uri: string;
+};
+
+const GoogleWebScreen = ({ uri }: GoogleWebScreenProps) => {
   const { colors: themeColors } = useTheme();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -26,17 +30,17 @@ const GoogleContactsScreen = () => {
 
   return (
     <SafeAreaView
-      edges={['left', 'right']}
+      edges={['left', 'right', 'bottom']}
       style={[styles.container, { backgroundColor: themeColors.background.primary }]}
     >
-      <StatusBar 
+      <StatusBar
         barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
         backgroundColor={themeColors.background.primary}
         translucent={false}
       />
       <WebView
         ref={webViewRef}
-        source={{ uri: 'https://contacts.google.com' }}
+        source={{ uri }}
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -55,7 +59,7 @@ const GoogleContactsScreen = () => {
         mediaPlaybackRequiresUserAction={false}
         mixedContentMode="compatibility"
         userAgent="Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
-        originWhitelist={["*"]}
+        originWhitelist={['*']}
         onNavigationStateChange={(navState) => {
           setCanGoBack(navState.canGoBack);
           setCanGoForward(navState.canGoForward);
@@ -91,5 +95,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default GoogleContactsScreen;
-
+export default GoogleWebScreen;

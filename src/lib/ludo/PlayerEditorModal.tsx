@@ -15,6 +15,7 @@ import type { ConnectUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';
 import KeyboardSafeView from '../../components/KeyboardSafeView';
 import VoiceTextInput from '../../components/VoiceTextInput';
+import { compatibleImagePickerOptions } from '../../utils/imageUpload';
 
 interface PlayerEditorModalProps {
   show: boolean;
@@ -73,6 +74,7 @@ export const PlayerEditorModal: React.FC<PlayerEditorModalProps> = ({
     if (permission.status !== 'granted') return;
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      ...compatibleImagePickerOptions,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.85,

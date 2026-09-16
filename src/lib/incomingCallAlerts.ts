@@ -58,6 +58,13 @@ function sameCall(a: RingingPayload | null, b: RingingPayload): boolean {
   return a.channelName === b.channelName && a.callerId === b.callerId;
 }
 
+function stopAfterRingtoneError(error: unknown): void {
+  console.error('Incoming call ringtone failed:', error);
+  stopIncomingCallAlert().catch((stopError) => {
+    console.error('Failed to stop incoming call ringtone after error:', stopError);
+  });
+}
+
 async function displayAndroidCallForegroundNotification(payload: RingingPayload): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
   try {
@@ -95,11 +102,11 @@ function ensureAppStateWatch() {
       if (!ringingPayload) return;
       if (state === 'active') {
         cancelAndroidCallForegroundNotification().catch(() => {});
-        playIncomingRingtone(ringingPayload.ringtoneId).catch(() => {});
+        playIncomingRingtone(ringingPayload.ringtoneId).catch(stopAfterRingtoneError);
         return;
       }
       if (Platform.OS === 'ios') {
-        playIncomingRingtone(ringingPayload.ringtoneId).catch(() => {});
+        playIncomingRingtone(ringingPayload.ringtoneId).catch(stopAfterRingtoneError);
         presentIncomingCallNotification(ringingPayload).catch(() => {});
         return;
       }
@@ -242,7 +249,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 
   if (sameCall(ringingPayload, next)) {
     if (!isIncomingRingtonePlaying() && (inForeground || Platform.OS === 'ios')) {
-      playIncomingRingtone(ringtoneId).catch(() => {});
+      playIncomingRingtone(ringtoneId).catch(stopAfterRingtoneError);
     }
     return;
   }
@@ -262,7 +269,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
   if (token !== alertToken || !ringingPayload || !sameCall(ringingPayload, next)) return;
 
   if (inForeground) {
-    playIncomingRingtone(ringtoneId).catch(() => {});
+    playIncomingRingtone(ringtoneId).catch(stopAfterRingtoneError);
     return;
   }
 

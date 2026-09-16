@@ -9,10 +9,17 @@ import {
 
 let ringtoneSound: Audio.Sound | null = null;
 let vibrationTimer: ReturnType<typeof setInterval> | null = null;
+let ringtoneStopTimer: ReturnType<typeof setTimeout> | null = null;
+let ringtoneStartedAt: number | null = null;
 let playToken = 0;
 let playingRingtoneId: string | null = null;
+export const CALL_RING_DURATION_MS = 30 * 1000;
 
 async function unloadCurrentSound(): Promise<void> {
+  if (ringtoneStopTimer) {
+    clearTimeout(ringtoneStopTimer);
+    ringtoneStopTimer = null;
+  }
   if (vibrationTimer) {
     clearInterval(vibrationTimer);
     vibrationTimer = null;
@@ -88,6 +95,20 @@ export function isIncomingRingtonePlaying(): boolean {
 }
 
 export async function playIncomingRingtone(ringtoneId?: string): Promise<void> {
+  if (ringtoneStartedAt === null) {
+    ringtoneStartedAt = Date.now();
+  }
+  const remainingMs = CALL_RING_DURATION_MS - (Date.now() - ringtoneStartedAt);
+  if (remainingMs <= 0) {
+    await stopIncomingRingtone();
+    return;
+  }
+  if (!ringtoneStopTimer) {
+    ringtoneStopTimer = setTimeout(() => {
+      ringtoneStopTimer = null;
+      stopIncomingRingtone().catch(() => {});
+    }, remainingMs);
+  }
   const id = ringtoneId ? normalizeRingtoneId(ringtoneId) : await getStoredRingtoneId();
   if (ringtoneSound && playingRingtoneId === id) {
     try {
@@ -124,6 +145,9 @@ export async function playIncomingRingtone(ringtoneId?: string): Promise<void> {
     playingRingtoneId = id;
   } catch (error) {
     console.warn('callRingtone: audio playback failed, using vibration', error);
+    await unloadCurrentSound();
+    ringtoneStartedAt = null;
+    throw error;
   }
 
   if (token !== playToken) return;
@@ -139,4 +163,5 @@ export async function playIncomingRingtone(ringtoneId?: string): Promise<void> {
 export async function stopIncomingRingtone(): Promise<void> {
   playToken += 1;
   await unloadCurrentSound();
+  ringtoneStartedAt = null;
 }

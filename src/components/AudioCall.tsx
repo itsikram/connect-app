@@ -144,6 +144,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       engineRef.current?.join({ ...creds, isAudio: true, publishAudio: true });
     } catch (error: any) {
       console.error('AudioCall: failed to start', error);
+      await stopIncomingCallAlert();
       Alert.alert('Call failed', error?.message || 'Could not start the audio call.');
       isJoiningOrJoined.current = false;
       setActiveCallKind(null);

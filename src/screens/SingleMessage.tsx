@@ -121,6 +121,10 @@ import {
   hideTabBarForChat,
   restoreTabBarAfterChat,
 } from '../lib/chatScreenChrome';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../utils/imageUpload';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 interface Message {
@@ -488,8 +492,12 @@ const SingleMessage = () => {
   const chatThemeRef = useRef(chatTheme);
   const [isChatSettingsOpen, setIsChatSettingsOpen] = useState(false);
   const CHAT_BG_STORAGE_KEY = '@chat_background_image';
-  const getMessagesStorageKey = (profileId: string, connectId: string) =>
-    `@chat_messages_${profileId}_${connectId}`;
+  const getMessagesStorageKey = (profileId: string, connectId: string) => {
+    const conversationKey = [String(profileId), String(connectId)]
+      .sort()
+      .join('_');
+    return `@chat_messages_${conversationKey}`;
+  };
 
   useEffect(() => {
     chatThemeRef.current = chatTheme;
@@ -2703,6 +2711,9 @@ const SingleMessage = () => {
           image: base64Image,
           profileId: String(myProfile?._id || ''),
           connectId: String(connect?._id || ''),
+          // The Expo client forwards the response over its already-connected
+          // application socket; avoid a second synchronous relay in Python.
+          relayToConnect: false,
         });
         lastFrameSentAtRef.current = t0;
         console.log(
@@ -2884,7 +2895,7 @@ const SingleMessage = () => {
 
       // Optimized adaptive detection frequency - faster for quick emotion changes
       // Keep polling responsive; the in-flight guard prevents stale queues.
-      const detectionInterval = 250;
+      const detectionInterval = 120;
 
       emotionDetectionIntervalRef.current = setInterval(async () => {
         detectionStatsRef.current.intervalTicks += 1;
@@ -4281,16 +4292,17 @@ const SingleMessage = () => {
     mimeType?: string | null;
     type?: string | null;
   }) => {
+    const normalizedAsset = normalizeImageAsset(asset);
     setIsUploading(true);
     setUploadProgress(0);
-    setPendingAttachmentLocal(asset.uri);
+    setPendingAttachmentLocal(normalizedAsset.uri);
 
     try {
       const formData: any = new FormData();
       formData.append('image', {
-        uri: asset.uri,
-        name: asset.fileName || 'photo.jpg',
-        type: asset.mimeType || asset.type || 'image/jpeg',
+        uri: normalizedAsset.uri,
+        name: normalizedAsset.fileName,
+        type: normalizedAsset.mimeType,
       } as any);
 
       const uploadRes = await api.post('/upload', formData, {
@@ -4305,7 +4317,7 @@ const SingleMessage = () => {
 
       setUploadProgress(100);
       setPendingAttachment(secureUrl);
-      setPendingAttachmentLocal(asset.uri);
+      setPendingAttachmentLocal(normalizedAsset.uri);
     } catch (err: any) {
       console.error('Attachment upload error:', err?.message || err);
       Alert.alert('Upload failed', 'Could not upload the image.');
@@ -4369,14 +4381,20 @@ const SingleMessage = () => {
         }
       }
       const result: any = fromCamera
-        ? await ImagePicker.launchCameraAsync({ quality: 0.85 })
+        ? await ImagePicker.launchCameraAsync({
+            ...compatibleImagePickerOptions,
+            quality: 0.85,
+          })
         : await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            ...compatibleImagePickerOptions,
             selectionLimit: 1,
           });
 
       if (result.canceled) return;
-      const asset = result.assets && result.assets[0];
+      const asset = result.assets && result.assets[0]
+        ? normalizeImageAsset(result.assets[0])
+        : undefined;
       if (!asset?.uri) return;
       await uploadImageAsset(asset);
     } catch (err: any) {
@@ -4390,10 +4408,18 @@ const SingleMessage = () => {
     try {
       const result: any = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.All,
+        ...compatibleImagePickerOptions,
         selectionLimit: 1,
       });
       if (result.canceled) return;
-      const asset = result.assets && result.assets[0];
+      const rawAsset = result.assets && result.assets[0];
+      const asset = rawAsset && (
+        /^image\//i.test(rawAsset.mimeType || '') ||
+        rawAsset.type === 'image' ||
+        /\.(jpe?g|png|heic|heif)$/i.test(rawAsset.fileName || '')
+      )
+        ? normalizeImageAsset(rawAsset)
+        : rawAsset;
       if (!asset?.uri) return;
 
       setIsUploading(true);
@@ -5303,8 +5329,9 @@ const SingleMessage = () => {
   const renderEmptyConversation = () => (
     <View
       style={{
+        flex: 1,
+        justifyContent: 'center',
         alignItems: 'center',
-        paddingTop: 72,
         paddingHorizontal: 28,
         transform: [{ scaleY: -1 }],
       }}

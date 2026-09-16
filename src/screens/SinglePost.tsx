@@ -1,21 +1,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-    View,
-    Text,
-    ScrollView,
-    TouchableOpacity,
-    Image,
-    ActivityIndicator,
-    Alert,
-    RefreshControl,
-    Dimensions,
-    Modal,
-    TextInput,
-    StatusBar,
-    StyleSheet,
-    Pressable,
-    DeviceEventEmitter,
-    Platform,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  ActivityIndicator,
+  Alert,
+  RefreshControl,
+  Dimensions,
+  Modal,
+  TextInput,
+  StatusBar,
+  StyleSheet,
+  Pressable,
+  DeviceEventEmitter,
+  Platform,
 } from 'react-native';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -25,11 +25,11 @@ import MentionTextInput from '../components/MentionTextInput';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 
 type RootStackParamList = {
-    PostDetail: { postId: string };
-    SinglePost: { postId: string };
-    SingleVideo: { videoId: string };
-    ConnectProfile: { connectId: string };
-    EditPost: { postId: string };
+  PostDetail: { postId: string };
+  SinglePost: { postId: string };
+  SingleVideo: { videoId: string };
+  ConnectProfile: { connectId: string };
+  EditPost: { postId: string };
 };
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import FAIcon from 'react-native-vector-icons/FontAwesome5';
@@ -42,11 +42,11 @@ import UserPP from '../components/UserPP';
 import { RootState } from '../store';
 import { useFeedTokens } from '../theme/feedTokens';
 import {
-    CurrentReactIcon,
-    PlacedReactIcons,
-    ReactPicker,
-    getReactLabel,
-    uniquePlacedReacts,
+  CurrentReactIcon,
+  PlacedReactIcons,
+  ReactPicker,
+  getReactLabel,
+  uniquePlacedReacts,
 } from '../components/post/ReactIcons';
 import SinglePostSkeleton from '../components/skeleton/SinglePostSkeleton';
 import EditAudienceModal from '../components/post/EditAudienceModal';
@@ -56,83 +56,60 @@ import { POST_UPDATED_EVENT, emitPostUpdated } from '../utils/postEvents';
 import { getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
 import config from '../lib/config';
+import * as ImagePicker from 'expo-image-picker';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../utils/imageUpload';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
+const COMMENT_SECTION_MAX_HEIGHT = Math.min(SCREEN_HEIGHT * 0.6, 480);
 
 interface Post {
+  _id: string;
+  caption: string;
+  photos?: string | string[];
+  gallery?: string[] | string;
+  type?: string;
+  feelings?: string;
+  location?: string;
+  author: {
     _id: string;
-    caption: string;
-    photos?: string | string[];
-    gallery?: string[] | string;
-    type?: string;
-    feelings?: string;
-    location?: string;
-    author: {
-        _id: string;
-        fullName: string;
-        profilePic?: string;
-        isActive?: boolean;
-        isVerified?: boolean;
-    };
-    reacts?: Array<{
-        profile: string;
-        type: string;
-    }>;
-    comments?: Array<{
-        _id: string;
-        content?: string;
-        text?: string;
-        body?: string;
-        author: {
-            _id: string;
-            fullName?: string;
-            firstName?: string;
-            name?: string;
-            profilePic?: string;
-            isVerified?: boolean;
-            user?: {
-                firstName?: string;
-                surname?: string;
-                isVerified?: boolean;
-            };
-        };
-        createdAt: string;
-        replies?: Array<{
-            _id: string;
-            content?: string;
-            text?: string;
-            body?: string;
-            author: {
-                _id: string;
-                fullName?: string;
-                firstName?: string;
-                name?: string;
-                profilePic?: string;
-                isVerified?: boolean;
-                user?: {
-                    firstName?: string;
-                    surname?: string;
-                    isVerified?: boolean;
-                };
-            };
-            createdAt: string;
-        }>;
-    }>;
-    shares?: Array<{
-        profile: string;
-    }>;
-    audience?: number;
-    createdAt: string;
-    updatedAt: string;
-}
-
-interface Comment {
+    fullName: string;
+    profilePic?: string;
+    isActive?: boolean;
+    isVerified?: boolean;
+  };
+  reacts?: Array<{
+    profile: string;
+    type: string;
+  }>;
+  comments?: Array<{
     _id: string;
     content?: string;
     text?: string;
     body?: string;
     author: {
+      _id: string;
+      fullName?: string;
+      firstName?: string;
+      name?: string;
+      profilePic?: string;
+      isVerified?: boolean;
+      user?: {
+        firstName?: string;
+        surname?: string;
+        isVerified?: boolean;
+      };
+    };
+    createdAt: string;
+    replies?: Array<{
+      _id: string;
+      content?: string;
+      text?: string;
+      body?: string;
+      author: {
         _id: string;
         fullName?: string;
         firstName?: string;
@@ -140,1997 +117,2703 @@ interface Comment {
         profilePic?: string;
         isVerified?: boolean;
         user?: {
-            firstName?: string;
-            surname?: string;
-            isVerified?: boolean;
+          firstName?: string;
+          surname?: string;
+          isVerified?: boolean;
         };
-    };
-    createdAt: string;
-    replies?: Array<{
-        _id: string;
-        content?: string;
-        text?: string;
-        body?: string;
-        author: {
-            _id: string;
-            fullName?: string;
-            firstName?: string;
-            name?: string;
-            profilePic?: string;
-            isVerified?: boolean;
-            user?: {
-                firstName?: string;
-                surname?: string;
-                isVerified?: boolean;
-            };
-        };
-        createdAt: string;
+      };
+      createdAt: string;
     }>;
+  }>;
+  shares?: Array<{
+    profile: string;
+  }>;
+  audience?: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
-const sameId = (a: any, b: any) => String(a?._id || a || '') === String(b?._id || b || '');
+interface Comment {
+  _id: string;
+  content?: string;
+  text?: string;
+  body?: string;
+  author: {
+    _id: string;
+    fullName?: string;
+    firstName?: string;
+    name?: string;
+    profilePic?: string;
+    isVerified?: boolean;
+    user?: {
+      firstName?: string;
+      surname?: string;
+      isVerified?: boolean;
+    };
+  };
+  createdAt: string;
+  replies?: Array<{
+    _id: string;
+    content?: string;
+    text?: string;
+    body?: string;
+    author: {
+      _id: string;
+      fullName?: string;
+      firstName?: string;
+      name?: string;
+      profilePic?: string;
+      isVerified?: boolean;
+      user?: {
+        firstName?: string;
+        surname?: string;
+        isVerified?: boolean;
+      };
+    };
+    createdAt: string;
+  }>;
+}
+
+const sameId = (a: any, b: any) =>
+  String(a?._id || a || '') === String(b?._id || b || '');
 
 const isPopulatedComment = (comment: any) =>
-    !!comment &&
-    typeof comment === 'object' &&
-    !Array.isArray(comment) &&
-    Boolean(comment.body || comment.text || comment.content || comment.author);
+  !!comment &&
+  typeof comment === 'object' &&
+  !Array.isArray(comment) &&
+  Boolean(comment.body || comment.text || comment.content || comment.author);
 
 const normalizeComments = (list: any): Comment[] =>
-    (Array.isArray(list) ? list : []).filter(isPopulatedComment);
+  (Array.isArray(list) ? list : []).filter(isPopulatedComment);
 
 const commentAuthorName = (comment: any) =>
-    comment?.author?.fullName ||
-    comment?.author?.displayName ||
-    [comment?.author?.user?.firstName, comment?.author?.user?.surname].filter(Boolean).join(' ').trim() ||
-    'User';
+  comment?.author?.fullName ||
+  comment?.author?.displayName ||
+  [comment?.author?.user?.firstName, comment?.author?.user?.surname]
+    .filter(Boolean)
+    .join(' ')
+    .trim() ||
+  'User';
 
 const renderMentionBody = (
-    body: string,
-    onProfilePress: (profileId: string) => void,
-    textStyle: any,
-    mentionStyle: any,
-    onHashtagPress?: (hashtag: string) => void,
+  body: string,
+  onProfilePress: (profileId: string) => void,
+  textStyle: any,
+  mentionStyle: any,
+  onHashtagPress?: (hashtag: string) => void,
 ) => {
-    const value = String(body || '');
-    const tokenPattern = /@\[([^\]]+)\]\(([a-f\d]{24})\)|(^|[^\p{L}\p{N}_])(#[\p{L}\p{N}_]{1,50})/giu;
-    const parts: React.ReactNode[] = [];
-    let lastIndex = 0;
-    let match: RegExpExecArray | null;
-    while ((match = tokenPattern.exec(value))) {
-        if (match.index > lastIndex) {
-            parts.push(<Text key={`text-${lastIndex}`} style={textStyle}>{value.slice(lastIndex, match.index)}</Text>);
-        }
-        if (match[1]) {
-            parts.push(
-                <Text key={`mention-${match.index}`} style={mentionStyle} onPress={() => onProfilePress(match![2])}>
-                    @{match[1].trim()}
-                </Text>,
-            );
-        } else {
-            parts.push(
-                <Text
-                    key={`hashtag-${match.index}`}
-                    style={mentionStyle}
-                    onPress={() => onHashtagPress?.(match![4])}
-                >
-                    {match[3]}{match[4]}
-                </Text>,
-            );
-        }
-        lastIndex = match.index + match[0].length;
+  const value = String(body || '');
+  const tokenPattern =
+    /@\[([^\]]+)\]\(([a-f\d]{24})\)|(^|[^\p{L}\p{N}_])(#[\p{L}\p{N}_]{1,50})/giu;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = tokenPattern.exec(value))) {
+    if (match.index > lastIndex) {
+      parts.push(
+        <Text key={`text-${lastIndex}`} style={textStyle}>
+          {value.slice(lastIndex, match.index)}
+        </Text>,
+      );
     }
-    if (lastIndex < value.length) {
-        parts.push(<Text key={`text-${lastIndex}`} style={textStyle}>{value.slice(lastIndex)}</Text>);
+    if (match[1]) {
+      parts.push(
+        <Text
+          key={`mention-${match.index}`}
+          style={mentionStyle}
+          onPress={() => onProfilePress(match![2])}
+        >
+          @{match[1].trim()}
+        </Text>,
+      );
+    } else {
+      parts.push(
+        <Text
+          key={`hashtag-${match.index}`}
+          style={mentionStyle}
+          onPress={() => onHashtagPress?.(match![4])}
+        >
+          {match[3]}
+          {match[4]}
+        </Text>,
+      );
     }
-    return parts.length ? parts : <Text style={textStyle}>{value}</Text>;
+    lastIndex = match.index + match[0].length;
+  }
+  if (lastIndex < value.length) {
+    parts.push(
+      <Text key={`text-${lastIndex}`} style={textStyle}>
+        {value.slice(lastIndex)}
+      </Text>,
+    );
+  }
+  return parts.length ? parts : <Text style={textStyle}>{value}</Text>;
 };
 
 const SinglePost = () => {
-    const route = useRoute();
-    const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const { postId } = route.params as { postId: string };
-    
-    const { colors: themeColors, isDarkMode } = useTheme();
-    const feed = useFeedTokens();
-    const { emit, on, off, isConnected } = useSocket();
-    const myProfile = useSelector((state: RootState) => state.profile);
-    const { showToast } = useModernToast();
-    const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
-    const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
-    
-    const [post, setPost] = useState<Post | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [commentText, setCommentText] = useState('');
-    const [comments, setComments] = useState<Comment[]>([]);
-    const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
-    const [replyText, setReplyText] = useState('');
-    const commentInputRef = useRef<TextInput>(null);
-    const scrollViewRef = useRef<ScrollView>(null);
-    const [isPostingComment, setIsPostingComment] = useState(false);
-    const [isPostingReply, setIsPostingReply] = useState(false);
-    const [deletingId, setDeletingId] = useState<string | null>(null);
-    const [showReactions, setShowReactions] = useState(false);
-    const [isReacted, setIsReacted] = useState(false);
-    const [reactType, setReactType] = useState<string | false>(false);
-    const [totalReacts, setTotalReacts] = useState(0);
-    const [totalComments, setTotalComments] = useState(0);
-    const [totalShares, setTotalShares] = useState(0);
-    const [shareCap, setShareCap] = useState('');
-    const [isShareModal, setIsShareModal] = useState(false);
-    const [isSharing, setIsSharing] = useState(false);
-    const [showImageModal, setShowImageModal] = useState(false);
-    const [selectedImage, setSelectedImage] = useState<string>('');
-    const [showFullContent, setShowFullContent] = useState(false);
-    const [isPostOption, setIsPostOption] = useState(false);
-    const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
-    const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
-    const [selectedAudience, setSelectedAudience] = useState(3);
-    const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
-    const [placedReacts, setPlacedReacts] = useState<string[]>([]);
-    const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
+  const route = useRoute();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const { postId } = route.params as { postId: string };
 
-    const styles = StyleSheet.create({
-        container: {
-            flex: 1,
-            backgroundColor: themeColors.background.primary,
-            position: 'relative',
-        },
-        header: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: themeColors.border.primary,
-            backgroundColor: themeColors.surface.header,
-            elevation: 3,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.08,
-            shadowRadius: 6,
-        },
-        headerTitle: {
-            color: themeColors.text.primary,
-            fontSize: 18,
-            fontWeight: '800',
-            letterSpacing: 0.2,
-            marginLeft: 12,
-        },
-        backButton: {
-            padding: 9,
-            borderRadius: 14,
-            backgroundColor: themeColors.gray[100],
-        },
-        postContainer: {
-            backgroundColor: themeColors.surface.primary,
-            marginHorizontal: 12,
-            marginTop: 12,
-            marginBottom: 8,
-            borderRadius: 20,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: themeColors.border.subtle || themeColors.border.primary,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: isDarkMode ? 0 : 0.06,
-            shadowRadius: 12,
-            elevation: 2,
-        },
-        authorSection: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 15,
-        },
-        authorInfo: {
-            flex: 1,
-            marginLeft: 12,
-        },
-        authorName: {
-            color: themeColors.text.primary,
-            fontSize: 15.5,
-            fontWeight: '700',
-            marginBottom: 2,
-        },
-        metaInline: {
-            fontWeight: '400',
-        },
-        postTime: {
-            color: themeColors.text.secondary,
-            fontSize: 13,
-        },
-        moreButton: {
-            padding: 9,
-            borderRadius: 14,
-            backgroundColor: themeColors.gray[100],
-        },
-        contentSection: {
-            paddingHorizontal: 16,
-            paddingBottom: 14,
-        },
-        postContent: {
-            color: themeColors.text.primary,
-            fontSize: 16.5,
-            lineHeight: 25,
-            marginBottom: 12,
-        },
-        readMoreButton: {
-            color: themeColors.primary,
-            fontSize: 14,
-            fontWeight: '600',
-            marginTop: 4,
-        },
-        imageContainer: {
-            marginBottom: 12,
-        },
-        singleImage: {
-            width: '100%',
-            height: 300,
-            borderRadius: 12,
-        },
-        multiImageContainer: {
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 4,
-        },
-        multiImageItem: {
-            width: '49%',
-        },
-        multiImage: {
-            width: '100%',
-            aspectRatio: 1,
-            borderRadius: 8,
-            backgroundColor: themeColors.gray[100],
-        },
-        imageOverlay: {
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            borderRadius: 8,
-            justifyContent: 'center',
-            alignItems: 'center',
-        },
-        overlayText: {
-            color: 'white',
-            fontSize: 18,
-            fontWeight: 'bold',
-        },
-        statsSection: {
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingHorizontal: 20,
-            paddingVertical: 12,
-            borderTopWidth: 1,
-            borderTopColor: themeColors.border.primary,
-        },
-        statsLeft: {
-            flexDirection: 'row',
-            alignItems: 'center',
-        },
-        reactionStats: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginRight: 16,
-        },
-        reactionEmojiSmall: {
-            fontSize: 16,
-            marginRight: 4,
-        },
-        statsText: {
-            color: themeColors.text.secondary,
-            fontSize: 14,
-            fontWeight: '500',
-        },
-        statsRight: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 16,
-        },
-        actionButtons: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 10,
-            paddingVertical: 8,
-            borderTopWidth: 1,
-            borderTopColor: themeColors.border.primary,
-            overflow: 'visible',
-            gap: 4,
-        },
-        actionButton: {
-            flex: 1,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingVertical: 10,
-            paddingHorizontal: 10,
-            borderRadius: 12,
-        },
-        actionButtonActive: {
-            backgroundColor: themeColors.primary + '15',
-        },
-        actionButtonText: {
-            color: themeColors.text.secondary,
-            fontSize: SHOW_ACTION_LABELS ? 14.4 : 13.1,
-            fontWeight: '600',
-            marginLeft: 5,
-        },
-        actionButtonTextActive: {
-            color: themeColors.primary,
-        },
-        webCountsRow: {
-            flexDirection: 'row',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 11,
-            borderTopWidth: 1,
-            borderTopColor: themeColors.border.subtle || themeColors.border.primary,
-            minHeight: 40,
-        },
-        webCountItem: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-        },
-        spReactPickerWrap: {
-            position: 'absolute',
-            bottom: '100%',
-            left: 0,
-            zIndex: 40,
-            marginBottom: 4,
-        },
-        spReactDismiss: {
-            ...StyleSheet.absoluteFill,
-            zIndex: 8,
-        },
-        fbCommentRow: {
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 8,
-            marginBottom: 12,
-        },
-        fbNameComment: {
-            paddingVertical: 8,
-            paddingHorizontal: 12,
-            borderRadius: 18,
-            maxWidth: '100%',
-        },
-        fbAuthorName: {
-            fontWeight: '600',
-            fontSize: 13,
-            marginBottom: 2,
-            lineHeight: 17,
-        },
-        fbCommentText: {
-            fontSize: 15,
-            lineHeight: 20,
-        },
-        fbCommentReact: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            marginTop: 4,
-            paddingHorizontal: 2,
-        },
-        fbReactLink: {
-            fontSize: 12,
-            fontWeight: '600',
-        },
-        fbCommentTime: {
-            fontSize: 11,
-            fontWeight: '400',
-            color: '#8b93a1',
-        },
-        fbRepliesThread: {
-            marginTop: 8,
-            paddingLeft: 10,
-            borderLeftWidth: 2,
-        },
-        commentsSection: {
-            backgroundColor: themeColors.surface.primary,
-            marginHorizontal: 12,
-            marginTop: 8,
-            marginBottom: 12,
-            borderRadius: 20,
-            paddingTop: 0,
-            overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: themeColors.border.subtle || themeColors.border.primary,
-            borderTopWidth: 1,
-            borderTopColor: themeColors.border.primary,
-        },
-        commentsHeader: {
-            paddingHorizontal: 16,
-            paddingVertical: 15,
-            borderBottomWidth: 1,
-            borderBottomColor: themeColors.border.primary,
-        },
-        commentsTitle: {
-            color: themeColors.text.primary,
-            fontSize: 17,
-            fontWeight: '800',
-        },
-        commentItem: {
-            paddingHorizontal: 20,
-            paddingVertical: 12,
-            borderBottomWidth: 1,
-            borderBottomColor: themeColors.border.primary,
-        },
-        commentHeader: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginBottom: 8,
-        },
-        commentAuthor: {
-            color: themeColors.text.primary,
-            fontSize: 14,
-            fontWeight: '600',
-            marginRight: 8,
-        },
-        commentTime: {
-            color: themeColors.text.secondary,
-            fontSize: 12,
-        },
-        commentContent: {
-            color: themeColors.text.primary,
-            fontSize: 14,
-            lineHeight: 20,
-            marginBottom: 8,
-        },
-        replyButton: {
-            alignSelf: 'flex-start',
-        },
-        replyButtonText: {
-            color: themeColors.primary,
-            fontSize: 12,
-            fontWeight: '600',
-        },
-        commentActionRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 16,
-        },
-        deleteButtonText: {
-            color: themeColors.status?.error || '#FF4444',
-            fontSize: 12,
-            fontWeight: '600',
-        },
-        commentInput: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 14,
-            paddingVertical: 10,
-            borderTopWidth: 1,
-            borderTopColor: themeColors.border.primary,
-        },
-        inputContainer: {
-            flex: 1,
-            flexDirection: 'row',
-            alignItems: 'center',
-            marginLeft: 10,
-            backgroundColor: themeColors.gray[100],
-            borderRadius: 18,
-            paddingHorizontal: 14,
-            paddingVertical: 7,
-            minHeight: 40,
-        },
-        textInput: {
-            flex: 1,
-            color: themeColors.text.primary,
-            fontSize: 14,
-            maxHeight: 100,
-        },
-        sendButton: {
-            padding: 8,
-            marginLeft: 8,
-        },
-        loadingContainer: {
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: themeColors.background.primary,
-        },
-        loadingText: {
-            color: themeColors.text.primary,
-            marginTop: 16,
-            fontSize: 16,
-        },
-        errorContainer: {
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: themeColors.background.primary,
-            padding: 20,
-        },
-        errorText: {
-            color: themeColors.text.primary,
-            fontSize: 18,
-            textAlign: 'center',
-            marginTop: 16,
-            marginBottom: 20,
-        },
-        retryButton: {
-            backgroundColor: themeColors.primary,
-            paddingHorizontal: 24,
-            paddingVertical: 12,
-            borderRadius: 24,
-        },
-        retryButtonText: {
-            color: themeColors.text.inverse,
-            fontWeight: '600',
-            fontSize: 16,
-        },
-        imageModal: {
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.95)',
-            justifyContent: 'center',
-            alignItems: 'center',
-        },
-        closeButton: {
-            position: 'absolute',
-            top: 50,
-            right: 20,
-            zIndex: 1000,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            borderRadius: 20,
-            padding: 8,
-        },
-        modalImage: {
-            width: SCREEN_WIDTH * 0.95,
-            height: SCREEN_WIDTH * 0.95,
-            borderRadius: 12,
-        },
-        reactionsModal: {
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-        },
-        reactionsContainer: {
-            backgroundColor: themeColors.surface.primary,
-            borderRadius: 24,
-            padding: 20,
-            flexDirection: 'row',
-            gap: 16,
-            elevation: 8,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-        },
-        reactionButton: {
-            padding: 12,
-            borderRadius: 20,
-            backgroundColor: 'transparent',
-        },
-        reactionButtonActive: {
-            backgroundColor: themeColors.primary + '20',
-        },
-        reactionEmoji: {
-            fontSize: 28,
-        },
-        // Image styles matching Post component
-        attachmentContainer: {
-            marginTop: 2,
-            marginBottom: 4,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            gap: 8,
-        },
-        postImage: {
-            width: '100%',
-            aspectRatio: 1.05,
-            borderRadius: 0,
-            backgroundColor: themeColors.gray[100],
-            resizeMode: 'contain',
-            alignSelf: 'center',
-        },
-        postProfilePic: {
-            width: 250,
-            height: 250,
-            borderRadius: 175,
-            borderWidth: 2,
-            borderColor: '#eee',
-            marginVertical: 10,
-        },
-        // Option menu styles
-        modalOverlay: {
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            justifyContent: 'flex-end',
-            alignItems: 'center',
-        },
-        optionMenu: {
-            backgroundColor: '#fff',
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            paddingTop: 8,
-            paddingBottom: 34,
-            paddingHorizontal: 0,
-            width: '100%',
-            maxHeight: '70%',
-            borderWidth: 1,
-            borderBottomWidth: 0,
-            shadowColor: '#000',
-            shadowOffset: {
-                width: 0,
-                height: -4,
-            },
-            shadowOpacity: 0.15,
-            shadowRadius: 12,
-            elevation: 8,
-        },
-        optionMenuHeader: {
-            alignItems: 'center',
-            paddingVertical: 12,
-            paddingBottom: 20,
-        },
-        optionMenuHandle: {
-            width: 40,
-            height: 4,
-            borderRadius: 2,
-            backgroundColor: '#E5E5E5',
-        },
-        optionMenuItem: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingVertical: 16,
-            paddingHorizontal: 20,
-            borderBottomWidth: 1,
-            borderBottomColor: '#F0F0F0',
-            backgroundColor: 'transparent',
-        },
-        optionMenuItemDanger: {
-            borderBottomWidth: 0,
-        },
-        optionMenuIcon: {
-            width: 44,
-            height: 44,
-            borderRadius: 22,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: 16,
-        },
-        optionMenuContent: {
-            flex: 1,
-            justifyContent: 'center',
-        },
-        optionMenuTitle: {
-            fontSize: 16,
-            fontWeight: '600',
-            lineHeight: 20,
-            marginBottom: 2,
-        },
-        optionMenuSubtitle: {
-            fontSize: 13,
-            fontWeight: '400',
-            lineHeight: 16,
-            opacity: 0.8,
-        },
-        shareModal: {
-            width: '100%',
-            maxHeight: '90%',
-            paddingHorizontal: 20,
-            paddingBottom: 28,
-            borderTopLeftRadius: 24,
-            borderTopRightRadius: 24,
-            borderWidth: 1,
-            borderBottomWidth: 0,
-        },
-        shareOverlay: {
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.4)',
-            justifyContent: 'flex-end',
-        },
-        shareHandleWrap: {
-            alignItems: 'center',
-            paddingVertical: 12,
-        },
-        shareHandle: {
-            width: 40,
-            height: 4,
-            borderRadius: 2,
-        },
-        shareTitle: {
-            fontSize: 20,
-            fontWeight: '700',
-            marginBottom: 4,
-            lineHeight: 26,
-        },
-        shareSubtitle: {
-            fontSize: 14,
-            lineHeight: 20,
-            marginBottom: 16,
-        },
-        shareInput: {
-            borderWidth: 1,
-            borderRadius: 12,
-            minHeight: 112,
-            maxHeight: 160,
-            paddingHorizontal: 14,
-            paddingVertical: 13,
-            textAlignVertical: 'top',
-            fontSize: 15,
-            lineHeight: 21,
-        },
-        shareCounter: {
-            alignSelf: 'flex-end',
-            fontSize: 12,
-            marginTop: 6,
-        },
-        shareActions: {
-            flexDirection: 'row',
-            gap: 10,
-            marginTop: 18,
-        },
-        shareActionButton: {
-            flex: 1,
-            height: 46,
-            borderRadius: 12,
-            alignItems: 'center',
-            justifyContent: 'center',
-        },
-        sharePrimaryButton: {
-        },
-        sharePrimaryText: {
-            color: '#FFFFFF',
-            fontSize: 16,
-            fontWeight: '600',
-        },
-        shareCancelButton: {
-            borderWidth: 1,
-        },
-        shareActionText: {
-            fontSize: 16,
-            fontWeight: '600',
-        },
-        // Delete confirmation modal styles
-        deleteConfirmModal: {
-            backgroundColor: '#fff',
-            borderRadius: 20,
-            width: '85%',
-            maxWidth: 380,
-            paddingBottom: 24,
-            borderWidth: 1,
-            shadowColor: '#000',
-            shadowOffset: {
-                width: 0,
-                height: 8,
-            },
-            shadowOpacity: 0.2,
-            shadowRadius: 16,
-            elevation: 12,
-        },
-        deleteConfirmHeader: {
-            alignItems: 'center',
-            paddingTop: 32,
-            paddingHorizontal: 24,
-            paddingBottom: 24,
-        },
-        deleteConfirmIcon: {
-            width: 64,
-            height: 64,
-            borderRadius: 32,
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: 20,
-        },
-        deleteConfirmTitle: {
-            fontSize: 20,
-            fontWeight: '700',
-            marginBottom: 12,
-            textAlign: 'center',
-        },
-        deleteConfirmMessage: {
-            fontSize: 15,
-            textAlign: 'center',
-            lineHeight: 22,
-            opacity: 0.8,
-        },
-        deleteConfirmButtons: {
-            flexDirection: 'row',
-            paddingHorizontal: 24,
-            gap: 12,
-        },
-        deleteConfirmBtn: {
-            flex: 1,
-            paddingVertical: 14,
-            paddingHorizontal: 20,
-            borderRadius: 12,
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'row',
-        },
-        cancelBtn: {
-            backgroundColor: 'transparent',
-            borderWidth: 1.5,
-            borderColor: '#E5E5E5',
-        },
-        deleteBtn: {
-            backgroundColor: '#FF4444',
-            shadowColor: '#FF4444',
-            shadowOffset: {
-                width: 0,
-                height: 4,
-            },
-            shadowOpacity: 0.3,
-            shadowRadius: 8,
-            elevation: 6,
-        },
-        deleteConfirmBtnText: {
-            fontSize: 16,
-            fontWeight: '600',
-        },
-    });
+  const { colors: themeColors, isDarkMode } = useTheme();
+  const feed = useFeedTokens();
+  const { emit, on, off, isConnected } = useSocket();
+  const myProfile = useSelector((state: RootState) => state.profile);
+  const { showToast } = useModernToast();
+  const commentBubbleBg = isDarkMode ? '#2a2a2a' : '#f1f3f4';
+  const commentActionColor = isDarkMode ? '#a1a1aa' : '#5f6368';
 
-    const getAssetUrl = (path?: string): string => {
-        if (!path) return '';
-        if (path.startsWith('http://') || path.startsWith('https://')) return path;
-        return `${config.SOCKET_BASE_URL.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
-    };
+  const [post, setPost] = useState<Post | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [commentAttachment, setCommentAttachment] = useState<{
+    uri: string;
+    fileName?: string;
+    mimeType?: string;
+  } | null>(null);
+  const [isUploadingCommentAttachment, setIsUploadingCommentAttachment] =
+    useState(false);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [replyingTo, setReplyingTo] = useState<Comment | null>(null);
+  const [replyText, setReplyText] = useState('');
+  const commentInputRef = useRef<TextInput>(null);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const [isPostingComment, setIsPostingComment] = useState(false);
+  const [isPostingReply, setIsPostingReply] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [showReactions, setShowReactions] = useState(false);
+  const [isReacted, setIsReacted] = useState(false);
+  const [reactType, setReactType] = useState<string | false>(false);
+  const [totalReacts, setTotalReacts] = useState(0);
+  const [totalComments, setTotalComments] = useState(0);
+  const [totalShares, setTotalShares] = useState(0);
+  const [shareCap, setShareCap] = useState('');
+  const [isShareModal, setIsShareModal] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+  const [showImageModal, setShowImageModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState<string>('');
+  const [showFullContent, setShowFullContent] = useState(false);
+  const [isPostOption, setIsPostOption] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [isEditAudienceModal, setIsEditAudienceModal] = useState(false);
+  const [selectedAudience, setSelectedAudience] = useState(3);
+  const [isUpdatingAudience, setIsUpdatingAudience] = useState(false);
+  const [placedReacts, setPlacedReacts] = useState<string[]>([]);
+  const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
 
-    const normalizeImageUrls = (value?: string | string[]): string[] => {
-        if (!value) return [];
-        if (Array.isArray(value)) return value;
-        const trimmedValue = value.trim();
-        if (trimmedValue.startsWith('[')) {
-            try {
-                const parsed = JSON.parse(trimmedValue);
-                return Array.isArray(parsed) ? parsed : [value];
-            } catch {
-                return [value];
-            }
-        }
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: themeColors.background.primary,
+      position: 'relative',
+    },
+    singlePostContent: {
+      flexGrow: 1,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: themeColors.border.primary,
+      backgroundColor: themeColors.surface.header,
+      elevation: 3,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.08,
+      shadowRadius: 6,
+    },
+    headerTitle: {
+      color: themeColors.text.primary,
+      fontSize: 18,
+      fontWeight: '800',
+      letterSpacing: 0.2,
+      marginLeft: 12,
+    },
+    backButton: {
+      padding: 9,
+      borderRadius: 14,
+      backgroundColor: themeColors.gray[100],
+    },
+    postContainer: {
+      backgroundColor: themeColors.surface.primary,
+      marginHorizontal: 12,
+      marginTop: 12,
+      marginBottom: 8,
+      borderRadius: 20,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: themeColors.border.subtle || themeColors.border.primary,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: isDarkMode ? 0 : 0.06,
+      shadowRadius: 12,
+      elevation: 2,
+    },
+    authorSection: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 15,
+    },
+    authorInfo: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    authorName: {
+      color: themeColors.text.primary,
+      fontSize: 15.5,
+      fontWeight: '700',
+      marginBottom: 2,
+    },
+    metaInline: {
+      fontWeight: '400',
+    },
+    postTime: {
+      color: themeColors.text.secondary,
+      fontSize: 13,
+    },
+    moreButton: {
+      padding: 9,
+      borderRadius: 14,
+      backgroundColor: themeColors.gray[100],
+    },
+    contentSection: {
+      paddingHorizontal: 16,
+      paddingBottom: 14,
+    },
+    postContent: {
+      color: themeColors.text.primary,
+      fontSize: 16.5,
+      lineHeight: 25,
+      marginBottom: 12,
+    },
+    readMoreButton: {
+      color: themeColors.primary,
+      fontSize: 14,
+      fontWeight: '600',
+      marginTop: 4,
+    },
+    imageContainer: {
+      marginBottom: 12,
+    },
+    singleImage: {
+      width: '100%',
+      height: 300,
+      borderRadius: 12,
+    },
+    multiImageContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 4,
+    },
+    multiImageItem: {
+      width: '49%',
+    },
+    multiImage: {
+      width: '100%',
+      aspectRatio: 1,
+      borderRadius: 8,
+      backgroundColor: themeColors.gray[100],
+    },
+    imageOverlay: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 8,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    overlayText: {
+      color: 'white',
+      fontSize: 18,
+      fontWeight: 'bold',
+    },
+    statsSection: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderTopWidth: 1,
+      borderTopColor: themeColors.border.primary,
+    },
+    statsLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    reactionStats: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginRight: 16,
+    },
+    reactionEmojiSmall: {
+      fontSize: 16,
+      marginRight: 4,
+    },
+    statsText: {
+      color: themeColors.text.secondary,
+      fontSize: 14,
+      fontWeight: '500',
+    },
+    statsRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    actionButtons: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderTopWidth: 1,
+      borderTopColor: themeColors.border.primary,
+      overflow: 'visible',
+      gap: 4,
+    },
+    actionButton: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 10,
+      paddingHorizontal: 10,
+      borderRadius: 12,
+    },
+    actionButtonActive: {
+      backgroundColor: themeColors.primary + '15',
+    },
+    actionButtonText: {
+      color: themeColors.text.secondary,
+      fontSize: SHOW_ACTION_LABELS ? 14.4 : 13.1,
+      fontWeight: '600',
+      marginLeft: 5,
+    },
+    actionButtonTextActive: {
+      color: themeColors.primary,
+    },
+    webCountsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingVertical: 11,
+      borderTopWidth: 1,
+      borderTopColor: themeColors.border.subtle || themeColors.border.primary,
+      minHeight: 40,
+    },
+    webCountItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    spReactPickerWrap: {
+      position: 'absolute',
+      bottom: '100%',
+      left: 0,
+      zIndex: 40,
+      marginBottom: 4,
+    },
+    spReactDismiss: {
+      ...StyleSheet.absoluteFill,
+      zIndex: 8,
+    },
+    fbCommentRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      marginBottom: 12,
+    },
+    fbNameComment: {
+      paddingVertical: 8,
+      paddingHorizontal: 12,
+      borderRadius: 18,
+      maxWidth: '100%',
+    },
+    fbAuthorName: {
+      fontWeight: '600',
+      fontSize: 13,
+      marginBottom: 2,
+      lineHeight: 17,
+    },
+    fbCommentText: {
+      fontSize: 15,
+      lineHeight: 20,
+    },
+    fbCommentReact: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginTop: 4,
+      paddingHorizontal: 2,
+    },
+    fbReactLink: {
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    fbCommentTime: {
+      fontSize: 11,
+      fontWeight: '400',
+      color: '#8b93a1',
+    },
+    fbRepliesThread: {
+      marginTop: 8,
+      paddingLeft: 10,
+      borderLeftWidth: 2,
+    },
+    commentsSection: {
+      flex: 1,
+      backgroundColor: themeColors.surface.primary,
+      marginHorizontal: 12,
+      marginTop: 8,
+      marginBottom: 12,
+      borderRadius: 20,
+      paddingTop: 0,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: themeColors.border.subtle || themeColors.border.primary,
+      borderTopWidth: 1,
+      borderTopColor: themeColors.border.primary,
+    },
+    commentsScroll: {
+      flexGrow: 0,
+      overflow: 'hidden',
+    },
+    commentsScrollContent: {
+      paddingBottom: 4,
+    },
+    commentsHeader: {
+      paddingHorizontal: 16,
+      paddingVertical: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: themeColors.border.primary,
+    },
+    commentsTitle: {
+      color: themeColors.text.primary,
+      fontSize: 17,
+      fontWeight: '800',
+    },
+    commentItem: {
+      paddingHorizontal: 20,
+      paddingVertical: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: themeColors.border.primary,
+    },
+    commentHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    commentAuthor: {
+      color: themeColors.text.primary,
+      fontSize: 14,
+      fontWeight: '600',
+      marginRight: 8,
+    },
+    commentTime: {
+      color: themeColors.text.secondary,
+      fontSize: 12,
+    },
+    commentContent: {
+      color: themeColors.text.primary,
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 8,
+    },
+    replyButton: {
+      alignSelf: 'flex-start',
+    },
+    replyButtonText: {
+      color: themeColors.primary,
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    commentActionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 16,
+    },
+    deleteButtonText: {
+      color: themeColors.status?.error || '#FF4444',
+      fontSize: 12,
+      fontWeight: '600',
+    },
+    commentInput: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      borderTopWidth: 1,
+      borderTopColor: themeColors.border.primary,
+    },
+    commentAttachmentPreview: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginHorizontal: 14,
+      marginBottom: 8,
+      padding: 6,
+      borderRadius: 10,
+      backgroundColor: themeColors.gray[100],
+    },
+    commentAttachmentThumb: {
+      width: 48,
+      height: 48,
+      borderRadius: 6,
+    },
+    commentAttachmentImage: {
+      width: 220,
+      height: 160,
+      marginTop: 8,
+      borderRadius: 10,
+      backgroundColor: themeColors.gray[100],
+    },
+    commentAttachmentName: {
+      flex: 1,
+      marginLeft: 8,
+      color: themeColors.text.secondary,
+      fontSize: 12,
+    },
+    commentAttachmentRemove: {
+      padding: 8,
+    },
+    inputContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginLeft: 10,
+      backgroundColor: themeColors.gray[100],
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 7,
+      minHeight: 40,
+    },
+    textInput: {
+      flex: 1,
+      color: themeColors.text.primary,
+      fontSize: 14,
+      maxHeight: 100,
+    },
+    sendButton: {
+      padding: 8,
+      marginLeft: 8,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: themeColors.background.primary,
+    },
+    loadingText: {
+      color: themeColors.text.primary,
+      marginTop: 16,
+      fontSize: 16,
+    },
+    errorContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: themeColors.background.primary,
+      padding: 20,
+    },
+    errorText: {
+      color: themeColors.text.primary,
+      fontSize: 18,
+      textAlign: 'center',
+      marginTop: 16,
+      marginBottom: 20,
+    },
+    retryButton: {
+      backgroundColor: themeColors.primary,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      borderRadius: 24,
+    },
+    retryButtonText: {
+      color: themeColors.text.inverse,
+      fontWeight: '600',
+      fontSize: 16,
+    },
+    imageModal: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.95)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    closeButton: {
+      position: 'absolute',
+      top: 50,
+      right: 20,
+      zIndex: 1000,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      borderRadius: 20,
+      padding: 8,
+    },
+    modalImage: {
+      width: SCREEN_WIDTH * 0.95,
+      height: SCREEN_WIDTH * 0.95,
+      borderRadius: 12,
+    },
+    reactionsModal: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    reactionsContainer: {
+      backgroundColor: themeColors.surface.primary,
+      borderRadius: 24,
+      padding: 20,
+      flexDirection: 'row',
+      gap: 16,
+      elevation: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+    },
+    reactionButton: {
+      padding: 12,
+      borderRadius: 20,
+      backgroundColor: 'transparent',
+    },
+    reactionButtonActive: {
+      backgroundColor: themeColors.primary + '20',
+    },
+    reactionEmoji: {
+      fontSize: 28,
+    },
+    // Image styles matching Post component
+    attachmentContainer: {
+      marginTop: 2,
+      marginBottom: 4,
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: 8,
+    },
+    postImage: {
+      width: '100%',
+      aspectRatio: 1.05,
+      borderRadius: 0,
+      backgroundColor: themeColors.gray[100],
+      resizeMode: 'contain',
+      alignSelf: 'center',
+    },
+    postProfilePic: {
+      width: 250,
+      height: 250,
+      borderRadius: 175,
+      borderWidth: 2,
+      borderColor: '#eee',
+      marginVertical: 10,
+    },
+    // Option menu styles
+    modalOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'flex-end',
+      alignItems: 'center',
+    },
+    optionMenu: {
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      paddingTop: 8,
+      paddingBottom: 34,
+      paddingHorizontal: 0,
+      width: '100%',
+      maxHeight: '70%',
+      borderWidth: 1,
+      borderBottomWidth: 0,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: -4,
+      },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 8,
+    },
+    optionMenuHeader: {
+      alignItems: 'center',
+      paddingVertical: 12,
+      paddingBottom: 20,
+    },
+    optionMenuHandle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+      backgroundColor: '#E5E5E5',
+    },
+    optionMenuItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 16,
+      paddingHorizontal: 20,
+      borderBottomWidth: 1,
+      borderBottomColor: '#F0F0F0',
+      backgroundColor: 'transparent',
+    },
+    optionMenuItemDanger: {
+      borderBottomWidth: 0,
+    },
+    optionMenuIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 16,
+    },
+    optionMenuContent: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    optionMenuTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      lineHeight: 20,
+      marginBottom: 2,
+    },
+    optionMenuSubtitle: {
+      fontSize: 13,
+      fontWeight: '400',
+      lineHeight: 16,
+      opacity: 0.8,
+    },
+    shareModal: {
+      width: '100%',
+      maxHeight: '90%',
+      paddingHorizontal: 20,
+      paddingBottom: 28,
+      borderTopLeftRadius: 24,
+      borderTopRightRadius: 24,
+      borderWidth: 1,
+      borderBottomWidth: 0,
+    },
+    shareOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.4)',
+      justifyContent: 'flex-end',
+    },
+    shareHandleWrap: {
+      alignItems: 'center',
+      paddingVertical: 12,
+    },
+    shareHandle: {
+      width: 40,
+      height: 4,
+      borderRadius: 2,
+    },
+    shareTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      marginBottom: 4,
+      lineHeight: 26,
+    },
+    shareSubtitle: {
+      fontSize: 14,
+      lineHeight: 20,
+      marginBottom: 16,
+    },
+    shareInput: {
+      borderWidth: 1,
+      borderRadius: 12,
+      minHeight: 112,
+      maxHeight: 160,
+      paddingHorizontal: 14,
+      paddingVertical: 13,
+      textAlignVertical: 'top',
+      fontSize: 15,
+      lineHeight: 21,
+    },
+    shareCounter: {
+      alignSelf: 'flex-end',
+      fontSize: 12,
+      marginTop: 6,
+    },
+    shareActions: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 18,
+    },
+    shareActionButton: {
+      flex: 1,
+      height: 46,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    sharePrimaryButton: {},
+    sharePrimaryText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    shareCancelButton: {
+      borderWidth: 1,
+    },
+    shareActionText: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    // Delete confirmation modal styles
+    deleteConfirmModal: {
+      backgroundColor: '#fff',
+      borderRadius: 20,
+      width: '85%',
+      maxWidth: 380,
+      paddingBottom: 24,
+      borderWidth: 1,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 8,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 16,
+      elevation: 12,
+    },
+    deleteConfirmHeader: {
+      alignItems: 'center',
+      paddingTop: 32,
+      paddingHorizontal: 24,
+      paddingBottom: 24,
+    },
+    deleteConfirmIcon: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+    },
+    deleteConfirmTitle: {
+      fontSize: 20,
+      fontWeight: '700',
+      marginBottom: 12,
+      textAlign: 'center',
+    },
+    deleteConfirmMessage: {
+      fontSize: 15,
+      textAlign: 'center',
+      lineHeight: 22,
+      opacity: 0.8,
+    },
+    deleteConfirmButtons: {
+      flexDirection: 'row',
+      paddingHorizontal: 24,
+      gap: 12,
+    },
+    deleteConfirmBtn: {
+      flex: 1,
+      paddingVertical: 14,
+      paddingHorizontal: 20,
+      borderRadius: 12,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexDirection: 'row',
+    },
+    cancelBtn: {
+      backgroundColor: 'transparent',
+      borderWidth: 1.5,
+      borderColor: '#E5E5E5',
+    },
+    deleteBtn: {
+      backgroundColor: '#FF4444',
+      shadowColor: '#FF4444',
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 6,
+    },
+    deleteConfirmBtnText: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+  });
+
+  const getAssetUrl = (path?: string): string => {
+    if (!path) return '';
+    if (path.startsWith('http://') || path.startsWith('https://')) return path;
+    return `${config.SOCKET_BASE_URL.replace(/\/$/, '')}/${path.replace(
+      /^\//,
+      '',
+    )}`;
+  };
+
+  const normalizeImageUrls = (value?: string | string[]): string[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) return value;
+    const trimmedValue = value.trim();
+    if (trimmedValue.startsWith('[')) {
+      try {
+        const parsed = JSON.parse(trimmedValue);
+        return Array.isArray(parsed) ? parsed : [value];
+      } catch {
         return [value];
-    };
-
-    const isValidImageUrl = (url?: string): boolean => {
-        if (!url) return false;
-        const imageUrl = url.trim();
-        if (!imageUrl || imageUrl.trim() === '') return false;
-        // Check if it's a valid URL format
-        return imageUrl.startsWith('http://') || imageUrl.startsWith('https://') || imageUrl.startsWith('/');
-    };
-
-    const postImageUrls = [
-        ...normalizeImageUrls(post?.photos),
-        ...normalizeImageUrls(post?.gallery),
-    ].filter((url): url is string => isValidImageUrl(url));
-
-    const fetchPost = useCallback(async () => {
-        try {
-            setError(null);
-            const response = await api.get(`/post/single?postId=${postId}`);
-            console.log('posts data', response.data);
-            if (response.status === 200) {
-                const postData = response.data.post || response.data;
-                const nextComments = normalizeComments(postData.comments);
-                setPost(postData);
-                setSelectedAudience(Number(postData.audience) || 3);
-                setComments(nextComments);
-                setTotalComments(Array.isArray(postData.comments) ? postData.comments.length : nextComments.length);
-                setTotalReacts(postData.reacts?.length || 0);
-                setTotalShares(postData.shares?.length || 0);
-                setPlacedReacts(uniquePlacedReacts(postData.reacts));
-                
-                // Check if user has reacted
-                if (postData.reacts && myProfile?._id) {
-                    const userReact = postData.reacts.find((react: any) => react.profile === myProfile._id);
-                    if (userReact) {
-                        setIsReacted(true);
-                        setReactType(userReact.type);
-                    }
-                }
-            }
-        } catch (err: any) {
-            console.error('Error fetching post:', err);
-            setError(err?.response?.data?.message || 'Failed to load post');
-        } finally {
-            setLoading(false);
-        }
-    }, [postId, myProfile?._id]);
-
-    const onRefresh = useCallback(async () => {
-        setRefreshing(true);
-        await fetchPost();
-        setRefreshing(false);
-    }, [fetchPost]);
-
-    useEffect(() => {
-        fetchPost();
-    }, [fetchPost]);
-
-    useEffect(() => {
-        const sub = DeviceEventEmitter.addListener(POST_UPDATED_EVENT, (updatedPost: any) => {
-            if (!updatedPost?._id || updatedPost._id !== postId) return;
-            setPost((prev) => (prev ? { ...prev, ...updatedPost } : updatedPost));
-            if (updatedPost.audience != null) {
-                setSelectedAudience(Number(updatedPost.audience) || 3);
-            }
-        });
-        return () => sub.remove();
-    }, [postId]);
-
-    // Socket events for real-time updates
-    useEffect(() => {
-        if (!isConnected || !post) return;
-
-        const handleNewComment = (data: any) => {
-            if (data.postId === post._id && isPopulatedComment(data.comment)) {
-                setComments(prev => {
-                    if (prev.some((item) => sameId(item._id, data.comment._id))) return prev;
-                    return [...prev, data.comment];
-                });
-                setTotalComments(prev => prev + 1);
-            }
-        };
-
-        const handleNewReaction = (data: any) => {
-            if (data.postId === post._id) {
-                setTotalReacts(prev => prev + 1);
-                if (data.profileId === myProfile?._id) {
-                    setIsReacted(true);
-                    setReactType(data.type);
-                }
-            }
-        };
-
-        const handleRemoveReaction = (data: any) => {
-            if (data.postId === post._id) {
-                setTotalReacts(prev => Math.max(0, prev - 1));
-                if (data.profileId === myProfile?._id) {
-                    setIsReacted(false);
-                    setReactType(false);
-                }
-            }
-        };
-
-        on('newComment', handleNewComment);
-        on('newReaction', handleNewReaction);
-        on('removeReaction', handleRemoveReaction);
-
-        return () => {
-            off('newComment', handleNewComment);
-            off('newReaction', handleNewReaction);
-            off('removeReaction', handleRemoveReaction);
-        };
-    }, [isConnected, post, myProfile?._id, on, off]);
-
-    const handleReaction = async (type: string) => {
-        if (!post || !myProfile?._id) return;
-
-        try {
-            if (isReacted && reactType === type) {
-                // Remove reaction
-                await api.delete(`/post/${post._id}/react`);
-                setTotalReacts(prev => Math.max(0, prev - 1));
-                setIsReacted(false);
-                setReactType(false);
-                emit('removeReaction', { postId: post._id, profileId: myProfile._id, type });
-            } else {
-                // Add or change reaction
-                await api.post(`/post/${post._id}/react`, { type });
-                if (!isReacted) {
-                    setTotalReacts(prev => prev + 1);
-                }
-                setIsReacted(true);
-                setReactType(type);
-                setPlacedReacts((prev) => (prev.includes(type) ? prev : uniquePlacedReacts([...prev.map((k) => ({ type: k })), { type }])));
-                emit('newReaction', { postId: post._id, profileId: myProfile._id, type });
-            }
-        } catch (err) {
-            console.error('Error handling reaction:', err);
-            Alert.alert('Error', 'Failed to update reaction');
-        }
-        setShowReactions(false);
-    };
-
-    const handleComment = async () => {
-        if (!commentText.trim() || !post || !myProfile?._id || isPostingComment) return;
-        setIsPostingComment(true);
-        try {
-            const res = await api.post('/comment/addComment', {
-                body: commentText.trim(),
-                post: post._id,
-            });
-
-            if (res.status === 200 && res.data?._id) {
-                const newComment = {
-                    ...res.data,
-                    author: res.data.author || {
-                        fullName: myProfile?.fullName || 'You',
-                        profilePic: myProfile?.profilePic || '',
-                        _id: myProfile?._id
-                    },
-                    content: res.data.text || res.data.body || res.data.content || commentText.trim(),
-                    createdAt: res.data.createdAt || new Date().toISOString(),
-                    replies: Array.isArray(res.data.replies) ? res.data.replies : [],
-                };
-                setComments(prev => {
-                    if (prev.some((item) => sameId(item._id, newComment._id))) return prev;
-                    return [newComment, ...prev];
-                });
-                setTotalComments(prev => prev + 1);
-                setCommentText('');
-                emit('newComment', { postId: post._id, comment: newComment });
-            }
-        } catch (err: any) {
-            console.error('Error adding comment:', err);
-            Alert.alert('Error', err?.response?.data?.message || 'Failed to add comment');
-        } finally {
-            setIsPostingComment(false);
-        }
-    };
-
-    const handleReply = async () => {
-        if (!replyText.trim() || !replyingTo || !post || !myProfile?._id || isPostingReply) return;
-        setIsPostingReply(true);
-        try {
-            const res = await api.post('/comment/addReply', {
-                replyMsg: replyText.trim(),
-                authorId: myProfile._id,
-                commentId: replyingTo._id,
-            });
-
-            if (res.status === 200 && res.data?._id) {
-                const newReply = {
-                    ...res.data,
-                    author: res.data.author || {
-                        fullName: myProfile?.fullName || 'You',
-                        profilePic: myProfile?.profilePic || '',
-                        _id: myProfile._id
-                    },
-                    content: res.data.text || res.data.body || res.data.content || replyText.trim(),
-                    createdAt: res.data.createdAt || new Date().toISOString(),
-                    isReply: true,
-                    parentCommentId: replyingTo._id
-                };
-
-                setComments(prev => prev.map(comment => {
-                    if (comment._id === replyingTo._id) {
-                        const existing = Array.isArray(comment.replies) ? comment.replies : [];
-                        if (existing.some((reply: any) => String(reply?._id) === String(newReply._id))) {
-                            return comment;
-                        }
-                        return {
-                            ...comment,
-                            replies: [...existing, newReply]
-                        };
-                    }
-                    return comment;
-                }));
-
-                setReplyText('');
-                setReplyingTo(null);
-            }
-        } catch (err: any) {
-            console.error('Error adding reply:', err);
-            Alert.alert('Error', err?.response?.data?.message || 'Failed to add reply');
-        } finally {
-            setIsPostingReply(false);
-        }
-    };
-
-    const handleDeleteComment = (comment: Comment, isReply = false, parentId?: string) => {
-        if (!comment?._id || deletingId) return;
-        Alert.alert(isReply ? 'Delete reply' : 'Delete comment', isReply ? 'Delete this reply?' : 'Delete this comment?', [
-            { text: 'Cancel', style: 'cancel' },
-            {
-                text: 'Delete',
-                style: 'destructive',
-                onPress: async () => {
-                    setDeletingId(comment._id);
-                    try {
-                        const res = isReply
-                            ? await api.post('/comment/deleteReply', { replyId: comment._id })
-                            : await api.post('/comment/deleteComment', { commentId: comment._id, postId: post?._id });
-                        if (res.status === 200) {
-                            if (isReply && parentId) {
-                                setComments((prev) => prev.map((item) => {
-                                    if (item._id !== parentId) return item;
-                                    return {
-                                        ...item,
-                                        replies: (item.replies || []).filter((reply: any) => reply?._id !== comment._id),
-                                    };
-                                }));
-                            } else {
-                                setComments((prev) => prev.filter((item) => item._id !== comment._id));
-                                setTotalComments((count) => Math.max(0, count - 1));
-                                if (replyingTo?._id === comment._id) {
-                                    setReplyingTo(null);
-                                    setReplyText('');
-                                }
-                            }
-                        }
-                    } catch (err: any) {
-                        Alert.alert('Error', err?.response?.data?.message || 'Failed to delete');
-                    } finally {
-                        setDeletingId(null);
-                    }
-                },
-            },
-        ]);
-    };
-
-    const handleShare = () => {
-        if (!post || !myProfile?._id || isSharing) return;
-        setIsShareModal(true);
-    };
-
-    const onClickShareNow = async () => {
-        if (!post || isSharing) return;
-        setIsSharing(true);
-        try {
-            const res = await api.post('/post/share', {
-                postId: post._id,
-                caption: shareCap.trim(),
-            });
-            if (res.status === 200) {
-                setTotalShares(state => state + 1);
-                setIsShareModal(false);
-                setShareCap('');
-                showToast({
-                    type: 'success',
-                    title: 'Post shared',
-                    message: 'The post was shared to your feed.',
-                });
-            }
-        } catch (error: any) {
-            showToast({
-                type: 'error',
-                title: 'Could not share post',
-                message: error?.response?.data?.message || 'Please try again.',
-            });
-        } finally {
-            setIsSharing(false);
-        }
-    };
-
-    const openImageModal = (imageUrl: string) => {
-        setSelectedImage(getAssetUrl(imageUrl));
-        setShowImageModal(true);
-    };
-
-    const closeImageModal = () => {
-        setShowImageModal(false);
-        setSelectedImage('');
-    };
-
-    // Post option functions
-    const postOptionClick = () => setIsPostOption(!isPostOption);
-
-    const openEditPost = () => {
-        setIsPostOption(false);
-        navigation.navigate('EditPost', { postId: post?._id || postId });
-    };
-
-    const openEditAudience = () => {
-        setSelectedAudience(Number(post?.audience) || 3);
-        setIsPostOption(false);
-        setIsEditAudienceModal(true);
-    };
-
-    const closeEditAudience = () => {
-        if (isUpdatingAudience) return;
-        setIsEditAudienceModal(false);
-        setSelectedAudience(Number(post?.audience) || 3);
-    };
-
-    const saveAudience = async () => {
-        if (!post || isUpdatingAudience) return;
-        setIsUpdatingAudience(true);
-        try {
-            const res = await api.post('/post/update', {
-                postId: post._id,
-                audience: selectedAudience,
-            });
-            if (res.status === 200) {
-                const updatedPost = res.data?.post || { ...post, audience: selectedAudience };
-                setPost((prev) => (prev ? { ...prev, ...updatedPost } : updatedPost));
-                setSelectedAudience(Number(updatedPost.audience) || selectedAudience);
-                CacheManager.updateCachedPost(updatedPost);
-                emitPostUpdated(updatedPost);
-                setIsEditAudienceModal(false);
-                showToast({
-                    type: 'success',
-                    title: 'Audience updated',
-                    message: `This post is now visible to ${getAudienceOption(selectedAudience).label.toLowerCase()}.`,
-                });
-            }
-        } catch (error: any) {
-            console.error('Error updating audience:', error);
-            showToast({
-                type: 'error',
-                title: 'Could not update audience',
-                message: error?.response?.data?.message || 'Please try again.',
-            });
-        } finally {
-            setIsUpdatingAudience(false);
-        }
-    };
-
-    const showDeleteConfirm = () => {
-        setIsPostOption(false);
-        setShowDeleteConfirmation(true);
-    };
-
-    const handleDeletePost = async () => {
-        if (!post) return;
-        try {
-            const res = await api.post(`/post/delete`, { postId: post._id, authorId: post.author._id });
-            if (res.status === 200) {
-                // Close the modals
-                setIsPostOption(false);
-                setShowDeleteConfirmation(false);
-                // Navigate back since post is deleted
-                navigation.goBack();
-                console.log('Post deleted successfully');
-            }
-        } catch (error) {
-            console.error('Error deleting post:', error);
-            Alert.alert('Error', 'Failed to delete post');
-        }
-    };
-
-    const renderReactionButton = () => (
-        <View style={{ flex: 1, position: 'relative' }}>
-            <TouchableOpacity
-                onPress={() => handleReaction('like')}
-                onLongPress={() => setShowReactions(true)}
-                delayLongPress={450}
-                style={[
-                    styles.actionButton,
-                    isReacted && styles.actionButtonActive,
-                ]}
-            >
-                <CurrentReactIcon reactType={reactType} size={18} />
-                {SHOW_ACTION_LABELS ? (
-                    <Text style={[
-                        styles.actionButtonText,
-                        isReacted && styles.actionButtonTextActive,
-                    ]}>
-                        {getReactLabel(reactType)}
-                    </Text>
-                ) : null}
-            </TouchableOpacity>
-            {showReactions ? (
-                <View style={styles.spReactPickerWrap}>
-                    <ReactPicker
-                        reactType={reactType}
-                        onSelect={(type) => handleReaction(type)}
-                        backgroundColor={feed.postBg}
-                        borderColor={feed.postBorder}
-                    />
-                </View>
-            ) : null}
-        </View>
-    );
-
-    const renderReactionsModal = () => (
-        showReactions ? (
-            <Pressable style={styles.spReactDismiss} onPress={() => setShowReactions(false)} />
-        ) : null
-    );
-
-    const renderComment = (comment: Comment, isReply = false, parentId?: string) => {
-        const body = comment.content || comment.text || comment.body || '';
-        const replies = normalizeComments(comment.replies);
-        const isMine = sameId(comment.author, myProfile?._id);
-        const canDelete = isMine || sameId(post?.author, myProfile?._id);
-        const menuOpen = commentMenuId === comment._id;
-        return (
-            <View key={comment._id} style={[styles.fbCommentRow, isReply && { marginBottom: 8 }]}>
-                <UserPP
-                    image={comment.author?.profilePic || ''}
-                    size={isReply ? 28 : 32}
-                    isActive={false}
-                />
-                <View style={{ flex: 1, minWidth: 0 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-                        <View style={[styles.fbNameComment, { backgroundColor: commentBubbleBg }]}>
-                            <VerifiedName
-                                name={commentAuthorName(comment)}
-                                verified={Boolean(
-                                    comment.author?.isVerified ||
-                                    comment.author?.user?.isVerified,
-                                )}
-                                verifiedColor={themeColors.primary}
-                                textStyle={[styles.fbAuthorName, { color: themeColors.text.primary }]}
-                                numberOfLines={1}
-                            />
-                            {!!body.trim() && (
-                                <Text style={[styles.fbCommentText, { color: themeColors.text.primary }]}>
-                                    {renderMentionBody(
-                                        body,
-                                        (profileId) => navigation.navigate('ConnectProfile', { connectId: profileId }),
-                                        { color: themeColors.text.primary },
-                                        { color: themeColors.primary, fontWeight: '600' },
-                                    )}
-                                </Text>
-                            )}
-                        </View>
-                        {canDelete ? (
-                            <TouchableOpacity
-                                onPress={() => setCommentMenuId(menuOpen ? null : comment._id)}
-                                hitSlop={8}
-                                style={{ marginLeft: 4, padding: 4 }}
-                            >
-                                <FAIcon name="ellipsis-h" size={12} color={commentActionColor} />
-                            </TouchableOpacity>
-                        ) : null}
-                    </View>
-                    {menuOpen ? (
-                        <TouchableOpacity
-                            onPress={() => {
-                                setCommentMenuId(null);
-                                handleDeleteComment(comment, isReply, parentId);
-                            }}
-                            style={{ paddingVertical: 6, paddingHorizontal: 4 }}
-                        >
-                            <Text style={styles.deleteButtonText}>
-                                {deletingId === comment._id ? 'Deleting...' : isReply ? 'Delete Reply' : 'Delete Comment'}
-                            </Text>
-                        </TouchableOpacity>
-                    ) : null}
-                    <View style={styles.fbCommentReact}>
-                        {!isReply ? (
-                            <TouchableOpacity onPress={() => setReplyingTo(comment)}>
-                                <Text style={[styles.fbReactLink, { color: commentActionColor }]}>Reply</Text>
-                            </TouchableOpacity>
-                        ) : null}
-                        <Text style={styles.fbCommentTime}>
-                            {comment.createdAt ? moment(comment.createdAt).fromNow() : ''}
-                        </Text>
-                        {!isReply && replies.length > 0 ? (
-                            <Text style={[styles.fbReactLink, { color: commentActionColor }]}>
-                                · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
-                            </Text>
-                        ) : null}
-                    </View>
-                    {!isReply && replies.length > 0 ? (
-                        <View style={[styles.fbRepliesThread, { borderLeftColor: isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)' }]}>
-                            {replies.map(reply => renderComment(reply, true, comment._id))}
-                        </View>
-                    ) : null}
-                </View>
-            </View>
-        );
-    };
-
-    if (loading || !myProfile) {
-        return (
-            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-                <StatusBar 
-                    barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
-                    backgroundColor={themeColors.surface.header} 
-                />
-                <View style={styles.header}>
-                    <TouchableOpacity
-                        onPress={() => navigation.goBack()}
-                        style={styles.backButton}
-                    >
-                        <Icon name="arrow-back" size={24} color={themeColors.text.primary} />
-                    </TouchableOpacity>
-                    <Text style={styles.headerTitle}>
-                        Post
-                    </Text>
-                </View>
-                <SinglePostSkeleton />
-            </SafeAreaView>
-        );
+      }
     }
+    return [value];
+  };
 
-    if (error || !post) {
-        return (
-            <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-                <StatusBar 
-                    barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
-                    backgroundColor={themeColors.surface.header} 
-                />
-                <View style={styles.errorContainer}>
-                    <Icon name="error-outline" size={64} color={themeColors.status.error} />
-                    <Text style={styles.errorText}>
-                        {error || 'Post not found'}
-                    </Text>
-                    <TouchableOpacity
-                        onPress={fetchPost}
-                        style={styles.retryButton}
-                    >
-                        <Text style={styles.retryButtonText}>
-                            Try Again
-                        </Text>
-                    </TouchableOpacity>
-                </View>
-            </SafeAreaView>
-        );
-    }
-
+  const isValidImageUrl = (url?: string): boolean => {
+    if (!url) return false;
+    const imageUrl = url.trim();
+    if (!imageUrl || imageUrl.trim() === '') return false;
+    // Check if it's a valid URL format
     return (
-        <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
-            <StatusBar 
-                barStyle={isDarkMode ? 'light-content' : 'dark-content'} 
-                backgroundColor={themeColors.surface.header} 
-            />
-            <KeyboardSafeView
-                nested
-                extraOffset={Platform.OS === 'ios' ? 8 : 0}
+      imageUrl.startsWith('http://') ||
+      imageUrl.startsWith('https://') ||
+      imageUrl.startsWith('/')
+    );
+  };
+
+  const postImageUrls = [
+    ...normalizeImageUrls(post?.photos),
+    ...normalizeImageUrls(post?.gallery),
+  ].filter((url): url is string => isValidImageUrl(url));
+
+  const fetchPost = useCallback(async () => {
+    try {
+      setError(null);
+      const response = await api.get(`/post/single?postId=${postId}`);
+      console.log('posts data', response.data);
+      if (response.status === 200) {
+        const postData = response.data.post || response.data;
+        const nextComments = normalizeComments(postData.comments);
+        setPost(postData);
+        setSelectedAudience(Number(postData.audience) || 3);
+        setComments(nextComments);
+        setTotalComments(
+          Array.isArray(postData.comments)
+            ? postData.comments.length
+            : nextComments.length,
+        );
+        setTotalReacts(postData.reacts?.length || 0);
+        setTotalShares(postData.shares?.length || 0);
+        setPlacedReacts(uniquePlacedReacts(postData.reacts));
+
+        // Check if user has reacted
+        if (postData.reacts && myProfile?._id) {
+          const userReact = postData.reacts.find(
+            (react: any) => react.profile === myProfile._id,
+          );
+          if (userReact) {
+            setIsReacted(true);
+            setReactType(userReact.type);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.error('Error fetching post:', err);
+      setError(err?.response?.data?.message || 'Failed to load post');
+    } finally {
+      setLoading(false);
+    }
+  }, [postId, myProfile?._id]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchPost();
+    setRefreshing(false);
+  }, [fetchPost]);
+
+  useEffect(() => {
+    fetchPost();
+  }, [fetchPost]);
+
+  useEffect(() => {
+    const sub = DeviceEventEmitter.addListener(
+      POST_UPDATED_EVENT,
+      (updatedPost: any) => {
+        if (!updatedPost?._id || updatedPost._id !== postId) return;
+        setPost(prev => (prev ? { ...prev, ...updatedPost } : updatedPost));
+        if (updatedPost.audience != null) {
+          setSelectedAudience(Number(updatedPost.audience) || 3);
+        }
+      },
+    );
+    return () => sub.remove();
+  }, [postId]);
+
+  // Socket events for real-time updates
+  useEffect(() => {
+    if (!isConnected || !post) return;
+
+    const handleNewComment = (data: any) => {
+      if (data.postId === post._id && isPopulatedComment(data.comment)) {
+        setComments(prev => {
+          if (prev.some(item => sameId(item._id, data.comment._id)))
+            return prev;
+          return [...prev, data.comment];
+        });
+        setTotalComments(prev => prev + 1);
+      }
+    };
+
+    const handleNewReaction = (data: any) => {
+      if (data.postId === post._id) {
+        setTotalReacts(prev => prev + 1);
+        if (data.profileId === myProfile?._id) {
+          setIsReacted(true);
+          setReactType(data.type);
+        }
+      }
+    };
+
+    const handleRemoveReaction = (data: any) => {
+      if (data.postId === post._id) {
+        setTotalReacts(prev => Math.max(0, prev - 1));
+        if (data.profileId === myProfile?._id) {
+          setIsReacted(false);
+          setReactType(false);
+        }
+      }
+    };
+
+    on('newComment', handleNewComment);
+    on('newReaction', handleNewReaction);
+    on('removeReaction', handleRemoveReaction);
+
+    return () => {
+      off('newComment', handleNewComment);
+      off('newReaction', handleNewReaction);
+      off('removeReaction', handleRemoveReaction);
+    };
+  }, [isConnected, post, myProfile?._id, on, off]);
+
+  const handleReaction = async (type: string) => {
+    if (!post || !myProfile?._id) return;
+
+    try {
+      if (isReacted && reactType === type) {
+        // Remove reaction
+        await api.delete(`/post/${post._id}/react`);
+        setTotalReacts(prev => Math.max(0, prev - 1));
+        setIsReacted(false);
+        setReactType(false);
+        emit('removeReaction', {
+          postId: post._id,
+          profileId: myProfile._id,
+          type,
+        });
+      } else {
+        // Add or change reaction
+        await api.post(`/post/${post._id}/react`, { type });
+        if (!isReacted) {
+          setTotalReacts(prev => prev + 1);
+        }
+        setIsReacted(true);
+        setReactType(type);
+        setPlacedReacts(prev =>
+          prev.includes(type)
+            ? prev
+            : uniquePlacedReacts([...prev.map(k => ({ type: k })), { type }]),
+        );
+        emit('newReaction', {
+          postId: post._id,
+          profileId: myProfile._id,
+          type,
+        });
+      }
+    } catch (err) {
+      console.error('Error handling reaction:', err);
+      Alert.alert('Error', 'Failed to update reaction');
+    }
+    setShowReactions(false);
+  };
+
+  const handleCommentAttachment = async () => {
+    if (isPostingComment || isUploadingCommentAttachment) return;
+    try {
+      const permission =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (permission.status !== 'granted') {
+        Alert.alert(
+          'Permission needed',
+          'Photo library permission is required to attach an image.',
+        );
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+      if (!result.canceled && result.assets?.[0]?.uri) {
+        const asset = normalizeImageAsset(result.assets[0]);
+        setCommentAttachment({
+          uri: asset.uri,
+          fileName: asset.fileName || 'comment.jpg',
+          mimeType: asset.mimeType || 'image/jpeg',
+        });
+      }
+    } catch (error) {
+      console.error('Failed to select comment attachment:', error);
+      Alert.alert(
+        'Attachment failed',
+        'Unable to select an image. Please try again.',
+      );
+    }
+  };
+
+  const handleComment = async () => {
+    if (
+      (!commentText.trim() && !commentAttachment) ||
+      !post ||
+      !myProfile?._id ||
+      isPostingComment ||
+      isUploadingCommentAttachment
+    )
+      return;
+    setIsPostingComment(true);
+    try {
+      let attachmentUrl = '';
+      if (commentAttachment) {
+        setIsUploadingCommentAttachment(true);
+        const formData = new FormData();
+        formData.append('image', {
+          uri: commentAttachment.uri,
+          name: commentAttachment.fileName || 'comment.jpg',
+          type: commentAttachment.mimeType || 'image/jpeg',
+        } as any);
+        const uploadRes = await api.post('/upload/', formData);
+        attachmentUrl = uploadRes.data?.secure_url || uploadRes.data?.url || '';
+        if (uploadRes.status !== 200 || !attachmentUrl) {
+          throw new Error('Comment attachment upload failed');
+        }
+      }
+      const res = await api.post('/comment/addComment', {
+        body: commentText.trim(),
+        post: post._id,
+        attachment: attachmentUrl,
+      });
+
+      if (res.status === 200 && res.data?._id) {
+        const newComment = {
+          ...res.data,
+          author: res.data.author || {
+            fullName: myProfile?.fullName || 'You',
+            profilePic: myProfile?.profilePic || '',
+            _id: myProfile?._id,
+          },
+          content:
+            res.data.text ||
+            res.data.body ||
+            res.data.content ||
+            commentText.trim(),
+          createdAt: res.data.createdAt || new Date().toISOString(),
+          replies: Array.isArray(res.data.replies) ? res.data.replies : [],
+        };
+        setComments(prev => {
+          if (prev.some(item => sameId(item._id, newComment._id))) return prev;
+          return [newComment, ...prev];
+        });
+        setTotalComments(prev => prev + 1);
+        setCommentText('');
+        setCommentAttachment(null);
+        emit('newComment', { postId: post._id, comment: newComment });
+      }
+    } catch (err: any) {
+      console.error('Error adding comment:', err);
+      Alert.alert(
+        'Error',
+        err?.response?.data?.message || 'Failed to add comment',
+      );
+    } finally {
+      setIsUploadingCommentAttachment(false);
+      setIsPostingComment(false);
+    }
+  };
+
+  const handleReply = async () => {
+    if (
+      !replyText.trim() ||
+      !replyingTo ||
+      !post ||
+      !myProfile?._id ||
+      isPostingReply
+    )
+      return;
+    setIsPostingReply(true);
+    try {
+      const res = await api.post('/comment/addReply', {
+        replyMsg: replyText.trim(),
+        authorId: myProfile._id,
+        commentId: replyingTo._id,
+      });
+
+      if (res.status === 200 && res.data?._id) {
+        const newReply = {
+          ...res.data,
+          author: res.data.author || {
+            fullName: myProfile?.fullName || 'You',
+            profilePic: myProfile?.profilePic || '',
+            _id: myProfile._id,
+          },
+          content:
+            res.data.text ||
+            res.data.body ||
+            res.data.content ||
+            replyText.trim(),
+          createdAt: res.data.createdAt || new Date().toISOString(),
+          isReply: true,
+          parentCommentId: replyingTo._id,
+        };
+
+        setComments(prev =>
+          prev.map(comment => {
+            if (comment._id === replyingTo._id) {
+              const existing = Array.isArray(comment.replies)
+                ? comment.replies
+                : [];
+              if (
+                existing.some(
+                  (reply: any) => String(reply?._id) === String(newReply._id),
+                )
+              ) {
+                return comment;
+              }
+              return {
+                ...comment,
+                replies: [...existing, newReply],
+              };
+            }
+            return comment;
+          }),
+        );
+
+        setReplyText('');
+        setReplyingTo(null);
+      }
+    } catch (err: any) {
+      console.error('Error adding reply:', err);
+      Alert.alert(
+        'Error',
+        err?.response?.data?.message || 'Failed to add reply',
+      );
+    } finally {
+      setIsPostingReply(false);
+    }
+  };
+
+  const handleDeleteComment = (
+    comment: Comment,
+    isReply = false,
+    parentId?: string,
+  ) => {
+    if (!comment?._id || deletingId) return;
+    Alert.alert(
+      isReply ? 'Delete reply' : 'Delete comment',
+      isReply ? 'Delete this reply?' : 'Delete this comment?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(comment._id);
+            try {
+              const res = isReply
+                ? await api.post('/comment/deleteReply', {
+                    replyId: comment._id,
+                  })
+                : await api.post('/comment/deleteComment', {
+                    commentId: comment._id,
+                    postId: post?._id,
+                  });
+              if (res.status === 200) {
+                if (isReply && parentId) {
+                  setComments(prev =>
+                    prev.map(item => {
+                      if (item._id !== parentId) return item;
+                      return {
+                        ...item,
+                        replies: (item.replies || []).filter(
+                          (reply: any) => reply?._id !== comment._id,
+                        ),
+                      };
+                    }),
+                  );
+                } else {
+                  setComments(prev =>
+                    prev.filter(item => item._id !== comment._id),
+                  );
+                  setTotalComments(count => Math.max(0, count - 1));
+                  if (replyingTo?._id === comment._id) {
+                    setReplyingTo(null);
+                    setReplyText('');
+                  }
+                }
+              }
+            } catch (err: any) {
+              Alert.alert(
+                'Error',
+                err?.response?.data?.message || 'Failed to delete',
+              );
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const handleShare = () => {
+    if (!post || !myProfile?._id || isSharing) return;
+    setIsShareModal(true);
+  };
+
+  const onClickShareNow = async () => {
+    if (!post || isSharing) return;
+    setIsSharing(true);
+    try {
+      const res = await api.post('/post/share', {
+        postId: post._id,
+        caption: shareCap.trim(),
+      });
+      if (res.status === 200) {
+        setTotalShares(state => state + 1);
+        setIsShareModal(false);
+        setShareCap('');
+        showToast({
+          type: 'success',
+          title: 'Post shared',
+          message: 'The post was shared to your feed.',
+        });
+      }
+    } catch (error: any) {
+      showToast({
+        type: 'error',
+        title: 'Could not share post',
+        message: error?.response?.data?.message || 'Please try again.',
+      });
+    } finally {
+      setIsSharing(false);
+    }
+  };
+
+  const openImageModal = (imageUrl: string) => {
+    setSelectedImage(getAssetUrl(imageUrl));
+    setShowImageModal(true);
+  };
+
+  const closeImageModal = () => {
+    setShowImageModal(false);
+    setSelectedImage('');
+  };
+
+  // Post option functions
+  const postOptionClick = () => setIsPostOption(!isPostOption);
+
+  const openEditPost = () => {
+    setIsPostOption(false);
+    navigation.navigate('EditPost', { postId: post?._id || postId });
+  };
+
+  const openEditAudience = () => {
+    setSelectedAudience(Number(post?.audience) || 3);
+    setIsPostOption(false);
+    setIsEditAudienceModal(true);
+  };
+
+  const closeEditAudience = () => {
+    if (isUpdatingAudience) return;
+    setIsEditAudienceModal(false);
+    setSelectedAudience(Number(post?.audience) || 3);
+  };
+
+  const saveAudience = async () => {
+    if (!post || isUpdatingAudience) return;
+    setIsUpdatingAudience(true);
+    try {
+      const res = await api.post('/post/update', {
+        postId: post._id,
+        audience: selectedAudience,
+      });
+      if (res.status === 200) {
+        const updatedPost = res.data?.post || {
+          ...post,
+          audience: selectedAudience,
+        };
+        setPost(prev => (prev ? { ...prev, ...updatedPost } : updatedPost));
+        setSelectedAudience(Number(updatedPost.audience) || selectedAudience);
+        CacheManager.updateCachedPost(updatedPost);
+        emitPostUpdated(updatedPost);
+        setIsEditAudienceModal(false);
+        showToast({
+          type: 'success',
+          title: 'Audience updated',
+          message: `This post is now visible to ${getAudienceOption(
+            selectedAudience,
+          ).label.toLowerCase()}.`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error updating audience:', error);
+      showToast({
+        type: 'error',
+        title: 'Could not update audience',
+        message: error?.response?.data?.message || 'Please try again.',
+      });
+    } finally {
+      setIsUpdatingAudience(false);
+    }
+  };
+
+  const showDeleteConfirm = () => {
+    setIsPostOption(false);
+    setShowDeleteConfirmation(true);
+  };
+
+  const handleDeletePost = async () => {
+    if (!post) return;
+    try {
+      const res = await api.post(`/post/delete`, {
+        postId: post._id,
+        authorId: post.author._id,
+      });
+      if (res.status === 200) {
+        // Close the modals
+        setIsPostOption(false);
+        setShowDeleteConfirmation(false);
+        // Navigate back since post is deleted
+        navigation.goBack();
+        console.log('Post deleted successfully');
+      }
+    } catch (error) {
+      console.error('Error deleting post:', error);
+      Alert.alert('Error', 'Failed to delete post');
+    }
+  };
+
+  const renderReactionButton = () => (
+    <View style={{ flex: 1, position: 'relative' }}>
+      <TouchableOpacity
+        onPress={() => handleReaction('like')}
+        onLongPress={() => setShowReactions(true)}
+        delayLongPress={450}
+        style={[styles.actionButton, isReacted && styles.actionButtonActive]}
+      >
+        <CurrentReactIcon reactType={reactType} size={18} />
+        {SHOW_ACTION_LABELS ? (
+          <Text
+            style={[
+              styles.actionButtonText,
+              isReacted && styles.actionButtonTextActive,
+            ]}
+          >
+            {getReactLabel(reactType)}
+          </Text>
+        ) : null}
+      </TouchableOpacity>
+      {showReactions ? (
+        <View style={styles.spReactPickerWrap}>
+          <ReactPicker
+            reactType={reactType}
+            onSelect={type => handleReaction(type)}
+            backgroundColor={feed.postBg}
+            borderColor={feed.postBorder}
+          />
+        </View>
+      ) : null}
+    </View>
+  );
+
+  const renderReactionsModal = () =>
+    showReactions ? (
+      <Pressable
+        style={styles.spReactDismiss}
+        onPress={() => setShowReactions(false)}
+      />
+    ) : null;
+
+  const renderComment = (
+    comment: Comment,
+    isReply = false,
+    parentId?: string,
+  ) => {
+    const body = comment.content || comment.text || comment.body || '';
+    const attachment = (comment as any).attachment || (comment as any).image;
+    const replies = normalizeComments(comment.replies);
+    const isMine = sameId(comment.author, myProfile?._id);
+    const canDelete = isMine || sameId(post?.author, myProfile?._id);
+    const menuOpen = commentMenuId === comment._id;
+    return (
+      <View
+        key={comment._id}
+        style={[styles.fbCommentRow, isReply && { marginBottom: 8 }]}
+      >
+        <UserPP
+          image={comment.author?.profilePic || ''}
+          size={isReply ? 28 : 32}
+          isActive={false}
+        />
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+            <View
+              style={[
+                styles.fbNameComment,
+                { backgroundColor: commentBubbleBg },
+              ]}
             >
-            
-            {/* Header */}
-            <View style={styles.header}>
-                <TouchableOpacity
-                    onPress={() => navigation.goBack()}
-                    style={styles.backButton}
+              <VerifiedName
+                name={commentAuthorName(comment)}
+                verified={Boolean(
+                  comment.author?.isVerified ||
+                    comment.author?.user?.isVerified,
+                )}
+                verifiedColor={themeColors.primary}
+                textStyle={[
+                  styles.fbAuthorName,
+                  { color: themeColors.text.primary },
+                ]}
+                numberOfLines={1}
+              />
+              {!!body.trim() && (
+                <Text
+                  style={[
+                    styles.fbCommentText,
+                    { color: themeColors.text.primary },
+                  ]}
                 >
-                    <Icon name="arrow-back" size={24} color={themeColors.text.primary} />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>
-                    Post
+                  {renderMentionBody(
+                    body,
+                    profileId =>
+                      navigation.navigate('ConnectProfile', {
+                        connectId: profileId,
+                      }),
+                    { color: themeColors.text.primary },
+                    { color: themeColors.primary, fontWeight: '600' },
+                  )}
                 </Text>
+              )}
+            </View>
+            {attachment ? (
+              <Image
+                source={{ uri: getAssetUrl(String(attachment)) }}
+                style={styles.commentAttachmentImage}
+                resizeMode="cover"
+              />
+            ) : null}
+            {canDelete ? (
+              <TouchableOpacity
+                onPress={() => setCommentMenuId(menuOpen ? null : comment._id)}
+                hitSlop={8}
+                style={{ marginLeft: 4, padding: 4 }}
+              >
+                <FAIcon
+                  name="ellipsis-h"
+                  size={12}
+                  color={commentActionColor}
+                />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+          {menuOpen ? (
+            <TouchableOpacity
+              onPress={() => {
+                setCommentMenuId(null);
+                handleDeleteComment(comment, isReply, parentId);
+              }}
+              style={{ paddingVertical: 6, paddingHorizontal: 4 }}
+            >
+              <Text style={styles.deleteButtonText}>
+                {deletingId === comment._id
+                  ? 'Deleting...'
+                  : isReply
+                  ? 'Delete Reply'
+                  : 'Delete Comment'}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+          <View style={styles.fbCommentReact}>
+            {!isReply ? (
+              <TouchableOpacity onPress={() => setReplyingTo(comment)}>
+                <Text
+                  style={[styles.fbReactLink, { color: commentActionColor }]}
+                >
+                  Reply
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+            <Text style={styles.fbCommentTime}>
+              {comment.createdAt ? moment(comment.createdAt).fromNow() : ''}
+            </Text>
+            {!isReply && replies.length > 0 ? (
+              <Text style={[styles.fbReactLink, { color: commentActionColor }]}>
+                · {replies.length} {replies.length === 1 ? 'reply' : 'replies'}
+              </Text>
+            ) : null}
+          </View>
+          {!isReply && replies.length > 0 ? (
+            <View
+              style={[
+                styles.fbRepliesThread,
+                {
+                  borderLeftColor: isDarkMode
+                    ? 'rgba(255,255,255,0.1)'
+                    : 'rgba(0,0,0,0.08)',
+                },
+              ]}
+            >
+              {replies.map(reply => renderComment(reply, true, comment._id))}
+            </View>
+          ) : null}
+        </View>
+      </View>
+    );
+  };
+
+  if (loading || !myProfile) {
+    return (
+      <SafeAreaView style={styles.container} edges={['left', 'right']}>
+        <StatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+          backgroundColor={themeColors.surface.header}
+        />
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <Icon
+              name="arrow-back"
+              size={24}
+              color={themeColors.text.primary}
+            />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Post</Text>
+        </View>
+        <SinglePostSkeleton />
+      </SafeAreaView>
+    );
+  }
+
+  if (error || !post) {
+    return (
+      <SafeAreaView
+        style={styles.container}
+        edges={['left', 'right', 'bottom']}
+      >
+        <StatusBar
+          barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+          backgroundColor={themeColors.surface.header}
+        />
+        <View style={styles.errorContainer}>
+          <Icon
+            name="error-outline"
+            size={64}
+            color={themeColors.status.error}
+          />
+          <Text style={styles.errorText}>{error || 'Post not found'}</Text>
+          <TouchableOpacity onPress={fetchPost} style={styles.retryButton}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  return (
+    <SafeAreaView style={styles.container} edges={['left', 'right', 'bottom']}>
+      <StatusBar
+        barStyle={isDarkMode ? 'light-content' : 'dark-content'}
+        backgroundColor={themeColors.surface.header}
+      />
+      <KeyboardSafeView nested extraOffset={Platform.OS === 'ios' ? 8 : 0}>
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            onPress={() => navigation.goBack()}
+            style={styles.backButton}
+          >
+            <Icon
+              name="arrow-back"
+              size={24}
+              color={themeColors.text.primary}
+            />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Post</Text>
+        </View>
+
+        <ScrollView
+          ref={scrollViewRef}
+          style={{ flex: 1 }}
+          keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[themeColors.primary]}
+              tintColor={themeColors.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Post Content */}
+          <View style={styles.postContainer}>
+            {/* Author Info */}
+            <View style={styles.authorSection}>
+              <UserPP
+                image={post.author?.profilePic || ''}
+                size={44}
+                isActive={post.author?.isActive || false}
+              />
+              <View style={styles.authorInfo}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <VerifiedName
+                    name={post.author?.fullName || 'Unknown User'}
+                    verified={post.author?.isVerified}
+                    verifiedColor={themeColors.primary}
+                    textStyle={styles.authorName}
+                  />
+                  <Text>
+                    {post.feelings ? (
+                      <Text
+                        style={{
+                          fontWeight: '400',
+                          color: themeColors.text.secondary,
+                        }}
+                      >
+                        {' '}
+                        is feeling {post.feelings}
+                      </Text>
+                    ) : null}
+                    {post.location ? (
+                      <Text
+                        style={{
+                          fontWeight: '400',
+                          color: themeColors.text.secondary,
+                        }}
+                      >
+                        {post.feelings ? ' · ' : ' '}at {post.location}
+                      </Text>
+                    ) : null}
+                  </Text>
+                </View>
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 2,
+                  }}
+                >
+                  <Text style={styles.postTime}>
+                    {moment(post.createdAt).format('MMM DD, YYYY • hh:mm A')}
+                  </Text>
+                  <Icon
+                    name={getAudienceOption(post.audience).icon}
+                    size={13}
+                    color={themeColors.text.secondary}
+                    style={{ marginLeft: 6 }}
+                  />
+                </View>
+              </View>
+              <TouchableOpacity
+                onPress={postOptionClick}
+                style={styles.moreButton}
+              >
+                <Icon
+                  name="more-vert"
+                  size={24}
+                  color={themeColors.text.secondary}
+                />
+              </TouchableOpacity>
             </View>
 
-            <ScrollView
-                ref={scrollViewRef}
-                style={{ flex: 1 }}
-                keyboardShouldPersistTaps="handled"
-                refreshControl={
-                    <RefreshControl
-                        refreshing={refreshing}
-                        onRefresh={onRefresh}
-                        colors={[themeColors.primary]}
-                        tintColor={themeColors.primary}
-                    />
-                }
-                showsVerticalScrollIndicator={false}
-            >
-                {/* Post Content */}
-                <View style={styles.postContainer}>
-                    {/* Author Info */}
-                    <View style={styles.authorSection}>
-                        <UserPP
-                            image={post.author?.profilePic || ''}
-                            size={44}
-                            isActive={post.author?.isActive || false}
-                        />
-                        <View style={styles.authorInfo}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <VerifiedName
-                                    name={post.author?.fullName || 'Unknown User'}
-                                    verified={post.author?.isVerified}
-                                    verifiedColor={themeColors.primary}
-                                    textStyle={styles.authorName}
-                                />
-                                <Text>
-                                    {post.feelings ? (
-                                        <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
-                                            {' '}is feeling {post.feelings}
-                                        </Text>
-                                    ) : null}
-                                    {post.location ? (
-                                        <Text style={{ fontWeight: '400', color: themeColors.text.secondary }}>
-                                            {post.feelings ? ' · ' : ' '}at {post.location}
-                                        </Text>
-                                    ) : null}
-                                </Text>
-                            </View>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                                <Text style={styles.postTime}>
-                                    {moment(post.createdAt).format('MMM DD, YYYY • hh:mm A')}
-                                </Text>
-                                <Icon
-                                    name={getAudienceOption(post.audience).icon}
-                                    size={13}
-                                    color={themeColors.text.secondary}
-                                    style={{ marginLeft: 6 }}
-                                />
-                            </View>
-                        </View>
-                        <TouchableOpacity onPress={postOptionClick} style={styles.moreButton}>
-                            <Icon name="more-vert" size={24} color={themeColors.text.secondary} />
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* Post Content */}
-                    {post?.caption && (
-                        <View style={styles.contentSection}>
-                            <Text style={styles.postContent}>
-                                {showFullContent || post.caption.length <= 200 
-                                    ? renderMentionBody(
-                                        post.caption,
-                                        (profileId) => navigation.navigate('ConnectProfile', { connectId: profileId }),
-                                        styles.postContent,
-                                        { color: themeColors.primary, fontWeight: '600' },
-                                    )
-                                    : renderMentionBody(
-                                        post.caption.substring(0, 200) + '...',
-                                        (profileId) => navigation.navigate('ConnectProfile', { connectId: profileId }),
-                                        styles.postContent,
-                                        { color: themeColors.primary, fontWeight: '600' },
-                                    )
-                                }
-                            </Text>
-                            {post.caption.length > 200 && (
-                                <TouchableOpacity onPress={() => setShowFullContent(!showFullContent)}>
-                                    <Text style={styles.readMoreButton}>
-                                        {showFullContent ? 'Show less' : 'Read more'}
-                                    </Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                    )}
-
-                    {/* Photos - Display exactly like Post component */}
-                    {postImageUrls.length > 0 && (
-                        <View style={styles.attachmentContainer}>
-                            {post.type === 'profilePic' ? (
-                                <TouchableOpacity onPress={() => openImageModal(postImageUrls[0])}>
-                                    <Image source={{ uri: getAssetUrl(postImageUrls[0]) }} style={styles.postProfilePic} />
-                                </TouchableOpacity>
-                            ) : (
-                                <View style={postImageUrls.length > 1 ? styles.multiImageContainer : undefined}>
-                                    {postImageUrls.map((imageUrl, index) => (
-                                        <TouchableOpacity
-                                            key={`${imageUrl}-${index}`}
-                                            onPress={() => openImageModal(imageUrl)}
-                                            style={postImageUrls.length > 1 ? styles.multiImageItem : undefined}
-                                        >
-                                            <Image
-                                                source={{ uri: getAssetUrl(imageUrl) }}
-                                                style={postImageUrls.length > 1 ? styles.multiImage : styles.postImage}
-                                                onError={() => console.log('Failed to load post image')}
-                                            />
-                                        </TouchableOpacity>
-                                    ))}
-                                </View>
-                            )}
-                        </View>
-                    )}
-
-                    {/* Stats */}
-                    <View style={styles.webCountsRow}>
-                        <View style={styles.statsLeft}>
-                            <PlacedReactIcons placedReacts={placedReacts} />
-                            <Text style={styles.statsText}>
-                                {post.reacts ? totalReacts : ''} {totalReacts > 1 ? 'Reacts' : 'React'}
-                            </Text>
-                        </View>
-                        <View style={styles.statsRight}>
-                            <View style={styles.webCountItem}>
-                                <Text style={styles.statsText}>{post.comments ? totalComments : ''}</Text>
-                                <FAIcon name="comment" size={13} color={themeColors.text.secondary} solid={false} />
-                            </View>
-                            <View style={styles.webCountItem}>
-                                <Text style={styles.statsText}>{post.shares ? totalShares : ''}</Text>
-                                <FAIcon name="share" size={13} color={themeColors.text.secondary} />
-                            </View>
-                        </View>
-                    </View>
-
-                    {/* Action Buttons */}
-                    <View style={[styles.actionButtons, { overflow: 'visible' }]}>
-                        {renderReactionButton()}
-                        <TouchableOpacity
-                            onPress={() => {
-                                scrollViewRef.current?.scrollToEnd({ animated: true });
-                                commentInputRef.current?.focus();
-                            }}
-                            style={styles.actionButton}
-                        >
-                            <FAIcon name="comment" size={16} color={themeColors.text.secondary} solid={false} />
-                            {SHOW_ACTION_LABELS ? (
-                                <Text style={styles.actionButtonText}>Comment</Text>
-                            ) : null}
-                        </TouchableOpacity>
-                        {post.author?._id !== myProfile?._id ? (
-                            <TouchableOpacity
-                                onPress={handleShare}
-                                style={styles.actionButton}
-                            >
-                                <FAIcon name="share" size={16} color={themeColors.text.secondary} solid={false} />
-                                {SHOW_ACTION_LABELS ? (
-                                    <Text style={styles.actionButtonText}>Share</Text>
-                                ) : null}
-                            </TouchableOpacity>
-                        ) : (
-                            <View style={styles.actionButton} />
-                        )}
-                    </View>
-                </View>
-
-                <View style={styles.commentsSection}>
-                    <View style={styles.commentsHeader}>
-                        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' }}>
-                            <Text style={styles.commentsTitle}>Comments</Text>
-                            <Text style={styles.postTime}>
-                                {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
-                            </Text>
-                        </View>
-                    </View>
-                    <View style={{ paddingHorizontal: 16, paddingTop: 14, paddingBottom: 4 }}>
-                    {comments.length > 0 ? (
-                        comments.map(comment => renderComment(comment))
-                    ) : (
-                        <View style={{ alignItems: 'center', paddingVertical: 18 }}>
-                            <Icon name="chat-bubble-outline" size={28} color={themeColors.text.secondary} />
-                            <Text style={{ color: themeColors.text.secondary, textAlign: 'center', marginTop: 8, fontSize: 14 }}>
-                                Be the first to share your thoughts
-                            </Text>
-                        </View>
-                    )}
-                    </View>
-                </View>
-            </ScrollView>
-
-            {replyingTo ? (
-                <View style={[styles.commentInput, { backgroundColor: themeColors.surface.secondary }]}>
-                    <UserPP
-                        image={myProfile?.profilePic || ''}
-                        size={32}
-                        isActive={false}
-                    />
-                    <View style={[styles.inputContainer, { borderRadius: 20 }]}>
-                        <MentionTextInput
-                            myProfileId={myProfile?._id}
-                            value={replyText}
-                            onChangeText={setReplyText}
-                            placeholder={`Reply to ${commentAuthorName(replyingTo)}...`}
-                            placeholderTextColor={themeColors.text.secondary}
-                            style={styles.textInput}
-                            multiline
-                            autoFocus
-                        />
-                        <TouchableOpacity
-                            onPress={handleReply}
-                            disabled={!replyText.trim() || isPostingReply}
-                            style={[
-                                styles.sendButton,
-                                { opacity: (replyText.trim() && !isPostingReply) ? 1 : 0.5 }
-                            ]}
-                        >
-                            {isPostingReply ? (
-                                <ActivityIndicator size="small" color={themeColors.primary} />
-                            ) : (
-                                <Icon name="send" size={18} color={themeColors.primary} />
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                    <TouchableOpacity
-                        onPress={() => { setReplyingTo(null); setReplyText(''); }}
-                        style={{ marginLeft: 8, padding: 8 }}
-                    >
-                        <Icon name="close" size={20} color={themeColors.text.secondary} />
-                    </TouchableOpacity>
-                </View>
-            ) : (
-                <View style={[styles.commentInput, { backgroundColor: themeColors.surface.primary }]}>
-                    <UserPP
-                        image={myProfile?.profilePic || ''}
-                        size={36}
-                        isActive={false}
-                    />
-                    <View style={styles.inputContainer}>
-                        <MentionTextInput
-                            myProfileId={myProfile?._id}
-                            ref={commentInputRef}
-                            value={commentText}
-                            onChangeText={setCommentText}
-                            placeholder="Write a public comment…"
-                            placeholderTextColor={themeColors.text.secondary}
-                            style={styles.textInput}
-                            multiline
-                        />
-                        <TouchableOpacity
-                            onPress={handleComment}
-                            disabled={!commentText.trim() || isPostingComment}
-                            style={[
-                                styles.sendButton,
-                                { opacity: (commentText.trim() && !isPostingComment) ? 1 : 0.5 }
-                            ]}
-                        >
-                            {isPostingComment ? (
-                                <ActivityIndicator size="small" color={themeColors.primary} />
-                            ) : (
-                                <Icon name="send" size={20} color={themeColors.primary} />
-                            )}
-                        </TouchableOpacity>
-                    </View>
-                </View>
+            {/* Post Content */}
+            {post?.caption && (
+              <View style={styles.contentSection}>
+                <Text style={styles.postContent}>
+                  {showFullContent || post.caption.length <= 200
+                    ? renderMentionBody(
+                        post.caption,
+                        profileId =>
+                          navigation.navigate('ConnectProfile', {
+                            connectId: profileId,
+                          }),
+                        styles.postContent,
+                        { color: themeColors.primary, fontWeight: '600' },
+                      )
+                    : renderMentionBody(
+                        post.caption.substring(0, 200) + '...',
+                        profileId =>
+                          navigation.navigate('ConnectProfile', {
+                            connectId: profileId,
+                          }),
+                        styles.postContent,
+                        { color: themeColors.primary, fontWeight: '600' },
+                      )}
+                </Text>
+                {post.caption.length > 200 && (
+                  <TouchableOpacity
+                    onPress={() => setShowFullContent(!showFullContent)}
+                  >
+                    <Text style={styles.readMoreButton}>
+                      {showFullContent ? 'Show less' : 'Read more'}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             )}
-            </KeyboardSafeView>
 
-            <Modal
-                visible={isShareModal}
-                transparent
-                animationType="slide"
-                onRequestClose={() => {
-                    if (!isSharing) setIsShareModal(false);
-                }}
-            >
-                <KeyboardSafeView force>
-                    <TouchableOpacity
-                        style={styles.shareOverlay}
-                        activeOpacity={1}
-                        onPress={() => {
-                            if (!isSharing) setIsShareModal(false);
-                        }}
-                    >
-                        <TouchableOpacity
-                            style={[
-                                styles.shareModal,
-                                {
-                                    backgroundColor: themeColors.surface.primary,
-                                    borderColor: themeColors.border.primary,
-                                },
-                            ]}
-                            activeOpacity={1}
-                            onPress={event => event.stopPropagation()}
-                        >
-                            <View style={styles.shareHandleWrap}>
-                                <View
-                                    style={[
-                                        styles.shareHandle,
-                                        { backgroundColor: themeColors.border.primary },
-                                    ]}
-                                />
-                            </View>
-                            <Text style={[styles.shareTitle, { color: themeColors.text.primary }]}>
-                                Share Post
-                            </Text>
-                            <Text style={[styles.shareSubtitle, { color: themeColors.text.secondary }]}>
-                                Add a message before sharing this post to your feed.
-                            </Text>
-                            <VoiceTextInput
-                                voiceEnabled={false}
-                                style={[
-                                    styles.shareInput,
-                                    {
-                                        backgroundColor: themeColors.gray[100],
-                                        color: themeColors.text.primary,
-                                        borderColor: themeColors.border.primary,
-                                    },
-                                ]}
-                                placeholder="Say something about this post…"
-                                placeholderTextColor={themeColors.text.secondary}
-                                value={shareCap}
-                                onChangeText={setShareCap}
-                                editable={!isSharing}
-                                multiline
-                                maxLength={500}
-                            />
-                            <Text style={[styles.shareCounter, { color: themeColors.text.secondary }]}>
-                                {shareCap.length}/500
-                            </Text>
-                            <View style={styles.shareActions}>
-                                <TouchableOpacity
-                                    onPress={() => setIsShareModal(false)}
-                                    disabled={isSharing}
-                                    style={[
-                                        styles.shareActionButton,
-                                        styles.shareCancelButton,
-                                        { borderColor: themeColors.border.primary },
-                                    ]}
-                                >
-                                    <Text style={[styles.shareActionText, { color: themeColors.text.primary }]}>
-                                        Cancel
-                                    </Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    onPress={onClickShareNow}
-                                    disabled={isSharing}
-                                    style={[
-                                        styles.shareActionButton,
-                                        styles.sharePrimaryButton,
-                                        {
-                                            backgroundColor: themeColors.primary,
-                                            opacity: isSharing ? 0.6 : 1,
-                                        },
-                                    ]}
-                                >
-                                    {isSharing ? (
-                                        <ActivityIndicator color="#FFFFFF" />
-                                    ) : (
-                                        <Text style={styles.sharePrimaryText}>Share</Text>
-                                    )}
-                                </TouchableOpacity>
-                            </View>
-                        </TouchableOpacity>
-                    </TouchableOpacity>
-                </KeyboardSafeView>
-            </Modal>
-
-            {/* Image Modal */}
-            <Modal
-                visible={showImageModal}
-                transparent
-                animationType="fade"
-                onRequestClose={closeImageModal}
-            >
-                <View style={styles.imageModal}>
-                    <TouchableOpacity
-                        onPress={closeImageModal}
-                        style={styles.closeButton}
-                    >
-                        <Icon name="close" size={24} color="white" />
-                    </TouchableOpacity>
+            {/* Photos - Display exactly like Post component */}
+            {postImageUrls.length > 0 && (
+              <View style={styles.attachmentContainer}>
+                {post.type === 'profilePic' ? (
+                  <TouchableOpacity
+                    onPress={() => openImageModal(postImageUrls[0])}
+                  >
                     <Image
-                        source={{ uri: selectedImage }}
-                        style={styles.modalImage}
-                        resizeMode="contain"
+                      source={{ uri: getAssetUrl(postImageUrls[0]) }}
+                      style={styles.postProfilePic}
                     />
+                  </TouchableOpacity>
+                ) : (
+                  <View
+                    style={
+                      postImageUrls.length > 1
+                        ? styles.multiImageContainer
+                        : undefined
+                    }
+                  >
+                    {postImageUrls.map((imageUrl, index) => (
+                      <TouchableOpacity
+                        key={`${imageUrl}-${index}`}
+                        onPress={() => openImageModal(imageUrl)}
+                        style={
+                          postImageUrls.length > 1
+                            ? styles.multiImageItem
+                            : undefined
+                        }
+                      >
+                        <Image
+                          source={{ uri: getAssetUrl(imageUrl) }}
+                          style={
+                            postImageUrls.length > 1
+                              ? styles.multiImage
+                              : styles.postImage
+                          }
+                          onError={() =>
+                            console.log('Failed to load post image')
+                          }
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
+
+            {/* Stats */}
+            <View style={styles.webCountsRow}>
+              <View style={styles.statsLeft}>
+                <PlacedReactIcons placedReacts={placedReacts} />
+                <Text style={styles.statsText}>
+                  {post.reacts ? totalReacts : ''}{' '}
+                  {totalReacts > 1 ? 'Reacts' : 'React'}
+                </Text>
+              </View>
+              <View style={styles.statsRight}>
+                <View style={styles.webCountItem}>
+                  <Text style={styles.statsText}>
+                    {post.comments ? totalComments : ''}
+                  </Text>
+                  <FAIcon
+                    name="comment"
+                    size={13}
+                    color={themeColors.text.secondary}
+                    solid={false}
+                  />
                 </View>
-            </Modal>
+                <View style={styles.webCountItem}>
+                  <Text style={styles.statsText}>
+                    {post.shares ? totalShares : ''}
+                  </Text>
+                  <FAIcon
+                    name="share"
+                    size={13}
+                    color={themeColors.text.secondary}
+                  />
+                </View>
+              </View>
+            </View>
 
-            {/* Reactions Modal */}
-            {renderReactionsModal()}
-
-            {/* Post Options Modal */}
-            <Modal visible={isPostOption} transparent animationType="slide">
-                <TouchableOpacity 
-                    style={styles.modalOverlay} 
-                    onPress={() => setIsPostOption(false)}
-                    activeOpacity={1}
+            {/* Action Buttons */}
+            <View style={[styles.actionButtons, { overflow: 'visible' }]}>
+              {renderReactionButton()}
+              <TouchableOpacity
+                onPress={() => {
+                  scrollViewRef.current?.scrollToEnd({ animated: true });
+                  commentInputRef.current?.focus();
+                }}
+                style={styles.actionButton}
+              >
+                <FAIcon
+                  name="comment"
+                  size={16}
+                  color={themeColors.text.secondary}
+                  solid={false}
+                />
+                {SHOW_ACTION_LABELS ? (
+                  <Text style={styles.actionButtonText}>Comment</Text>
+                ) : null}
+              </TouchableOpacity>
+              {post.author?._id !== myProfile?._id ? (
+                <TouchableOpacity
+                  onPress={handleShare}
+                  style={styles.actionButton}
                 >
-                    <View style={[styles.optionMenu, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.border.primary }]}> 
-                        <View style={styles.optionMenuHeader}>
-                            <View style={[styles.optionMenuHandle, { backgroundColor: themeColors.border.primary }]} />
-                        </View>
-                        
-                        {post.author?._id === myProfile?._id && (
-                            <>
-                                <TouchableOpacity 
-                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
-                                    onPress={openEditPost}
-                                >
-                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
-                                        <Icon name="edit" size={20} color={themeColors.primary} />
-                                    </View>
-                                    <View style={styles.optionMenuContent}>
-                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Edit Post</Text>
-                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>Make changes to your post</Text>
-                                    </View>
-                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
-                                    onPress={openEditAudience}
-                                >
-                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
-                                        <Icon name="people" size={20} color={themeColors.primary} />
-                                    </View>
-                                    <View style={styles.optionMenuContent}>
-                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Edit Audience</Text>
-                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>Change who can see this post</Text>
-                                    </View>
-                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                    style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
-                                    onPress={showDeleteConfirm}
-                                >
-                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
-                                        <Icon name="delete" size={20} color={themeColors.status.error} />
-                                    </View>
-                                    <View style={styles.optionMenuContent}>
-                                        <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Delete Post</Text>
-                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Remove this post permanently</Text>
-                                    </View>
-                                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
-                                </TouchableOpacity>
-                            </>
-                        )}
-                        
-                        {post.author?._id !== myProfile?._id && (
-                            <>
-                                <TouchableOpacity 
-                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
-                                    onPress={() => {
-                                        setIsPostOption(false);
-                                    }}
-                                >
-                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.primary + '15' }]}>
-                                        <Icon name="bookmark" size={20} color={themeColors.primary} />
-                                    </View>
-                                    <View style={styles.optionMenuContent}>
-                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Save Post</Text>
-                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>Add this to your saved items</Text>
-                                    </View>
-                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                    style={[styles.optionMenuItem, { borderBottomColor: themeColors.border.primary }]}
-                                    onPress={() => {
-                                        setIsPostOption(false);
-                                    }}
-                                >
-                                    <View style={[styles.optionMenuIcon, { backgroundColor: '#FFA50015' }]}>
-                                        <Icon name="visibility-off" size={20} color="#FFA500" />
-                                    </View>
-                                    <View style={styles.optionMenuContent}>
-                                        <Text style={[styles.optionMenuTitle, { color: themeColors.text.primary }]}>Hide Post</Text>
-                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.text.secondary }]}>See fewer posts like this</Text>
-                                    </View>
-                                    <Icon name="chevron-right" size={20} color={themeColors.text.secondary} />
-                                </TouchableOpacity>
-                                
-                                <TouchableOpacity 
-                                    style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
-                                    onPress={() => {
-                                        setIsPostOption(false);
-                                    }}
-                                >
-                                    <View style={[styles.optionMenuIcon, { backgroundColor: themeColors.status.error + '15' }]}>
-                                        <Icon name="flag" size={20} color={themeColors.status.error} />
-                                    </View>
-                                    <View style={styles.optionMenuContent}>
-                                        <Text style={[styles.optionMenuTitle, { color: themeColors.status.error }]}>Report Post</Text>
-                                        <Text style={[styles.optionMenuSubtitle, { color: themeColors.status.error + '80' }]}>Report inappropriate content</Text>
-                                    </View>
-                                    <Icon name="chevron-right" size={20} color={themeColors.status.error} />
-                                </TouchableOpacity>
-                            </>
-                        )}
-                    </View>
+                  <FAIcon
+                    name="share"
+                    size={16}
+                    color={themeColors.text.secondary}
+                    solid={false}
+                  />
+                  {SHOW_ACTION_LABELS ? (
+                    <Text style={styles.actionButtonText}>Share</Text>
+                  ) : null}
                 </TouchableOpacity>
-            </Modal>
+              ) : (
+                <View style={styles.actionButton} />
+              )}
+            </View>
+          </View>
 
-            <EditAudienceModal
-                visible={isEditAudienceModal}
-                selected={selectedAudience}
-                saving={isUpdatingAudience}
-                onSelect={setSelectedAudience}
-                onClose={closeEditAudience}
-                onSave={saveAudience}
+          <View style={styles.commentsSection}>
+            <View style={styles.commentsHeader}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'baseline',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Text style={styles.commentsTitle}>Comments</Text>
+                <Text style={styles.postTime}>
+                  {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
+                </Text>
+              </View>
+            </View>
+            <ScrollView
+              style={[
+                styles.commentsScroll,
+                { maxHeight: COMMENT_SECTION_MAX_HEIGHT },
+              ]}
+              contentContainerStyle={styles.commentsScrollContent}
+              nestedScrollEnabled
+              showsVerticalScrollIndicator
+            >
+              <View
+                style={{
+                  paddingHorizontal: 16,
+                  paddingTop: 14,
+                  paddingBottom: 4,
+                }}
+              >
+                {comments.length > 0 ? (
+                  comments.map(comment => renderComment(comment))
+                ) : (
+                  <View style={{ alignItems: 'center', paddingVertical: 18 }}>
+                    <Icon
+                      name="chat-bubble-outline"
+                      size={28}
+                      color={themeColors.text.secondary}
+                    />
+                    <Text
+                      style={{
+                        color: themeColors.text.secondary,
+                        textAlign: 'center',
+                        marginTop: 8,
+                        fontSize: 14,
+                      }}
+                    >
+                      Be the first to share your thoughts
+                    </Text>
+                  </View>
+                )}
+              </View>
+            </ScrollView>
+          </View>
+        </ScrollView>
+
+        {replyingTo ? (
+          <View
+            style={[
+              styles.commentInput,
+              { backgroundColor: themeColors.surface.secondary },
+            ]}
+          >
+            <UserPP
+              image={myProfile?.profilePic || ''}
+              size={32}
+              isActive={false}
             />
-            
-            {/* Delete Confirmation Modal */}
-            <Modal visible={showDeleteConfirmation} transparent animationType="fade">
-                <TouchableOpacity 
-                    style={[styles.modalOverlay, { justifyContent: 'center' }]} 
-                    onPress={() => setShowDeleteConfirmation(false)}
-                    activeOpacity={1}
+            <View style={[styles.inputContainer, { borderRadius: 20 }]}>
+              <MentionTextInput
+                myProfileId={myProfile?._id}
+                value={replyText}
+                onChangeText={setReplyText}
+                placeholder={`Reply to ${commentAuthorName(replyingTo)}...`}
+                placeholderTextColor={themeColors.text.secondary}
+                style={styles.textInput}
+                multiline
+                autoFocus
+              />
+              <TouchableOpacity
+                onPress={handleReply}
+                disabled={!replyText.trim() || isPostingReply}
+                style={[
+                  styles.sendButton,
+                  { opacity: replyText.trim() && !isPostingReply ? 1 : 0.5 },
+                ]}
+              >
+                {isPostingReply ? (
+                  <ActivityIndicator size="small" color={themeColors.primary} />
+                ) : (
+                  <Icon name="send" size={18} color={themeColors.primary} />
+                )}
+              </TouchableOpacity>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setReplyingTo(null);
+                setReplyText('');
+              }}
+              style={{ marginLeft: 8, padding: 8 }}
+            >
+              <Icon name="close" size={20} color={themeColors.text.secondary} />
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {commentAttachment ? (
+              <View style={styles.commentAttachmentPreview}>
+                <Image
+                  source={{ uri: commentAttachment.uri }}
+                  style={styles.commentAttachmentThumb}
+                />
+                <Text style={styles.commentAttachmentName} numberOfLines={1}>
+                  {commentAttachment.fileName || 'Attached image'}
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setCommentAttachment(null)}
+                  style={styles.commentAttachmentRemove}
+                  accessibilityRole="button"
+                  accessibilityLabel="Remove attached image"
                 >
-                    <View style={[styles.deleteConfirmModal, { backgroundColor: themeColors.surface.primary, borderColor: themeColors.border.primary }]}>
-                        <View style={styles.deleteConfirmHeader}>
-                            <View style={[styles.deleteConfirmIcon, { backgroundColor: themeColors.status.error + '15' }]}>
-                                <Icon name="delete" size={28} color={themeColors.status.error} />
-                            </View>
-                            <Text style={[styles.deleteConfirmTitle, { color: themeColors.text.primary }]}>Delete Post</Text>
-                            <Text style={[styles.deleteConfirmMessage, { color: themeColors.text.secondary }]}>
-                                Are you sure you want to delete this post? This action cannot be undone and the post will be permanently removed.
-                            </Text>
-                        </View>
-                        
-                        <View style={styles.deleteConfirmButtons}>
-                            <TouchableOpacity 
-                                style={[styles.deleteConfirmBtn, styles.cancelBtn, { borderColor: themeColors.border.primary }]} 
-                                onPress={() => setShowDeleteConfirmation(false)}
-                            >
-                                <Text style={[styles.deleteConfirmBtnText, { color: themeColors.text.primary }]}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity 
-                                style={[styles.deleteConfirmBtn, styles.deleteBtn]} 
-                                onPress={handleDeletePost}
-                            >
-                                <Icon name="delete" size={18} color="#fff" style={{ marginRight: 8 }} />
-                                <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>Delete Post</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
+                  <Icon
+                    name="close"
+                    size={20}
+                    color={themeColors.text.secondary}
+                  />
                 </TouchableOpacity>
-            </Modal>
-        </SafeAreaView>
-    );
+              </View>
+            ) : null}
+            <View
+              style={[
+                styles.commentInput,
+                { backgroundColor: themeColors.surface.primary },
+              ]}
+            >
+              <UserPP
+                image={myProfile?.profilePic || ''}
+                size={36}
+                isActive={false}
+              />
+              <View style={styles.inputContainer}>
+                <MentionTextInput
+                  myProfileId={myProfile?._id}
+                  ref={commentInputRef}
+                  value={commentText}
+                  onChangeText={setCommentText}
+                  placeholder="Write a public comment…"
+                  placeholderTextColor={themeColors.text.secondary}
+                  style={styles.textInput}
+                  multiline
+                />
+                <TouchableOpacity
+                  onPress={handleCommentAttachment}
+                  disabled={isPostingComment || isUploadingCommentAttachment}
+                  style={styles.sendButton}
+                  accessibilityRole="button"
+                  accessibilityLabel="Attach an image"
+                >
+                  <Icon name="image" size={20} color={themeColors.primary} />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleComment}
+                  disabled={
+                    (!commentText.trim() && !commentAttachment) ||
+                    isPostingComment ||
+                    isUploadingCommentAttachment
+                  }
+                  style={[
+                    styles.sendButton,
+                    {
+                      opacity:
+                        (commentText.trim() || commentAttachment) &&
+                        !isPostingComment &&
+                        !isUploadingCommentAttachment
+                          ? 1
+                          : 0.5,
+                    },
+                  ]}
+                >
+                  {isPostingComment || isUploadingCommentAttachment ? (
+                    <ActivityIndicator
+                      size="small"
+                      color={themeColors.primary}
+                    />
+                  ) : (
+                    <Icon name="send" size={20} color={themeColors.primary} />
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          </>
+        )}
+      </KeyboardSafeView>
+
+      <Modal
+        visible={isShareModal}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {
+          if (!isSharing) setIsShareModal(false);
+        }}
+      >
+        <KeyboardSafeView force>
+          <TouchableOpacity
+            style={styles.shareOverlay}
+            activeOpacity={1}
+            onPress={() => {
+              if (!isSharing) setIsShareModal(false);
+            }}
+          >
+            <TouchableOpacity
+              style={[
+                styles.shareModal,
+                {
+                  backgroundColor: themeColors.surface.primary,
+                  borderColor: themeColors.border.primary,
+                },
+              ]}
+              activeOpacity={1}
+              onPress={event => event.stopPropagation()}
+            >
+              <View style={styles.shareHandleWrap}>
+                <View
+                  style={[
+                    styles.shareHandle,
+                    { backgroundColor: themeColors.border.primary },
+                  ]}
+                />
+              </View>
+              <Text
+                style={[styles.shareTitle, { color: themeColors.text.primary }]}
+              >
+                Share Post
+              </Text>
+              <Text
+                style={[
+                  styles.shareSubtitle,
+                  { color: themeColors.text.secondary },
+                ]}
+              >
+                Add a message before sharing this post to your feed.
+              </Text>
+              <VoiceTextInput
+                voiceEnabled={false}
+                style={[
+                  styles.shareInput,
+                  {
+                    backgroundColor: themeColors.gray[100],
+                    color: themeColors.text.primary,
+                    borderColor: themeColors.border.primary,
+                  },
+                ]}
+                placeholder="Say something about this post…"
+                placeholderTextColor={themeColors.text.secondary}
+                value={shareCap}
+                onChangeText={setShareCap}
+                editable={!isSharing}
+                multiline
+                maxLength={500}
+              />
+              <Text
+                style={[
+                  styles.shareCounter,
+                  { color: themeColors.text.secondary },
+                ]}
+              >
+                {shareCap.length}/500
+              </Text>
+              <View style={styles.shareActions}>
+                <TouchableOpacity
+                  onPress={() => setIsShareModal(false)}
+                  disabled={isSharing}
+                  style={[
+                    styles.shareActionButton,
+                    styles.shareCancelButton,
+                    { borderColor: themeColors.border.primary },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.shareActionText,
+                      { color: themeColors.text.primary },
+                    ]}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={onClickShareNow}
+                  disabled={isSharing}
+                  style={[
+                    styles.shareActionButton,
+                    styles.sharePrimaryButton,
+                    {
+                      backgroundColor: themeColors.primary,
+                      opacity: isSharing ? 0.6 : 1,
+                    },
+                  ]}
+                >
+                  {isSharing ? (
+                    <ActivityIndicator color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.sharePrimaryText}>Share</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </KeyboardSafeView>
+      </Modal>
+
+      {/* Image Modal */}
+      <Modal
+        visible={showImageModal}
+        transparent
+        animationType="fade"
+        onRequestClose={closeImageModal}
+      >
+        <View style={styles.imageModal}>
+          <TouchableOpacity
+            onPress={closeImageModal}
+            style={styles.closeButton}
+          >
+            <Icon name="close" size={24} color="white" />
+          </TouchableOpacity>
+          <Image
+            source={{ uri: selectedImage }}
+            style={styles.modalImage}
+            resizeMode="contain"
+          />
+        </View>
+      </Modal>
+
+      {/* Reactions Modal */}
+      {renderReactionsModal()}
+
+      {/* Post Options Modal */}
+      <Modal visible={isPostOption} transparent animationType="slide">
+        <TouchableOpacity
+          style={styles.modalOverlay}
+          onPress={() => setIsPostOption(false)}
+          activeOpacity={1}
+        >
+          <View
+            style={[
+              styles.optionMenu,
+              {
+                backgroundColor: themeColors.surface.primary,
+                borderColor: themeColors.border.primary,
+              },
+            ]}
+          >
+            <View style={styles.optionMenuHeader}>
+              <View
+                style={[
+                  styles.optionMenuHandle,
+                  { backgroundColor: themeColors.border.primary },
+                ]}
+              />
+            </View>
+
+            {post.author?._id === myProfile?._id && (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.optionMenuItem,
+                    { borderBottomColor: themeColors.border.primary },
+                  ]}
+                  onPress={openEditPost}
+                >
+                  <View
+                    style={[
+                      styles.optionMenuIcon,
+                      { backgroundColor: themeColors.primary + '15' },
+                    ]}
+                  >
+                    <Icon name="edit" size={20} color={themeColors.primary} />
+                  </View>
+                  <View style={styles.optionMenuContent}>
+                    <Text
+                      style={[
+                        styles.optionMenuTitle,
+                        { color: themeColors.text.primary },
+                      ]}
+                    >
+                      Edit Post
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionMenuSubtitle,
+                        { color: themeColors.text.secondary },
+                      ]}
+                    >
+                      Make changes to your post
+                    </Text>
+                  </View>
+                  <Icon
+                    name="chevron-right"
+                    size={20}
+                    color={themeColors.text.secondary}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.optionMenuItem,
+                    { borderBottomColor: themeColors.border.primary },
+                  ]}
+                  onPress={openEditAudience}
+                >
+                  <View
+                    style={[
+                      styles.optionMenuIcon,
+                      { backgroundColor: themeColors.primary + '15' },
+                    ]}
+                  >
+                    <Icon name="people" size={20} color={themeColors.primary} />
+                  </View>
+                  <View style={styles.optionMenuContent}>
+                    <Text
+                      style={[
+                        styles.optionMenuTitle,
+                        { color: themeColors.text.primary },
+                      ]}
+                    >
+                      Edit Audience
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionMenuSubtitle,
+                        { color: themeColors.text.secondary },
+                      ]}
+                    >
+                      Change who can see this post
+                    </Text>
+                  </View>
+                  <Icon
+                    name="chevron-right"
+                    size={20}
+                    color={themeColors.text.secondary}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
+                  onPress={showDeleteConfirm}
+                >
+                  <View
+                    style={[
+                      styles.optionMenuIcon,
+                      { backgroundColor: themeColors.status.error + '15' },
+                    ]}
+                  >
+                    <Icon
+                      name="delete"
+                      size={20}
+                      color={themeColors.status.error}
+                    />
+                  </View>
+                  <View style={styles.optionMenuContent}>
+                    <Text
+                      style={[
+                        styles.optionMenuTitle,
+                        { color: themeColors.status.error },
+                      ]}
+                    >
+                      Delete Post
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionMenuSubtitle,
+                        { color: themeColors.status.error + '80' },
+                      ]}
+                    >
+                      Remove this post permanently
+                    </Text>
+                  </View>
+                  <Icon
+                    name="chevron-right"
+                    size={20}
+                    color={themeColors.status.error}
+                  />
+                </TouchableOpacity>
+              </>
+            )}
+
+            {post.author?._id !== myProfile?._id && (
+              <>
+                <TouchableOpacity
+                  style={[
+                    styles.optionMenuItem,
+                    { borderBottomColor: themeColors.border.primary },
+                  ]}
+                  onPress={() => {
+                    setIsPostOption(false);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.optionMenuIcon,
+                      { backgroundColor: themeColors.primary + '15' },
+                    ]}
+                  >
+                    <Icon
+                      name="bookmark"
+                      size={20}
+                      color={themeColors.primary}
+                    />
+                  </View>
+                  <View style={styles.optionMenuContent}>
+                    <Text
+                      style={[
+                        styles.optionMenuTitle,
+                        { color: themeColors.text.primary },
+                      ]}
+                    >
+                      Save Post
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionMenuSubtitle,
+                        { color: themeColors.text.secondary },
+                      ]}
+                    >
+                      Add this to your saved items
+                    </Text>
+                  </View>
+                  <Icon
+                    name="chevron-right"
+                    size={20}
+                    color={themeColors.text.secondary}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.optionMenuItem,
+                    { borderBottomColor: themeColors.border.primary },
+                  ]}
+                  onPress={() => {
+                    setIsPostOption(false);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.optionMenuIcon,
+                      { backgroundColor: '#FFA50015' },
+                    ]}
+                  >
+                    <Icon name="visibility-off" size={20} color="#FFA500" />
+                  </View>
+                  <View style={styles.optionMenuContent}>
+                    <Text
+                      style={[
+                        styles.optionMenuTitle,
+                        { color: themeColors.text.primary },
+                      ]}
+                    >
+                      Hide Post
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionMenuSubtitle,
+                        { color: themeColors.text.secondary },
+                      ]}
+                    >
+                      See fewer posts like this
+                    </Text>
+                  </View>
+                  <Icon
+                    name="chevron-right"
+                    size={20}
+                    color={themeColors.text.secondary}
+                  />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.optionMenuItem, styles.optionMenuItemDanger]}
+                  onPress={() => {
+                    setIsPostOption(false);
+                  }}
+                >
+                  <View
+                    style={[
+                      styles.optionMenuIcon,
+                      { backgroundColor: themeColors.status.error + '15' },
+                    ]}
+                  >
+                    <Icon
+                      name="flag"
+                      size={20}
+                      color={themeColors.status.error}
+                    />
+                  </View>
+                  <View style={styles.optionMenuContent}>
+                    <Text
+                      style={[
+                        styles.optionMenuTitle,
+                        { color: themeColors.status.error },
+                      ]}
+                    >
+                      Report Post
+                    </Text>
+                    <Text
+                      style={[
+                        styles.optionMenuSubtitle,
+                        { color: themeColors.status.error + '80' },
+                      ]}
+                    >
+                      Report inappropriate content
+                    </Text>
+                  </View>
+                  <Icon
+                    name="chevron-right"
+                    size={20}
+                    color={themeColors.status.error}
+                  />
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+      </Modal>
+
+      <EditAudienceModal
+        visible={isEditAudienceModal}
+        selected={selectedAudience}
+        saving={isUpdatingAudience}
+        onSelect={setSelectedAudience}
+        onClose={closeEditAudience}
+        onSave={saveAudience}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Modal visible={showDeleteConfirmation} transparent animationType="fade">
+        <TouchableOpacity
+          style={[styles.modalOverlay, { justifyContent: 'center' }]}
+          onPress={() => setShowDeleteConfirmation(false)}
+          activeOpacity={1}
+        >
+          <View
+            style={[
+              styles.deleteConfirmModal,
+              {
+                backgroundColor: themeColors.surface.primary,
+                borderColor: themeColors.border.primary,
+              },
+            ]}
+          >
+            <View style={styles.deleteConfirmHeader}>
+              <View
+                style={[
+                  styles.deleteConfirmIcon,
+                  { backgroundColor: themeColors.status.error + '15' },
+                ]}
+              >
+                <Icon
+                  name="delete"
+                  size={28}
+                  color={themeColors.status.error}
+                />
+              </View>
+              <Text
+                style={[
+                  styles.deleteConfirmTitle,
+                  { color: themeColors.text.primary },
+                ]}
+              >
+                Delete Post
+              </Text>
+              <Text
+                style={[
+                  styles.deleteConfirmMessage,
+                  { color: themeColors.text.secondary },
+                ]}
+              >
+                Are you sure you want to delete this post? This action cannot be
+                undone and the post will be permanently removed.
+              </Text>
+            </View>
+
+            <View style={styles.deleteConfirmButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.deleteConfirmBtn,
+                  styles.cancelBtn,
+                  { borderColor: themeColors.border.primary },
+                ]}
+                onPress={() => setShowDeleteConfirmation(false)}
+              >
+                <Text
+                  style={[
+                    styles.deleteConfirmBtnText,
+                    { color: themeColors.text.primary },
+                  ]}
+                >
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.deleteConfirmBtn, styles.deleteBtn]}
+                onPress={handleDeletePost}
+              >
+                <Icon
+                  name="delete"
+                  size={18}
+                  color="#fff"
+                  style={{ marginRight: 8 }}
+                />
+                <Text style={[styles.deleteConfirmBtnText, { color: '#fff' }]}>
+                  Delete Post
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </TouchableOpacity>
+      </Modal>
+    </SafeAreaView>
+  );
 };
 
 export default SinglePost;

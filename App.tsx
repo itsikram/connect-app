@@ -285,6 +285,18 @@ const SafeScreen = React.memo(
             case 'GoogleContacts':
               component = await import('./src/screens/GoogleContactsScreen');
               break;
+            case 'GoogleMail':
+              component = await import('./src/screens/GoogleMailScreen');
+              break;
+            case 'GoogleCalendar':
+              component = await import('./src/screens/GoogleCalendarScreen');
+              break;
+            case 'GoogleDrive':
+              component = await import('./src/screens/GoogleDriveScreen');
+              break;
+            case 'GooglePhotos':
+              component = await import('./src/screens/GooglePhotosScreen');
+              break;
             default:
               throw new Error(`Unknown screen: ${screenName}`);
           }
@@ -386,6 +398,18 @@ function MenuStack() {
       </Stack.Screen>
       <Stack.Screen name="GoogleContacts">
         {props => <SafeScreen {...props} screenName="GoogleContacts" />}
+      </Stack.Screen>
+      <Stack.Screen name="GoogleMail">
+        {props => <SafeScreen {...props} screenName="GoogleMail" />}
+      </Stack.Screen>
+      <Stack.Screen name="GoogleCalendar">
+        {props => <SafeScreen {...props} screenName="GoogleCalendar" />}
+      </Stack.Screen>
+      <Stack.Screen name="GoogleDrive">
+        {props => <SafeScreen {...props} screenName="GoogleDrive" />}
+      </Stack.Screen>
+      <Stack.Screen name="GooglePhotos">
+        {props => <SafeScreen {...props} screenName="GooglePhotos" />}
       </Stack.Screen>
     </Stack.Navigator>
   );
@@ -531,7 +555,11 @@ function TabBarWithLudoCheck(props: any) {
     routeName === 'YouTube' ||
     routeName === 'Cricbuzz' ||
     routeName === 'GoogleMaps' ||
-    routeName === 'GoogleContacts'
+    routeName === 'GoogleContacts' ||
+    routeName === 'GoogleMail' ||
+    routeName === 'GoogleCalendar' ||
+    routeName === 'GoogleDrive' ||
+    routeName === 'GooglePhotos'
   ) {
     return null;
   }

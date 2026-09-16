@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { fitnessApi } from '../services/fitnessApi';
 import * as Notifications from 'expo-notifications';
 import * as ImagePicker from 'expo-image-picker';
+import { compatibleImagePickerOptions } from '../utils/imageUpload';
 
 type Props = { navigation?: any; route?: any };
 
@@ -104,7 +105,7 @@ export const FitnessMeal = ({ navigation, route }: Props) => {
       Alert.alert('Photo permission needed', 'You can still add this meal manually.');
       return;
     }
-    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: false });
+    const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, ...compatibleImagePickerOptions, quality: 0.7, allowsEditing: false });
     if (!result.canceled && result.assets[0]?.uri) setImageUri(result.assets[0].uri);
   };
   const takePhoto = async () => {
@@ -113,7 +114,7 @@ export const FitnessMeal = ({ navigation, route }: Props) => {
       Alert.alert('Camera permission needed', 'You can still choose a photo from your library or add this meal manually.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, quality: 0.7, allowsEditing: false });
+    const result = await ImagePicker.launchCameraAsync({ mediaTypes: ImagePicker.MediaTypeOptions.Images, ...compatibleImagePickerOptions, quality: 0.7, allowsEditing: false });
     if (!result.canceled && result.assets[0]?.uri) setImageUri(result.assets[0].uri);
   };
   const analyze = async () => {

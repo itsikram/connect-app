@@ -147,6 +147,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       engineRef.current?.join({ ...creds, isAudio: false });
     } catch (error: any) {
       console.error('VideoCall: failed to start', error);
+      await stopIncomingCallAlert();
       Alert.alert('Call failed', error?.message || 'Could not start the video call.');
       isJoiningOrJoined.current = false;
       setActiveCallKind(null);

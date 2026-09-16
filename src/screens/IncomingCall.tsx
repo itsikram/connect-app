@@ -160,6 +160,9 @@ const IncomingCall: React.FC = () => {
       isAudio: Boolean(isAudio),
     }).catch((error) => {
       console.error('Error starting incoming call ringtone:', error);
+      stopIncomingCallAlert(channelName).catch((stopError) => {
+        console.error('Failed to stop ringtone after incoming call error:', stopError);
+      });
     });
   }, [playRingtone, callerId, callerName, callerProfilePic, channelName, isAudio]);
 

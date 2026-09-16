@@ -128,6 +128,13 @@ export const sampleApps: AppItem[] = [
     onPress: () => console.log('Gmail pressed'),
   },
   {
+    id: 'drive',
+    name: 'Drive',
+    icon: 'cloud',
+    color: '#34A853',
+    onPress: () => console.log('Drive pressed'),
+  },
+  {
     id: 'maps',
     name: 'Maps',
     icon: 'map',

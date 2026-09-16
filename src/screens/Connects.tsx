@@ -13,7 +13,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useDispatch, useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { connectAPI } from '../lib/api';
-import { useNavigation } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import ConnectCardSkeleton from '../components/skeleton/ConnectCardSkeleton';
 import ProfileImage from '../components/ProfileImage';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -59,6 +59,13 @@ const Connects = () => {
   const [actionLoading, setActionLoading] = useState<{ id: string; action: string } | null>(null);
   const [profileLoadingId, setProfileLoadingId] = useState<string | null>(null);
   const [relationshipTarget, setRelationshipTarget] = useState<{ id: string; action: 'send' | 'accept' } | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      setProfileLoadingId(null);
+      return () => setProfileLoadingId(null);
+    }, []),
+  );
 
   const fetchConnectData = useCallback(async () => {
     if (!myProfile?._id) return;

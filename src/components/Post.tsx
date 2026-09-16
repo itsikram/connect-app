@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Dimensions,
   Alert,
+  ScrollView,
 } from 'react-native';
 import { useSelector } from 'react-redux';
 import * as ImagePicker from 'expo-image-picker';
@@ -41,8 +42,13 @@ import { emitPostUpdated } from '../utils/postEvents';
 import { getAudienceOption } from '../constants/audience';
 import { useModernToast } from '../contexts/ModernToastContext';
 import { SkeletonBlock } from './skeleton/Skeleton';
+import {
+  compatibleImagePickerOptions,
+  normalizeImageAsset,
+} from '../utils/imageUpload';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 const POST_IMAGE_MAX_HEIGHT = 620;
 const PROFILE_PIC_SIZE = Math.min(280, SCREEN_WIDTH - 24);
 const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
@@ -240,6 +246,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const captionMayOverflow =
     captionHasMore || String(post.caption || '').trim().length > 80;
   const [showAllComments, setShowAllComments] = useState<boolean>(false);
+  const [showAllGallery, setShowAllGallery] = useState<boolean>(false);
   const [imageLoadError, setImageLoadError] = useState<boolean>(false);
   const [imageLoading, setImageLoading] = useState<boolean>(true);
   const [imageRetryKey, setImageRetryKey] = useState<number>(0);
@@ -310,7 +317,8 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     ...(Array.isArray(post.photos) ? post.photos : [post.photos]),
     ...(Array.isArray(post.gallery) ? post.gallery : []),
   ].filter((url): url is string => isValidImageUrl(url));
-  const gallerySize = Math.min(postImageUrls.length, 5);
+  const gallerySize = Math.min(postImageUrls.length, 4);
+  const galleryRowCount = Math.ceil(postImageUrls.length / 2);
 
   // Safety check for required post data
   if (!post._id || !post.author) {
@@ -694,11 +702,12 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
       }
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        ...compatibleImagePickerOptions,
         allowsEditing: false,
         quality: 0.8,
       });
       if (!result.canceled && result.assets?.[0]?.uri) {
-        const asset = result.assets[0];
+        const asset = normalizeImageAsset(result.assets[0]);
         setCommentAttachment({
           uri: asset.uri,
           fileName: asset.fileName || 'comment.jpg',
@@ -1875,34 +1884,64 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 : gallerySize === 4
                 ? styles.postGallery4
                 : styles.postGallery5,
+              showAllGallery
+                ? {
+                    height:
+                      galleryRowCount * 180 +
+                      Math.max(0, galleryRowCount - 1) * 2 +
+                      44,
+                  }
+                : null,
             ]}
           >
-            {postImageUrls.slice(0, 5).map((url, index) => (
+            {postImageUrls
+              .slice(0, showAllGallery ? postImageUrls.length : 4)
+              .map((url, index) => (
+                <TouchableOpacity
+                  key={`${url}-${index}`}
+                  onPress={
+                    !showAllGallery && index === 3 && postImageUrls.length > 4
+                      ? () => setShowAllGallery(true)
+                      : openSinglePost
+                  }
+                  activeOpacity={0.9}
+                  style={[
+                    styles.postGalleryItem,
+                    showAllGallery ? styles.postGalleryItemExpanded : null,
+                    gallerySize === 2 ? styles.postGalleryItemTwo : null,
+                    gallerySize === 3 && index === 0
+                      ? styles.postGalleryLead
+                      : null,
+                  ]}
+                >
+                  <Image
+                    source={{ uri: getAssetUrl(url) }}
+                    style={styles.postGalleryImage}
+                    resizeMode="cover"
+                  />
+                  {!showAllGallery && index === 3 && postImageUrls.length > 4 ? (
+                    <View
+                      style={styles.postGalleryMore}
+                      pointerEvents="none"
+                    >
+                      <Text style={styles.postGalleryMoreText}>Show more</Text>
+                      <Text style={styles.postGalleryMoreCount}>
+                        +{postImageUrls.length - 4}
+                      </Text>
+                    </View>
+                  ) : null}
+                </TouchableOpacity>
+              ))}
+            {showAllGallery ? (
               <TouchableOpacity
-                key={`${url}-${index}`}
-                onPress={openSinglePost}
-                activeOpacity={0.9}
-                style={[
-                  styles.postGalleryItem,
-                  gallerySize === 3 && index === 0
-                    ? styles.postGalleryLead
-                    : null,
-                ]}
+                onPress={() => setShowAllGallery(false)}
+                style={styles.postGalleryCollapse}
+                accessibilityRole="button"
+                accessibilityLabel="Show fewer photos"
               >
-                <Image
-                  source={{ uri: getAssetUrl(url) }}
-                  style={styles.postGalleryImage}
-                  resizeMode="cover"
-                />
-                {index === 4 && postImageUrls.length > 5 ? (
-                  <View style={styles.postGalleryMore}>
-                    <Text style={styles.postGalleryMoreText}>
-                      +{postImageUrls.length - 5}
-                    </Text>
-                  </View>
-                ) : null}
+                <Text style={styles.postGalleryCollapseText}>Show less</Text>
               </TouchableOpacity>
-            ))}
+            ) : null}
           </View>
         ) : postImageUrls.length === 1 ? (
           <TouchableOpacity
@@ -2115,7 +2154,11 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             </TouchableOpacity>
           ) : null}
         </View>
-        <View style={styles.commentsList}>
+        <ScrollView
+          style={styles.commentsList}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator
+        >
           {loadingComments ? (
             <Text style={[styles.noCommentsText, { color: subTextColor }]}>
               Loading comments…
@@ -2150,7 +2193,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
               </Text>
             </TouchableOpacity>
           ) : null}
-        </View>
+        </ScrollView>
         <View style={styles.commentBoxContainer}>
           <View style={styles.commentInputRow}>
             <UserPP
@@ -2530,6 +2573,12 @@ const styles = StyleSheet.create({
     position: 'relative',
     overflow: 'hidden',
   },
+  postGalleryItemTwo: {
+    height: '100%',
+  },
+  postGalleryItemExpanded: {
+    height: 180,
+  },
   postGalleryLead: {
     height: '100%',
   },
@@ -2549,7 +2598,25 @@ const styles = StyleSheet.create({
   },
   postGalleryMoreText: {
     color: '#fff',
-    fontSize: 30,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  postGalleryMoreCount: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
+    marginTop: 4,
+  },
+  postGalleryCollapse: {
+    width: '100%',
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1d1d1f',
+  },
+  postGalleryCollapseText: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: '700',
   },
   attachmentProfilePic: {
@@ -3321,6 +3388,7 @@ const styles = StyleSheet.create({
   },
   commentsList: {
     paddingVertical: 8,
+    maxHeight: SCREEN_HEIGHT,
   },
   moreCommentsBtn: {
     marginLeft: 40,

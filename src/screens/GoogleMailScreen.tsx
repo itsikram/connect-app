@@ -1,11 +1,17 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { View, StyleSheet, StatusBar, Platform, BackHandler, Linking } from 'react-native';
+import {
+  StyleSheet,
+  StatusBar,
+  Platform,
+  BackHandler,
+  Linking,
+} from 'react-native';
 import WebView from 'react-native-webview';
 import { useTheme } from '../contexts/ThemeContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import FloatingBackButton from '../components/FloatingBackButton';
 
-const GoogleContactsScreen = () => {
+const GoogleMailScreen = () => {
   const { colors: themeColors } = useTheme();
   const webViewRef = useRef<WebView>(null);
   const [canGoBack, setCanGoBack] = useState(false);
@@ -27,16 +33,19 @@ const GoogleContactsScreen = () => {
   return (
     <SafeAreaView
       edges={['left', 'right']}
-      style={[styles.container, { backgroundColor: themeColors.background.primary }]}
+      style={[
+        styles.container,
+        { backgroundColor: themeColors.background.primary },
+      ]}
     >
-      <StatusBar 
+      <StatusBar
         barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
         backgroundColor={themeColors.background.primary}
         translucent={false}
       />
       <WebView
         ref={webViewRef}
-        source={{ uri: 'https://contacts.google.com' }}
+        source={{ uri: 'https://mail.google.com' }}
         style={styles.webview}
         javaScriptEnabled={true}
         domStorageEnabled={true}
@@ -55,8 +64,8 @@ const GoogleContactsScreen = () => {
         mediaPlaybackRequiresUserAction={false}
         mixedContentMode="compatibility"
         userAgent="Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.120 Mobile Safari/537.36"
-        originWhitelist={["*"]}
-        onNavigationStateChange={(navState) => {
+        originWhitelist={['*']}
+        onNavigationStateChange={navState => {
           setCanGoBack(navState.canGoBack);
           setCanGoForward(navState.canGoForward);
         }}
@@ -68,11 +77,11 @@ const GoogleContactsScreen = () => {
             });
           }
         }}
-        onError={(syntheticEvent) => {
+        onError={syntheticEvent => {
           const { nativeEvent } = syntheticEvent;
           console.warn('WebView error: ', nativeEvent);
         }}
-        onHttpError={(syntheticEvent) => {
+        onHttpError={syntheticEvent => {
           const { nativeEvent } = syntheticEvent;
           console.warn('WebView HTTP error: ', nativeEvent);
         }}
@@ -91,5 +100,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default GoogleContactsScreen;
-
+export default GoogleMailScreen;
