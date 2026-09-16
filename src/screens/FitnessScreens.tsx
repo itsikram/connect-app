@@ -60,7 +60,11 @@ export const FitnessOnboarding = ({ navigation }: Props) => {
   const [form, setForm] = useState<any>({ sex: 'other', age: '', heightCm: '', weightKg: '', activityLevel: 'moderate', goal: 'maintain' });
   const set = (key: string) => (value: string) => setForm((old: any) => ({ ...old, [key]: ['age', 'heightCm', 'weightKg', 'targetWeightKg'].includes(key) ? Number(value) || '' : value }));
   const save = async () => {
-    try { await fitnessApi.saveProfile(form); navigation.replace('FitnessDashboard'); } catch (error: any) { Alert.alert('Fitness profile', error?.response?.data?.message || 'Please check your details'); }
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Dhaka';
+      await fitnessApi.saveProfile({ ...form, timezone });
+      navigation.replace('FitnessDashboard');
+    } catch (error: any) { Alert.alert('Fitness profile', error?.response?.data?.message || 'Please check your details'); }
   };
   return <FitnessPage title="Set up your fitness plan" navigation={navigation}><Text style={[styles.help, { color: colors.text.secondary }]}>Your targets are calculated privately on the server using Mifflin-St Jeor. Saving your plan also creates helpful meal, water, and activity reminders based on your goal and activity level.</Text><SelectField label="Sex" value={form.sex} onValueChange={set('sex')} options={[{ label: 'Male', value: 'male' }, { label: 'Female', value: 'female' }, { label: 'Other', value: 'other' }]} /><Field label="Age" value={form.age} onChangeText={set('age')} keyboardType="number-pad" /><Field label="Height (cm)" value={form.heightCm} onChangeText={set('heightCm')} keyboardType="decimal-pad" /><Field label="Current weight (kg)" value={form.weightKg} onChangeText={set('weightKg')} keyboardType="decimal-pad" /><Field label="Target weight (kg, optional)" value={form.targetWeightKg} onChangeText={set('targetWeightKg')} keyboardType="decimal-pad" /><SelectField label="Activity" value={form.activityLevel} onValueChange={set('activityLevel')} options={[{ label: 'Sedentary', value: 'sedentary' }, { label: 'Light', value: 'light' }, { label: 'Moderate', value: 'moderate' }, { label: 'Very active', value: 'very_active' }, { label: 'Extra active', value: 'extra_active' }]} /><SelectField label="Goal" value={form.goal} onValueChange={set('goal')} options={[{ label: 'Lose', value: 'lose' }, { label: 'Maintain', value: 'maintain' }, { label: 'Gain', value: 'gain' }]} /><Button label="Calculate my targets" onPress={save} /></FitnessPage>;
 };
@@ -261,7 +265,8 @@ export const FitnessReminders = ({ navigation }: Props) => {
   useEffect(() => { load(); }, []);
   const add = async () => {
     try {
-      const saved = await fitnessApi.createReminder({ title, time, type: 'water' });
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Dhaka';
+      await fitnessApi.createReminder({ title, time, type: 'water', timezone });
       load();
     } catch (error: any) { Alert.alert('Reminder', error?.response?.data?.message || 'Use HH:mm time'); }
   };

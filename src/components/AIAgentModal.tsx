@@ -73,6 +73,7 @@ const welcome = (): AgentMessage => ({
     'Hi! I am Connect AI Agent. Ask me to search, navigate, or help with Connect.',
 });
 const AI_PROVIDER_STORAGE_KEY = '@connect/ai-provider';
+const VOICE_INACTIVITY_TIMEOUT_MS = 60_000;
 const providerLabels: Record<AIProvider, string> = {
   gemini: 'Gemini',
   openai: 'OpenAI',
@@ -371,6 +372,9 @@ const AIAgentModal: React.FC<Props> = ({
   const voiceStartInFlightRef = React.useRef(false);
   const listeningPromptShownRef = React.useRef(false);
   const voiceInputBaseRef = React.useRef('');
+  const voiceInactivityTimerRef = React.useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const updateAutoActionRunning = React.useCallback((running: boolean) => {
     setAutoActionRunning(running);
   }, []);
@@ -978,6 +982,7 @@ const AIAgentModal: React.FC<Props> = ({
 
   const transcribe = useComposerLiveTranscribe({
     onFinal: text => {
+      resetVoiceInactivityTimer();
       const next = mergeTranscriptText(voiceInputBaseRef.current, text);
       voiceInputBaseRef.current = next;
       setInput(next);
@@ -995,6 +1000,34 @@ const AIAgentModal: React.FC<Props> = ({
       setVoiceTranscript(next);
     },
   });
+  const { listening, stop: stopTranscription } = transcribe;
+
+  const clearVoiceInactivityTimer = React.useCallback(() => {
+    if (voiceInactivityTimerRef.current) {
+      clearTimeout(voiceInactivityTimerRef.current);
+      voiceInactivityTimerRef.current = null;
+    }
+  }, []);
+
+  const resetVoiceInactivityTimer = React.useCallback(() => {
+    clearVoiceInactivityTimer();
+    if (!listening) return;
+    voiceInactivityTimerRef.current = setTimeout(() => {
+      voiceInactivityTimerRef.current = null;
+      setVoiceConversation(false);
+      setVoiceLanguageMenuOpen(false);
+      void stopTranscription({ discard: true });
+    }, VOICE_INACTIVITY_TIMEOUT_MS);
+  }, [clearVoiceInactivityTimer, listening, stopTranscription]);
+
+  React.useEffect(() => {
+    if (listening) {
+      resetVoiceInactivityTimer();
+    } else {
+      clearVoiceInactivityTimer();
+    }
+    return clearVoiceInactivityTimer;
+  }, [clearVoiceInactivityTimer, listening, resetVoiceInactivityTimer]);
 
   React.useEffect(() => {
     return () => clearVoiceAutoSend();
@@ -1341,7 +1374,7 @@ const AIAgentModal: React.FC<Props> = ({
           changeSetting: callAdapter.changeSetting,
           startChess: () => setChessGameActive(true),
           startVoiceInput: async () => {
-            await transcribe.start(speechLanguage);
+            await startListening(speechLanguage);
           },
           stopVoiceInput: async () => {
             await transcribe.stop();
@@ -1557,8 +1590,7 @@ const AIAgentModal: React.FC<Props> = ({
         if (shouldSpeak) {
           await speechController.finish();
         }
-        await playMicrophoneStartCue();
-        const started = await transcribe.start(speechLanguage);
+        const started = await startListening(speechLanguage);
         if (!started) setVoiceConversation(false);
       }
     }
@@ -1602,10 +1634,20 @@ const AIAgentModal: React.FC<Props> = ({
     }
   }, []);
 
+  const startListening = React.useCallback(
+    async (
+      language: AgentSpeechLanguage,
+      options?: Parameters<typeof transcribe.start>[1],
+    ) => {
+      await playMicrophoneStartCue();
+      return transcribe.start(language, options);
+    },
+    [playMicrophoneStartCue, transcribe],
+  );
+
   const announceListening = React.useCallback(
     async (speechLanguage: Exclude<AgentSpeechLanguage, 'auto'>) => {
       if (listeningPromptShownRef.current) {
-        await playMicrophoneStartCue();
         return;
       }
       listeningPromptShownRef.current = true;
@@ -1622,7 +1664,7 @@ const AIAgentModal: React.FC<Props> = ({
       );
       await speechController.finish();
     },
-    [playMicrophoneStartCue, transcribe],
+    [transcribe],
   );
 
   const selectVoiceLanguage = React.useCallback(
@@ -1643,10 +1685,8 @@ const AIAgentModal: React.FC<Props> = ({
         await announceListening(
           nextLanguage === 'auto' ? defaultSpeechLanguage : nextLanguage,
         );
-      } else {
-        await playMicrophoneStartCue();
       }
-      const started = await transcribe.start(
+      const started = await startListening(
         nextLanguage === 'auto' ? defaultSpeechLanguage : nextLanguage,
         { skipStop: true },
       );
@@ -1661,8 +1701,8 @@ const AIAgentModal: React.FC<Props> = ({
     [
       announceListening,
       defaultSpeechLanguage,
-      playMicrophoneStartCue,
       speechEnabled,
+      startListening,
       transcribe,
     ],
   );
@@ -1695,7 +1735,7 @@ const AIAgentModal: React.FC<Props> = ({
             ? defaultSpeechLanguage
             : autoStartVoiceLanguage,
         );
-        const started = await transcribe.start(
+        const started = await startListening(
           autoStartVoiceLanguage === 'auto'
             ? defaultSpeechLanguage
             : autoStartVoiceLanguage,
@@ -1710,7 +1750,7 @@ const AIAgentModal: React.FC<Props> = ({
     announceListening,
     autoStartVoiceLanguage,
     defaultSpeechLanguage,
-    selectVoiceLanguage,
+    startListening,
     transcribe,
     visible,
     voiceStartRequest,
@@ -1739,10 +1779,8 @@ const AIAgentModal: React.FC<Props> = ({
     try {
       if (speechEnabled) {
         await announceListening(speechLanguage);
-      } else {
-        await playMicrophoneStartCue();
       }
-      started = await transcribe.start(speechLanguage);
+      started = await startListening(speechLanguage);
     } finally {
       voiceStartInFlightRef.current = false;
     }
@@ -1770,7 +1808,7 @@ const AIAgentModal: React.FC<Props> = ({
         setVoiceConversation(false);
         return;
       }
-      const started = await transcribe.start(speechLanguage, {
+      const started = await startListening(speechLanguage, {
         skipStop: true,
       });
       if (!started) setVoiceConversation(false);
@@ -1790,7 +1828,7 @@ const AIAgentModal: React.FC<Props> = ({
     }
     setVoiceConversation(true);
     await announceListening(speechLanguage);
-    const started = await transcribe.start(speechLanguage, { skipStop: true });
+    const started = await startListening(speechLanguage, { skipStop: true });
     if (!started) setVoiceConversation(false);
   };
   const quickPrompts = [

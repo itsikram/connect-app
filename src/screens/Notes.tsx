@@ -389,7 +389,7 @@ const styles = StyleSheet.create({
   sidebarNarrow: { flex: 0, maxHeight: 300, borderRightWidth: 0, borderBottomWidth: 1 },
   search: { flexDirection: 'row', alignItems: 'center', margin: 12, paddingHorizontal: 12, borderWidth: 1, borderRadius: 11 },
   searchInput: { flex: 1, minHeight: 42, paddingHorizontal: 9, fontSize: 14 },
-  listContent: { paddingHorizontal: 12, paddingBottom: 20, gap: 9 },
+  listContent: { paddingHorizontal: 12, paddingBottom: 100, gap: 9 },
   noteCard: {
     borderWidth: 1,
     borderRadius: 12,
