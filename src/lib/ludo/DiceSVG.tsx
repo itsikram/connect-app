@@ -64,15 +64,6 @@ export const DiceFace: React.FC<DiceFacePipsProps> = ({ value, size, strokeColor
   </View>
 );
 
-const DICE_LAND_ROTATION: Record<number, { x: number; y: number }> = {
-  1: { x: 0, y: 0 },
-  2: { x: -90, y: 0 },
-  3: { x: 0, y: -90 },
-  4: { x: 0, y: 90 },
-  5: { x: 90, y: 0 },
-  6: { x: 0, y: 180 },
-};
-
 interface Dice3DProps {
   value: number;
   size?: number;
@@ -88,53 +79,90 @@ export const Dice3D: React.FC<Dice3DProps> = ({
   rolling = false,
   durationMs = 950,
 }) => {
-  const rotateX = useRef(new Animated.Value(0)).current;
-  const rotateY = useRef(new Animated.Value(0)).current;
-  const bounce = useRef(new Animated.Value(0)).current;
-  const rotationRef = useRef({ x: 0, y: 0 });
+  const rotate = useRef(new Animated.Value(0)).current;
+  const translateX = useRef(new Animated.Value(0)).current;
+  const translateY = useRef(new Animated.Value(0)).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const shadowScale = useRef(new Animated.Value(1)).current;
+  const shadowOpacity = useRef(new Animated.Value(0.55)).current;
   const rollingRef = useRef(false);
 
   useEffect(() => {
     if (!rolling || rollingRef.current) return;
     rollingRef.current = true;
 
-    const land = DICE_LAND_ROTATION[value] || DICE_LAND_ROTATION[1];
-    const directionX = Math.random() > 0.5 ? 1 : -1;
-    const directionY = Math.random() > 0.5 ? 1 : -1;
-    const targetX = rotationRef.current.x + directionX * 360 * (4 + Math.floor(Math.random() * 3));
-    const targetY = rotationRef.current.y + directionY * 360 * (3 + Math.floor(Math.random() * 3));
-    const alignX = ((land.x - targetX) % 360 + 360) % 360;
-    const alignY = ((land.y - targetY) % 360 + 360) % 360;
-    const nextRotation = { x: targetX + alignX, y: targetY + alignY };
-    rotationRef.current = nextRotation;
-
-    rotateX.setValue(rotationRef.current.x - directionX * 360);
-    rotateY.setValue(rotationRef.current.y - directionY * 360);
-    bounce.setValue(0);
+    const turns = 4 + Math.floor(Math.random() * 3);
+    const direction = Math.random() > 0.5 ? 1 : -1;
+    rotate.setValue(0);
+    translateX.setValue(0);
+    translateY.setValue(0);
+    scale.setValue(1);
+    shadowScale.setValue(1);
+    shadowOpacity.setValue(0.55);
     Animated.parallel([
-      Animated.timing(rotateX, {
-        toValue: nextRotation.x,
-        duration: durationMs,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
-      Animated.timing(rotateY, {
-        toValue: nextRotation.y,
+      Animated.timing(rotate, {
+        toValue: direction * turns,
         duration: durationMs,
         easing: Easing.out(Easing.cubic),
         useNativeDriver: true,
       }),
       Animated.sequence([
-        Animated.timing(bounce, { toValue: 1, duration: durationMs * 0.45, useNativeDriver: true }),
-        Animated.timing(bounce, { toValue: 0, duration: durationMs * 0.55, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: 10, duration: durationMs * 0.12, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -26, duration: durationMs * 0.12, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1.08, duration: durationMs * 0.12, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: -14, duration: durationMs * 0.16, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -6, duration: durationMs * 0.16, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 0.96, duration: durationMs * 0.16, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: 12, duration: durationMs * 0.16, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -22, duration: durationMs * 0.16, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1.1, duration: durationMs * 0.16, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: -8, duration: durationMs * 0.14, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -2, duration: durationMs * 0.14, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 0.98, duration: durationMs * 0.14, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: 6, duration: durationMs * 0.16, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -14, duration: durationMs * 0.16, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1.05, duration: durationMs * 0.16, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: -3, duration: durationMs * 0.14, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: -3, duration: durationMs * 0.14, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1.01, duration: durationMs * 0.14, useNativeDriver: true }),
+        ]),
+        Animated.parallel([
+          Animated.timing(translateX, { toValue: 0, duration: durationMs * 0.12, useNativeDriver: true }),
+          Animated.timing(translateY, { toValue: 0, duration: durationMs * 0.12, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1, duration: durationMs * 0.12, useNativeDriver: true }),
+        ]),
+      ]),
+      Animated.sequence([
+        Animated.timing(shadowScale, { toValue: 0.62, duration: durationMs * 0.18, useNativeDriver: true }),
+        Animated.timing(shadowScale, { toValue: 1.05, duration: durationMs * 0.14, useNativeDriver: true }),
+        Animated.timing(shadowScale, { toValue: 0.62, duration: durationMs * 0.2, useNativeDriver: true }),
+        Animated.timing(shadowScale, { toValue: 1.05, duration: durationMs * 0.14, useNativeDriver: true }),
+        Animated.timing(shadowScale, { toValue: 1, duration: durationMs * 0.34, useNativeDriver: true }),
+      ]),
+      Animated.sequence([
+        Animated.timing(shadowOpacity, { toValue: 0.28, duration: durationMs * 0.18, useNativeDriver: true }),
+        Animated.timing(shadowOpacity, { toValue: 0.6, duration: durationMs * 0.14, useNativeDriver: true }),
+        Animated.timing(shadowOpacity, { toValue: 0.28, duration: durationMs * 0.2, useNativeDriver: true }),
+        Animated.timing(shadowOpacity, { toValue: 0.6, duration: durationMs * 0.14, useNativeDriver: true }),
+        Animated.timing(shadowOpacity, { toValue: 0.55, duration: durationMs * 0.34, useNativeDriver: true }),
       ]),
     ]).start(() => {
       rollingRef.current = false;
     });
-  }, [bounce, durationMs, rotateX, rotateY, rolling, value]);
+  }, [durationMs, rotate, rolling, scale, shadowOpacity, shadowScale, translateX, translateY]);
 
   const faceSize = size * 0.78;
-  const half = faceSize / 2;
   const faceStyle = {
     position: 'absolute' as const,
     width: faceSize,
@@ -142,15 +170,6 @@ export const Dice3D: React.FC<Dice3DProps> = ({
     left: (size - faceSize) / 2,
     top: (size - faceSize) / 2,
   };
-  const faces = [
-    { value: 1, transform: [{ rotateY: '0deg' as const }, { translateZ: half }] },
-    { value: 2, transform: [{ rotateX: '90deg' as const }, { translateZ: half }] },
-    { value: 3, transform: [{ rotateY: '90deg' as const }, { translateZ: half }] },
-    { value: 4, transform: [{ rotateY: '-90deg' as const }, { translateZ: half }] },
-    { value: 5, transform: [{ rotateX: '-90deg' as const }, { translateZ: half }] },
-    { value: 6, transform: [{ rotateY: '180deg' as const }, { translateZ: half }] },
-  ];
-
   return (
     <Animated.View
       style={[
@@ -159,23 +178,23 @@ export const Dice3D: React.FC<Dice3DProps> = ({
           width: size,
           height: size,
           transform: [
-            { perspective: size * 6 },
-            { translateY: bounce.interpolate({ inputRange: [0, 1], outputRange: [0, -size * 0.18] }) },
-            { rotateX: rotateX.interpolate({ inputRange: [-7200, 7200], outputRange: ['-7200deg', '7200deg'] }) },
-            { rotateY: rotateY.interpolate({ inputRange: [-7200, 7200], outputRange: ['-7200deg', '7200deg'] }) },
+            { translateX },
+            { translateY },
+            { scale },
+            { rotate: rotate.interpolate({ inputRange: [-2160, 2160], outputRange: ['-2160deg', '2160deg'] }) },
           ],
         },
       ]}
     >
-      <View style={styles.shadow} />
-      {faces.map((face) => (
-        // React Native supports translateZ at runtime for 3D transforms, but
-        // its installed style typings do not declare the transform key.
-        // @ts-expect-error translateZ is required to position cube faces.
-        <View key={face.value} style={[faceStyle, { transform: face.transform }]}>
-          <DiceSVG value={face.value} size={faceSize} strokeColor={strokeColor} />
-        </View>
-      ))}
+      <Animated.View
+        style={[
+          styles.shadow,
+          { transform: [{ scaleX: shadowScale }], opacity: shadowOpacity },
+        ]}
+      />
+      <View style={faceStyle}>
+        <DiceSVG value={value} size={faceSize} strokeColor={strokeColor} />
+      </View>
     </Animated.View>
   );
 };

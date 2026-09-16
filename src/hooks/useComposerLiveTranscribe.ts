@@ -22,6 +22,13 @@ const PING_INTERVAL_MS = 15000;
 const MIN_PCM_BYTES = 320;
 const MIN_AAC_BYTES = 64;
 
+type ActiveTranscription = {
+  token: object;
+  stop: (opts?: { discard?: boolean }) => Promise<void>;
+};
+
+let activeTranscription: ActiveTranscription | null = null;
+
 type TranscribeHandlers = {
   onFinal?: (text: string) => void;
   onInterim?: (text: string) => void;
@@ -319,6 +326,7 @@ export default function useComposerLiveTranscribe({
   const languageRef = useRef('auto');
   const lastPartialRef = useRef('');
   const lastFinalRef = useRef('');
+  const ownerTokenRef = useRef<object | null>(null);
 
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
@@ -647,6 +655,13 @@ export default function useComposerLiveTranscribe({
 
   const stop = useCallback(
     async (opts?: { discard?: boolean }) => {
+      if (
+        ownerTokenRef.current &&
+        activeTranscription?.token === ownerTokenRef.current
+      ) {
+        activeTranscription = null;
+        ownerTokenRef.current = null;
+      }
       if (opts?.discard) ignoreResultsRef.current = true;
       wantListenRef.current = false;
       const pendingLoop = loopPromiseRef.current;
@@ -703,11 +718,23 @@ export default function useComposerLiveTranscribe({
       // explicitly opt into the shared audio session.
       if (isCallBusy() && !preserveAudioSession) return false;
       if (!options?.skipStop) await stop();
+      const ownerToken = {};
+      const previous = activeTranscription;
+      ownerTokenRef.current = ownerToken;
+      activeTranscription = { token: ownerToken, stop };
+      if (previous && previous.token !== ownerToken) {
+        await previous.stop({ discard: true });
+      }
       ignoreResultsRef.current = false;
       lastPartialRef.current = '';
       lastFinalRef.current = '';
       const granted = await requestChatMicPermission();
-      if (!granted) return false;
+      if (!granted || activeTranscription?.token !== ownerToken) {
+        if (activeTranscription?.token === ownerToken)
+          activeTranscription = null;
+        ownerTokenRef.current = null;
+        return false;
+      }
 
       try {
         if (!preserveAudioSession) {
@@ -718,6 +745,11 @@ export default function useComposerLiveTranscribe({
           speechSocketUrl(token),
           handleSocketMessage,
         );
+        if (activeTranscription?.token !== ownerToken) {
+          ws.close();
+          ownerTokenRef.current = null;
+          return false;
+        }
         wsRef.current = ws;
         ws.onerror = () => {
           wantListenRef.current = false;
@@ -795,6 +827,13 @@ export default function useComposerLiveTranscribe({
   useEffect(
     () => () => {
       wantListenRef.current = false;
+      if (
+        ownerTokenRef.current &&
+        activeTranscription?.token === ownerTokenRef.current
+      ) {
+        activeTranscription = null;
+        ownerTokenRef.current = null;
+      }
       stopCurrentRecording();
       closeSocket();
     },

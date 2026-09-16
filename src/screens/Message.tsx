@@ -339,6 +339,7 @@ const Message = React.memo(() => {
   const [searchQuery, setSearchQuery] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
   const [aiAgentVisible, setAiAgentVisible] = React.useState(false);
+  const [aiAgentRestoreRequest, setAiAgentRestoreRequest] = React.useState(0);
   const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = React.useState<AgentSpeechLanguage | null>(null);
   const activeConnectsValue = useSelector(
     (state: RootState) => state.presence.activeConnects,
@@ -555,6 +556,7 @@ const Message = React.memo(() => {
 
   const openAiAgentWithVoice = useCallback((voiceLanguage: AgentSpeechLanguage | null = null) => {
     setPendingAiVoiceLanguage(voiceLanguage);
+    setAiAgentRestoreRequest(request => request + 1);
     setAiAgentVisible(true);
   }, []);
 
@@ -994,6 +996,7 @@ const Message = React.memo(() => {
       <AIAgentModal
         visible={aiAgentVisible}
         autoStartVoiceLanguage={pendingAiVoiceLanguage}
+        restoreRequest={aiAgentRestoreRequest}
         onClose={() => {
           setAiAgentVisible(false);
           setPendingAiVoiceLanguage(null);

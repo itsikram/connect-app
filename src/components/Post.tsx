@@ -246,6 +246,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     useState<boolean>(false);
   const [showReactions, setShowReactions] = useState<boolean>(false);
   const [commentText, setCommentText] = useState<string>('');
+  const [commentInputHeight, setCommentInputHeight] = useState(38);
   const [comments, setComments] = useState<any[]>(() =>
     normalizeComments(post.comments),
   );
@@ -2340,6 +2341,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 ref={commentInputRef}
                 style={[
                   styles.fbFieldText,
+                  { height: commentInputHeight },
                   { color: inputText },
                   isPostingComment ? { opacity: 0.6 } : null,
                 ]}
@@ -2353,6 +2355,14 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 onChangeText={setCommentText}
                 editable={!isPostingComment}
                 multiline
+                numberOfLines={1}
+                onContentSizeChange={event => {
+                  const nextHeight = Math.max(
+                    38,
+                    Math.min(120, event.nativeEvent.contentSize.height),
+                  );
+                  setCommentInputHeight(nextHeight);
+                }}
                 returnKeyType="send"
                 onSubmitEditing={handlePostComment}
               />

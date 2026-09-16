@@ -81,6 +81,7 @@ export const HOME_POSITIONS: PathPoint[][] = [
 
 export const STEP_DURATION_MS = 90;
 export const DICE_ROLL_ANIMATION_MS = 950;
+export const DICE_RESULT_DISPLAY_MS = 1000;
 export const AUTO_MOVE_DELAY_MS = 120;
 export const TURN_TRANSITION_DELAY_MS = 200;
 export const ROLL_UNLOCK_DELAY_MS = 100;

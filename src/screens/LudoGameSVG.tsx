@@ -28,14 +28,13 @@ import config from '../lib/config';
 import { RootState } from '../store';
 import ProfileImage from '../components/ProfileImage';
 import {
-  AUTO_MOVE_DELAY_MS,
   BOARD_CELLS,
   COLORS,
   DICE_ROLL_ANIMATION_MS,
+  DICE_RESULT_DISPLAY_MS,
   HOME_POSITIONS,
   PLAYER_NAMES,
   ROLL_UNLOCK_DELAY_MS,
-  SIX_LIMIT_TRANSITION_DELAY_MS,
   STEP_DURATION_MS,
   THEME,
   TURN_TRANSITION_DELAY_MS,
@@ -153,6 +152,7 @@ const LudoGameSVG = () => {
   const isRollingRef = useRef(false);
   const isMovingRef = useRef(false);
   const isAutoMovingRef = useRef(false);
+  const diceResultVisibleUntilRef = useRef(0);
   const moveTimersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
   const botActingRef = useRef(false);
   const botActingPlayerIndexRef = useRef<number | null>(null);
@@ -181,6 +181,7 @@ const LudoGameSVG = () => {
   const setDiceValueImmediate = useCallback((value: number) => {
     setDiceValue(value);
     diceValueRef.current = value;
+    if (value === 0) diceResultVisibleUntilRef.current = 0;
   }, []);
 
   const setCurrentPlayerImmediate = useCallback((value: number) => {
@@ -395,6 +396,11 @@ const LudoGameSVG = () => {
     };
     if (effectiveDiceValue === 0 || (diceValueRef.current === 0 && diceValue === 0)) {
       abortMove();
+      return;
+    }
+    const resultWaitMs = diceResultVisibleUntilRef.current - Date.now();
+    if (resultWaitMs > 0) {
+      setTimeout(() => movePiece(pieceId), resultWaitMs);
       return;
     }
 
@@ -687,6 +693,7 @@ const LudoGameSVG = () => {
           setConsecutiveSixes((prev) => ({ ...prev, [currentRollPlayer]: 0 }));
           consecutiveSixesRef.current[currentRollPlayer] = 0;
           setDiceValueImmediate(value);
+          diceResultVisibleUntilRef.current = Date.now() + DICE_RESULT_DISPLAY_MS;
           isRollingRef.current = false;
           playSound('pieceOut');
           if (onlineMode && gameIdRef.current) {
@@ -700,7 +707,7 @@ const LudoGameSVG = () => {
           }
           setTimeout(() => {
             advanceTurnForPlayer(currentPlayerRef.current);
-          }, onlineMode ? 250 : SIX_LIMIT_TRANSITION_DELAY_MS);
+          }, DICE_RESULT_DISPLAY_MS);
           return;
         }
       } else if (currentSixCount > 0) {
@@ -709,6 +716,7 @@ const LudoGameSVG = () => {
       }
 
       setDiceValueImmediate(value);
+      diceResultVisibleUntilRef.current = Date.now() + DICE_RESULT_DISPLAY_MS;
       lastLocalDiceRollTimeRef.current = Date.now();
       isRollingRef.current = false;
       if (value === 6) playSound('pieceOut');
@@ -729,7 +737,7 @@ const LudoGameSVG = () => {
         consecutiveSixesRef.current[currentRollPlayer] = 0;
         setTimeout(
           () => advanceTurnForPlayer(currentPlayerRef.current),
-          onlineMode ? 100 : TURN_TRANSITION_DELAY_MS,
+          DICE_RESULT_DISPLAY_MS,
         );
       } else if (playablePieces.length === 1) {
         const isCpuTurnNow =
@@ -746,7 +754,7 @@ const LudoGameSVG = () => {
             isAutoMovingRef.current = false;
             if (!onlineMode) setCanRollDice(true);
           }
-        }, AUTO_MOVE_DELAY_MS);
+        }, DICE_RESULT_DISPLAY_MS);
       }
     }, animationDuration);
   };
@@ -957,6 +965,7 @@ const LudoGameSVG = () => {
       if (typeof payload?.value === 'number') {
         setDiceValueImmediate(payload.value);
         setDiceSpin(payload.value);
+        diceResultVisibleUntilRef.current = Date.now() + DICE_RESULT_DISPLAY_MS;
       }
     };
     const onMove = (payload: any) => {
@@ -1600,7 +1609,7 @@ const LudoGameSVG = () => {
 
   if (gameEnded) {
     return (
-      <SafeAreaView style={styles.root} edges={['bottom']}>
+      <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
         <StatusBar barStyle="light-content" />
         <GameEndedScreen winners={winners} onResetGame={startNewGame} />
       </SafeAreaView>
@@ -1902,6 +1911,7 @@ const styles = StyleSheet.create({
     gap: 14,
   },
   boardWrap: {
+    marginTop: 30,
     borderRadius: 18,
     overflow: 'hidden',
     backgroundColor: '#f7f4ef',

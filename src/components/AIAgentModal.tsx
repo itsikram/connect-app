@@ -62,6 +62,7 @@ interface Props {
   onClose: () => void;
   autoStartVoiceLanguage?: AgentSpeechLanguage | null;
   voiceStartRequest?: number;
+  restoreRequest?: number;
 }
 const id = () => `${Date.now()}-${Math.random()}`;
 const welcome = (): AgentMessage => ({
@@ -171,11 +172,131 @@ const isMachineReadableIntent = (value: string) => {
   return trimmed.startsWith('{') || /^```(?:json)?\b/i.test(trimmed);
 };
 
+const getActionSpeechText = (action: AgentActionIntent) => {
+  const parameters = action.parameters || {};
+  const target = String(
+    parameters.userName ||
+      action.targetName ||
+      parameters.query ||
+      action.searchQuery ||
+      '',
+  ).trim();
+  const withTarget = (prefix: string, fallback: string) =>
+    target ? `${prefix} ${target}` : fallback;
+
+  switch (action.action) {
+    case 'START_AUDIO_CALL':
+      return withTarget('Calling', 'Starting an audio call');
+    case 'START_VIDEO_CALL':
+      return withTarget('Starting a video call with', 'Starting a video call');
+    case 'END_CALL':
+      return 'Ending the call';
+    case 'SEND_MESSAGE':
+      return withTarget('Sending a message to', 'Sending the message');
+    case 'OPEN_CHAT':
+      return withTarget('Opening chat with', 'Opening the chat');
+    case 'VIEW_PROFILE':
+      return withTarget('Opening the profile of', 'Opening the profile');
+    case 'SEARCH_USERS':
+      return withTarget('Searching for', 'Searching for users');
+    case 'FOLLOW_USER':
+      return withTarget('Following', 'Following the user');
+    case 'UNFOLLOW_USER':
+      return withTarget('Unfollowing', 'Unfollowing the user');
+    case 'BLOCK_USER':
+      return withTarget('Blocking', 'Blocking the user');
+    case 'UNBLOCK_USER':
+      return withTarget('Unblocking', 'Unblocking the user');
+    case 'INVITE_LUDO_PLAYER':
+      return target
+        ? `Inviting ${target} to Ludo`
+        : 'Inviting the player to Ludo';
+    case 'OPEN_LUDO':
+    case 'start_ludo':
+      return 'Starting Ludo';
+    case 'start_chess':
+      return 'Starting Chess';
+    case 'SEARCH_VIDEO':
+    case 'SEARCH_YOUTUBE':
+      return withTarget('Searching for', 'Searching for a video');
+    case 'PLAY_VIDEO':
+      return 'Playing the video';
+    case 'DOWNLOAD_YOUTUBE':
+      return 'Downloading the video';
+    case 'OPEN_SETTINGS':
+    case 'navigate_settings':
+      return 'Opening settings';
+    case 'CREATE_TASK':
+      return 'Creating the task';
+    case 'VIEW_TASKS':
+    case 'navigate_tasks':
+      return 'Opening your tasks';
+    case 'UPDATE_TASK':
+      return 'Updating the task';
+    case 'CREATE_AUTO_REPLY_RULE':
+      return 'Setting an automatic reply';
+    case 'CHANGE_SETTING':
+      return `Changing ${String(
+        parameters.setting || parameters.name || 'the setting',
+      )}`;
+    case 'NAVIGATE':
+      return `Opening ${String(
+        parameters.route || action.targetRoute || 'the requested page',
+      )}`;
+    case 'navigate_home':
+      return 'Opening Home';
+    case 'navigate_connects':
+      return 'Opening Connects';
+    case 'navigate_videos':
+      return 'Opening Videos';
+    case 'navigate_message':
+      return 'Opening Messages';
+    case 'navigate_menu':
+      return 'Opening Menu';
+    case 'navigate_profile':
+      return 'Opening your profile';
+    case 'navigate_camera':
+      return 'Opening Camera';
+    case 'navigate_gallery':
+      return 'Opening Gallery';
+    case 'navigate_video_library':
+      return 'Opening your video library';
+    case 'navigate_downloads':
+      return 'Opening your downloads';
+    case 'navigate_media_player':
+      return 'Opening the media player';
+    case 'navigate_facebook':
+      return 'Opening Facebook';
+    case 'navigate_youtube':
+      return 'Opening YouTube';
+    case 'navigate_vpn_browser':
+      return 'Opening the VPN browser';
+    case 'navigate_cricbuzz':
+      return 'Opening Cricbuzz';
+    case 'navigate_maps':
+      return 'Opening Maps';
+    case 'navigate_contacts':
+      return 'Opening Contacts';
+    case 'speak_text':
+      return '';
+    case 'logout':
+      return 'Logging you out';
+    case 'clear_agent_chat':
+      return 'Clearing the chat';
+    default:
+      return `Opening ${action.action.replace(/_/g, ' ').toLowerCase()}`;
+  }
+};
+
+const getIntentSpeechText = (actions: AgentActionIntent[]) =>
+  actions.map(getActionSpeechText).filter(Boolean).join('. ');
+
 const AIAgentModal: React.FC<Props> = ({
   visible,
   onClose,
   autoStartVoiceLanguage,
   voiceStartRequest = 0,
+  restoreRequest = 0,
 }) => {
   const { colors } = useTheme();
   const { logout, user } = React.useContext(AuthContext);
@@ -607,43 +728,42 @@ const AIAgentModal: React.FC<Props> = ({
       });
   }, [profile]);
 
-  const callAdapter = React.useMemo(
-    () => {
-      const getCallProfilePic = async (
-        userId: string,
-        profilePic?: string,
-      ): Promise<string | undefined> => {
-        if (profilePic) return profilePic;
-        try {
-          const response = await userAPI.getProfile(userId);
-          const data =
-            response.data && typeof response.data === 'object'
-              ? (response.data as Record<string, unknown>)
-              : {};
-          const nestedProfile =
-            data.profile && typeof data.profile === 'object'
-              ? (data.profile as Record<string, unknown>)
-              : {};
-          return (
-            String(
-              data.profilePic ||
-                data.profilePicture ||
-                data.avatar ||
-                nestedProfile.profilePic ||
-                nestedProfile.profilePicture ||
-                nestedProfile.avatar ||
-                '',
-            ).trim() || undefined
-          );
-        } catch (error) {
-          if (__DEV__) {
-            console.warn('[AI] Failed to load callee profile picture:', error);
-          }
-          return undefined;
+  const callAdapter = React.useMemo(() => {
+    const getCallProfilePic = async (
+      userId: string,
+      profilePic?: string,
+    ): Promise<string | undefined> => {
+      if (profilePic) return profilePic;
+      try {
+        const response = await userAPI.getProfile(userId);
+        const data =
+          response.data && typeof response.data === 'object'
+            ? (response.data as Record<string, unknown>)
+            : {};
+        const nestedProfile =
+          data.profile && typeof data.profile === 'object'
+            ? (data.profile as Record<string, unknown>)
+            : {};
+        return (
+          String(
+            data.profilePic ||
+              data.profilePicture ||
+              data.avatar ||
+              nestedProfile.profilePic ||
+              nestedProfile.profilePicture ||
+              nestedProfile.avatar ||
+              '',
+          ).trim() || undefined
+        );
+      } catch (error) {
+        if (__DEV__) {
+          console.warn('[AI] Failed to load callee profile picture:', error);
         }
-      };
-      return {
-        resolveUser: async (query: string) => {
+        return undefined;
+      }
+    };
+    return {
+      resolveUser: async (query: string) => {
         const normalized = query.trim().toLowerCase();
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
@@ -675,7 +795,7 @@ const AIAgentModal: React.FC<Props> = ({
           if (active?.id) return { id: active.id, name: active.name };
         }
         return resolveUser(query);
-        },
+      },
       startAudioCall: async (
         userId: string,
         channelName: string,
@@ -803,20 +923,18 @@ const AIAgentModal: React.FC<Props> = ({
           JSON.stringify(rules),
         );
       },
-      };
-    },
-    [
-      onClose,
-      profile,
-      requestLudoInvite,
-      resolveUser,
-      startAudioCall,
-      startVideoCall,
-      socketSendMessage,
-      endAudioCall,
-      endVideoCall,
-    ],
-  );
+    };
+  }, [
+    onClose,
+    profile,
+    requestLudoInvite,
+    resolveUser,
+    startAudioCall,
+    startVideoCall,
+    socketSendMessage,
+    endAudioCall,
+    endVideoCall,
+  ]);
 
   React.useEffect(() => {
     const handleIncomingMessage = (payload: unknown) => {
@@ -922,6 +1040,10 @@ const AIAgentModal: React.FC<Props> = ({
     if (!visible) setMinimized(false);
     if (!visible) listeningPromptShownRef.current = false;
   }, [visible]);
+
+  React.useEffect(() => {
+    if (visible) setMinimized(false);
+  }, [restoreRequest, visible]);
 
   const chooseProvider = React.useCallback((provider: AIProvider) => {
     setSelectedProvider(provider);
@@ -1069,8 +1191,12 @@ const AIAgentModal: React.FC<Props> = ({
               item.id === stream.id ? { ...item, content: visibleReply } : item,
             ),
           );
-          if (shouldSpeak && rawReply.trimStart().startsWith('{'))
-            speechController.update(visibleReply, speechLanguage);
+          if (shouldSpeak && rawReply.trimStart().startsWith('{')) {
+            const actionSpeech = intent.actions?.length
+              ? getIntentSpeechText(intent.actions)
+              : visibleReply;
+            speechController.update(actionSpeech, speechLanguage);
+          }
         }
         const adapter = createMobileAgentActionAdapter({
           ...callAdapter,
@@ -1346,7 +1472,7 @@ const AIAgentModal: React.FC<Props> = ({
           : completed.length
           ? completed.map(result => result.message).join(' ')
           : '';
-        if (shouldSpeak && outcome)
+        if (shouldSpeak && outcome && failed.length)
           speechController.update(outcome, speechLanguage);
         if (failed.length) {
           setMessages(previous =>
@@ -1909,429 +2035,442 @@ const AIAgentModal: React.FC<Props> = ({
     <>
       {visible && !minimized && (
         <Modal animationType="slide" onRequestClose={close}>
-        <SafeAreaView
-          style={[styles.safe, { backgroundColor: colors.background.primary }]}
-        >
-          <KeyboardAvoidingView
-            style={styles.flex}
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
+          <SafeAreaView
+            style={[
+              styles.safe,
+              { backgroundColor: colors.background.primary },
+            ]}
           >
-            <View
-              style={[
-                styles.header,
-                {
-                  backgroundColor: colors.surface.primary,
-                  borderBottomColor: colors.border.primary,
-                },
-              ]}
+            <KeyboardAvoidingView
+              style={styles.flex}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
             >
               <View
                 style={[
-                  styles.headerIcon,
-                  { backgroundColor: `${colors.primary}20` },
-                ]}
-              >
-                <Icon name="psychology" size={26} color={colors.primary} />
-              </View>
-              <View style={styles.title}>
-                <Text style={[styles.heading, { color: colors.text.primary }]}>
-                  Connect AI
-                </Text>
-                <View style={styles.statusLine}>
-                  <View
-                    style={[
-                      styles.statusDot,
-                      { backgroundColor: colors.status.success },
-                    ]}
-                  />
-                  <Text
-                    style={[
-                      styles.statusText,
-                      { color: colors.text.secondary },
-                    ]}
-                  >
-                    {loading
-                      ? 'Thinking...'
-                      : transcribe.listening
-                      ? 'Listening for your command'
-                      : voiceConversation
-                      ? 'Hands-free voice mode'
-                      : 'Ready to help'}
-                  </Text>
-                </View>
-              </View>
-              <Pressable
-                style={styles.headerButton}
-                onPress={clear}
-                accessibilityLabel="Clear AI chat"
-              >
-                <Icon
-                  name="delete-outline"
-                  size={21}
-                  color={colors.text.secondary}
-                />
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.headerButton,
-                  speechEnabled && { backgroundColor: `${colors.primary}18` },
-                ]}
-                onPress={() => {
-                  void toggleSpeech();
-                }}
-                accessibilityLabel={
-                  speechEnabled ? 'Turn speaking off' : 'Turn speaking on'
-                }
-              >
-                <Icon
-                  name={speechEnabled ? 'volume-up' : 'volume-off'}
-                  size={21}
-                  color={speechEnabled ? colors.primary : colors.text.secondary}
-                />
-              </Pressable>
-              <Pressable
-                style={[
-                  styles.modeButton,
+                  styles.header,
                   {
-                    backgroundColor: autoMode
-                      ? `${colors.primary}18`
-                      : colors.surface.secondary,
+                    backgroundColor: colors.surface.primary,
+                    borderBottomColor: colors.border.primary,
                   },
                 ]}
-                onPress={() => setAutoMode(value => !value)}
-                accessibilityLabel={`Auto mode ${autoMode ? 'on' : 'off'}`}
               >
-                <Icon
-                  name={autoMode ? 'bolt' : 'touch-app'}
-                  size={15}
-                  color={autoMode ? colors.primary : colors.text.secondary}
-                />
-                <Text
+                <View
                   style={[
-                    styles.modeText,
-                    {
-                      color: autoMode ? colors.primary : colors.text.secondary,
-                    },
+                    styles.headerIcon,
+                    { backgroundColor: `${colors.primary}20` },
                   ]}
                 >
-                  {autoMode ? 'Auto' : 'Manual'}
-                </Text>
-              </Pressable>
-              <Pressable
-                style={styles.headerButton}
-                onPress={close}
-                accessibilityLabel="Close AI Agent"
-              >
-                <Icon name="close" size={25} color={colors.text.primary} />
-              </Pressable>
-            </View>
-            {providerStatus && (
-              <View
-                style={[
-                  styles.providerBar,
-                  { backgroundColor: colors.surface.primary },
-                ]}
-              >
-                <Pressable
-                  onPress={() => setProviderMenuOpen(value => !value)}
-                  style={[
-                    styles.providerSelector,
-                    { borderColor: colors.border.primary },
-                  ]}
-                  accessibilityLabel="Select AI provider"
-                >
+                  <Icon name="psychology" size={26} color={colors.primary} />
+                </View>
+                <View style={styles.title}>
                   <Text
-                    style={[
-                      styles.providerSelectorText,
-                      { color: colors.text.primary },
-                    ]}
+                    style={[styles.heading, { color: colors.text.primary }]}
                   >
-                    AI Provider: {providerLabels[selectedProvider]}
+                    Connect AI
                   </Text>
-                  <Icon
-                    name={providerMenuOpen ? 'expand-less' : 'expand-more'}
-                    size={20}
-                    color={colors.text.secondary}
-                  />
-                </Pressable>
-                {providerMenuOpen && (
-                  <View
-                    style={[
-                      styles.providerMenu,
-                      {
-                        backgroundColor: colors.surface.secondary,
-                        borderColor: colors.border.primary,
-                      },
-                    ]}
-                  >
-                    {(Object.keys(providerLabels) as AIProvider[])
-                      .filter(
-                        provider =>
-                          providerStatus.enabled[provider] !== false &&
-                          providerStatus.configured[provider],
-                      )
-                      .map(provider => (
-                        <Pressable
-                          key={provider}
-                          onPress={() => chooseProvider(provider)}
-                          style={styles.providerOption}
-                        >
-                          <Text
-                            style={[
-                              styles.providerOptionText,
-                              { color: colors.text.primary },
-                            ]}
-                          >
-                            {selectedProvider === provider ? '● ' : '○ '}
-                            {providerLabels[provider]}
-                          </Text>
-                        </Pressable>
-                      ))}
-                  </View>
-                )}
-              </View>
-            )}
-            <FlatList
-              ref={listRef}
-              style={styles.flex}
-              contentContainerStyle={styles.messages}
-              data={messages}
-              keyExtractor={item => item.id}
-              renderItem={renderMessage}
-              showsVerticalScrollIndicator={false}
-              ListFooterComponent={
-                messages.length === 1 ? (
-                  <View style={styles.quickPromptWrap}>
+                  <View style={styles.statusLine}>
+                    <View
+                      style={[
+                        styles.statusDot,
+                        { backgroundColor: colors.status.success },
+                      ]}
+                    />
                     <Text
                       style={[
-                        styles.quickPromptLabel,
+                        styles.statusText,
                         { color: colors.text.secondary },
                       ]}
                     >
-                      Try asking
+                      {loading
+                        ? 'Thinking...'
+                        : transcribe.listening
+                        ? 'Listening for your command'
+                        : voiceConversation
+                        ? 'Hands-free voice mode'
+                        : 'Ready to help'}
                     </Text>
-                    <View style={styles.quickPrompts}>
-                      {quickPrompts.map(prompt => (
-                        <Pressable
-                          key={prompt}
-                          onPress={() => {
-                            voiceInputBaseRef.current = prompt;
-                            setInput(prompt);
-                          }}
+                  </View>
+                </View>
+                <Pressable
+                  style={styles.headerButton}
+                  onPress={clear}
+                  accessibilityLabel="Clear AI chat"
+                >
+                  <Icon
+                    name="delete-outline"
+                    size={21}
+                    color={colors.text.secondary}
+                  />
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.headerButton,
+                    speechEnabled && { backgroundColor: `${colors.primary}18` },
+                  ]}
+                  onPress={() => {
+                    void toggleSpeech();
+                  }}
+                  accessibilityLabel={
+                    speechEnabled ? 'Turn speaking off' : 'Turn speaking on'
+                  }
+                >
+                  <Icon
+                    name={speechEnabled ? 'volume-up' : 'volume-off'}
+                    size={21}
+                    color={
+                      speechEnabled ? colors.primary : colors.text.secondary
+                    }
+                  />
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.modeButton,
+                    {
+                      backgroundColor: autoMode
+                        ? `${colors.primary}18`
+                        : colors.surface.secondary,
+                    },
+                  ]}
+                  onPress={() => setAutoMode(value => !value)}
+                  accessibilityLabel={`Auto mode ${autoMode ? 'on' : 'off'}`}
+                >
+                  <Icon
+                    name={autoMode ? 'bolt' : 'touch-app'}
+                    size={15}
+                    color={autoMode ? colors.primary : colors.text.secondary}
+                  />
+                  <Text
+                    style={[
+                      styles.modeText,
+                      {
+                        color: autoMode
+                          ? colors.primary
+                          : colors.text.secondary,
+                      },
+                    ]}
+                  >
+                    {autoMode ? 'Auto' : 'Manual'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.headerButton}
+                  onPress={close}
+                  accessibilityLabel="Close AI Agent"
+                >
+                  <Icon name="close" size={25} color={colors.text.primary} />
+                </Pressable>
+              </View>
+              {providerStatus && (
+                <View
+                  style={[
+                    styles.providerBar,
+                    { backgroundColor: colors.surface.primary },
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => setProviderMenuOpen(value => !value)}
+                    style={[
+                      styles.providerSelector,
+                      { borderColor: colors.border.primary },
+                    ]}
+                    accessibilityLabel="Select AI provider"
+                  >
+                    <Text
+                      style={[
+                        styles.providerSelectorText,
+                        { color: colors.text.primary },
+                      ]}
+                    >
+                      AI Provider: {providerLabels[selectedProvider]}
+                    </Text>
+                    <Icon
+                      name={providerMenuOpen ? 'expand-less' : 'expand-more'}
+                      size={20}
+                      color={colors.text.secondary}
+                    />
+                  </Pressable>
+                  {providerMenuOpen && (
+                    <View
+                      style={[
+                        styles.providerMenu,
+                        {
+                          backgroundColor: colors.surface.secondary,
+                          borderColor: colors.border.primary,
+                        },
+                      ]}
+                    >
+                      {(Object.keys(providerLabels) as AIProvider[])
+                        .filter(
+                          provider =>
+                            providerStatus.enabled[provider] !== false &&
+                            providerStatus.configured[provider],
+                        )
+                        .map(provider => (
+                          <Pressable
+                            key={provider}
+                            onPress={() => chooseProvider(provider)}
+                            style={styles.providerOption}
+                          >
+                            <Text
+                              style={[
+                                styles.providerOptionText,
+                                { color: colors.text.primary },
+                              ]}
+                            >
+                              {selectedProvider === provider ? '● ' : '○ '}
+                              {providerLabels[provider]}
+                            </Text>
+                          </Pressable>
+                        ))}
+                    </View>
+                  )}
+                </View>
+              )}
+              <FlatList
+                ref={listRef}
+                style={styles.flex}
+                contentContainerStyle={styles.messages}
+                data={messages}
+                keyExtractor={item => item.id}
+                renderItem={renderMessage}
+                showsVerticalScrollIndicator={false}
+                ListFooterComponent={
+                  messages.length === 1 ? (
+                    <View style={styles.quickPromptWrap}>
+                      <Text
+                        style={[
+                          styles.quickPromptLabel,
+                          { color: colors.text.secondary },
+                        ]}
+                      >
+                        Try asking
+                      </Text>
+                      <View style={styles.quickPrompts}>
+                        {quickPrompts.map(prompt => (
+                          <Pressable
+                            key={prompt}
+                            onPress={() => {
+                              voiceInputBaseRef.current = prompt;
+                              setInput(prompt);
+                            }}
+                            style={[
+                              styles.quickPrompt,
+                              {
+                                borderColor: colors.border.primary,
+                                backgroundColor: colors.surface.secondary,
+                              },
+                            ]}
+                          >
+                            <Text
+                              style={[
+                                styles.quickPromptText,
+                                { color: colors.text.primary },
+                              ]}
+                            >
+                              {prompt}
+                            </Text>
+                          </Pressable>
+                        ))}
+                      </View>
+                    </View>
+                  ) : null
+                }
+                ListEmptyComponent={
+                  <Text style={{ color: colors.text.secondary }}>
+                    Ask the AI Agent anything about Connect.
+                  </Text>
+                }
+              />
+              {pendingActions.length > 0 && (
+                <View
+                  style={[
+                    styles.actionTray,
+                    {
+                      backgroundColor: colors.surface.primary,
+                      borderTopColor: colors.border.primary,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.actionTrayTitle,
+                      { color: colors.text.secondary },
+                    ]}
+                  >
+                    Suggested actions
+                  </Text>
+                  {pendingActions.map(action => (
+                    <Pressable
+                      key={`${action.id || action.action}-${
+                        action.targetName || ''
+                      }`}
+                      onPress={() => runPendingAction(action)}
+                      style={[
+                        styles.actionCard,
+                        {
+                          backgroundColor: colors.surface.secondary,
+                          borderColor: colors.border.primary,
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name="play-arrow"
+                        size={18}
+                        color={colors.primary}
+                      />
+                      <View style={styles.actionCardBody}>
+                        <Text
                           style={[
-                            styles.quickPrompt,
+                            styles.actionCardTitle,
+                            { color: colors.text.primary },
+                          ]}
+                        >
+                          {action.type || action.action}
+                        </Text>
+                        <Text
+                          style={[
+                            styles.actionCardSubtitle,
+                            { color: colors.text.secondary },
+                          ]}
+                        >
+                          {action.targetName ||
+                            action.messageText ||
+                            'Run this action'}
+                        </Text>
+                      </View>
+                      <Text style={[styles.runText, { color: colors.primary }]}>
+                        Run
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+              {voiceConversation && voiceLanguageMenuOpen && (
+                <View
+                  style={[
+                    styles.voiceLanguageBar,
+                    { backgroundColor: colors.surface.primary },
+                  ]}
+                >
+                  {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(
+                    option => (
+                      <Pressable
+                        key={option}
+                        onPress={() => {
+                          void selectVoiceLanguage(option);
+                        }}
+                        style={[
+                          styles.voiceLanguageOption,
+                          {
+                            backgroundColor:
+                              language === option
+                                ? `${colors.primary}20`
+                                : colors.surface.secondary,
+                          },
+                        ]}
+                      >
+                        <Text
+                          style={[
+                            styles.language,
                             {
-                              borderColor: colors.border.primary,
-                              backgroundColor: colors.surface.secondary,
+                              color:
+                                language === option
+                                  ? colors.primary
+                                  : colors.text.secondary,
                             },
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.quickPromptText,
-                              { color: colors.text.primary },
-                            ]}
-                          >
-                            {prompt}
-                          </Text>
-                        </Pressable>
-                      ))}
-                    </View>
-                  </View>
-                ) : null
-              }
-              ListEmptyComponent={
-                <Text style={{ color: colors.text.secondary }}>
-                  Ask the AI Agent anything about Connect.
-                </Text>
-              }
-            />
-            {pendingActions.length > 0 && (
+                          {option === 'bn-BD'
+                            ? 'বাংলা'
+                            : option === 'en-US'
+                            ? 'English'
+                            : 'Auto'}
+                        </Text>
+                      </Pressable>
+                    ),
+                  )}
+                </View>
+              )}
               <View
                 style={[
-                  styles.actionTray,
+                  styles.composer,
                   {
                     backgroundColor: colors.surface.primary,
                     borderTopColor: colors.border.primary,
                   },
                 ]}
               >
-                <Text
-                  style={[
-                    styles.actionTrayTitle,
-                    { color: colors.text.secondary },
-                  ]}
-                >
-                  Suggested actions
-                </Text>
-                {pendingActions.map(action => (
+                <View style={styles.voiceControl}>
                   <Pressable
-                    key={`${action.id || action.action}-${
-                      action.targetName || ''
-                    }`}
-                    onPress={() => runPendingAction(action)}
                     style={[
-                      styles.actionCard,
+                      styles.iconButton,
                       {
-                        backgroundColor: colors.surface.secondary,
-                        borderColor: colors.border.primary,
+                        backgroundColor: transcribe.listening
+                          ? `${colors.status.error}18`
+                          : colors.surface.secondary,
                       },
                     ]}
+                    onPress={toggleVoice}
+                    disabled={loading || !transcribe.supported}
+                    accessibilityLabel={
+                      transcribe.listening
+                        ? 'Stop hands-free voice commands'
+                        : 'Start hands-free voice commands'
+                    }
                   >
-                    <Icon name="play-arrow" size={18} color={colors.primary} />
-                    <View style={styles.actionCardBody}>
-                      <Text
-                        style={[
-                          styles.actionCardTitle,
-                          { color: colors.text.primary },
-                        ]}
-                      >
-                        {action.type || action.action}
-                      </Text>
-                      <Text
-                        style={[
-                          styles.actionCardSubtitle,
-                          { color: colors.text.secondary },
-                        ]}
-                      >
-                        {action.targetName ||
-                          action.messageText ||
-                          'Run this action'}
-                      </Text>
-                    </View>
-                    <Text style={[styles.runText, { color: colors.primary }]}>
-                      Run
-                    </Text>
+                    <Icon
+                      name={transcribe.listening ? 'mic' : 'mic-none'}
+                      size={24}
+                      color={
+                        transcribe.listening
+                          ? colors.status.error
+                          : colors.text.secondary
+                      }
+                    />
                   </Pressable>
-                ))}
-              </View>
-            )}
-            {voiceConversation && voiceLanguageMenuOpen && (
-              <View
-                style={[
-                  styles.voiceLanguageBar,
-                  { backgroundColor: colors.surface.primary },
-                ]}
-              >
-                {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(
-                  option => (
-                    <Pressable
-                      key={option}
-                      onPress={() => {
-                        void selectVoiceLanguage(option);
-                      }}
-                      style={[
-                        styles.voiceLanguageOption,
-                        {
-                          backgroundColor:
-                            language === option
-                              ? `${colors.primary}20`
-                              : colors.surface.secondary,
-                        },
-                      ]}
-                    >
-                      <Text
-                        style={[
-                          styles.language,
-                          {
-                            color:
-                              language === option
-                                ? colors.primary
-                                : colors.text.secondary,
-                          },
-                        ]}
-                      >
-                        {option === 'bn-BD'
-                          ? 'বাংলা'
-                          : option === 'en-US'
-                          ? 'English'
-                          : 'Auto'}
-                      </Text>
-                    </Pressable>
-                  ),
-                )}
-              </View>
-            )}
-            <View
-              style={[
-                styles.composer,
-                {
-                  backgroundColor: colors.surface.primary,
-                  borderTopColor: colors.border.primary,
-                },
-              ]}
-            >
-              <View style={styles.voiceControl}>
-                <Pressable
+                </View>
+                <TextInput
+                  value={input}
+                  onChangeText={text => {
+                    voiceInputBaseRef.current = text;
+                    setInput(text);
+                  }}
+                  multiline
+                  placeholder="Speak or type a command..."
+                  placeholderTextColor={colors.text.tertiary}
                   style={[
-                    styles.iconButton,
+                    styles.input,
                     {
-                      backgroundColor: transcribe.listening
-                        ? `${colors.status.error}18`
-                        : colors.surface.secondary,
+                      color: colors.text.primary,
+                      backgroundColor: colors.surface.secondary,
+                      borderColor: colors.border.primary,
                     },
                   ]}
-                  onPress={toggleVoice}
-                  disabled={loading || !transcribe.supported}
-                  accessibilityLabel={
-                    transcribe.listening
-                      ? 'Stop hands-free voice commands'
-                      : 'Start hands-free voice commands'
-                  }
+                  editable={!loading}
+                  onSubmitEditing={() => {
+                    void send();
+                  }}
+                  blurOnSubmit={false}
+                />
+                <Pressable
+                  onPress={() => {
+                    void send();
+                  }}
+                  disabled={!input.trim() || loading}
+                  style={[
+                    styles.send,
+                    {
+                      backgroundColor: colors.primary,
+                      opacity: input.trim() && !loading ? 1 : 0.45,
+                    },
+                  ]}
                 >
-                  <Icon
-                    name={transcribe.listening ? 'mic' : 'mic-none'}
-                    size={24}
-                    color={
-                      transcribe.listening
-                        ? colors.status.error
-                        : colors.text.secondary
-                    }
-                  />
+                  <Icon name="arrow-upward" size={21} color="#fff" />
                 </Pressable>
               </View>
-              <TextInput
-                value={input}
-                onChangeText={text => {
-                  voiceInputBaseRef.current = text;
-                  setInput(text);
-                }}
-                multiline
-                placeholder="Speak or type a command..."
-                placeholderTextColor={colors.text.tertiary}
-                style={[
-                  styles.input,
-                  {
-                    color: colors.text.primary,
-                    backgroundColor: colors.surface.secondary,
-                    borderColor: colors.border.primary,
-                  },
-                ]}
-                editable={!loading}
-                onSubmitEditing={() => {
-                  void send();
-                }}
-                blurOnSubmit={false}
-              />
-              <Pressable
-                onPress={() => {
-                  void send();
-                }}
-                disabled={!input.trim() || loading}
-                style={[
-                  styles.send,
-                  {
-                    backgroundColor: colors.primary,
-                    opacity: input.trim() && !loading ? 1 : 0.45,
-                  },
-                ]}
-              >
-                <Icon name="arrow-upward" size={21} color="#fff" />
-              </Pressable>
-            </View>
-          </KeyboardAvoidingView>
-        </SafeAreaView>
+            </KeyboardAvoidingView>
+          </SafeAreaView>
         </Modal>
       )}
       {visible && minimized && (

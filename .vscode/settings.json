@@ -1,4 +1,5 @@
 {
   "java.configuration.updateBuildConfiguration": "interactive",
-  "chat.sessionSync.enabled": false
+  "chat.sessionSync.enabled": false,
+  "cmake.sourceDirectory": "E:/Connect/expo-connect-app/android/app"
 }

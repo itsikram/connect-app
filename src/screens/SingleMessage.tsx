@@ -5647,9 +5647,16 @@ const SingleMessage = () => {
         </TouchableOpacity>
 
         <View style={{ flex: 1 }}>
-          <View
+          <TouchableOpacity
+            accessibilityRole="button"
+            accessibilityLabel={`Open ${connect?.fullName || 'Connect'} profile`}
+            onPress={() =>
+              navigation.navigate('ConnectProfile', {
+                connectId: String(connect?._id),
+                connectData: connect,
+              })
+            }
             style={{
-              display: 'flex',
               flexDirection: 'row',
               alignItems: 'center',
               gap: 8,
@@ -5717,7 +5724,7 @@ const SingleMessage = () => {
                 ) : null}
               </View>
             </View>
-          </View>
+          </TouchableOpacity>
         </View>
 
         <View style={{ position: 'relative', marginLeft: 5 }}>

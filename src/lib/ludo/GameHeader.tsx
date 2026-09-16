@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from './constants';
 
 interface GameHeaderProps {
@@ -19,17 +20,18 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   onResetGame,
   onExitGame,
 }) => {
+  const insets = useSafeAreaInsets();
   const showExit = Boolean(gameId) || gameStarted;
   const subtitle = gameStarted
     ? gameId
       ? 'Online match'
       : playWithComputer
-        ? 'Vs computer'
-        : 'Local match'
+      ? 'Vs computer'
+      : 'Local match'
     : 'Ready to play';
 
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, { paddingTop: 10 }]}>
       <View style={styles.brand}>
         <View style={styles.mark}>
           <View style={styles.markGrid}>
@@ -40,22 +42,33 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
           </View>
         </View>
         <View style={{ flexShrink: 1 }}>
-          <Text style={styles.title} numberOfLines={1}>Ludo Classic</Text>
+          <Text style={styles.title} numberOfLines={1}>
+            Ludo Classic
+          </Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
         </View>
       </View>
       <View style={styles.actions}>
         {!gameStarted ? (
-          <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onStartGame}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnPrimary]}
+            onPress={onStartGame}
+          >
             <Text style={styles.btnPrimaryText}>Start</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity style={[styles.btn, styles.btnDanger]} onPress={onResetGame}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnDanger]}
+            onPress={onResetGame}
+          >
             <Text style={styles.btnDangerText}>Restart</Text>
           </TouchableOpacity>
         )}
         {showExit && (
-          <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={onExitGame}>
+          <TouchableOpacity
+            style={[styles.btn, styles.btnGhost]}
+            onPress={onExitGame}
+          >
             <Text style={styles.btnGhostText}>Leave</Text>
           </TouchableOpacity>
         )}
@@ -72,7 +85,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 16,
-    paddingTop: 0,
     paddingBottom: 12,
     backgroundColor: 'rgba(12, 18, 25, 0.88)',
     borderBottomWidth: 1,

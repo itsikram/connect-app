@@ -266,7 +266,7 @@ const YouTubeScreen = () => {
           flexDirection: 'row',
           alignItems: 'center',
           paddingHorizontal: 8,
-          paddingTop: Platform.OS === 'android' ? insets.top : 0,
+          paddingTop: 8,
           paddingBottom: 8,
           backgroundColor: surface,
           borderBottomWidth: 1,

@@ -176,6 +176,7 @@ const Menu = () => {
   const [query, setQuery] = useState('');
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [aiAgentVisible, setAiAgentVisible] = useState(false);
+  const [aiAgentRestoreRequest, setAiAgentRestoreRequest] = useState(0);
   const [pendingAiVoiceLanguage, setPendingAiVoiceLanguage] = useState<AgentSpeechLanguage | null>(null);
   const [appOrder, setAppOrder] = useState<string[]>([]);
 
@@ -384,6 +385,7 @@ const Menu = () => {
 
   const openAiAgentWithVoice = (voiceLanguage: AgentSpeechLanguage | null = null) => {
     setPendingAiVoiceLanguage(voiceLanguage);
+    setAiAgentRestoreRequest(request => request + 1);
     setAiAgentVisible(true);
   };
 
@@ -689,6 +691,7 @@ const Menu = () => {
       <AIAgentModal
         visible={aiAgentVisible}
         autoStartVoiceLanguage={pendingAiVoiceLanguage}
+        restoreRequest={aiAgentRestoreRequest}
         onClose={() => {
           setAiAgentVisible(false);
           setPendingAiVoiceLanguage(null);
