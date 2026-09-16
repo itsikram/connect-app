@@ -101,6 +101,7 @@ import {
 import useConnectChatSettings from '../hooks/useConnectChatSettings';
 import { isRomanticMessage, QUICK_REACTION_PRESETS } from '../utils/chatThemes';
 import ChatSettingsModal from '../components/ChatSettingsModal';
+import SearchModal from '../components/SearchModal';
 import LoveEmojiRain from '../components/LoveEmojiRain';
 import { LinearGradient } from 'expo-linear-gradient';
 import {
@@ -206,6 +207,50 @@ const isAudioUrl = (url: string): boolean => isAudioAttachmentUrl(url);
 // expo-camera selects the physical camera through `facing`; it does not expose
 // the device object used by the old camera implementation.
 const EXPO_CAMERA_DEVICE = { id: 'expo-camera', position: 'front' as const };
+
+const messageTokenPattern = /(^|[^\p{L}\p{N}_])#([\p{L}\p{N}_]{1,50})/giu;
+
+const MessageText = ({
+  children,
+  style,
+  numberOfLines,
+}: {
+  children: string;
+  style: any;
+  numberOfLines?: number;
+}) => {
+  const value = String(children || '');
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  messageTokenPattern.lastIndex = 0;
+  while ((match = messageTokenPattern.exec(value))) {
+    const hashtag = match[2];
+    if (match.index > lastIndex) parts.push(value.slice(lastIndex, match.index));
+    if (match[1]) parts.push(match[1]);
+    parts.push(
+      <Text
+        key={`hashtag-${match.index}`}
+        accessibilityRole="link"
+        onPress={() =>
+          DeviceEventEmitter.emit('open-hashtag-search', `#${hashtag}`)
+        }
+        style={[style, { color: '#38BDF8', textDecorationLine: 'underline' }]}
+      >
+        #{hashtag}
+      </Text>,
+    );
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < value.length) parts.push(value.slice(lastIndex));
+  return (
+    <Text style={style} numberOfLines={numberOfLines}>
+      {parts.length ? parts : value}
+    </Text>
+  );
+};
 
 const normalizeSpeechText = (value: string) =>
   String(value || '')
@@ -395,7 +440,7 @@ const MessageImage = ({
         width: 220,
         height: 220,
         borderRadius: 12,
-        marginTop: 3,
+        marginTop: 0,
         overflow: 'hidden',
         position: 'relative',
       }}
@@ -562,6 +607,9 @@ const SingleMessage = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResultIds, setSearchResultIds] = useState<string[]>([]);
   const [searchResultIndex, setSearchResultIndex] = useState(0);
+  const [hashtagSearchQuery, setHashtagSearchQuery] = useState<string | null>(
+    null,
+  );
   const searchInputRef = useRef<TextInput | null>(null);
   const swipeableRefs = useRef<Map<string, any>>(new Map());
   const [activeSwipeId, setActiveSwipeId] = useState<string | null>(null);
@@ -587,6 +635,14 @@ const SingleMessage = () => {
         voiceSoundRef.current = null;
       }
     };
+  }, []);
+
+  React.useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      'open-hashtag-search',
+      (query: string) => setHashtagSearchQuery(query),
+    );
+    return () => subscription.remove();
   }, []);
   const [isRecording, setIsRecording] = useState(false);
   const [recordSecs, setRecordSecs] = useState(0);
@@ -973,7 +1029,9 @@ const SingleMessage = () => {
   const [loadingUserInfo, setLoadingUserInfo] = useState(false);
   const [chatBackground, setChatBackground] = useState<string | null>(null);
   const [connectEmotion, setConnectEmotion] = useState<string | null>('');
-  const [connectExpression, setConnectExpression] = useState<string | null>(null); // Store connect's expression
+  const [connectExpression, setConnectExpression] = useState<string | null>(
+    null,
+  ); // Store connect's expression
   const [myEmotion, setMyEmotion] = useState<string | null>(null);
   const [isBlocked, setIsBlocked] = useState<boolean>(() =>
     listHasId(myProfile?.blockedUsers, connect?._id),
@@ -1234,7 +1292,9 @@ const SingleMessage = () => {
   ) => {
     if (!profileId || !connectId) return;
     try {
-      await AsyncStorage.removeItem(getMessagesStorageKey(profileId, connectId));
+      await AsyncStorage.removeItem(
+        getMessagesStorageKey(profileId, connectId),
+      );
     } catch (error) {
       console.error('Error clearing messages from storage:', error);
     }
@@ -1625,12 +1685,7 @@ const SingleMessage = () => {
     return () => {
       clearPendingMessageSave();
     };
-  }, [
-    messages,
-    connect?._id,
-    myProfile?._id,
-    clearPendingMessageSave,
-  ]);
+  }, [messages, connect?._id, myProfile?._id, clearPendingMessageSave]);
 
   // Listen for incoming messages via socket
   useEffect(() => {
@@ -1814,7 +1869,8 @@ const SingleMessage = () => {
         if (typeof payload === 'object') {
           const emotion = String(payload.emotion || '').trim();
           const emotionText = String(payload.emotionText || '').trim();
-          const emoji = String(payload.emoji || '').trim() || emotion.split(' ')[0];
+          const emoji =
+            String(payload.emoji || '').trim() || emotion.split(' ')[0];
           const display = emotionText
             ? `${emoji} ${emotionText}`.trim()
             : emotion || emoji;
@@ -2377,7 +2433,11 @@ const SingleMessage = () => {
             confidence,
           });
           const profileId = myProfile?._id;
-          if (shareFaceModeEnabledRef.current && profileId && currentConnectId) {
+          if (
+            shareFaceModeEnabledRef.current &&
+            profileId &&
+            currentConnectId
+          ) {
             console.log('[SingleMessage] 📤 Forwarding expression to connect', {
               profileId,
               connectId: currentConnectId,
@@ -2711,9 +2771,9 @@ const SingleMessage = () => {
           image: base64Image,
           profileId: String(myProfile?._id || ''),
           connectId: String(connect?._id || ''),
-          // The Expo client forwards the response over its already-connected
-          // application socket; avoid a second synchronous relay in Python.
-          relayToConnect: false,
+          // Let the face service relay this result to the configured local
+          // Connect Socket.IO server immediately after detection.
+          relayToConnect: true,
         });
         lastFrameSentAtRef.current = t0;
         console.log(
@@ -2750,7 +2810,9 @@ const SingleMessage = () => {
         return;
       }
       if (cameraCaptureInFlightRef.current) {
-        console.log('[SingleMessage] ⏸️ Skipping frame - camera capture in flight');
+        console.log(
+          '[SingleMessage] ⏸️ Skipping frame - camera capture in flight',
+        );
         return;
       }
 
@@ -3173,7 +3235,9 @@ const SingleMessage = () => {
         'connectId:',
         currentConnectId,
       );
-      console.log('[SingleMessage] 📊 Detection will poll every 250ms with capture backpressure');
+      console.log(
+        '[SingleMessage] 📊 Detection will poll every 250ms with capture backpressure',
+      );
 
       // Give camera a bit more time to initialize before starting detection
       // This ensures the camera ref is properly attached
@@ -4392,9 +4456,10 @@ const SingleMessage = () => {
           });
 
       if (result.canceled) return;
-      const asset = result.assets && result.assets[0]
-        ? normalizeImageAsset(result.assets[0])
-        : undefined;
+      const asset =
+        result.assets && result.assets[0]
+          ? normalizeImageAsset(result.assets[0])
+          : undefined;
       if (!asset?.uri) return;
       await uploadImageAsset(asset);
     } catch (err: any) {
@@ -4413,13 +4478,13 @@ const SingleMessage = () => {
       });
       if (result.canceled) return;
       const rawAsset = result.assets && result.assets[0];
-      const asset = rawAsset && (
-        /^image\//i.test(rawAsset.mimeType || '') ||
-        rawAsset.type === 'image' ||
-        /\.(jpe?g|png|heic|heif)$/i.test(rawAsset.fileName || '')
-      )
-        ? normalizeImageAsset(rawAsset)
-        : rawAsset;
+      const asset =
+        rawAsset &&
+        (/^image\//i.test(rawAsset.mimeType || '') ||
+          rawAsset.type === 'image' ||
+          /\.(jpe?g|png|heic|heif)$/i.test(rawAsset.fileName || ''))
+          ? normalizeImageAsset(rawAsset)
+          : rawAsset;
       if (!asset?.uri) return;
 
       setIsUploading(true);
@@ -5113,7 +5178,7 @@ const SingleMessage = () => {
                 ) : (
                   /* Text messages */
                   <View>
-                    <Text
+                    <MessageText
                       style={{
                         color: isMyMessage
                           ? chatTheme.colors.sentText
@@ -5124,7 +5189,7 @@ const SingleMessage = () => {
                       numberOfLines={hasLongText && !isExpanded ? 5 : undefined}
                     >
                       {item.message}
-                    </Text>
+                    </MessageText>
                     {hasLongText ? (
                       <TouchableOpacity
                         onPress={() =>
@@ -5336,7 +5401,11 @@ const SingleMessage = () => {
         transform: [{ scaleY: -1 }],
       }}
     >
-      <UserPP image={connect?.profilePic} isActive={isConnectOnline} size={88} />
+      <UserPP
+        image={connect?.profilePic}
+        isActive={isConnectOnline}
+        size={88}
+      />
       <Text
         style={{
           color: '#FFFFFF',
@@ -7295,7 +7364,9 @@ const SingleMessage = () => {
                       <View style={{ position: 'relative', marginBottom: 15 }}>
                         <ProfileImage
                           uri={
-                            userInfoData?.profilePic || connect?.profilePic || ''
+                            userInfoData?.profilePic ||
+                            connect?.profilePic ||
+                            ''
                           }
                           pixelSize={200}
                           style={{
@@ -8591,6 +8662,11 @@ const SingleMessage = () => {
         onRequestClose={() => setIsChatSettingsOpen(false)}
         connectId={connect?._id}
         connectProfile={connect}
+      />
+      <SearchModal
+        visible={hashtagSearchQuery !== null}
+        initialQuery={hashtagSearchQuery || ''}
+        onClose={() => setHashtagSearchQuery(null)}
       />
 
       {/* Hidden camera for emotion detection - keep mounted and active while on page */}

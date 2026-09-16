@@ -4,9 +4,9 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Speech from 'expo-speech';
 import { Button } from 'react-native-paper';
 
-const DEFAULT_FRAME_COUNT = 20;
+const DEFAULT_FRAME_COUNT = 15;
 const MIN_FRAMES_TO_SEND = 15;
-const DEFAULT_CAPTURE_INTERVAL_MS = 100;
+const DEFAULT_CAPTURE_INTERVAL_MS = 60;
 const CAPTURE_PROMPT_BN = 'আপনার মুখ ফ্রেমের মাঝখানে রাখুন এবং চোখ পিটপিট করুন।';
 
 type FaceCaptureProps = {
@@ -62,11 +62,11 @@ const FaceCapture = ({
       for (let index = 0; index < frameCount; index += 1) {
         const photo = await cameraRef.current.takePictureAsync({
           base64: true,
-          quality: 0.7,
+          quality: 0.5,
           skipProcessing: true,
           shutterSound: false,
         });
-        if (!photo?.base64 || !photo.uri) continue;
+        if (!photo?.base64) continue;
 
         frames.push(photo.base64);
         setProgress(Math.min(100, Math.round((frames.length / MIN_FRAMES_TO_SEND) * 100)));
@@ -115,7 +115,7 @@ const FaceCapture = ({
         ref={cameraRef}
         style={styles.camera}
         facing="front"
-        flash="on"
+        flash="off"
         mode="picture"
         active={!disabled}
         pictureSize="640x480"

@@ -31,7 +31,7 @@ type Filter = 'all' | 'active' | 'completed';
 
 const Tasks = () => {
   const navigation = useNavigation();
-  const { colors: themeColors } = useTheme();
+  const { colors: themeColors, isDarkMode } = useTheme();
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newTask, setNewTask] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -220,6 +220,8 @@ const Tasks = () => {
             <DateTimePicker
               value={taskTime || new Date(Date.now() + 60 * 60 * 1000)}
               mode="datetime"
+              textColor={themeColors.text.primary}
+              themeVariant={isDarkMode ? 'dark' : 'light'}
               onChange={(_, value) => {
                 setShowTaskPicker(Platform.OS === 'ios');
                 if (value) setTaskTime(value);
@@ -285,8 +287,8 @@ const Tasks = () => {
                         accessibilityRole="button"
                         accessibilityLabel={`Set task time for ${task.text}`}
                       >
-                        <Icon name="schedule" size={14} color={themeColors.text.secondary} />
-                        <Text style={[styles.taskReminderButtonText, { color: themeColors.text.secondary }]}>
+                        <Icon name="schedule" size={14} color={themeColors.text.primary} />
+                        <Text style={[styles.taskReminderButtonText, { color: themeColors.text.primary }]}>
                           {task.taskTime ? new Date(task.taskTime).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'Set time'}
                         </Text>
                       </TouchableOpacity>
@@ -305,6 +307,8 @@ const Tasks = () => {
                   <DateTimePicker
                     value={value}
                     mode="datetime"
+                    textColor={themeColors.text.primary}
+                    themeVariant={isDarkMode ? 'dark' : 'light'}
                     onChange={(_, selected) => {
                       setTaskTimePickerId(Platform.OS === 'ios' ? task._id : null);
                       if (selected) handleTaskTimeChange(task._id, selected);
@@ -346,7 +350,7 @@ const styles = StyleSheet.create({
   statText: { fontSize: 13 },
   statValue: { fontWeight: '700' },
   inputRow: { flexDirection: 'row', gap: 10, marginBottom: 20 },
-  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -10, marginBottom: 18 },
+  reminderRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginTop: -10, marginBottom: 28 },
   reminderButton: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9 },
   reminderText: { fontSize: 13, fontWeight: '600' },
   clearReminderText: { fontSize: 13, fontWeight: '600' },

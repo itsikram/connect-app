@@ -60,7 +60,10 @@ const uniqueReactTypes = (reacts: any[] = []) => uniquePlacedReacts(reacts);
 
 const commentHasMyReact = (comment: any, myId: any) => {
   const reacts = Array.isArray(comment?.reacts) ? comment.reacts : [];
-  return reacts.some((r: any) => sameId(r, myId) || sameId(r?._id, myId));
+  return reacts.some(
+    (r: any) =>
+      sameId(r, myId) || sameId(r?._id, myId) || sameId(r?.profile, myId),
+  );
 };
 
 const uniqueReactCount = (reacts: any[] = []) => {
@@ -80,6 +83,26 @@ const isPopulatedComment = (comment: any) =>
 
 const normalizeComments = (list: any) =>
   (Array.isArray(list) ? list : []).filter(isPopulatedComment);
+
+const updateCommentReacts = (
+  comments: any[],
+  commentId: any,
+  reacts: any[],
+): any[] =>
+  comments.map(comment => {
+    if (sameId(comment?._id, commentId)) {
+      return { ...comment, reacts };
+    }
+
+    if (Array.isArray(comment?.replies)) {
+      return {
+        ...comment,
+        replies: updateCommentReacts(comment.replies, commentId, reacts),
+      };
+    }
+
+    return comment;
+  });
 
 const commentAuthorName = (comment: any) => {
   const author = comment?.author || {};
@@ -234,6 +257,9 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
   const [isPostingReply, setIsPostingReply] = useState<boolean>(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [commentMenuId, setCommentMenuId] = useState<string | null>(null);
+  const [activeCommentReactId, setActiveCommentReactId] = useState<
+    string | null
+  >(null);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>('');
   const [updatingCommentId, setUpdatingCommentId] = useState<string | null>(
@@ -996,35 +1022,66 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
     ]);
   };
 
-  const handleCommentLike = async (comment: any) => {
+  const handleCommentLike = async (comment: any, reactionType = 'like') => {
     if (!comment?._id || !myProfileId || likingCommentId) return;
-    const already = commentHasMyReact(comment, myProfileId);
+    const previousReacts = Array.isArray(comment.reacts) ? comment.reacts : [];
+    const currentReact = previousReacts.find(
+      (react: any) =>
+        sameId(react, myProfileId) ||
+        sameId(react?._id, myProfileId) ||
+        sameId(react?.profile, myProfileId),
+    );
+    const already = Boolean(currentReact);
+    const shouldRemove =
+      already && (currentReact?.type || 'like') === reactionType;
+    const optimisticReacts = shouldRemove
+      ? previousReacts.filter(
+          (react: any) =>
+            !sameId(react, myProfileId) && !sameId(react?.profile, myProfileId),
+        )
+      : [
+          ...previousReacts.filter(
+            (react: any) =>
+              !sameId(react, myProfileId) &&
+              !sameId(react?.profile, myProfileId),
+          ),
+          { profile: myProfileId, type: reactionType },
+        ];
+
     setLikingCommentId(comment._id);
+    setComments(prev =>
+      updateCommentReacts(prev, comment._id, optimisticReacts),
+    );
+
     try {
-      const endpoint = already ? '/comment/removeReact' : '/comment/addReact';
+      const endpoint = shouldRemove
+        ? '/comment/removeReact'
+        : '/comment/addReact';
       const res = await api.post(endpoint, {
         commentId: comment._id,
         reactorId: myProfileId,
+        ...(shouldRemove ? {} : { reactType: reactionType }),
       });
       if (res.status === 200) {
         const nextReacts = Array.isArray(res.data?.reacts)
           ? res.data.reacts
-          : already
-          ? (comment.reacts || []).filter(
-              (r: any) =>
-                !sameId(r, myProfileId) && !sameId(r?._id, myProfileId),
-            )
-          : [...(comment.reacts || []), myProfileId];
+          : Array.isArray(res.data?.comment?.reacts)
+          ? res.data.comment.reacts
+          : optimisticReacts;
+        setComments(prev => updateCommentReacts(prev, comment._id, nextReacts));
+      } else {
         setComments(prev =>
-          prev.map(item =>
-            sameId(item._id, comment._id)
-              ? { ...item, reacts: nextReacts }
-              : item,
-          ),
+          updateCommentReacts(prev, comment._id, previousReacts),
         );
       }
     } catch (e) {
-      console.log(e);
+      setComments(prev =>
+        updateCommentReacts(prev, comment._id, previousReacts),
+      );
+      Alert.alert(
+        'Reaction failed',
+        'Unable to update this reaction. Please try again.',
+      );
     } finally {
       setLikingCommentId(null);
     }
@@ -1210,23 +1267,49 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             />
           ) : null}
           <View style={styles.fbCommentReact}>
-            {!isReply ? (
-              <TouchableOpacity
-                onPress={() => handleCommentLike(c)}
-                disabled={likingCommentId === c._id}
+            <TouchableOpacity
+              onPress={() => {
+                if (activeCommentReactId === c._id) return;
+                handleCommentLike(c);
+              }}
+              onLongPress={() => setActiveCommentReactId(c._id)}
+              delayLongPress={450}
+              disabled={likingCommentId === c._id}
+            >
+              <Text
+                style={[
+                  styles.fbReactLink,
+                  { color: liked ? accentColor : commentActionColor },
+                  liked && { fontWeight: '700' },
+                ]}
               >
-                <Text
-                  style={[
-                    styles.fbReactLink,
-                    { color: liked ? accentColor : commentActionColor },
-                    liked && { fontWeight: '700' },
-                  ]}
-                >
-                  {likingCommentId === c._id
-                    ? '…'
-                    : `Like${reactCount > 0 ? ` · ${reactCount}` : ''}`}
-                </Text>
-              </TouchableOpacity>
+                {likingCommentId === c._id
+                  ? '…'
+                  : `${getReactLabel(
+                      c.reacts?.find(
+                        (react: any) =>
+                          sameId(react, myProfileId) ||
+                          sameId(react?.profile, myProfileId),
+                      )?.type,
+                    )}${reactCount > 0 ? ` · ${reactCount}` : ''}`}
+              </Text>
+            </TouchableOpacity>
+            {activeCommentReactId === c._id ? (
+              <View style={styles.commentReactionPicker}>
+                <ReactPicker
+                  reactType={
+                    c.reacts?.find((react: any) =>
+                      sameId(react?.profile, myProfileId),
+                    )?.type
+                  }
+                  onSelect={(type: string) => {
+                    setActiveCommentReactId(null);
+                    handleCommentLike(c, type);
+                  }}
+                  backgroundColor={cardBg}
+                  borderColor={borderColor}
+                />
+              </View>
             ) : null}
             {!isReply ? (
               <TouchableOpacity onPress={() => handleReplyPress(c)}>
@@ -1919,11 +2002,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                     style={styles.postGalleryImage}
                     resizeMode="cover"
                   />
-                  {!showAllGallery && index === 3 && postImageUrls.length > 4 ? (
-                    <View
-                      style={styles.postGalleryMore}
-                      pointerEvents="none"
-                    >
+                  {!showAllGallery &&
+                  index === 3 &&
+                  postImageUrls.length > 4 ? (
+                    <View style={styles.postGalleryMore} pointerEvents="none">
                       <Text style={styles.postGalleryMoreText}>Show more</Text>
                       <Text style={styles.postGalleryMoreCount}>
                         +{postImageUrls.length - 4}
@@ -3506,6 +3588,12 @@ const styles = StyleSheet.create({
     gap: 10,
     marginTop: 4,
     paddingHorizontal: 2,
+  },
+  commentReactionPicker: {
+    position: 'absolute',
+    left: 0,
+    bottom: 24,
+    zIndex: 20,
   },
   fbReactLink: {
     fontSize: 12,

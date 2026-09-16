@@ -27,6 +27,7 @@ import VoiceTextInput from './VoiceTextInput';
 interface SearchModalProps {
   visible: boolean;
   onClose: () => void;
+  initialQuery?: string;
 }
 
 type ResultType = 'user' | 'video' | 'post';
@@ -170,7 +171,11 @@ const HighlightMatch = ({
   );
 };
 
-const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
+const SearchModal: React.FC<SearchModalProps> = ({
+  visible,
+  onClose,
+  initialQuery = '',
+}) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
   const navigation = useNavigation();
@@ -212,6 +217,10 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
       return;
     }
 
+    setQuery(initialQuery);
+    setSearchedData(emptySearchData);
+    setError(null);
+
     let cancelled = false;
     (async () => {
       try {
@@ -228,7 +237,7 @@ const SearchModal: React.FC<SearchModalProps> = ({ visible, onClose }) => {
     return () => {
       cancelled = true;
     };
-  }, [visible]);
+  }, [initialQuery, visible]);
 
   const persistRecentSearches = useCallback((items: SearchItem[]) => {
     AsyncStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(items)).catch(() => {});
