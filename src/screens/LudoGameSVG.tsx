@@ -74,6 +74,7 @@ import { useLudoAudio } from '../lib/ludo/useLudoAudio';
 import type { ConnectUser, GameSnapshot, LudoInvite, Player } from '../lib/ludo/types';
 
 const CONNECT_LOGO = require('../assets/images/logo.png');
+const TOKEN_STEP_ANIMATION_MS = 300;
 
 const LudoGameSVG = () => {
   const {
@@ -132,6 +133,11 @@ const LudoGameSVG = () => {
   const [editName, setEditName] = useState('');
   const [editAvatarUrl, setEditAvatarUrl] = useState('');
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [tokenAnimation, setTokenAnimation] = useState<{
+    key: string;
+    translateX: Animated.Value;
+    translateY: Animated.Value;
+  } | null>(null);
 
   const playersRef = useRef(players);
   const currentPlayerRef = useRef(currentPlayer);
@@ -363,8 +369,8 @@ const LudoGameSVG = () => {
   }, [playSound]);
 
   const animateTokenMovement = (
-    _playerIndex: number,
-    _pieceIndex: number,
+    playerIndex: number,
+    pieceIndex: number,
     toSteps: number,
     fromSteps: number,
     onComplete: () => void,
@@ -374,11 +380,50 @@ const LudoGameSVG = () => {
       onComplete();
       return;
     }
-    const completionDelay = onlineModeRef.current
-      ? Math.min(stepsToGo * STEP_DURATION_MS, 100)
-      : stepsToGo * STEP_DURATION_MS;
-    const finalTimer = setTimeout(onComplete, completionDelay);
-    moveTimersRef.current.push(finalTimer);
+    const finalPosition = getPositionOnPath(playerIndex, toSteps, selectedPlayerCountRef.current);
+    const finalX = finalPosition.x * CELL_SIZE + CELL_SIZE / 2 - tokenSize / 2;
+    const finalY = finalPosition.y * CELL_SIZE + CELL_SIZE / 2 - tokenSize / 2;
+    const points = Array.from({ length: stepsToGo + 1 }, (_, index) => {
+      const steps = fromSteps + index;
+      if (steps <= 0) {
+        const seat = getBoardSeatIndex(playerIndex, selectedPlayerCountRef.current);
+        const home = HOME_POSITIONS[seat][pieceIndex];
+        return {
+          x: home.x * CELL_SIZE + CELL_SIZE / 2 - tokenSize / 2,
+          y: home.y * CELL_SIZE + CELL_SIZE / 2 - tokenSize / 2,
+        };
+      }
+      const position = getPositionOnPath(playerIndex, steps, selectedPlayerCountRef.current);
+      return {
+        x: position.x * CELL_SIZE + CELL_SIZE / 2 - tokenSize / 2,
+        y: position.y * CELL_SIZE + CELL_SIZE / 2 - tokenSize / 2,
+      };
+    });
+    const translateX = new Animated.Value(points[0].x - finalX);
+    const translateY = new Animated.Value(points[0].y - finalY);
+    const animationKey = `token-${playerIndex}-${pieceIndex}`;
+    setTokenAnimation({ key: animationKey, translateX, translateY });
+
+    Animated.sequence(
+      points.slice(1).map((point) =>
+        Animated.parallel([
+          Animated.timing(translateX, {
+            toValue: point.x - finalX,
+            duration: TOKEN_STEP_ANIMATION_MS,
+            useNativeDriver: true,
+          }),
+          Animated.timing(translateY, {
+            toValue: point.y - finalY,
+            duration: TOKEN_STEP_ANIMATION_MS,
+            useNativeDriver: true,
+          }),
+        ]),
+      ),
+    ).start(({ finished }) => {
+      if (!finished) return;
+      setTokenAnimation(null);
+      onComplete();
+    });
   };
 
   const movePiece = (pieceId: number) => {
@@ -547,8 +592,10 @@ const LudoGameSVG = () => {
           captures: finalCaptures,
         });
       }
-      const keepTurnOnMoveOut = rolledDiceValue === 6 || didCaptureOnMoveOut;
-      finishTurn(movingPlayerIndex, keepTurnOnMoveOut, didCaptureOnMoveOut);
+      animateTokenMovement(movingPlayerIndex, pieceId, 1, 0, () => {
+        const keepTurn = rolledDiceValue === 6 || didCaptureOnMoveOut;
+        finishTurn(movingPlayerIndex, keepTurn, didCaptureOnMoveOut);
+      });
       return;
     }
 
@@ -1379,6 +1426,7 @@ const LudoGameSVG = () => {
     isRollingRef.current = false;
     isMovingRef.current = false;
     isAutoMovingRef.current = false;
+    setTokenAnimation(null);
     botActingRef.current = false;
     botActingPlayerIndexRef.current = null;
     autoStartLudoInviteRef.current = false;
@@ -1540,6 +1588,8 @@ const LudoGameSVG = () => {
     x = Math.round(x);
     y = Math.round(y);
     const isCurrent = playerIndex === effectiveCurrentPlayer;
+    const animationKey = `token-${playerIndex}-${pieceIndex}`;
+    const isAnimating = tokenAnimation?.key === animationKey;
     const canMove =
       isCurrent &&
       effectiveDiceForUi > 0 &&
@@ -1548,7 +1598,7 @@ const LudoGameSVG = () => {
       ((pieceSteps <= 0 && effectiveDiceForUi === 6) ||
         (pieceSteps > 0 && pieceSteps < maxSteps && pieceSteps + effectiveDiceForUi <= maxSteps));
     const avatar = players[playerIndex]?.avatar;
-    const TokenWrap = canMove ? Animated.View : View;
+    const TokenWrap = canMove || isAnimating ? Animated.View : View;
     return (
       <TouchableOpacity
         key={`token-${playerIndex}-${pieceIndex}`}
@@ -1584,8 +1634,14 @@ const LudoGameSVG = () => {
               borderRadius: tokenSize / 2,
               backgroundColor: piece.color,
               borderColor: adjustHexColor(piece.color, -40),
-              transform: canMove ? [{ scale: pulseAnim }] : undefined,
             },
+            isAnimating && {
+              transform: [
+                { translateX: tokenAnimation.translateX },
+                { translateY: tokenAnimation.translateY },
+              ],
+            },
+            canMove && !isAnimating && { transform: [{ scale: pulseAnim }] },
           ]}
         >
           <View style={styles.tokenInner} />

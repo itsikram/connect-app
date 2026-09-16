@@ -162,14 +162,6 @@ export const Dice3D: React.FC<Dice3DProps> = ({
     });
   }, [durationMs, rotate, rolling, scale, shadowOpacity, shadowScale, translateX, translateY]);
 
-  const faceSize = size * 0.78;
-  const faceStyle = {
-    position: 'absolute' as const,
-    width: faceSize,
-    height: faceSize,
-    left: (size - faceSize) / 2,
-    top: (size - faceSize) / 2,
-  };
   return (
     <Animated.View
       style={[
@@ -181,7 +173,7 @@ export const Dice3D: React.FC<Dice3DProps> = ({
             { translateX },
             { translateY },
             { scale },
-            { rotate: rotate.interpolate({ inputRange: [-2160, 2160], outputRange: ['-2160deg', '2160deg'] }) },
+            { rotate: rotate.interpolate({ inputRange: [-6, 6], outputRange: ['-2160deg', '2160deg'] }) },
           ],
         },
       ]}
@@ -190,11 +182,9 @@ export const Dice3D: React.FC<Dice3DProps> = ({
         style={[
           styles.shadow,
           { transform: [{ scaleX: shadowScale }], opacity: shadowOpacity },
-        ]}
+        ]} 
       />
-      <View style={faceStyle}>
-        <DiceSVG value={value} size={faceSize} strokeColor={strokeColor} />
-      </View>
+      <DiceSVG value={value} size={size} strokeColor={strokeColor} />
     </Animated.View>
   );
 };
