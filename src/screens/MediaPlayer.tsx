@@ -52,9 +52,17 @@ import { useAudioEqualizer } from '../hooks/useAudioEqualizer';
 import EqualizerModal from '../components/EqualizerModal';
 import api from '../lib/api';
 import {
+  extractYouTubeVideoId,
+  isYouTubeVideoUrl,
   pollYoutubeDownloadProgress,
   startYoutubeDownloadJob,
 } from '../lib/ytDownload';
+import {
+  YoutubeDownloadBanner,
+  YoutubeDownloadSheet,
+  useBackgroundDownloadJobs,
+  useBackgroundDownloadToasts,
+} from '../components/YoutubeDownloadUI';
 import {
   loadCustomPlaylist,
   saveCustomPlaylist,
@@ -179,6 +187,14 @@ const MediaPlayer = ({ route, navigation }: any) => {
     stage: string;
     error?: string;
   } | null>(null);
+  // Video picked for the YouTube download sheet (same flow as the YouTube screen).
+  const [downloadTarget, setDownloadTarget] = useState<{
+    videoId: string;
+    title: string;
+    thumbnail?: string;
+  } | null>(null);
+  const backgroundDownloads = useBackgroundDownloadJobs();
+  useBackgroundDownloadToasts(backgroundDownloads);
   const [playlistOrder, setPlaylistOrder] = useState<string[]>([]);
   const [playQueue, setPlayQueue] = useState<QueueItem[]>([]);
   const [queueIndex, setQueueIndex] = useState(0);
@@ -338,6 +354,10 @@ const MediaPlayer = ({ route, navigation }: any) => {
       online: currentPlayback.type === 'watch' || currentPlayback.type === 'url',
     } as PlaylistItem;
   }, [currentPlayback, allVideos]);
+  // YouTube source of the current video (a Watch saved from YouTube, or a
+  // YouTube link), so it can be downloaded like on the YouTube screen.
+  const currentYoutubeId =
+    currentVideo?.youtubeId || extractYouTubeVideoId(currentVideo?.url || '');
 
   const currentTrackKey = currentPlayback
     ? `${currentPlayback.queueId}:${currentPlayback.url}`
@@ -569,6 +589,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
     if (libraryLoading) return;
     if (playUrlHandledRef.current === playUrl) return;
     playUrlHandledRef.current = playUrl;
+    // A YouTube page link is not a playable file; the AI agent already
+    // started its background download, whose progress banner shows here.
+    if (isYouTubeVideoUrl(playUrl)) return;
     ingestPlayable(
       playUrl,
       params.playTitle || paramsSource?.title,
@@ -1433,7 +1456,23 @@ const MediaPlayer = ({ route, navigation }: any) => {
             <Icon name="arrow-back" size={20} color={t.text} />
           </Pressable>
           <Text style={[styles.headerTitle, { color: t.text }]}>Video Player</Text>
-          <View style={styles.headerBtn} />
+          {currentYoutubeId ? (
+            <Pressable
+              style={[styles.headerBtn, { backgroundColor: t.btnBg }]}
+              onPress={() =>
+                setDownloadTarget({
+                  videoId: currentYoutubeId,
+                  title: currentVideo?.title || 'YouTube video',
+                  thumbnail: currentVideo?.thumbnail || undefined,
+                })
+              }
+              accessibilityLabel="Download this YouTube video"
+            >
+              <Icon name="download" size={20} color="#FF0000" />
+            </Pressable>
+          ) : (
+            <View style={styles.headerBtn} />
+          )}
         </View>
 
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
@@ -1884,6 +1923,20 @@ const MediaPlayer = ({ route, navigation }: any) => {
                         {result.localWatch ? 'Already in Watch · added instantly' : result.channelTitle}
                       </Text>
                     </View>
+                    <Pressable
+                      hitSlop={8}
+                      style={styles.youtubeDownloadBtn}
+                      onPress={() =>
+                        setDownloadTarget({
+                          videoId: result.videoId,
+                          title: result.title || 'YouTube video',
+                          thumbnail: result.thumbnail,
+                        })
+                      }
+                      accessibilityLabel={`Download ${result.title || 'video'}`}
+                    >
+                      <Icon name="download" size={20} color="#FF0000" />
+                    </Pressable>
                     <Icon name="add" size={20} color={t.primary} />
                   </Pressable>
                 ))}
@@ -2004,6 +2057,14 @@ const MediaPlayer = ({ route, navigation }: any) => {
           </View>
         </ScrollView>
       </KeyboardSafeView>
+      <YoutubeDownloadBanner jobs={backgroundDownloads} />
+      <YoutubeDownloadSheet
+        visible={!!downloadTarget}
+        onClose={() => setDownloadTarget(null)}
+        videoId={downloadTarget?.videoId || null}
+        title={downloadTarget?.title}
+        thumbnail={downloadTarget?.thumbnail}
+      />
       <EqualizerModal
         visible={showEqualizerModal}
         onClose={() => setShowEqualizerModal(false)}
@@ -2318,6 +2379,7 @@ const styles = StyleSheet.create({
   youtubeResult: { flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, paddingVertical: 6 },
   youtubeThumb: { width: 72, height: 42, borderRadius: 5 },
   youtubeResultInfo: { flex: 1, minWidth: 0 },
+  youtubeDownloadBtn: { paddingHorizontal: 6, paddingVertical: 4 },
   inputLabel: { fontSize: 12 },
   primaryBtn: {
     borderRadius: 10,
