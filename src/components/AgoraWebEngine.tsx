@@ -17,11 +17,13 @@ export type AgoraEngineEvent =
   | { type: 'joined' }
   | { type: 'preview-ready' }
   | { type: 'left' }
+  | { type: 'user-joined'; uid: number }
   | { type: 'user-published'; uid: number; mediaType: string }
   | { type: 'user-unpublished'; uid: number; mediaType?: string }
   | { type: 'user-left'; uid: number }
   | { type: 'network-quality'; uplink: number; downlink: number }
   | { type: 'audio-enabled' }
+  | { type: 'video-published' }
   | { type: 'error'; message: string }
   | { type: 'log'; message: string };
 

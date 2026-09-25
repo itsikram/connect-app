@@ -74,6 +74,18 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
   const [mediaActive, setMediaActive] = useState(false);
   const [microphoneEnabled, setMicrophoneEnabled] = useState(false);
   const [microphonePending, setMicrophonePending] = useState(false);
+  // The friend's device is in the channel / their voice is arriving.
+  const [peerJoined, setPeerJoined] = useState(false);
+  const [remoteAudio, setRemoteAudio] = useState(false);
+  // Streaming = voice is actually flowing to (or from) the friend's device,
+  // not just that this device joined the channel.
+  const isStreaming =
+    isActive &&
+    (role === 'sender'
+      ? peerJoined && microphoneEnabled
+      : remoteAudio || (peerJoined && microphoneEnabled));
+  const streamingRef = useRef(false);
+  streamingRef.current = isStreaming;
 
   const engineRef = useRef<AgoraWebEngineHandle>(null);
   const pendingJoinRef = useRef<{
@@ -131,6 +143,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         peerId: peerIdRef.current,
         channelName: channelRef.current,
         role: roleRef.current,
+        streaming: streamingRef.current,
         ...overrides,
       });
     },
@@ -211,6 +224,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       setConnectionQuality(4);
       setMicrophoneEnabled(false);
       setMicrophonePending(false);
+      setPeerJoined(false);
+      setRemoteAudio(false);
 
       broadcastStatus({
         active: false,
@@ -218,6 +233,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         duration: 0,
         peerId: null,
         channelName: null,
+        streaming: false,
       });
     },
     [
@@ -293,6 +309,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       setActiveCallKind('liveVoice');
       setDuration(0);
       setConnectionQuality(4);
+      setPeerJoined(false);
+      setRemoteAudio(false);
       // Start loading the Agora WebView immediately so incoming (web → app)
       // does not wait on mic permission / token before the engine can join.
       setMediaActive(true);
@@ -424,8 +442,19 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         setMicrophonePending(false);
         return;
       }
+      if (event.type === 'user-joined') {
+        clearUserLeftTimer();
+        setPeerJoined(true);
+        return;
+      }
       if (event.type === 'user-published') {
         clearUserLeftTimer();
+        setPeerJoined(true);
+        if (event.mediaType === 'audio') setRemoteAudio(true);
+        return;
+      }
+      if (event.type === 'user-unpublished') {
+        if (!event.mediaType || event.mediaType === 'audio') setRemoteAudio(false);
         return;
       }
       if (event.type === 'network-quality') {
@@ -433,6 +462,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
         return;
       }
       if (event.type === 'user-left') {
+        setPeerJoined(false);
+        setRemoteAudio(false);
         // Ignore leaves while we are still joining — the peer WebView can
         // briefly disconnect/reconnect. Only end an already-active session,
         // and debounce so a leave+rejoin from the web client does not hang up.
@@ -492,6 +523,12 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       );
     }
   }, [microphoneEnabled, microphonePending]);
+
+  // Let the chat screen know as soon as voice starts or stops flowing.
+  useEffect(() => {
+    if (!isActiveRef.current) return;
+    broadcastStatus({ streaming: isStreaming });
+  }, [broadcastStatus, isStreaming]);
 
   useEffect(() => {
     if (!myId) return;
@@ -616,6 +653,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
           }}
           microphoneEnabled={microphoneEnabled}
           microphonePending={microphonePending}
+          isStreaming={isStreaming}
+          peerJoined={peerJoined}
         />
       ) : null}
     </>

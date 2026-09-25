@@ -355,6 +355,11 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             post({ type: 'error', message: 'subscribe failed: ' + (e && e.message) });
           }
         });
+        // Lets the app tell when the other device is actually in the channel
+        // (a listen-only peer never publishes).
+        c.on('user-joined', function (user) {
+          post({ type: 'user-joined', uid: user.uid });
+        });
         c.on('user-unpublished', function (user, mediaType) {
           post({ type: 'user-unpublished', uid: user.uid, mediaType: mediaType });
         });
@@ -426,6 +431,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           post({ type: 'joined' });
           startHealthCheck();
           var remotes = client.remoteUsers || [];
+          for (var r = 0; r < remotes.length; r++) {
+            post({ type: 'user-joined', uid: remotes[r].uid });
+          }
           for (var i = 0; i < remotes.length; i++) {
             var user = remotes[i];
             try {

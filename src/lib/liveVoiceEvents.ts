@@ -19,6 +19,8 @@ export type LiveVoiceStatusDetail = {
   peerId?: string | null;
   channelName?: string | null;
   role?: 'sender' | 'receiver';
+  // Voice is actually reaching the other device (or arriving from it).
+  streaming?: boolean;
 };
 
 export function emitStartLiveVoice(detail: LiveVoiceStartDetail): void {

@@ -25,6 +25,9 @@ interface LiveVoiceModalProps {
     microphoneEnabled?: boolean;
     microphonePending?: boolean;
     connectionQuality?: number | null;
+    // Voice is actually flowing to/from the friend's device.
+    isStreaming?: boolean;
+    peerJoined?: boolean;
 }
 
 const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
@@ -40,12 +43,14 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
     microphoneEnabled = false,
     microphonePending = false,
     connectionQuality = 4,
+    isStreaming = false,
+    peerJoined = false,
 }) => {
     const { colors: themeColors, isDarkMode } = useTheme();
     const pulseAnim = React.useRef(new Animated.Value(1)).current;
 
     React.useEffect(() => {
-        if (isActive) {
+        if (isStreaming) {
             const pulseAnimation = Animated.loop(
                 Animated.sequence([
                     Animated.timing(pulseAnim, {
@@ -64,7 +69,30 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
             pulseAnimation.start();
             return () => pulseAnimation.stop();
         }
-    }, [isActive, pulseAnim]);
+    }, [isStreaming, pulseAnim]);
+
+    // Joined but voice not flowing yet: the friend's device has not
+    // connected (or, for the listener, has not started sending).
+    const waiting = isActive && !isStreaming;
+    const statusLabel = isConnecting
+        ? 'Connecting...'
+        : isStreaming
+        ? 'Streaming'
+        : waiting
+        ? role === 'sender'
+            ? peerJoined
+                ? 'Starting your microphone...'
+                : `Waiting for ${connectName || 'your friend'} to connect...`
+            : `Waiting for ${connectName || 'your friend'}'s voice...`
+        : 'Inactive';
+    const statusColor = isConnecting || waiting ? '#ffa500' : isStreaming ? '#1DB954' : '#666';
+    const connectionLabel = isStreaming
+        ? 'Streaming'
+        : waiting
+        ? 'Waiting'
+        : isConnecting
+        ? 'Connecting'
+        : 'Disconnected';
 
     const formatDuration = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -101,11 +129,11 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                         <View style={[styles.statusContainer, { backgroundColor: themeColors.surface.secondary || (isDarkMode ? '#252525' : '#F5F5F5') }]}>
                             {/* Icon Container */}
                             <View style={styles.iconContainer}>
-                                {isConnecting ? (
+                                {isConnecting || waiting ? (
                                     <ActivityIndicator size="large" color="#ffa500" />
-                                ) : isActive ? (
+                                ) : isStreaming ? (
                                     <>
-                                        <Icon name="phone" size={40} color="#1DB954" />
+                                        <Icon name="volume-up" size={40} color="#1DB954" />
                                         <Animated.View
                                             style={[
                                                 styles.pulse,
@@ -126,10 +154,8 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
 
                             {/* Status Text */}
                             <View style={styles.info}>
-                                <Text style={[styles.statusText, {
-                                    color: isConnecting ? '#ffa500' : isActive ? '#1DB954' : '#666'
-                                }]}>
-                                    {isConnecting ? 'Connecting...' : isActive ? 'Live Voice Active' : 'Inactive'}
+                                <Text style={[styles.statusText, { color: statusColor }]}>
+                                    {statusLabel}
                                 </Text>
 
                                 {connectName && (
@@ -189,9 +215,13 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                                 </Text>
                             </View>
                             <View style={styles.detailItem}>
-                                <Icon name="signal-cellular-alt" size={20} color="#1DB954" />
+                                <Icon
+                                    name={isStreaming ? 'volume-up' : 'signal-cellular-alt'}
+                                    size={20}
+                                    color={statusColor}
+                                />
                                 <Text style={[styles.detailText, { color: themeColors.text.secondary }]}>
-                                    Connection: {isActive ? 'Active' : isConnecting ? 'Connecting' : 'Disconnected'}
+                                    Connection: {connectionLabel}
                                 </Text>
                             </View>
                         </View>
