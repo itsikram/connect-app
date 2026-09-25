@@ -344,7 +344,7 @@ export const FitnessCoach = ({ navigation }: Props) => {
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
-  content: { padding: 20, paddingBottom: 98 },
+  content: { padding: 20, paddingBottom: 198 },
   headingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
   back: { fontSize: 36, marginRight: 12, lineHeight: 36 },
   title: { fontSize: 25, fontWeight: '700' },
