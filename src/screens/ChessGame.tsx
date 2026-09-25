@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Dimensions } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { useTheme } from '../contexts/ThemeContext';
 import { useChessGame } from '../contexts/ChessGameContext';
 import { Chess } from 'chess.js';

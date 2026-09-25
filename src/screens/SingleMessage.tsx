@@ -15,7 +15,6 @@ import {
   Platform,
   StatusBar,
   Alert,
-  Modal,
   Pressable,
   Image,
   ImageBackground,
@@ -30,6 +29,7 @@ import {
   DeviceEventEmitter,
   type KeyboardEvent,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { WebView } from 'react-native-webview';
 import { Swipeable } from 'react-native-gesture-handler';
 import {

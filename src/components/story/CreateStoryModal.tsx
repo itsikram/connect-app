@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
   View,
   Text,
-  Modal,
   StyleSheet,
   TouchableOpacity,
   Image,
@@ -10,6 +9,7 @@ import {
   ScrollView,
   DeviceEventEmitter,
 } from 'react-native';
+import Modal from '../SystemBarsModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as ImagePicker from 'expo-image-picker';

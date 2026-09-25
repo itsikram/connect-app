@@ -4,11 +4,11 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
   TextInput,
   ScrollView,
   ActivityIndicator,
 } from 'react-native';
+import Modal from '../../components/SystemBarsModal';
 import * as ImagePicker from 'expo-image-picker';
 import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
 import type { ConnectUser, Player } from './types';

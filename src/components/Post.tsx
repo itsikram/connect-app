@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   Pressable,
   StyleSheet,
-  Modal,
   TextInput,
   ActivityIndicator,
   Dimensions,
@@ -14,6 +13,7 @@ import {
   ScrollView,
   DeviceEventEmitter,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import { useSelector } from 'react-redux';
 import * as ImagePicker from 'expo-image-picker';
 import moment from 'moment';

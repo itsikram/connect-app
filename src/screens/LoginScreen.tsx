@@ -10,8 +10,10 @@ import {
   Image,
   TextInput,
   StatusBar,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from '../components/Logo';
@@ -29,6 +31,13 @@ type RootStackParamList = {
 };
 
 const LoginScreen = () => {
+  // Android 15+ draws this full-bleed screen under the system bars; keep the
+  // form clear of them (older Android reports 0 for the navigation bar).
+  const insets = useSafeAreaInsets();
+  const androidBarsPadding =
+    Platform.OS === 'android'
+      ? { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }
+      : null;
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [email, setEmail] = useState('');
@@ -137,7 +146,7 @@ const LoginScreen = () => {
           keyboardDismissMode="on-drag"
           showsVerticalScrollIndicator={false}
           bounces={false}
-          contentContainerStyle={styles.container}
+          contentContainerStyle={[styles.container, androidBarsPadding]}
         >
           <View style={styles.content}>
             <Logo size="xlarge" />

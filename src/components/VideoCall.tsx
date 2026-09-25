@@ -3,7 +3,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
   Alert,
   StyleSheet,
   StatusBar,
@@ -11,6 +10,7 @@ import {
   AppStateStatus,
   DeviceEventEmitter,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import { Audio } from '../lib/avCompat';
 import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/MaterialIcons';

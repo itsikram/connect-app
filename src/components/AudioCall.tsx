@@ -4,7 +4,6 @@ import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
   Alert,
   StyleSheet,
   SafeAreaView,
@@ -13,6 +12,7 @@ import {
   AppStateStatus,
   DeviceEventEmitter,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import { Audio } from '../lib/avCompat';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Modal, View, Text, Pressable, TextInput, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, Pressable, TextInput, StyleSheet, ScrollView } from 'react-native';
+import Modal from './SystemBarsModal';
 
 const OPTIONS = [
   'Friend', 'Best Friend', 'Family', 'Parent', 'Child', 'Sibling', 'Relative',

@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet} from 'react-native';
+import Modal from '../../components/SystemBarsModal';
 import { PLAYER_EMOJIS, PLAYER_LETTERS, THEME } from './constants';
 import type { LudoInvite, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';

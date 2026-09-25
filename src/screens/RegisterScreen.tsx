@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, ImageBackground, Image, TextInput, StatusBar } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, ImageBackground, Image, TextInput, StatusBar, Platform } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { Button } from 'react-native-paper';
 import { Picker } from '@react-native-picker/picker';
@@ -25,6 +26,13 @@ type RootStackParamList = {
 };
 
 const RegisterScreen = () => {
+  // Android 15+ draws this full-bleed screen under the system bars; keep the
+  // form clear of them (older Android reports 0 for the navigation bar).
+  const insets = useSafeAreaInsets();
+  const androidBarsPadding =
+    Platform.OS === 'android'
+      ? { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }
+      : null;
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [tab, setTab] = useState(0);
   const [formData, setFormData] = useState({
@@ -318,7 +326,7 @@ const RegisterScreen = () => {
         fadeDuration={0}
         resizeMode="cover"
       >
-        <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={styles.container}>
+        <ScrollView keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false} bounces={false} contentContainerStyle={[styles.container, androidBarsPadding]}>
           <View style={styles.content}>
             <Logo size="xlarge" />
             <Text style={[styles.title, { color: themeColors.text.primary }]}>Create Your <Text style={{ color: themeColors.primary }}>Account</Text></Text>

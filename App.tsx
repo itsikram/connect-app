@@ -32,6 +32,11 @@ import {
   DeviceEventEmitter,
 } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import {
+  PaddedEdgesInsetsProvider,
+  RealSafeAreaInsetsProvider,
+  useRealSafeAreaInsets,
+} from './src/components/SystemBarsModal';
 import * as Location from 'expo-location';
 import { Accelerometer } from 'expo-sensors';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -1484,14 +1489,24 @@ function AppContentInner({
     : isChatThread
     ? []
     : isMessageInbox
-    ? Platform.OS === 'ios'
-      ? (['top'] as const)
-      : []
+    ? (['top'] as const)
     : isEditPostScreen
     ? []
-    : Platform.OS === 'ios'
-    ? (['top', 'right', 'left'] as const)
-    : [];
+    : (['top', 'right', 'left'] as const);
+  // Android 15+ draws the app under the status and navigation bars
+  // (edge-to-edge), while older versions keep it between them. Reserve the
+  // bar space here so every Android version gets the same layout; the
+  // screens below see 0 insets for these edges, as on older Android. The
+  // chat thread and edit-post screens pad themselves.
+  const realInsets = useRealSafeAreaInsets();
+  const androidNavBarSpace =
+    Platform.OS === 'android' && appSafeAreaEdges.length > 0
+      ? realInsets.bottom
+      : 0;
+  const androidPaddedEdges =
+    Platform.OS === 'android' && appSafeAreaEdges.length > 0
+      ? ([...appSafeAreaEdges, 'bottom'] as const)
+      : ([] as const);
 
   return (
     <ThemeContext.Consumer>
@@ -1517,6 +1532,7 @@ function AppContentInner({
                 }
                 translucent={isAuthScreen}
               />
+              <PaddedEdgesInsetsProvider edges={androidPaddedEdges}>
               {isInitializing ? (
                 <LoadingScreen message="Initializing app..." />
               ) : (
@@ -1689,6 +1705,15 @@ function AppContentInner({
                 </Tab.Navigator>
               )}
               <WatchPipPlayer />
+              </PaddedEdgesInsetsProvider>
+              {androidNavBarSpace > 0 ? (
+                <View
+                  style={{
+                    height: androidNavBarSpace,
+                    backgroundColor: themeColors.surface.header,
+                  }}
+                />
+              ) : null}
             </SafeAreaView>
             <MinimizedCallBar />
             <AIAgentModal
@@ -1734,6 +1759,7 @@ function App() {
     <ErrorBoundary>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <SafeAreaProvider>
+          <RealSafeAreaInsetsProvider>
           <Provider store={store}>
             <PaperProvider>
               <ThemeProvider>
@@ -1765,6 +1791,7 @@ function App() {
               </ThemeProvider>
             </PaperProvider>
           </Provider>
+          </RealSafeAreaInsetsProvider>
         </SafeAreaProvider>
       </GestureHandlerRootView>
     </ErrorBoundary>

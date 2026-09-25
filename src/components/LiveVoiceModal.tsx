@@ -2,13 +2,13 @@ import React from 'react';
 import {
     View,
     Text,
-    Modal,
     TouchableOpacity,
     StyleSheet,
     Animated,
     Easing,
     ActivityIndicator,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 

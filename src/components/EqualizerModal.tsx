@@ -9,10 +9,10 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Modal,
   SafeAreaView,
   Dimensions,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import Slider from '@react-native-community/slider';
 import {

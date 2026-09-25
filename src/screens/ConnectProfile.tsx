@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, Modal, RefreshControl, DeviceEventEmitter, Alert, ActivityIndicator } from 'react-native'
-import { useDispatch, useSelector } from 'react-redux'
+import { View, Text, StyleSheet, Image, Pressable, ScrollView, useWindowDimensions, Platform, TouchableOpacity, RefreshControl, DeviceEventEmitter, Alert, ActivityIndicator } from 'react-native'
+
+import Modal from '../components/SystemBarsModal';import { useDispatch, useSelector } from 'react-redux'
 import Icon from 'react-native-vector-icons/MaterialIcons'
 import { RootState } from '../store'
 import { useTheme } from '../contexts/ThemeContext'

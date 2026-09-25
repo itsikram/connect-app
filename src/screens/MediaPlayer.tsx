@@ -16,11 +16,11 @@ import {
   StatusBar,
   ActivityIndicator,
   Alert,
-  Modal,
   AppState,
   AppStateStatus,
   BackHandler,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';

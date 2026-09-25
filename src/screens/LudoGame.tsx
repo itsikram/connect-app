@@ -9,7 +9,6 @@ import {
   SafeAreaView,
   StatusBar,
   Animated,
-  Modal,
   Easing,
   Image,
   TextInput,
@@ -17,6 +16,7 @@ import {
   FlatList,
   ImageBackground,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { 
   Svg, 
   Rect, 

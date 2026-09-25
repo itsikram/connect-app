@@ -4,12 +4,12 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  Modal,
   TextInput,
   ScrollView,
   ActivityIndicator,
   Switch,
 } from 'react-native';
+import Modal from '../../components/SystemBarsModal';
 import { COLORS, PLAYER_LETTERS, THEME } from './constants';
 import type { ConnectUser, Player } from './types';
 import ProfileImage from '../../components/ProfileImage';

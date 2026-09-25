@@ -1,5 +1,6 @@
 import React, { useState, useContext, useCallback, useEffect } from 'react';
-import { View, Text, TextInput, TouchableOpacity, Pressable, Image, Modal, StyleSheet, ActivityIndicator, FlatList, ScrollView } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, Pressable, Image, StyleSheet, ActivityIndicator, FlatList, ScrollView } from 'react-native';
+import Modal from './SystemBarsModal';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';

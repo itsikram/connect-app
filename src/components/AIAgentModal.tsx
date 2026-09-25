@@ -4,7 +4,6 @@ import {
   FlatList,
   Image,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   Animated,
   PanResponder,
@@ -15,6 +14,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useMemo, useRef } from 'react';
-import { Animated, Easing, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Animated, Easing } from 'react-native';
 
 type HeaderVisibilityContextType = {
   translateY: Animated.Value;
@@ -15,8 +14,8 @@ const HEADER_BODY_HEIGHT = 56;
 const HeaderVisibilityContext = createContext<HeaderVisibilityContextType | undefined>(undefined);
 
 export const HeaderVisibilityProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const insets = useSafeAreaInsets();
-  const topInset = Platform.OS === 'ios' ? 0 : insets.top;
+  // The app shell reserves the status bar space on iOS and Android.
+  const topInset = 0;
   const headerHeight = HEADER_BODY_HEIGHT + topInset;
   const translateY = useRef(new Animated.Value(0)).current;
   const lastOffsetRef = useRef(0);

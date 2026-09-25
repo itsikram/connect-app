@@ -10,7 +10,6 @@ import {
   Alert,
   Dimensions,
   FlatList,
-  Modal,
   NativeSyntheticEvent,
   NativeScrollEvent,
   RefreshControl,
@@ -21,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';

@@ -9,7 +9,6 @@ import {
   Alert,
   RefreshControl,
   Dimensions,
-  Modal,
   TextInput,
   StatusBar,
   StyleSheet,
@@ -17,6 +16,7 @@ import {
   DeviceEventEmitter,
   Platform,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import KeyboardSafeView from '../components/KeyboardSafeView';

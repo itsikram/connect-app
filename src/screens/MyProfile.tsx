@@ -11,11 +11,11 @@ import {
   ActivityIndicator,
   Platform,
   TouchableOpacity,
-  Modal,
   RefreshControl,
   Alert,
   DeviceEventEmitter,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { useSelector } from 'react-redux';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { RootState } from '../store';

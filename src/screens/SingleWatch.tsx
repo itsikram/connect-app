@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  Modal,
   Pressable,
   RefreshControl,
   SafeAreaView,
@@ -15,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import Modal from '../components/SystemBarsModal';
 import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import KeyboardSafeView from '../components/KeyboardSafeView';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';

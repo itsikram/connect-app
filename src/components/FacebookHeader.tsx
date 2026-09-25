@@ -8,10 +8,8 @@ import {
   FlatList,
   Animated,
   Dimensions,
-  Platform,
   DeviceEventEmitter,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useTheme } from '../contexts/ThemeContext';
 import Logo from './Logo';
@@ -443,8 +441,8 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   }, [myProfile?._id, isConnected, emit, on, off, notificationToLudoInvite]);
 
   const { translateY } = useHeaderVisibility();
-  const insets = useSafeAreaInsets();
-  const topInset = Platform.OS === 'ios' ? 0 : insets.top;
+  // The app shell reserves the status bar space on iOS and Android.
+  const topInset = 0;
   const notificationUnreadCount = unreadCount + ludoInvites.length;
 
   return (

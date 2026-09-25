@@ -4,13 +4,13 @@ import {
   Text,
   Image,
   StyleSheet,
-  Modal,
   TouchableOpacity,
   Dimensions,
   StatusBar,
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import Modal from './SystemBarsModal';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import KeyboardSafeView from './KeyboardSafeView';
