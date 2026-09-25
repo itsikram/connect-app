@@ -521,6 +521,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (event.type === 'error') {
       console.warn('VideoCall media error', event.message);
     }
+    if (__DEV__ && event.type === 'log') {
+      console.log('[VideoCall]', event.message);
+    }
   }, [cleanupVideoCall]);
 
   const statusText = callAccepted

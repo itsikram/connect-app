@@ -502,6 +502,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (event.type === 'error') {
       console.warn('AudioCall media error', event.message);
     }
+    if (__DEV__ && event.type === 'log') {
+      console.log('[AudioCall]', event.message);
+    }
   }, [cleanupAudioCall]);
 
   const statusText = callAccepted

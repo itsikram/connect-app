@@ -48,6 +48,36 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       var facingMode = 'user';
       var joinedChannel = '';
       var joinedUid = null;
+      // Call state the health check below needs.
+      var currentIsAudio = true;
+      var micMuted = false;
+      var videoMuted = false;
+      // False for listen-only joins (live voice) until enableAudio.
+      var wantAudio = false;
+      var videoEnsuring = false;
+      var healthTimer = null;
+
+      function sleep(ms) {
+        return new Promise(function (resolve) { setTimeout(resolve, ms); });
+      }
+
+      function findTrack(kind) {
+        return localTracks.find(function (t) { return t.trackMediaType === kind; });
+      }
+
+      function isPublished(track) {
+        var published = (client && client.localTracks) || [];
+        return published.indexOf(track) !== -1;
+      }
+
+      function trackEnded(track) {
+        try {
+          var mst = track && track.getMediaStreamTrack && track.getMediaStreamTrack();
+          return !!mst && mst.readyState === 'ended';
+        } catch (e) {
+          return false;
+        }
+      }
 
       function playRemoteAudioTrack(track) {
         if (!track) return;
@@ -114,6 +144,8 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
       async function leave() {
         joining = false;
+        stopHealthCheck();
+        wantAudio = false;
         try {
           if (client) {
             try { await client.unpublish(localTracks); } catch (e) {}
@@ -162,6 +194,10 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             audioTrack = localTracks.find(function (t) {
               return t.trackMediaType === 'audio';
             });
+            if (audioTrack && isPublished(audioTrack) && audioTrack.enabled !== false && !trackEnded(audioTrack)) {
+              post({ type: 'audio-enabled' });
+              return;
+            }
             if (!audioTrack) {
               audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
                 AEC: true,
@@ -187,6 +223,116 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           }
         }
         throw lastError || new Error('Microphone publish failed');
+      }
+
+      /*
+       * Publishes the camera for video calls. join() used to publish only the
+       * microphone, so the other side saw no video until a camera switch
+       * (the only path that published video). The camera can also still be
+       * held by another component when the call starts; retry instead of
+       * silently falling back to audio only.
+       */
+      async function ensureVideoPublished() {
+        if (!client || !joinedChannel || currentIsAudio || videoMuted) return;
+        if (videoEnsuring) return;
+        videoEnsuring = true;
+        try {
+          await ensureVideoPublishedOnce();
+        } finally {
+          videoEnsuring = false;
+        }
+      }
+
+      async function ensureVideoPublishedOnce() {
+        var video = findTrack('video');
+        if (video && trackEnded(video)) {
+          try { if (isPublished(video)) await client.unpublish(video); } catch (e) {}
+          try { video.stop(); } catch (e) {}
+          try { await video.close(); } catch (e) {}
+          localTracks = localTracks.filter(function (t) { return t !== video; });
+          video = null;
+        }
+        for (var attempt = 0; !video && attempt < 5; attempt++) {
+          try {
+            video = await AgoraRTC.createCameraVideoTrack({ facingMode: facingMode, encoderConfig: '480p_1' });
+            localTracks.push(video);
+            video.play('local', { fit: 'cover' });
+          } catch (e) {
+            post({ type: 'log', message: 'camera start failed (attempt ' + (attempt + 1) + '): ' + (e && e.message) });
+            await sleep(700 * (attempt + 1));
+            if (!client || !joinedChannel || currentIsAudio) return;
+          }
+        }
+        if (!video) {
+          post({ type: 'error', message: 'camera unavailable' });
+          return;
+        }
+        if (isPublished(video)) return;
+        try {
+          if (!video.enabled) await video.setEnabled(true);
+          await client.publish(video);
+          post({ type: 'video-published' });
+        } catch (e) {
+          post({ type: 'error', message: 'camera publish failed: ' + (e && e.message) });
+        }
+      }
+
+      /*
+       * Periodic health check while in a call: keeps remote audio/video
+       * playing and replaces local tracks Android stopped (for example when
+       * another recorder took the microphone), so voice keeps flowing.
+       */
+      async function checkCallHealth() {
+        if (!client || !joinedChannel) return;
+        var remotes = client.remoteUsers || [];
+        for (var i = 0; i < remotes.length; i++) {
+          var user = remotes[i];
+          try {
+            if (user.hasAudio && !user.audioTrack) {
+              await client.subscribe(user, 'audio');
+            }
+            if (user.audioTrack && !user.audioTrack.isPlaying) {
+              playRemoteAudioTrack(user.audioTrack);
+            }
+            if (!currentIsAudio && user.hasVideo && !user.videoTrack) {
+              await client.subscribe(user, 'video');
+            }
+            if (!currentIsAudio && user.videoTrack && !user.videoTrack.isPlaying) {
+              user.videoTrack.play('remote', { fit: 'cover' });
+            }
+          } catch (e) {
+            post({ type: 'log', message: 'remote health check failed: ' + (e && e.message) });
+          }
+        }
+        var audio = findTrack('audio');
+        if (wantAudio && !micMuted && (!audio || trackEnded(audio) || !isPublished(audio))) {
+          if (audio && trackEnded(audio)) {
+            post({ type: 'log', message: 'microphone track ended; restarting it' });
+            try { if (isPublished(audio)) await client.unpublish(audio); } catch (e) {}
+            try { audio.stop && audio.stop(); } catch (e) {}
+            try { await audio.close(); } catch (e) {}
+            localTracks = localTracks.filter(function (t) { return t !== audio; });
+          }
+          try { await publishAudioWithRetry(); } catch (e) {
+            post({ type: 'log', message: 'microphone republish failed: ' + (e && e.message) });
+          }
+        }
+        await ensureVideoPublished();
+      }
+
+      var healthBusy = false;
+      function startHealthCheck() {
+        if (healthTimer) return;
+        healthTimer = setInterval(function () {
+          if (healthBusy) return;
+          healthBusy = true;
+          checkCallHealth().then(function () { healthBusy = false; }, function () { healthBusy = false; });
+        }, 3000);
+      }
+
+      function stopHealthCheck() {
+        if (healthTimer) clearInterval(healthTimer);
+        healthTimer = null;
       }
 
       function bindClientEvents(c) {
@@ -232,6 +378,8 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         var isAudio = !!payload.isAudio;
         var publishAudio = payload.publishAudio !== false;
         setAudioOnlyUi(isAudio);
+        currentIsAudio = isAudio;
+        wantAudio = publishAudio;
 
         if (client && joinedChannel === channelName && joinedUid === uid) {
           try {
@@ -239,7 +387,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           } catch (e) {
             post({ type: 'error', message: 'microphone publish failed: ' + (e && e.message) });
           }
+          ensureVideoPublished();
           post({ type: 'joined' });
+          startHealthCheck();
           return;
         }
 
@@ -270,7 +420,11 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             throw micErr;
           }
 
+          // Not awaited: camera retries must not delay "joined".
+          ensureVideoPublished();
+
           post({ type: 'joined' });
+          startHealthCheck();
           var remotes = client.remoteUsers || [];
           for (var i = 0; i < remotes.length; i++) {
             var user = remotes[i];
@@ -306,6 +460,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       async function muteAudio(muted) {
+        micMuted = muted;
         var track = localTracks.find(function (t) { return t.trackMediaType === 'audio'; });
         if (track) {
           try { await track.setEnabled(!muted); } catch (e) {}
@@ -314,6 +469,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
       async function enableAudio() {
         if (!client || !joinedChannel) throw new Error('Live voice is not connected');
+        wantAudio = true;
         await publishAudioWithRetry();
       }
 
@@ -329,10 +485,12 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       async function muteVideo(muted) {
+        videoMuted = muted;
         var track = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
         if (track) {
           try { await track.setEnabled(!muted); } catch (e) {}
         }
+        if (!muted) await ensureVideoPublished();
       }
 
       async function switchCamera() {
@@ -350,7 +508,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           localTracks = localTracks.filter(function (t) { return t.trackMediaType !== 'video'; });
           localTracks.push(next);
           next.play('local', { fit: 'cover' });
-          if (client) await client.publish(next);
+          if (client && joinedChannel && !videoMuted) await client.publish(next);
         } catch (e) {
           post({ type: 'error', message: 'switch camera failed: ' + (e && e.message) });
         }
@@ -388,6 +546,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           if (data && data.type) window.__agoraHandle(data);
         } catch (e) {}
       }
+      document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) resumeAudio();
+      });
       window.addEventListener('message', onNativeMessage);
       document.addEventListener('message', onNativeMessage);
 
