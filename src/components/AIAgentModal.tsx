@@ -47,6 +47,7 @@ import { isCallBusy } from '../lib/callSession';
 import {
   AgentSpeechLanguage,
   createAgentSpeechController,
+  detectAgentSpeechLanguage,
 } from '../services/agentSpeechService';
 import { AgentMessage } from '../types/aiAgent';
 import { AgentActionIntent } from '../services/agentActionCatalog';
@@ -330,6 +331,9 @@ const AIAgentModal: React.FC<Props> = ({
     settings.language === 'bn' ? 'bn-BD' : 'en-US';
   const speechLanguage: Exclude<AgentSpeechLanguage, 'auto'> =
     language === 'auto' ? defaultSpeechLanguage : language;
+  // Auto listens for Bangla and English together (the server's Gemini pass
+  // detects the language), so it is passed through instead of being pinned.
+  const listenLanguage: AgentSpeechLanguage = language;
   const [loading, setLoading] = React.useState(false);
   const [autoMode, setAutoMode] = React.useState(true);
   const [pendingActions, setPendingActions] = React.useState<
@@ -981,7 +985,7 @@ const AIAgentModal: React.FC<Props> = ({
   }, []);
 
   const transcribe = useComposerLiveTranscribe({
-    onFinal: text => {
+    onFinal: (text, meta) => {
       resetVoiceInactivityTimer();
       const next = mergeTranscriptText(voiceInputBaseRef.current, text);
       voiceInputBaseRef.current = next;
@@ -989,10 +993,15 @@ const AIAgentModal: React.FC<Props> = ({
       setVoiceTranscript(next);
       if (!voiceConversation) return;
       clearVoiceAutoSend();
-      voiceAutoSendTimerRef.current = setTimeout(() => {
-        voiceAutoSendTimerRef.current = null;
-        sendRef.current(text);
-      }, 1200);
+      // A Gemini-checked final already marks the end of a spoken sentence,
+      // so act on it quickly; rough finals wait for a possible continuation.
+      voiceAutoSendTimerRef.current = setTimeout(
+        () => {
+          voiceAutoSendTimerRef.current = null;
+          sendRef.current(voiceInputBaseRef.current || next);
+        },
+        meta?.refined ? 450 : 1200,
+      );
     },
     onInterim: text => {
       const next = mergeTranscriptText(voiceInputBaseRef.current, text);
@@ -1123,6 +1132,9 @@ const AIAgentModal: React.FC<Props> = ({
     clearVoiceAutoSend();
     const text = (textOverride ?? input).trim();
     if (!text || loading) return;
+    // In Auto, answer (and speak) in the language the user just used.
+    const replyLanguage: Exclude<AgentSpeechLanguage, 'auto'> =
+      language === 'auto' ? detectAgentSpeechLanguage(text) : speechLanguage;
     transcribe.stop({ discard: true }).catch(() => {});
     const user: AgentMessage = {
       id: id(),
@@ -1143,7 +1155,7 @@ const AIAgentModal: React.FC<Props> = ({
     setMessages(previous => [...previous, user, stream]);
     setLoading(true);
     const controller = new AbortController();
-    const speechController = createAgentSpeechController(speechLanguage, {
+    const speechController = createAgentSpeechController(replyLanguage, {
       onSpeechStart: () => transcribe.stop({ discard: true }),
     });
     const shouldSpeak = speechEnabled;
@@ -1172,7 +1184,7 @@ const AIAgentModal: React.FC<Props> = ({
           // Do not read machine-readable JSON while it is streaming; read the
           // user-facing reply after the intent has been validated below.
           if (shouldSpeak && !machineReadable)
-            speechController.update(next, speechLanguage);
+            speechController.update(next, replyLanguage);
         },
         controller.signal,
         profileContext,
@@ -1180,7 +1192,14 @@ const AIAgentModal: React.FC<Props> = ({
           provider: selectedProvider,
           model: providerStatus?.models[selectedProvider],
           memory: agentMemoryRef.current,
-          preferredLanguage: settings.language === 'bn' ? 'bn' : 'eng',
+          preferredLanguage:
+            language === 'auto'
+              ? replyLanguage === 'bn-BD'
+                ? 'bn'
+                : 'eng'
+              : settings.language === 'bn'
+              ? 'bn'
+              : 'eng',
         },
       );
       if (generation !== generationRef.current) return;
@@ -1214,7 +1233,7 @@ const AIAgentModal: React.FC<Props> = ({
           };
         }
         const visibleReply = intent.actions?.length
-          ? speechLanguage === 'bn-BD'
+          ? replyLanguage === 'bn-BD'
             ? 'ঠিক আছে, কাজটি করছি।'
             : 'Got it. I’m taking care of that now.'
           : intent.reply || intent.ask?.question || '';
@@ -1228,7 +1247,7 @@ const AIAgentModal: React.FC<Props> = ({
             const actionSpeech = intent.actions?.length
               ? getIntentSpeechText(intent.actions)
               : visibleReply;
-            speechController.update(actionSpeech, speechLanguage);
+            speechController.update(actionSpeech, replyLanguage);
           }
         }
         const adapter = createMobileAgentActionAdapter({
@@ -1374,7 +1393,7 @@ const AIAgentModal: React.FC<Props> = ({
           changeSetting: callAdapter.changeSetting,
           startChess: () => setChessGameActive(true),
           startVoiceInput: async () => {
-            await startListening(speechLanguage);
+            await startListening(listenLanguage);
           },
           stopVoiceInput: async () => {
             await transcribe.stop();
@@ -1383,10 +1402,10 @@ const AIAgentModal: React.FC<Props> = ({
             if (shouldSpeak) {
               await transcribe.stop({ discard: true });
               await restoreChatPlaybackAudioMode();
-              const reader = createAgentSpeechController(speechLanguage, {
+              const reader = createAgentSpeechController(replyLanguage, {
                 onSpeechStart: () => transcribe.stop({ discard: true }),
               });
-              reader.update(value, speechLanguage);
+              reader.update(value, replyLanguage);
               await reader.finish();
               speechControllerRef.current = reader;
             }
@@ -1506,7 +1525,7 @@ const AIAgentModal: React.FC<Props> = ({
           ? completed.map(result => result.message).join(' ')
           : '';
         if (shouldSpeak && outcome && failed.length)
-          speechController.update(outcome, speechLanguage);
+          speechController.update(outcome, replyLanguage);
         if (failed.length) {
           setMessages(previous =>
             previous.map(item =>
@@ -1576,7 +1595,7 @@ const AIAgentModal: React.FC<Props> = ({
       if (shouldSpeak) {
         speechController.update(
           error?.message || 'Sorry, the AI Agent is unavailable.',
-          speechLanguage,
+          replyLanguage,
         );
       }
     } finally {
@@ -1590,7 +1609,7 @@ const AIAgentModal: React.FC<Props> = ({
         if (shouldSpeak) {
           await speechController.finish();
         }
-        const started = await startListening(speechLanguage);
+        const started = await startListening(listenLanguage);
         if (!started) setVoiceConversation(false);
       }
     }
@@ -1686,10 +1705,7 @@ const AIAgentModal: React.FC<Props> = ({
           nextLanguage === 'auto' ? defaultSpeechLanguage : nextLanguage,
         );
       }
-      const started = await startListening(
-        nextLanguage === 'auto' ? defaultSpeechLanguage : nextLanguage,
-        { skipStop: true },
-      );
+      const started = await startListening(nextLanguage, { skipStop: true });
       if (!started) {
         setVoiceConversation(false);
         Alert.alert(
@@ -1735,12 +1751,9 @@ const AIAgentModal: React.FC<Props> = ({
             ? defaultSpeechLanguage
             : autoStartVoiceLanguage,
         );
-        const started = await startListening(
-          autoStartVoiceLanguage === 'auto'
-            ? defaultSpeechLanguage
-            : autoStartVoiceLanguage,
-          { skipStop: true },
-        );
+        const started = await startListening(autoStartVoiceLanguage, {
+          skipStop: true,
+        });
         if (!started) setVoiceConversation(false);
       } finally {
         voiceStartInFlightRef.current = false;
@@ -1780,7 +1793,7 @@ const AIAgentModal: React.FC<Props> = ({
       if (speechEnabled) {
         await announceListening(speechLanguage);
       }
-      started = await startListening(speechLanguage);
+      started = await startListening(listenLanguage);
     } finally {
       voiceStartInFlightRef.current = false;
     }
@@ -1808,7 +1821,7 @@ const AIAgentModal: React.FC<Props> = ({
         setVoiceConversation(false);
         return;
       }
-      const started = await startListening(speechLanguage, {
+      const started = await startListening(listenLanguage, {
         skipStop: true,
       });
       if (!started) setVoiceConversation(false);
@@ -1828,7 +1841,7 @@ const AIAgentModal: React.FC<Props> = ({
     }
     setVoiceConversation(true);
     await announceListening(speechLanguage);
-    const started = await startListening(speechLanguage, { skipStop: true });
+    const started = await startListening(listenLanguage, { skipStop: true });
     if (!started) setVoiceConversation(false);
   };
   const quickPrompts = [

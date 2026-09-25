@@ -21,6 +21,9 @@ const FINAL_FLUSH_MS = 320;
 const PING_INTERVAL_MS = 15000;
 const MIN_PCM_BYTES = 320;
 const MIN_AAC_BYTES = 64;
+// After "stop" the server re-transcribes the last sentence with Gemini
+// (~2s); wait this long for that corrected final before closing.
+const REFINED_FINAL_WAIT_MS = 4500;
 
 type ActiveTranscription = {
   token: object;
@@ -30,7 +33,9 @@ type ActiveTranscription = {
 let activeTranscription: ActiveTranscription | null = null;
 
 type TranscribeHandlers = {
-  onFinal?: (text: string) => void;
+  // refined: the text was checked by the server's Gemini pass and marks the
+  // end of a spoken sentence.
+  onFinal?: (text: string, meta?: { refined: boolean }) => void;
   onInterim?: (text: string) => void;
   // Agora owns the audio session during calls; do not reconfigure it.
   preserveAudioSession?: boolean;
@@ -327,6 +332,9 @@ export default function useComposerLiveTranscribe({
   const lastPartialRef = useRef('');
   const lastFinalRef = useRef('');
   const ownerTokenRef = useRef<object | null>(null);
+  // Server reports whether it re-checks each sentence with Gemini.
+  const refineRef = useRef(false);
+  const finalWaiterRef = useRef<(() => void) | null>(null);
 
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
@@ -448,6 +456,7 @@ export default function useComposerLiveTranscribe({
         return;
       }
       if (payload?.type === 'ready') {
+        refineRef.current = payload.refine === true;
         readyResolverRef.current?.();
         readyResolverRef.current = null;
         return;
@@ -457,6 +466,12 @@ export default function useComposerLiveTranscribe({
         setListening(false);
         return;
       }
+      if (payload?.type === 'final' && payload.done) {
+        const waiter = finalWaiterRef.current;
+        finalWaiterRef.current = null;
+        // Resolve after this final has been delivered below.
+        if (waiter) setTimeout(waiter, 0);
+      }
       if (ignoreResultsRef.current) return;
 
       const emitFinal = (text: string) => {
@@ -465,7 +480,7 @@ export default function useComposerLiveTranscribe({
         if (isSameSpeechText(finalText, lastFinalRef.current)) return;
         lastFinalRef.current = finalText;
         lastPartialRef.current = '';
-        onFinalRef.current?.(finalText);
+        onFinalRef.current?.(finalText, { refined: refineRef.current });
       };
 
       if (payload?.type === 'partial') {
@@ -480,6 +495,12 @@ export default function useComposerLiveTranscribe({
       if (payload?.type === 'final' || payload?.type === 'utterance-end') {
         if (payload?.type === 'final' && !isTerminalSpeechResult(payload))
           return;
+        // Gemini heard no speech, or the draft was a stale tail: the rough
+        // live text must not be used instead.
+        if (payload?.empty || (refineRef.current && !payload.text)) {
+          lastPartialRef.current = '';
+          return;
+        }
         emitFinal(payload.text || lastPartialRef.current);
       }
     },
@@ -503,6 +524,8 @@ export default function useComposerLiveTranscribe({
       const started = sendJson({
         type: 'start',
         language,
+        // Which language the Gemini pass should expect first in Auto mode.
+        hint: settings.language === 'bn' ? 'bn' : 'en',
         mimeType: pcm ? 'audio/l16' : 'audio/aac',
         encoding: pcm ? 'linear16' : '',
         sampleRate: TARGET_SAMPLE_RATE,
@@ -513,7 +536,7 @@ export default function useComposerLiveTranscribe({
       waitForReady();
       return true;
     },
-    [sendJson, waitForReady],
+    [sendJson, settings.language, waitForReady],
   );
 
   const sendRecordedUri = useCallback(
@@ -663,6 +686,16 @@ export default function useComposerLiveTranscribe({
         ownerTokenRef.current = null;
       }
       if (opts?.discard) ignoreResultsRef.current = true;
+      // Armed before the mic stops so a quick last final is not missed.
+      const lastFinal =
+        refineRef.current &&
+        !opts?.discard &&
+        wantListenRef.current &&
+        wsRef.current?.readyState === WebSocket.OPEN
+          ? new Promise<void>(resolve => {
+              finalWaiterRef.current = resolve;
+            })
+          : null;
       wantListenRef.current = false;
       const pendingLoop = loopPromiseRef.current;
       if (pendingLoop) {
@@ -693,9 +726,15 @@ export default function useComposerLiveTranscribe({
         }
       }
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        sendJson({ type: 'stop' });
-        await sleep(FINAL_FLUSH_MS);
+        if (lastFinal) {
+          sendJson({ type: 'stop' });
+          await Promise.race([lastFinal, sleep(REFINED_FINAL_WAIT_MS)]);
+        } else {
+          sendJson({ type: 'stop' });
+          await sleep(FINAL_FLUSH_MS);
+        }
       }
+      finalWaiterRef.current = null;
       closeSocket();
       setListening(false);
       if (!preserveAudioSession) {
@@ -726,6 +765,7 @@ export default function useComposerLiveTranscribe({
         await previous.stop({ discard: true });
       }
       ignoreResultsRef.current = false;
+      refineRef.current = false;
       lastPartialRef.current = '';
       lastFinalRef.current = '';
       const granted = await requestChatMicPermission();
@@ -757,6 +797,8 @@ export default function useComposerLiveTranscribe({
         ws.onclose = () => {
           wsRef.current = null;
           wantListenRef.current = false;
+          finalWaiterRef.current?.();
+          finalWaiterRef.current = null;
         };
 
         wantListenRef.current = true;
