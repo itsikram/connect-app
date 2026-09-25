@@ -18,7 +18,10 @@ import { CameraView, CameraType, FlashMode, useCameraPermissions } from 'expo-ca
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
+import { Canvas, ColorMatrix, Image as SkiaImage, LinearGradient, Rect, useImage, vec } from '@shopify/react-native-skia';
+import type { SkImage } from '@shopify/react-native-skia';
 import { savePhotoToMedia, saveVideoToMedia } from '../lib/mediaLibrary';
+import { applyFilterToPhoto, CAMERA_FILTERS, getCameraFilter, matrixForIntensity } from '../lib/cameraFilters';
 
 const MODE_OPTIONS = [
   { id: 'pano', label: 'Pano' },
@@ -28,18 +31,30 @@ const MODE_OPTIONS = [
   { id: 'portrait', label: 'Portrait' },
 ] as const;
 
-const FILTER_OPTIONS = [
-  { id: 'original', label: 'Original', overlay: '#1d1d21', opacity: 0.04 },
-  { id: 'vivid', label: 'Vivid', overlay: '#2f7bff', opacity: 0.26 },
-  { id: 'vividWarm', label: 'Vivid Warm', overlay: '#ffb14a', opacity: 0.28 },
-  { id: 'vividCool', label: 'Vivid Cool', overlay: '#61c1ff', opacity: 0.24 },
-  { id: 'dramatic', label: 'Dramatic', overlay: '#1b2538', opacity: 0.38 },
-  { id: 'dramaticWarm', label: 'Dramatic Warm', overlay: '#c67a2c', opacity: 0.32 },
-  { id: 'dramaticCool', label: 'Dramatic Cool', overlay: '#3d667e', opacity: 0.3 },
-  { id: 'mono', label: 'Mono', overlay: '#dfe4eb', opacity: 0.32 },
-  { id: 'silvertone', label: 'Silvertone', overlay: '#dfe3eb', opacity: 0.28 },
-  { id: 'noir', label: 'Noir', overlay: '#080b10', opacity: 0.72 },
-] as const;
+const THUMB_SIZE = 62;
+// Colorful sample shown through each filter until a photo has been taken.
+const SWATCH_COLORS = ['#ff9f43', '#ff5e7e', '#7c5cff', '#2ec4ff', '#3ddc84'];
+
+const FilterThumb = ({ matrix, image }: { matrix: number[]; image: SkImage | null }) => {
+  if (Platform.OS === 'web') {
+    return <View style={[StyleSheet.absoluteFill, { backgroundColor: '#3a3a3f' }]} />;
+  }
+
+  return (
+    <Canvas style={StyleSheet.absoluteFill}>
+      {image ? (
+        <SkiaImage image={image} x={0} y={0} width={THUMB_SIZE} height={THUMB_SIZE} fit="cover">
+          <ColorMatrix matrix={matrix} />
+        </SkiaImage>
+      ) : (
+        <Rect x={0} y={0} width={THUMB_SIZE} height={THUMB_SIZE}>
+          <LinearGradient start={vec(0, 0)} end={vec(THUMB_SIZE, THUMB_SIZE)} colors={SWATCH_COLORS} />
+          <ColorMatrix matrix={matrix} />
+        </Rect>
+      )}
+    </Canvas>
+  );
+};
 
 const formatTime = (seconds: number) => {
   const minutes = Math.floor(seconds / 60);
@@ -66,6 +81,8 @@ const CameraScreen = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [lastThumb, setLastThumb] = useState<string | null>(null);
+  const [lastRawPhoto, setLastRawPhoto] = useState<string | null>(null);
+  const thumbImage = useImage(Platform.OS === 'web' ? null : lastRawPhoto);
   const [zoom, setZoom] = useState<1 | 2>(1);
   const [showFilterLabel, setShowFilterLabel] = useState(false);
   const flashOpacity = useRef(new Animated.Value(0)).current;
@@ -165,13 +182,21 @@ const CameraScreen = () => {
       }
 
       triggerFlashAnimation();
-      const photo = await camera.current.takePictureAsync({ quality: 0.8 });
+      const photo = await camera.current.takePictureAsync({ quality: 0.92 });
       if (!photo?.uri) {
         throw new Error('No photo created');
       }
 
-      const saved = await savePhotoToMedia(photo.uri);
+      let finalUri = photo.uri;
+      try {
+        finalUri = await applyFilterToPhoto(photo.uri, filterId, intensity);
+      } catch (filterError) {
+        console.warn('Failed to apply filter, saving original:', filterError);
+      }
+
+      const saved = await savePhotoToMedia(finalUri);
       setLastThumb(saved);
+      setLastRawPhoto(photo.uri);
       setShowFilterLabel(true);
       Alert.alert('Saved', 'Photo saved to gallery');
     } catch (error) {
@@ -181,7 +206,7 @@ const CameraScreen = () => {
       setCountdown(null);
       setIsCapturing(false);
     }
-  }, [delay, isCapturing, timer, triggerFlashAnimation]);
+  }, [delay, filterId, intensity, isCapturing, timer, triggerFlashAnimation]);
 
   const startRecording = useCallback(async () => {
     if (!camera.current || isRecording) return;
@@ -223,16 +248,14 @@ const CameraScreen = () => {
     takePhoto();
   }, [captureMode, isRecording, startRecording, stopRecording, takePhoto]);
 
-  const currentFilter = FILTER_OPTIONS.find((item) => item.id === filterId) ?? FILTER_OPTIONS[0];
+  const currentFilter = getCameraFilter(filterId);
   const activeZoom = zoom === 2 ? 0.42 : 0;
-  const filterPreviewOpacity =
-    filterId === 'original'
-      ? Math.min(0.14, 0.04 + (intensity / 100) * 0.1)
-      : Math.min(0.86, Math.max(currentFilter.opacity, 0.12 + (intensity / 100) * 0.72));
-  const filterOverlayStyle = {
-    backgroundColor: currentFilter.overlay,
-    opacity: filterPreviewOpacity,
-  };
+  // The live preview is a native view, so filters are approximated with blend-mode layers.
+  // Photos get the exact color matrix baked in on capture. Video is recorded unfiltered,
+  // so the approximation is hidden there to keep the preview honest.
+  const previewLayers = captureMode === 'video' ? [] : currentFilter.preview;
+  const previewStrength = intensity / 100;
+  const supportsBlend = Platform.OS === 'ios';
 
   if (hasPermission === null) {
     return (
@@ -290,7 +313,18 @@ const CameraScreen = () => {
           style={[StyleSheet.absoluteFill, { backgroundColor: '#fff', opacity: flashOpacity }]}
         />
 
-        <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.filterOverlay, filterOverlayStyle]} />
+        {previewLayers.map((layer, index) => (
+          <View
+            key={`${currentFilter.id}-${index}`}
+            pointerEvents="none"
+            style={[
+              StyleSheet.absoluteFill,
+              supportsBlend
+                ? { backgroundColor: layer.color, opacity: layer.opacity * previewStrength, mixBlendMode: layer.blend }
+                : { backgroundColor: layer.color, opacity: Math.min(0.3, layer.opacity * 0.3) * previewStrength },
+            ]}
+          />
+        ))}
 
         {isRecording && (
           <View style={styles.recPill}>
@@ -366,7 +400,7 @@ const CameraScreen = () => {
                 showsHorizontalScrollIndicator={false}
                 contentContainerStyle={styles.filterStrip}
               >
-                {FILTER_OPTIONS.map((item) => (
+                {CAMERA_FILTERS.map((item) => (
                   <TouchableOpacity
                     key={item.id}
                     style={[styles.filterItem, filterId === item.id && styles.filterItemActive]}
@@ -375,13 +409,12 @@ const CameraScreen = () => {
                       setShowFilterLabel(true);
                     }}
                   >
-                    <View
-                      style={[
-                        styles.filterThumb,
-                        { backgroundColor: item.overlay },
-                        filterId === item.id && styles.filterThumbActive,
-                      ]}
-                    />
+                    <View style={[styles.filterThumb, filterId === item.id && styles.filterThumbActive]}>
+                      <FilterThumb
+                        matrix={filterId === item.id ? matrixForIntensity(item.matrix, intensity) : item.matrix}
+                        image={thumbImage}
+                      />
+                    </View>
                     <Text style={[styles.filterLabelTextMini, filterId === item.id && styles.filterLabelActive]}>
                       {item.label}
                     </Text>
@@ -631,9 +664,9 @@ const styles = StyleSheet.create({
     opacity: 1,
   },
   filterThumb: {
-    width: 62,
-    height: 62,
-    borderRadius: 31,
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
+    borderRadius: THUMB_SIZE / 2,
     backgroundColor: '#161618',
     borderWidth: 2,
     borderColor: 'transparent',
@@ -841,10 +874,6 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(0,0,0,0.55)',
     textShadowOffset: { width: 0, height: 2 },
     textShadowRadius: 18,
-  },
-  filterOverlay: {
-    backgroundColor: '#000000',
-    opacity: 0,
   },
 });
 

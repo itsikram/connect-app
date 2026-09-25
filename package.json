@@ -30,6 +30,7 @@
     "@react-navigation/native": "6.1.18",
     "@react-navigation/native-stack": "6.11.0",
     "@reduxjs/toolkit": "2.8.2",
+    "@shopify/react-native-skia": "^2.6.2",
     "axios": "1.10.0",
     "babel-preset-expo": "~57.0.0",
     "chess.js": "1.4.0",
