@@ -22,7 +22,7 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
+const liveServerUrl = 'https://connect-server-hq4q.onrender.com';
 
 const isExpoTunnelHost = (host: string): boolean =>
   host.endsWith('.exp.direct') ||
@@ -34,7 +34,7 @@ const isExpoTunnelHost = (host: string): boolean =>
 // Ollama. Set EXPO_PUBLIC_LOCAL_API_URL when the computer's LAN address differs.
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  const liveServerUrl = 'https://connect-server-7h7d.onrender.com';
+  const liveServerUrl = 'https://connect-server-hq4q.onrender.com';
 
   return liveServerUrl;
 
