@@ -92,6 +92,7 @@ class LegacySound {
 
   async playAsync() { this.player.play(); return this.getStatusAsync(); }
   async pauseAsync() { this.player.pause(); return this.getStatusAsync(); }
+  async replayAsync() { await this.player.seekTo(0); this.player.play(); return this.getStatusAsync(); }
   async stopAsync() { this.player.pause(); this.player.currentTime = 0; return this.getStatusAsync(); }
   async unloadAsync() { this.player.remove(); }
   async setPositionAsync(positionMillis: number) { await this.player.seekTo(positionMillis / 1000); return this.getStatusAsync(); }

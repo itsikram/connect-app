@@ -21,8 +21,6 @@ const MenuIconComponent: React.FC<MenuIconProps> = ({
       height={size} 
       viewBox="0 0 24 24" 
       fill="none"
-      // Optimize for scaling - better than crispEdges for animations
-      shapeRendering="geometricPrecision"
       // Ensure proper scaling
       preserveAspectRatio="xMidYMid meet"
     >

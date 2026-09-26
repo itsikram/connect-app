@@ -12,6 +12,7 @@ import {
   Platform,
   Alert,
   SafeAreaView,
+  ImageStyle,
 } from 'react-native';
 import Slider from '@react-native-community/slider';
 import { CameraView, CameraType, FlashMode, useCameraPermissions } from 'expo-camera';
@@ -428,7 +429,7 @@ const CameraScreen = () => {
           <View style={styles.captureRow}>
             <TouchableOpacity style={styles.galleryButton} onPress={() => {}}>
               {lastThumb ? (
-                <Image source={{ uri: lastThumb }} style={styles.galleryThumbImage} />
+                <Image source={{ uri: lastThumb }} style={styles.galleryThumbImage as ImageStyle} resizeMode="cover" />
               ) : (
                 <IconIonic name="images-outline" size={26} color="#fff" />
               )}
@@ -654,7 +655,7 @@ const styles = StyleSheet.create({
   filterLabelTextMini: {
     color: 'rgba(255,255,255,0.7)',
     fontSize: 10,
-    fontWeight: '650',
+    fontWeight: '600',
     letterSpacing: 0.1,
     maxWidth: 74,
   },
@@ -836,7 +837,7 @@ const styles = StyleSheet.create({
   filterLabelText: {
     color: '#fff',
     fontSize: 30,
-    fontWeight: '590',
+    fontWeight: '600',
     letterSpacing: 0.4,
     textShadowColor: 'rgba(0,0,0,0.55)',
     textShadowOffset: { width: 0, height: 2 },

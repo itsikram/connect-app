@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useRef } from 'react';
 import {
   View,
   Text,
@@ -45,6 +45,7 @@ const LoginScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [faceLoginMode, setFaceLoginMode] = useState(false);
+  const passwordRef = useRef<TextInput>(null);
   const { isDarkMode, colors: themeColors } = useTheme();
   const { login, faceLogin, googleSignIn, isLoading } = useContext(AuthContext);
 
@@ -161,12 +162,19 @@ const LoginScreen = () => {
                   { backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)', borderColor: themeColors.border.secondary },
                   error.toLowerCase().includes('email') && { borderColor: themeColors.status.error },
                 ]}>
-                  <Icon name="mail-outline" size={29} color={themeColors.primary} />
+                  <Icon name="mail-outline" size={22} color={themeColors.primary} />
                   <TextInput
                     value={email}
                     onChangeText={setEmail}
                     autoCapitalize="none"
                     keyboardType="email-address"
+                    autoComplete="email"
+                    textContentType="emailAddress"
+                    autoCorrect={false}
+                    returnKeyType="next"
+                    onSubmitEditing={() => passwordRef.current?.focus()}
+                    submitBehavior="submit"
+                    accessibilityLabel="Email address"
                     placeholder="Email address"
                     placeholderTextColor={themeColors.text.tertiary}
                     style={[styles.nativeInput, { color: themeColors.text.primary }]}
@@ -177,17 +185,23 @@ const LoginScreen = () => {
                   { backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)', borderColor: themeColors.border.secondary },
                   error.toLowerCase().includes('password') && { borderColor: themeColors.status.error },
                 ]}>
-                  <Icon name="lock-closed-outline" size={29} color={themeColors.primary} />
+                  <Icon name="lock-closed-outline" size={22} color={themeColors.primary} />
                   <TextInput
                     value={password}
                     onChangeText={setPassword}
+                    ref={passwordRef}
                     secureTextEntry={!showPassword}
+                    autoComplete="current-password"
+                    textContentType="password"
+                    returnKeyType="go"
+                    onSubmitEditing={handleLogin}
+                    accessibilityLabel="Password"
                     placeholder="Password"
                     placeholderTextColor={themeColors.text.tertiary}
                     style={[styles.nativeInput, { color: themeColors.text.primary }]}
                   />
-                  <TouchableOpacity onPress={() => setShowPassword(value => !value)} accessibilityLabel="Toggle password visibility">
-                    <Icon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={30} color={themeColors.text.secondary} />
+                  <TouchableOpacity onPress={() => setShowPassword(value => !value)} accessibilityLabel="Toggle password visibility" hitSlop={10}>
+                    <Icon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={themeColors.text.secondary} />
                   </TouchableOpacity>
                 </View>
               </>
@@ -222,7 +236,7 @@ const LoginScreen = () => {
               activeOpacity={0.85}
               style={[styles.faceButton, { borderColor: themeColors.primary, backgroundColor: isDarkMode ? 'rgba(10,10,11,0.55)' : 'rgba(255,255,255,0.5)' }]}
             >
-              <Icon name="scan-outline" size={32} color={themeColors.primary} />
+              <Icon name="scan-outline" size={24} color={themeColors.primary} />
               <Text style={[styles.faceButtonText, { color: themeColors.text.primary }]}>{faceLoginMode ? 'Use password login' : 'Log in with Face'}</Text>
             </TouchableOpacity>
             {faceLoginMode ? (
@@ -285,7 +299,7 @@ const styles = StyleSheet.create({
   content: {
     width: '100%',
     alignItems: 'center',
-    maxWidth: 650,
+    maxWidth: 440,
     alignSelf: 'center',
   },
   brandTitle: {
@@ -306,10 +320,10 @@ const styles = StyleSheet.create({
   },
   input: {
     width: '100%',
-    height: 60,
-    borderWidth: 2,
+    height: 56,
+    borderWidth: 1.5,
     borderColor: '#BCE4FF',
-    borderRadius: 18,
+    borderRadius: 16,
     backgroundColor: 'rgba(255,255,255,0.42)',
     flexDirection: 'row',
     alignItems: 'center',
@@ -322,14 +336,14 @@ const styles = StyleSheet.create({
   nativeInput: {
     flex: 1,
     color: '#1B315C',
-    fontSize: 17,
-    marginLeft: 14,
+    fontSize: 16,
+    marginLeft: 12,
     paddingVertical: 0,
   },
   loginButton: {
     width: '100%',
-    height: 60,
-    borderRadius: 30,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: '#08B9EA',
     justifyContent: 'center',
     alignItems: 'center',
@@ -350,21 +364,22 @@ const styles = StyleSheet.create({
   },
   loginButtonText: {
     color: '#fff',
-    fontSize: 20,
+    fontSize: 17,
     fontWeight: '700',
+    letterSpacing: 0.2,
   },
   arrow: {
     color: '#fff',
-    fontSize: 30,
-    lineHeight: 30,
-    marginLeft: 14,
+    fontSize: 24,
+    lineHeight: 26,
+    marginLeft: 10,
     fontWeight: '300',
   },
   faceButton: {
     width: '100%',
-    height: 60,
-    borderRadius: 30,
-    borderWidth: 2,
+    height: 56,
+    borderRadius: 28,
+    borderWidth: 1.5,
     borderColor: '#08B9EA',
     backgroundColor: 'rgba(255,255,255,0.5)',
     flexDirection: 'row',
@@ -374,9 +389,9 @@ const styles = StyleSheet.create({
   },
   faceButtonText: {
     color: '#172B55',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
-    marginLeft: 12,
+    marginLeft: 10,
   },
   loadingContent: {
     flexDirection: 'row',
@@ -387,8 +402,8 @@ const styles = StyleSheet.create({
     color: '#C62828',
     fontSize: 13,
     textAlign: 'center',
-    marginTop: -12,
-    marginBottom: 8,
+    marginTop: -4,
+    marginBottom: 10,
   },
   divider: {
     flexDirection: 'row',
@@ -398,20 +413,21 @@ const styles = StyleSheet.create({
   },
   dividerLine: {
     flex: 1,
-    height: 2,
+    height: StyleSheet.hairlineWidth * 2,
     backgroundColor: '#D9E2EF',
   },
   dividerText: {
     color: '#536B98',
     marginHorizontal: 18,
-    fontSize: 17,
-    fontWeight: '500',
+    fontSize: 13,
+    fontWeight: '600',
+    letterSpacing: 1,
   },
   googleButton: {
     width: '100%',
-    height: 60,
-    borderRadius: 18,
-    borderWidth: 2,
+    height: 56,
+    borderRadius: 16,
+    borderWidth: 1.5,
     borderColor: '#D8E3EF',
     backgroundColor: 'rgba(255,255,255,0.56)',
     flexDirection: 'row',
@@ -420,13 +436,13 @@ const styles = StyleSheet.create({
     marginBottom: 22,
   },
   googleLogo: {
-    width: 28,
-    height: 28,
-    marginRight: 16,
+    width: 22,
+    height: 22,
+    marginRight: 12,
   },
   googleButtonText: {
     color: '#172B55',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
   },
   link: {

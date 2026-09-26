@@ -3,6 +3,7 @@ export * from './colorUtils';
 export * from './types';
 export * from './helpers';
 export * from './gameLogic';
+export { isHomeColumnSteps } from './gameLogic';
 export { DiceSVG } from './DiceSVG';
 export { GameBoard } from './GameBoard';
 export { GameHeader } from './GameHeader';

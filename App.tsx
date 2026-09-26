@@ -67,6 +67,7 @@ import FitnessProgress from './src/screens/FitnessProgress';
 import FitnessReminders from './src/screens/FitnessReminders';
 import FitnessCoach from './src/screens/FitnessCoach';
 import FitnessRecommendations from './src/screens/FitnessRecommendations';
+import FitnessWorkout from './src/screens/FitnessWorkout';
 import Settings from './src/screens/Settings';
 import Tasks from './src/screens/Tasks';
 import Notes from './src/screens/Notes';
@@ -358,6 +359,7 @@ function MenuStack() {
         component={FitnessConfirmation}
       />
       <Stack.Screen name="FitnessWeight" component={FitnessWeight} />
+      <Stack.Screen name="FitnessWorkout" component={FitnessWorkout} />
       <Stack.Screen name="FitnessProgress" component={FitnessProgress} />
       <Stack.Screen name="FitnessReminders" component={FitnessReminders} />
       <Stack.Screen name="FitnessCoach" component={FitnessCoach} />

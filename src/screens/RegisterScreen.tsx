@@ -346,7 +346,7 @@ const RegisterScreen = () => {
                 <View style={styles.row}>
                   {(['firstName', 'surname'] as const).map((field) => (
                     <View key={field} style={[fieldStyle(field), styles.halfInput]}>
-                      <Icon name="person-outline" size={24} color={themeColors.primary} />
+                      <Icon name="person-outline" size={22} color={themeColors.primary} />
                       <TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} autoCapitalize="words" placeholder={field === 'firstName' ? 'First name' : 'Surname'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} />
                     </View>
                   ))}
@@ -357,7 +357,7 @@ const RegisterScreen = () => {
             )}
             {tab === 1 && (
               <View style={styles.tabContent}>
-                <View style={fieldStyle('email')}><Icon name="mail-outline" size={24} color={themeColors.primary} /><TextInput value={formData.email} onChangeText={(value) => handleFieldChange('email', value)} autoCapitalize="none" keyboardType="email-address" placeholder="Email address" placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /></View>
+                <View style={fieldStyle('email')}><Icon name="mail-outline" size={22} color={themeColors.primary} /><TextInput value={formData.email} onChangeText={(value) => handleFieldChange('email', value)} autoCapitalize="none" keyboardType="email-address" autoComplete="email" textContentType="emailAddress" autoCorrect={false} accessibilityLabel="Email address" placeholder="Email address" placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /></View>
                 <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.email || ' '}</Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
@@ -370,7 +370,7 @@ const RegisterScreen = () => {
                     },
                   ]}
                 >
-                  <Icon name="calendar-outline" size={24} color={themeColors.primary} />
+                  <Icon name="calendar-outline" size={22} color={themeColors.primary} />
                   <Text
                     style={[
                       styles.dateText,
@@ -400,7 +400,7 @@ const RegisterScreen = () => {
                 )}
                 <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.DOB || ' '}</Text>
                 <View style={[styles.genderRow, fieldErrors.gender && { borderColor: themeColors.status.error }]}>
-                  <Icon name="male-female-outline" size={24} color={themeColors.primary} />
+                  <Icon name="male-female-outline" size={22} color={themeColors.primary} />
                   {(['male', 'female', 'other'] as const).map((value) => <TouchableOpacity key={value} onPress={() => handleFieldChange('gender', value)} style={[styles.genderOption, formData.gender === value && { backgroundColor: `${themeColors.primary}22` }]}><Text style={{ color: themeColors.text.primary }}>{value[0].toUpperCase() + value.slice(1)}</Text></TouchableOpacity>)}
                 </View>
                 <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.gender || ' '}</Text>
@@ -423,7 +423,7 @@ const RegisterScreen = () => {
               <View style={styles.tabContent}>
                 {(['password', 'confirmPassword'] as const).map((field) => (
                   <React.Fragment key={field}>
-                    <View style={fieldStyle(field)}><Icon name="lock-closed-outline" size={24} color={themeColors.primary} /><TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} secureTextEntry={field === 'password' ? !showPassword : !showConfirmPassword} placeholder={field === 'password' ? 'Password' : 'Confirm password'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /><TouchableOpacity onPress={() => field === 'password' ? setShowPassword(value => !value) : setShowConfirmPassword(value => !value)}><Icon name={(field === 'password' ? showPassword : showConfirmPassword) ? 'eye-off-outline' : 'eye-outline'} size={26} color={themeColors.text.secondary} /></TouchableOpacity></View>
+                    <View style={fieldStyle(field)}><Icon name="lock-closed-outline" size={22} color={themeColors.primary} /><TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} secureTextEntry={field === 'password' ? !showPassword : !showConfirmPassword} autoComplete="new-password" textContentType="newPassword" accessibilityLabel={field === 'password' ? 'Password' : 'Confirm password'} placeholder={field === 'password' ? 'Password' : 'Confirm password'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /><TouchableOpacity hitSlop={10} accessibilityLabel="Toggle password visibility" onPress={() => field === 'password' ? setShowPassword(value => !value) : setShowConfirmPassword(value => !value)}><Icon name={(field === 'password' ? showPassword : showConfirmPassword) ? 'eye-off-outline' : 'eye-outline'} size={22} color={themeColors.text.secondary} /></TouchableOpacity></View>
                     <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors[field] || ' '}</Text>
                   </React.Fragment>
                 ))}
@@ -461,7 +461,7 @@ const styles = StyleSheet.create({
   content: {
     width: '100%',
     alignItems: 'center',
-    maxWidth: 650,
+    maxWidth: 440,
     alignSelf: 'center',
   },
   title: {

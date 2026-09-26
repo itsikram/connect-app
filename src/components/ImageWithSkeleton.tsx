@@ -20,7 +20,7 @@ const ImageWithSkeleton = ({ style, onLoad, onError, ...props }: ImageWithSkelet
 
   return (
     <View style={[styles.frame, style]}>
-      {state === 'loading' && <SkeletonBlock width="100%" height={1} style={StyleSheet.absoluteFillObject} />}
+      {state === 'loading' && <SkeletonBlock width="100%" height={1} style={StyleSheet.absoluteFill} />}
       {state === 'error' && (
         <TouchableOpacity
           style={styles.error}
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
   frame: { overflow: 'hidden', position: 'relative' },
   hidden: { opacity: 0 },
   error: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 16,

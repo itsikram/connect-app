@@ -600,13 +600,9 @@ class PushBackgroundService {
     if (this.isRunning) return;
     try {
       // Background services removed for Expo compatibility
+      this.setupAppStateListener();
+      this.isRunning = true;
       console.log('Background server running');
-      
-      // Initialize socket connection
-      await this.initializeSocketConnection();
-      
-      // Start periodic status checks
-      this.startPeriodicStatusCheck();
     } catch (e) {
       // If already running or failed to start, ignore
       this.isRunning = true;
