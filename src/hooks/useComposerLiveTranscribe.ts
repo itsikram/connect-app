@@ -37,6 +37,8 @@ type TranscribeHandlers = {
   // end of a spoken sentence.
   onFinal?: (text: string, meta?: { refined: boolean }) => void;
   onInterim?: (text: string) => void;
+  /** true while the server re-checks an utterance with Gemini, false after. */
+  onRefining?: (active: boolean) => void;
   // Agora owns the audio session during calls; do not reconfigure it.
   preserveAudioSession?: boolean;
   captureEnabled?: boolean;
@@ -312,6 +314,7 @@ const readFileSlice = async (uri: string, position: number, length: number) => {
 export default function useComposerLiveTranscribe({
   onFinal,
   onInterim,
+  onRefining,
   preserveAudioSession = false,
   captureEnabled = true,
 }: TranscribeHandlers = {}) {
@@ -338,6 +341,8 @@ export default function useComposerLiveTranscribe({
 
   onFinalRef.current = onFinal;
   onInterimRef.current = onInterim;
+  const onRefiningRef = useRef(onRefining);
+  onRefiningRef.current = onRefining;
 
   const clearPing = useCallback(() => {
     if (pingTimerRef.current) {
@@ -466,6 +471,11 @@ export default function useComposerLiveTranscribe({
         setListening(false);
         return;
       }
+      if (payload?.type === 'status' && payload.message === 'refining') {
+        if (!ignoreResultsRef.current) onRefiningRef.current?.(true);
+        return;
+      }
+      if (payload?.type === 'final') onRefiningRef.current?.(false);
       if (payload?.type === 'final' && payload.done) {
         const waiter = finalWaiterRef.current;
         finalWaiterRef.current = null;

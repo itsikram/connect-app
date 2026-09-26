@@ -28,6 +28,27 @@ if (Notifications) {
         shouldShowList: false,
       };
     }
+    // Message from the person whose chat is open: it is already on screen,
+    // so don't also show a banner / play a sound.
+    if (inForeground) {
+      try {
+        const { getActiveChat, isChatNotification } = require('./src/lib/activeChat');
+        const activeChat = getActiveChat();
+        if (
+          activeChat &&
+          isChatNotification(data) &&
+          String(data?.senderId || '') === activeChat
+        ) {
+          return {
+            shouldShowAlert: false,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+            shouldShowBanner: false,
+            shouldShowList: false,
+          };
+        }
+      } catch (_) {}
+    }
     const playOsSound = isCall && (Platform.OS === 'ios' || AppState.currentState !== 'active');
     return {
       shouldShowAlert: true,

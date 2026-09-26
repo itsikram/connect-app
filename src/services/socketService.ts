@@ -18,6 +18,43 @@ class SocketService {
     });
   };
 
+  // Send everything queued while offline, in order.
+  private flushPendingEmits = (): void => {
+    if (!this.socket || !this.socket.connected || this.pendingEmits.length === 0) return;
+    const toFlush = [...this.pendingEmits];
+    this.pendingEmits = [];
+    toFlush.forEach(({ event, data, ack }) => {
+      try {
+        if (typeof ack === 'function') {
+          this.socket.emit(event, data, ack);
+        } else {
+          this.socket.emit(event, data);
+        }
+      } catch (e) {
+        console.warn('Failed to emit queued event:', event, e);
+      }
+    });
+  };
+
+  private handleSocketConnect = (): void => {
+    this.attachRegisteredListeners();
+    this.flushPendingEmits();
+  };
+
+  // Take ownership of the underlying socket.io client. Called on success AND
+  // on an initial connect timeout: socket.io keeps retrying in the background,
+  // and previously the service never picked that socket up, so listeners were
+  // never attached and queued messages were never sent until an app restart.
+  private adoptSocket = (s: any): void => {
+    if (!s) return;
+    if (this.socket !== s) {
+      this.socket = s;
+    }
+    this.attachRegisteredListeners();
+    this.socket.off('connect', this.handleSocketConnect);
+    this.socket.on('connect', this.handleSocketConnect);
+  };
+
     async connect(profileId: string): Promise<void> {
     if (this.socket && this.socket.connected) {
       if (__DEV__) {
@@ -39,35 +76,21 @@ class SocketService {
       if (__DEV__) {
         console.log('🔌 Starting socket connection with profileId:', profileId);
       }
-      this.socket = await initializeSocket(profileId);
+      const connectedSocket = await initializeSocket(profileId);
       if (__DEV__) {
         console.log('✅ Socket connected successfully in socketService');
       }
 
-      this.attachRegisteredListeners();
-      if (this.socket) {
-        this.socket.off('connect', this.attachRegisteredListeners);
-        this.socket.on('connect', this.attachRegisteredListeners);
-      }
-
+      this.adoptSocket(connectedSocket);
       // Then flush any queued emits
-      if (this.pendingEmits.length > 0) {
-        this.pendingEmits.forEach(({ event, data, ack }) => {
-          try {
-            if (typeof ack === 'function') {
-              this.socket.emit(event, data, ack);
-            } else {
-              this.socket.emit(event, data);
-            }
-          } catch (e) {
-            console.warn('Failed to emit pending event:', event, e);
-          }
-        });
-        this.pendingEmits = [];
-      }
+      this.flushPendingEmits();
     } catch (error) {
       // Always log connection failures as they're important
       console.error('Failed to connect socket:', error);
+      // The socket.io client keeps reconnecting on its own; adopt it so the
+      // app recovers (listeners + queued emits) as soon as it connects.
+      const pendingSocket = getSocket();
+      if (pendingSocket) this.adoptSocket(pendingSocket);
       throw error;
     } finally {
       this.isConnecting = false;
@@ -76,6 +99,7 @@ class SocketService {
 
   disconnect(): void {
     if (this.socket) {
+      this.socket.off('connect', this.handleSocketConnect);
       disconnectSocket();
       this.socket = null;
       console.log('Socket disconnected');
@@ -114,24 +138,8 @@ class SocketService {
         queuedEvents: this.pendingEmits.length + 1,
       });
     }
+    // Flushed by handleSocketConnect on the next (re)connect.
     this.pendingEmits.push({ event, data, ack });
-    if (this.socket) {
-      this.socket.once('connect', () => {
-        const toFlush = [...this.pendingEmits];
-        this.pendingEmits = [];
-        toFlush.forEach(({ event: ev, data: payload, ack: cb }) => {
-          try {
-            if (typeof cb === 'function') {
-              this.socket.emit(ev, payload, cb);
-            } else {
-              this.socket.emit(ev, payload);
-            }
-          } catch (e) {
-            console.warn('Failed to emit queued event:', ev, e);
-          }
-        });
-      });
-    }
   }
 
   on(event: string, callback: (...args: any[]) => void): void {

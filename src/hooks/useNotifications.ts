@@ -11,12 +11,17 @@ import { configureIncomingCallChannels } from '../lib/incomingCallAlerts';
 import { handleIncomingCallNotificationAction, expoActionId, notifeeActionId } from '../lib/callNotificationActions';
 import { consumePendingIncomingCall, dispatchPendingIncomingCall } from '../lib/pendingIncomingCall';
 import { isAndroidExpoGo, isExpoGo } from '../lib/expoGo';
+import { chatParamsFromNotification, isChatNotification } from '../lib/activeChat';
 
 interface UseNotificationsProps {
   navigate: (screen: string, params?: any) => void;
 }
 
 const STALE_NOTIFICATION_MS = 90 * 1000;
+// A tap that cold-started the app is replayed via getLastNotificationResponseAsync;
+// ignore ones older than this so a later launch doesn't reopen an old chat.
+const STALE_CHAT_TAP_MS = 10 * 60 * 1000;
+let lastHandledChatTapId: string | null = null;
 
 function notificationTimestamp(notification: Notifications.Notification | undefined): number {
   const raw = (notification as any)?.date;
@@ -36,6 +41,23 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
   const initializationPromiseRef = useRef<Promise<void> | null>(null);
 
   const memoizedNavigate = useCallback(navigate, []);
+
+  // Open the conversation a chat / missed-call notification belongs to.
+  // Previously this navigated with only `friendId`, but the chat screen reads
+  // `route.params.connect`, so the tap opened an empty chat.
+  const openChatFromNotification = useCallback(
+    (response: Notifications.NotificationResponse | null | undefined) => {
+      const data: any = response?.notification?.request?.content?.data || {};
+      if (!isChatNotification(data) && data.type !== 'missed_call') return;
+      const tapId = response?.notification?.request?.identifier || null;
+      if (tapId && tapId === lastHandledChatTapId) return;
+      const params = chatParamsFromNotification(data);
+      if (!params) return;
+      lastHandledChatTapId = tapId;
+      memoizedNavigate('Message', { screen: 'SingleMessage', params });
+    },
+    [memoizedNavigate],
+  );
 
   const cancelIncomingCallNotifications = useCallback(async () => {
     try {
@@ -74,15 +96,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
             handleIncomingCallNotificationAction(data, expoActionId(response)).catch(() => {});
             return;
           }
-          if ((data as any).type === 'new_message' || (data as any).type === 'chat') {
-            memoizedNavigate('Message', {
-              screen: 'SingleMessage',
-              params: {
-                friendId: (data as any).friendId || (data as any).senderId,
-                connectName: (data as any).connectName || (data as any).senderName,
-              },
-            });
-          }
+          openChatFromNotification(response);
         });
 
         const receivedSub = Notifications.addNotificationReceivedListener((notification) => {
@@ -148,6 +162,14 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
           if (receivedAt && Date.now() - receivedAt < STALE_NOTIFICATION_MS) {
             await handleIncomingCallNotificationAction(lastData, lastResponse.actionIdentifier);
           }
+        } else if (lastResponse) {
+          // Chat / missed-call tap that launched the app from a killed state:
+          // the response listener above was not registered yet, so it was lost
+          // and the app opened on the home screen.
+          const receivedAt = notificationTimestamp(lastResponse.notification);
+          if (!receivedAt || Date.now() - receivedAt < STALE_CHAT_TAP_MS) {
+            openChatFromNotification(lastResponse);
+          }
         }
 
         isInitializedRef.current = true;
@@ -199,7 +221,7 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       });
       unsubscribeRefs.current = [];
     };
-  }, [memoizedNavigate]);
+  }, [memoizedNavigate, openChatFromNotification]);
 
   return {
     cancelIncomingCallNotifications,

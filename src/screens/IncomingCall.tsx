@@ -203,7 +203,11 @@ const IncomingCall: React.FC = () => {
       }
 
       // Check if call was already ended by listening to call end events
-      const handleCallEnd = () => {
+      // Ignore events for a different call than the one ringing here.
+      const isThisCall = (data: any) =>
+        !data?.channelName || !channelName || String(data.channelName) === String(channelName);
+      const handleCallEnd = (data: any) => {
+        if (!isThisCall(data)) return;
         setPlayRingtone(false);
         // If call was accepted, don't handle here (let VideoCall/AudioCall handle it)
         if (callAccepted) {
@@ -239,6 +243,7 @@ const IncomingCall: React.FC = () => {
         }, 300); // 300ms debounce
       };
       const handleCallCancel = (data: any) => {
+        if (!isThisCall(data)) return;
         setPlayRingtone(false);
 
         // If call was accepted, don't handle here (let VideoCall/AudioCall handle it)
@@ -276,6 +281,7 @@ const IncomingCall: React.FC = () => {
       };
 
       const handleReject = (data: any) => {
+        if (!isThisCall(data)) return;
         console.log('IncomingCall: rejected', playRingtone, 'callAccepted:', callAccepted);
         setPlayRingtone(false);
 

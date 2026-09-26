@@ -274,8 +274,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (isAudio === false) return;
       applyIncomingAudioCall({ from, channelName, callerName: name, callerProfilePic: pic });
     };
+    // Ignore events that belong to a different call than the one on screen.
+    const isForActiveCall = (channelName?: string) =>
+      !channelName ||
+      !currentChannelRef.current ||
+      String(channelName) === String(currentChannelRef.current);
     const onCallAccepted = ({ channelName, isAudio, callerName: acceptedName, callerProfilePic: acceptedPic }: any) => {
       if (!isAudio) return;
+      if (!isForActiveCall(channelName) || !currentChannelRef.current) return;
       if (!receivingCallRef.current && incomingCallRef.current?.from === myId) {
         stopIncomingCallAlert();
         setOutgoingCallStatus('');
@@ -284,9 +290,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         startCallRef.current(channelName);
       }
     };
-    const onEnded = () => { stopIncomingCallAlert(); cleanupAudioCall(); };
-    const onCancelled = () => { stopIncomingCallAlert(); cleanupAudioCall(); };
-    const onRejected = () => {
+    const onEnded = ({ channelName }: any = {}) => {
+      if (!isForActiveCall(channelName)) return;
+      stopIncomingCallAlert();
+      cleanupAudioCall();
+    };
+    const onCancelled = ({ channelName }: any = {}) => {
+      if (!isForActiveCall(channelName)) return;
+      stopIncomingCallAlert();
+      cleanupAudioCall();
+    };
+    const onRejected = ({ channelName }: any = {}) => {
+      if (!isForActiveCall(channelName)) return;
+      // A late duplicate reject must never tear down an answered call.
+      if (callAcceptedRef.current || isJoiningOrJoined.current) return;
       stopIncomingCallAlert();
       setOutgoingCallStatus('Call rejected');
       setTimeout(() => cleanupAudioCall(), 500);

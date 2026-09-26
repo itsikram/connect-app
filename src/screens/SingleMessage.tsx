@@ -127,6 +127,7 @@ import {
   compatibleImagePickerOptions,
   normalizeImageAsset,
 } from '../utils/imageUpload';
+import { setActiveChat, getActiveChat, dismissChatNotifications } from '../lib/activeChat';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 interface Message {
@@ -673,6 +674,11 @@ const SingleMessage = () => {
     useState<boolean>(false);
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
   const isCameraReadyRef = useRef<boolean>(false);
+  // Smallest supported still size that keeps enough face detail for the
+  // expression server; full-sensor JPEGs dominate per-frame latency.
+  const [detectionPictureSize, setDetectionPictureSize] = useState<
+    string | undefined
+  >(undefined);
 
   // Live voice transfer state (engine lives in the global LiveVoice overlay)
   const [isLiveVoiceActive, setIsLiveVoiceActive] = useState(false);
@@ -1603,6 +1609,22 @@ const SingleMessage = () => {
     isInitialLoadingRef.current = isInitialLoading;
   }, [isInitialLoading]);
 
+  // While this chat is on screen, suppress its notification banners and clear
+  // any of its notifications still sitting in the tray.
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!connect?._id) return;
+      const chatId = String(connect._id);
+      setActiveChat(chatId);
+      dismissChatNotifications(chatId);
+      // Only clear if another chat hasn't already taken over (focus/blur order
+      // is not guaranteed when navigating chat -> chat).
+      return () => {
+        if (getActiveChat() === chatId) setActiveChat(null);
+      };
+    }, [connect?._id]),
+  );
+
   // Load cached latest page immediately, then fetch the same window the web chat uses.
   useFocusEffect(
     React.useCallback(() => {
@@ -1838,21 +1860,35 @@ const SingleMessage = () => {
     const handleSeenMessage = (data: any) => {
       const seenId = data?.messageId || data?._id;
       if (!seenId) return;
-      setMessages(prevMessages =>
-        prevMessages.map(msg => {
-          if (!msg) return msg;
-          if (String(msg._id) === String(seenId)) {
-            return { ...msg, isSeen: true };
-          }
-          if (
-            String(msg.senderId) === String(myProfile?._id) &&
-            msg.isSeen !== true
-          ) {
+      // Seen events carry the participants; ignore ones for other chats.
+      // Previously any seen event anywhere marked all my messages as seen.
+      if (
+        data?.senderId &&
+        data?.receiverId &&
+        !isConversationMessage(data, myProfile?._id, connect?._id)
+      )
+        return;
+      setMessages(prevMessages => {
+        const target = prevMessages.find(
+          msg => msg && String(msg._id) === String(seenId),
+        );
+        if (!target) return prevMessages;
+        const cutoff = new Date(target.timestamp as any).getTime();
+        let changed = false;
+        const next = prevMessages.map(msg => {
+          if (!msg || msg.isSeen === true || msg.isOptimistic) return msg;
+          const isTarget = String(msg._id) === String(seenId);
+          const isEarlierFromSameSender =
+            String(msg.senderId) === String(target.senderId) &&
+            new Date(msg.timestamp as any).getTime() <= cutoff;
+          if (isTarget || isEarlierFromSameSender) {
+            changed = true;
             return { ...msg, isSeen: true };
           }
           return msg;
-        }),
-      );
+        });
+        return changed ? next : prevMessages;
+      });
     };
 
     const handleReactionUpdate = (payload: any) => {
@@ -1961,8 +1997,10 @@ const SingleMessage = () => {
     on('messageSent', handleNewMessage);
     on('typing', handleReceiveTyping);
 
-    const handleDeleteMessage = (messageId: string) => {
-      setMessages(prev => prev.filter(msg => msg._id !== messageId));
+    const handleDeleteMessage = (messageId: any) => {
+      const deletedId = String(messageId?._id || messageId || '');
+      if (!deletedId) return;
+      setMessages(prev => prev.filter(msg => String(msg._id) !== deletedId));
     };
 
     on('deleteMessage', handleDeleteMessage);
@@ -3735,7 +3773,7 @@ const SingleMessage = () => {
         ? overrides.attachment
         : pendingAttachment;
     const messageType = overrides?.messageType || 'text';
-    if ((!messageContent && !attachment) || !isConnected || isUploading) return;
+    if ((!messageContent && !attachment) || isUploading) return;
     if (isSendingRef.current) return;
     if (!connect?._id || !myProfile?._id) return;
 
@@ -8798,10 +8836,36 @@ const SingleMessage = () => {
             // this screen owns it; the interval already pauses
             // when the app is not focused.
             active={isCameraActive || shouldUseCamera}
+            pictureSize={detectionPictureSize}
             onCameraReady={() => {
               isCameraReadyRef.current = true;
               console.log('[SingleMessage] ✅ Expo camera is ready');
               logDetectionProgress('expo_camera_ready');
+              if (!detectionPictureSize) {
+                cameraRef.current
+                  ?.getAvailablePictureSizesAsync()
+                  .then(sizes => {
+                    const candidates = sizes
+                      .map(size => {
+                        const [width, height] = size.split('x').map(Number);
+                        return { size, short: Math.min(width, height) };
+                      })
+                      .filter(item => Number.isFinite(item.short))
+                      .sort((a, b) => a.short - b.short);
+                    const chosen =
+                      candidates.find(item => item.short >= 480) ||
+                      candidates[candidates.length - 1];
+                    if (chosen) {
+                      setDetectionPictureSize(chosen.size);
+                    }
+                  })
+                  .catch(error => {
+                    console.warn(
+                      '[SingleMessage] Could not read camera picture sizes:',
+                      error,
+                    );
+                  });
+              }
             }}
             onMountError={error => {
               isCameraReadyRef.current = false;

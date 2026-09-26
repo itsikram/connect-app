@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Image,
@@ -16,6 +17,8 @@ import {
 } from 'react-native';
 import Modal from './SystemBarsModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
+import * as Clipboard from 'expo-clipboard';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
 import { useTheme } from '../contexts/ThemeContext';
 import { useSettings } from '../contexts/SettingsContext';
@@ -38,8 +41,11 @@ import {
 } from '../services/aiAgentService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
+  AgentActionDefinition,
+  AgentActionResult,
   createMobileAgentActionAdapter,
   executeAgentActions,
+  getAgentActionLabel,
   parseAgentIntent,
 } from '../services/agentActionCatalog';
 import { Audio } from '../lib/avCompat';
@@ -50,6 +56,8 @@ import {
   detectAgentSpeechLanguage,
 } from '../services/agentSpeechService';
 import { AgentMessage } from '../types/aiAgent';
+import { isLikelyAgentEcho, waitForAgentSilence } from '../services/agentEcho';
+import { findRelation, matchRelationConnects } from '../services/agentRelations';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
 import api, { connectAPI, profileAPI, userAPI } from '../lib/api';
@@ -74,7 +82,8 @@ const welcome = (): AgentMessage => ({
     'Hi! I am Connect AI Agent. Ask me to search, navigate, or help with Connect.',
 });
 const AI_PROVIDER_STORAGE_KEY = '@connect/ai-provider';
-const VOICE_INACTIVITY_TIMEOUT_MS = 60_000;
+// Hands-free conversation ends after this long without speech.
+const VOICE_INACTIVITY_TIMEOUT_MS = 90_000;
 const providerLabels: Record<AIProvider, string> = {
   gemini: 'Gemini',
   openai: 'OpenAI',
@@ -167,6 +176,225 @@ const getConnectDisplayName = (connect: Record<string, unknown>) => {
       user.username ||
       'Unknown',
   );
+};
+
+// Spoken names often carry a relation/honorific ("রহিম ভাই", "Rina apu").
+const HONORIFICS = new Set([
+  'ভাই', 'ভাইয়া', 'ভাইজান', 'আপা', 'আপু', 'দা', 'দাদা', 'দিদি', 'সাহেব',
+  'স্যার', 'ম্যাডাম', 'মামা', 'চাচা', 'খালা', 'bhai', 'vai', 'bhaiya',
+  'vaiya', 'apa', 'apu', 'da', 'dada', 'didi', 'saheb', 'sir', 'madam',
+  'mama', 'chacha', 'khala',
+]);
+const stripHonorifics = (value: string) => {
+  const words = value.split(' ').filter(Boolean);
+  const kept = words.filter(word => !HONORIFICS.has(word));
+  return (kept.length ? kept : words).join(' ');
+};
+
+type ProfileChoice = NonNullable<AgentMessage['profileChoices']>[number];
+
+const SPOKEN_ORDINALS: Array<[RegExp, number]> = [
+  [/\b(first|1st|number one|prothom|prothomjon)\b|প্রথম|এক নম্বর|১ নম্বর/i, 0],
+  [/\b(second|2nd|number two|ditiyo|ditiyojon)\b|দ্বিতীয়|দুই নম্বর|২ নম্বর/i, 1],
+  [/\b(third|3rd|number three|tritiyo)\b|তৃতীয়|তিন নম্বর|৩ নম্বর/i, 2],
+  [/\b(fourth|4th|number four)\b|চতুর্থ|চার নম্বর|৪ নম্বর/i, 3],
+  [/\b(fifth|5th|number five)\b|পঞ্চম|পাঁচ নম্বর|৫ নম্বর/i, 4],
+  [/\b(last|shesh)\b|শেষ(?:ের)?(?:জন)?/i, -1],
+];
+
+/**
+ * Lets a voice user answer "which person?" out loud: by position ("the
+ * second one", "দ্বিতীয়জন") or by a name part only one choice has.
+ */
+const matchSpokenChoice = (
+  text: string,
+  choices: ProfileChoice[],
+): ProfileChoice | null => {
+  if (!choices.length) return null;
+  for (const [pattern, index] of SPOKEN_ORDINALS) {
+    if (pattern.test(text)) {
+      return choices[index < 0 ? choices.length - 1 : index] || null;
+    }
+  }
+  const tokensOf = (choice: ProfileChoice) =>
+    normalizeConnectName(`${choice.name} ${choice.username || ''}`).split(' ');
+  const spoken = normalizeConnectName(text).split(' ').filter(Boolean);
+  const hits = choices.filter(choice =>
+    tokensOf(choice).some(
+      token =>
+        token.length >= 3 &&
+        spoken.includes(token) &&
+        choices.filter(other => tokensOf(other).includes(token)).length === 1,
+    ),
+  );
+  return hits.length === 1 ? hits[0] : null;
+};
+
+// After these, the phone plays video/audio: hands-free listening pauses so the
+// agent does not transcribe the media (or itself) as new commands.
+const MEDIA_ACTIONS = new Set([
+  'PLAY_VIDEO',
+  'SEARCH_VIDEO',
+  'SEARCH_YOUTUBE',
+  'DOWNLOAD_YOUTUBE',
+  'navigate_videos',
+  'navigate_media_player',
+  'navigate_youtube',
+  'navigate_facebook',
+  'navigate_video_library',
+  'navigate_downloads',
+]);
+
+// Phrases that end a hands-free conversation.
+const STOP_CONVERSATION =
+  /^(stop|stop listening|bye|goodbye|that'?s all|thank you,? that'?s all|nothing else|থামো|থামুন|থাক|বিদায়|আর কিছু না|আর কিছু লাগবে না|আপাতত এটুকুই|bas|thik ache bye|ar kichu na)[.!।\s]*$/i;
+
+const JSON_ESCAPES: Record<string, string> = {
+  n: ' ',
+  t: ' ',
+  r: '',
+  '"': '"',
+  '\\': '\\',
+  '/': '/',
+};
+
+/**
+ * Pulls the user-facing "message"/"reply" out of a JSON plan while it is
+ * still streaming, so the agent can start talking before the plan is done.
+ */
+const extractStreamingReply = (partialJson: string) => {
+  const match = partialJson.match(
+    /"(?:message|reply)"\s*:\s*"((?:[^"\\]|\\.)*)/,
+  );
+  if (!match) return '';
+  return match[1]
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16)),
+    )
+    .replace(/\\(.)/g, (_, char) => JSON_ESCAPES[char] ?? char)
+    .replace(/\\$/, '');
+};
+
+const toList = (
+  data: unknown,
+  keys: string[],
+): Array<Record<string, unknown>> => {
+  if (Array.isArray(data)) return data;
+  if (!data || typeof data !== 'object') return [];
+  const record = data as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (Array.isArray(value)) return value;
+    if (value && typeof value === 'object') {
+      const nested = toList(value, keys);
+      if (nested.length) return nested;
+    }
+  }
+  return [];
+};
+
+const bulletList = (items: string[], max = 8) => {
+  const shown = items.slice(0, max).map(item => `• ${item}`);
+  if (items.length > max) shown.push(`…and ${items.length - max} more`);
+  return shown.join('\n');
+};
+
+const matchesQuery = (text: string, query?: string) =>
+  !query || text.toLowerCase().includes(query.trim().toLowerCase());
+
+/** Loads the user's own data and turns it into a short chat-ready summary. */
+const summarizeAppData = async (
+  rawType: string,
+  query: string | undefined,
+  profile: unknown,
+  knownConnects: Array<{ name: string; username?: string }>,
+): Promise<string> => {
+  const type = rawType.trim().toLowerCase().replace(/s$/, '');
+  const ownProfile = (profile || {}) as Record<string, unknown>;
+  const ownId = String(ownProfile._id || '');
+
+  if (type === 'task' || type === 'todo') {
+    const tasks = toList((await api.get('/tasks')).data, ['tasks']).filter(
+      task => matchesQuery(String(task.text || ''), query),
+    );
+    if (!tasks.length) return 'You have no matching tasks.';
+    const open = tasks.filter(task => !task.completed);
+    return `You have ${open.length} open of ${tasks.length} tasks:\n${bulletList(
+      tasks.map(task => `${task.completed ? '✓' : '○'} ${String(task.text || '')}`),
+    )}`;
+  }
+  if (type === 'note') {
+    const notes = toList((await api.get('/notes')).data, ['notes']).filter(note =>
+      matchesQuery(`${note.title || ''} ${note.content || ''}`, query),
+    );
+    if (!notes.length) return 'You have no matching notes.';
+    return `You have ${notes.length} notes:\n${bulletList(
+      notes.map(note => String(note.title || note.content || 'Untitled')),
+    )}`;
+  }
+  if (type === 'notification') {
+    const items = toList(
+      (await api.get('/notification', { params: { receverId: ownId, limit: 20 } }))
+        .data,
+      ['notifications', 'data'],
+    );
+    if (!items.length) return 'You have no notifications.';
+    const unseen = items.filter(item => !item.isSeen).length;
+    return `${unseen} unread of ${items.length} recent notifications:\n${bulletList(
+      items.map(item => String(item.text || item.message || item.title || '')),
+      6,
+    )}`;
+  }
+  if (type === 'request') {
+    const requests = toList(
+      (await connectAPI.getConnectRequest(ownId)).data,
+      ['requests', 'data'],
+    );
+    if (!requests.length) return 'You have no pending connect requests.';
+    return `You have ${requests.length} connect requests:\n${bulletList(
+      requests.map(request => getConnectDisplayName(request)),
+    )}`;
+  }
+  if (type === 'connect' || type === 'friend') {
+    const connects = knownConnects.filter(connect =>
+      matchesQuery(`${connect.name} ${connect.username || ''}`, query),
+    );
+    if (!connects.length) return 'No matching connects found.';
+    return `You have ${connects.length} connects${query ? ` matching "${query}"` : ''}:\n${bulletList(
+      connects.map(connect => connect.name),
+      10,
+    )}`;
+  }
+  if (type === 'event' || type === 'calendar') {
+    const events = toList((await api.get('/calendar')).data, ['events']).filter(
+      event => matchesQuery(String(event.title || ''), query),
+    );
+    if (!events.length) return 'You have no calendar events.';
+    return `You have ${events.length} events:\n${bulletList(
+      events.map(event => {
+        const date = event.date ? new Date(String(event.date)) : null;
+        const when =
+          date && !Number.isNaN(date.getTime())
+            ? date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+            : '';
+        return `${String(event.title || '')}${when ? ` — ${when}` : ''}${event.time ? ` ${String(event.time)}` : ''}`;
+      }),
+    )}`;
+  }
+  if (type === 'habit') {
+    const habits = toList((await api.get('/habits')).data, ['habits']);
+    if (!habits.length) return 'You are not tracking any habits yet.';
+    return `You are tracking ${habits.length} habits:\n${bulletList(
+      habits.map(habit => `${String(habit.name || '')}${habit.streak ? ` — ${String(habit.streak)} day streak` : ''}`),
+    )}`;
+  }
+  const details = [
+    `Name: ${getConnectDisplayName(ownProfile)}`,
+    ownProfile.username ? `Username: @${String(ownProfile.username)}` : '',
+    ownProfile.bio ? `Bio: ${String(ownProfile.bio)}` : '',
+    `Connects: ${knownConnects.length}`,
+  ].filter(Boolean);
+  return details.join('\n');
 };
 
 const isMachineReadableIntent = (value: string) => {
@@ -346,6 +574,8 @@ const AIAgentModal: React.FC<Props> = ({
       username?: string;
       bio?: string;
       profilePic?: string;
+      relationshipTypes?: string[];
+      gender?: string;
     }>
   >([]);
   const [voiceConversation, setVoiceConversation] = React.useState(false);
@@ -359,6 +589,9 @@ const AIAgentModal: React.FC<Props> = ({
     React.useState<AIProvider>('gemini');
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
+  const [runningActionLabel, setRunningActionLabel] = React.useState('');
+  // True while the server re-checks the last utterance with Gemini.
+  const [voiceRefining, setVoiceRefining] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
   const openLudo = React.useCallback(() => {
     navigateWithQueue('Menu');
@@ -419,6 +652,11 @@ const AIAgentModal: React.FC<Props> = ({
   const requestRef = React.useRef<AbortController | null>(null);
   const ambiguityRef = React.useRef<AgentMessage['profileChoices']>(undefined);
   const ambiguousActionRef = React.useRef<AgentActionIntent | null>(null);
+  const ambiguityChoicesRef = React.useRef<ProfileChoice[]>([]);
+  // Language of the user's latest request; drives dialogs and speech.
+  const lastReplyLanguageRef = React.useRef<Exclude<AgentSpeechLanguage, 'auto'>>(
+    'en-US',
+  );
   const generationRef = React.useRef(0);
   const agentMemoryRef = React.useRef<{
     activeUser?: { id?: string; name?: string };
@@ -443,9 +681,9 @@ const AIAgentModal: React.FC<Props> = ({
         (profile as Record<string, unknown> | null)?._id || '',
       );
       if (!profileId) return null;
-      const normalizedQuery = normalizeConnectName(
+      const normalizedQuery = stripHonorifics(normalizeConnectName(
         query.normalize('NFC').replace(/\u200c|\u200d/g, ''),
-      );
+      ));
       const searchQueries = Array.from(
         new Set(
           [
@@ -702,6 +940,7 @@ const AIAgentModal: React.FC<Props> = ({
               relationshipTypes: Array.isArray(item.relationshipTypes)
                 ? item.relationshipTypes
                 : [],
+              gender: String(item.gender || nested.gender || '') || undefined,
             };
           })
           .filter(item => item.id && item.name);
@@ -737,38 +976,54 @@ const AIAgentModal: React.FC<Props> = ({
   }, [profile]);
 
   const callAdapter = React.useMemo(() => {
-    const getCallProfilePic = async (
+    /**
+     * The real name and photo of the person being called, looked up by id.
+     * The spoken name ("mom", "আম্মু") is only a last resort: the call screen
+     * must show who is actually being called.
+     */
+    const getCalleeIdentity = async (
       userId: string,
+      spokenName?: string,
       profilePic?: string,
-    ): Promise<string | undefined> => {
-      if (profilePic) return profilePic;
-      try {
-        const response = await userAPI.getProfile(userId);
-        const data =
-          response.data && typeof response.data === 'object'
-            ? (response.data as Record<string, unknown>)
-            : {};
-        const nestedProfile =
-          data.profile && typeof data.profile === 'object'
-            ? (data.profile as Record<string, unknown>)
-            : {};
-        return (
-          String(
-            data.profilePic ||
-              data.profilePicture ||
-              data.avatar ||
-              nestedProfile.profilePic ||
-              nestedProfile.profilePicture ||
-              nestedProfile.avatar ||
-              '',
-          ).trim() || undefined
-        );
-      } catch (error) {
-        if (__DEV__) {
-          console.warn('[AI] Failed to load callee profile picture:', error);
+    ): Promise<{ name?: string; profilePic?: string }> => {
+      const known = knownConnectsRef.current.find(connect => connect.id === userId);
+      let name = known?.name;
+      let picture = profilePic || known?.profilePic;
+      if (!name || !picture) {
+        try {
+          const response = await userAPI.getProfile(userId);
+          const data =
+            response.data && typeof response.data === 'object'
+              ? (response.data as Record<string, unknown>)
+              : {};
+          const nestedProfile =
+            data.profile && typeof data.profile === 'object'
+              ? (data.profile as Record<string, unknown>)
+              : {};
+          const record = Object.keys(nestedProfile).length ? nestedProfile : data;
+          const fetchedName = getConnectDisplayName(record);
+          if (!name && fetchedName && fetchedName !== 'Unknown') name = fetchedName;
+          picture =
+            picture ||
+            String(
+              data.profilePic ||
+                data.profilePicture ||
+                data.avatar ||
+                nestedProfile.profilePic ||
+                nestedProfile.profilePicture ||
+                nestedProfile.avatar ||
+                '',
+            ).trim() ||
+            undefined;
+        } catch (error) {
+          if (__DEV__) console.warn('[AI] Failed to load callee profile:', error);
         }
-        return undefined;
       }
+      const spoken = String(spokenName || '').trim();
+      return {
+        name: name || (spoken && !findRelation(spoken) ? spoken : undefined) || spoken || undefined,
+        profilePic: picture,
+      };
     };
     return {
       resolveUser: async (query: string) => {
@@ -802,6 +1057,30 @@ const AIAgentModal: React.FC<Props> = ({
           const active = agentMemoryRef.current.activeUser;
           if (active?.id) return { id: active.id, name: active.name };
         }
+        // "my mom", "আম্মু", "baba", "my wife": use the relationship tags on
+        // the user's connects, never a name search (which could find a
+        // stranger called "Momin").
+        const related = matchRelationConnects(query, knownConnectsRef.current);
+        if (related) {
+          if (related.matches.length === 1) {
+            const match = related.matches[0];
+            return { id: match.id, name: match.name, profilePic: match.profilePic };
+          }
+          if (related.matches.length > 1) {
+            const ambiguity = new Error(
+              `Which ${related.relation.label} do you mean?`,
+            ) as Error & { profileChoices?: ProfileChoice[] };
+            ambiguity.profileChoices = related.matches.slice(0, 5).map(match => ({
+              id: match.id,
+              name: match.name,
+              profilePic: match.profilePic,
+            }));
+            throw ambiguity;
+          }
+          throw new Error(
+            `I couldn't find your ${related.relation.label} in your connects. Open their profile, set the relationship (for example Parent), or tell me their name.`,
+          );
+        }
         return resolveUser(query);
       },
       startAudioCall: async (
@@ -811,7 +1090,7 @@ const AIAgentModal: React.FC<Props> = ({
         profilePic?: string,
       ) => {
         setMinimized(true);
-        const calleeProfilePic = await getCallProfilePic(userId, profilePic);
+        const callee = await getCalleeIdentity(userId, userName, profilePic);
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
         );
@@ -820,8 +1099,8 @@ const AIAgentModal: React.FC<Props> = ({
         emitStartAudioCall({
           to: userId,
           channelName: effectiveChannel,
-          calleeName: userName,
-          calleeProfilePic,
+          calleeName: callee.name,
+          calleeProfilePic: callee.profilePic,
         });
         startAudioCall(userId, effectiveChannel);
       },
@@ -832,7 +1111,7 @@ const AIAgentModal: React.FC<Props> = ({
         profilePic?: string,
       ) => {
         setMinimized(true);
-        const calleeProfilePic = await getCallProfilePic(userId, profilePic);
+        const callee = await getCalleeIdentity(userId, userName, profilePic);
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
         );
@@ -841,8 +1120,8 @@ const AIAgentModal: React.FC<Props> = ({
         emitStartVideoCall({
           to: userId,
           channelName: effectiveChannel,
-          calleeName: userName,
-          calleeProfilePic,
+          calleeName: callee.name,
+          calleeProfilePic: callee.profilePic,
         });
         startVideoCall(userId, effectiveChannel);
       },
@@ -931,6 +1210,78 @@ const AIAgentModal: React.FC<Props> = ({
           JSON.stringify(rules),
         );
       },
+      deleteTask: async (taskId: string) => {
+        await api.delete(`/tasks/${encodeURIComponent(taskId)}`);
+      },
+      createNote: async (content: string, title?: string) => {
+        await api.post('/notes', { title: (title || content).slice(0, 80), content });
+      },
+      createEvent: async (event: { title: string; date: string; time?: string }) => {
+        await api.post('/calendar', event);
+      },
+      createHabit: async (name: string) => {
+        await api.post('/habits', { name, color: '#22C55E' });
+      },
+      createPost: async (caption: string, publish: boolean) => {
+        const openDraft = () => {
+          setMinimized(true);
+          navigateWithQueue('Home', {
+            screen: 'HomeMain',
+            params: { composerCaption: caption },
+          });
+        };
+        if (!publish || !caption) {
+          openDraft();
+          return false;
+        }
+        try {
+          const form = new FormData();
+          form.append('caption', caption);
+          form.append('photos', '');
+          form.append('gallery', JSON.stringify([]));
+          form.append('type', 'post');
+          form.append('feelings', '');
+          form.append('location', '');
+          form.append('audience', '3');
+          await api.post('/post/create', form);
+          return true;
+        } catch (error) {
+          if (__DEV__) console.warn('[AI] Direct post failed, opening draft:', error);
+          openDraft();
+          return false;
+        }
+      },
+      sendConnectRequest: async (userId: string) => {
+        await connectAPI.sendConnectRequest(userId, []);
+      },
+      removeConnect: async (userId: string) => {
+        await connectAPI.disconnect(userId);
+      },
+      respondConnectRequest: async (accept: boolean, userName?: string) => {
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        const response = await connectAPI.getConnectRequest(ownId);
+        const requests = toList(response.data, ['requests', 'data']);
+        if (!requests.length)
+          throw new Error('You have no pending connect requests.');
+        const needle = stripHonorifics(normalizeConnectName(userName));
+        const target = needle
+          ? requests.find(request =>
+              normalizeConnectName(getConnectDisplayName(request)).includes(needle),
+            )
+          : requests[0];
+        if (!target)
+          throw new Error(`No pending connect request from "${userName}".`);
+        const requesterId = String(
+          target._id || (target.user as Record<string, unknown>)?._id || '',
+        );
+        if (accept) await connectAPI.acceptConnectRequest(requesterId, []);
+        else await connectAPI.deleteConnectRequest(requesterId);
+        return getConnectDisplayName(target);
+      },
+      queryAppData: (dataType: string, query?: string) =>
+        summarizeAppData(dataType, query, profile, knownConnectsRef.current),
     };
   }, [
     onClose,
@@ -977,6 +1328,9 @@ const AIAgentModal: React.FC<Props> = ({
   const voiceAutoSendTimerRef = React.useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const speakLineRef = React.useRef<(text: string) => Promise<void>>(
+    async () => {},
+  );
   const clearVoiceAutoSend = React.useCallback(() => {
     if (voiceAutoSendTimerRef.current) {
       clearTimeout(voiceAutoSendTimerRef.current);
@@ -986,6 +1340,8 @@ const AIAgentModal: React.FC<Props> = ({
 
   const transcribe = useComposerLiveTranscribe({
     onFinal: (text, meta) => {
+      // Never treat the agent's own voice as a new command.
+      if (isLikelyAgentEcho(text)) return;
       resetVoiceInactivityTimer();
       const next = mergeTranscriptText(voiceInputBaseRef.current, text);
       voiceInputBaseRef.current = next;
@@ -1003,7 +1359,9 @@ const AIAgentModal: React.FC<Props> = ({
         meta?.refined ? 450 : 1200,
       );
     },
+    onRefining: active => setVoiceRefining(active),
     onInterim: text => {
+      if (isLikelyAgentEcho(text)) return;
       const next = mergeTranscriptText(voiceInputBaseRef.current, text);
       setInput(next);
       setVoiceTranscript(next);
@@ -1025,7 +1383,13 @@ const AIAgentModal: React.FC<Props> = ({
       voiceInactivityTimerRef.current = null;
       setVoiceConversation(false);
       setVoiceLanguageMenuOpen(false);
-      void stopTranscription({ discard: true });
+      void stopTranscription({ discard: true }).then(() =>
+        speakLineRef.current(
+          lastReplyLanguageRef.current === 'bn-BD'
+            ? 'আমি একটু বিরতি নিচ্ছি। দরকার হলে মাইক চাপুন।'
+            : "I'll pause for now. Tap the mic when you need me.",
+        ),
+      );
     }, VOICE_INACTIVITY_TIMEOUT_MS);
   }, [clearVoiceInactivityTimer, listening, stopTranscription]);
 
@@ -1128,6 +1492,274 @@ const AIAgentModal: React.FC<Props> = ({
     onClose();
   };
 
+  const stopGenerating = () => {
+    generationRef.current += 1;
+    requestRef.current?.abort();
+    speechControllerRef.current?.stop().catch(() => {});
+    setLoading(false);
+    setRunningActionLabel('');
+    updateAutoActionRunning(false);
+    setMessages(previous =>
+      previous
+        .filter(item => !(item.streaming && !item.content && !item.actionResults))
+        .map(item => (item.streaming ? { ...item, streaming: false } : item)),
+    );
+  };
+
+  /** Speaks one line (voice output on), pausing the mic while talking. */
+  const speakLine = async (text: string) => {
+    if (!speechEnabled || !text.trim()) return;
+    await transcribe.stop({ discard: true });
+    await restoreChatPlaybackAudioMode();
+    await speechControllerRef.current?.stop().catch(() => {});
+    const speaker = createAgentSpeechController(
+      detectAgentSpeechLanguage(text),
+      { onSpeechStart: () => transcribe.stop({ discard: true }) },
+    );
+    speechControllerRef.current = speaker;
+    speaker.update(text);
+    await speaker.finish();
+  };
+  speakLineRef.current = speakLine;
+
+  const confirmAgentAction = (
+    definition: AgentActionDefinition,
+    action: AgentActionIntent,
+  ) =>
+    new Promise<boolean>(resolve => {
+      const parameters = action.parameters || {};
+      const detail = [
+        parameters.userName || action.targetName,
+        parameters.message || parameters.caption || parameters.content ||
+          parameters.text || action.messageText,
+      ]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join(' · ');
+      const bangla = lastReplyLanguageRef.current === 'bn-BD';
+      // Read the question aloud for users who cannot read the dialog.
+      void speakLine(
+        bangla
+          ? `${detail ? `${detail} — ` : ''}এই কাজটি করব? করতে চাইলে হ্যাঁ চাপুন।`
+          : `${definition.label}${detail ? ` for ${detail}` : ''}. Should I do it? Tap Yes to confirm.`,
+      );
+      Alert.alert(
+        definition.label,
+        bangla
+          ? `এই কাজটি করব?${detail ? `\n\n${detail.slice(0, 220)}` : ''}`
+          : `Allow the agent to run this?${detail ? `\n\n${detail.slice(0, 220)}` : ''}`,
+        [
+          { text: bangla ? 'না' : 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: bangla ? 'হ্যাঁ, করুন' : 'Yes',
+            style: definition.destructive ? 'destructive' : 'default',
+            onPress: () => resolve(true),
+          },
+        ],
+        { cancelable: true, onDismiss: () => resolve(false) },
+      );
+    });
+
+  /**
+   * Turns raw action results (data lookups, failures) into a short, natural
+   * reply in the user's language, like a person reporting back.
+   */
+  const narrateResults = async (
+    request: string,
+    results: AgentActionResult[],
+    replyLanguage: Exclude<AgentSpeechLanguage, 'auto'>,
+    signal: AbortSignal,
+  ) => {
+    const lines = results
+      .map(result => `${result.label || result.action}: ${result.ok ? 'done' : result.cancelled ? 'cancelled' : 'failed'} — ${result.message}`)
+      .join('\n');
+    const raw = await streamAgentReply(
+      `I asked: "${request}"\nThe app ran these actions:\n${lines}\nReport back to me naturally in ${replyLanguage === 'bn-BD' ? 'Bangla' : 'English'} in one or two short spoken sentences, mentioning the important items. Do not plan any new actions.`,
+      [],
+      () => undefined,
+      signal,
+      undefined,
+      {
+        provider: selectedProvider,
+        model: providerStatus?.models[selectedProvider],
+        preferredLanguage: replyLanguage === 'bn-BD' ? 'bn' : 'eng',
+      },
+    );
+    const parsed = parseAgentIntent(raw);
+    return (parsed.ok ? parsed.intent.reply || '' : isMachineReadableIntent(raw) ? '' : raw).trim();
+  };
+
+  // One adapter for every execution path (auto-run, Run buttons, profile
+  // choices) so an action behaves the same no matter how it was triggered.
+  const buildAdapter = (
+    shouldSpeak: boolean,
+    replyLanguage: Exclude<AgentSpeechLanguage, 'auto'>,
+  ) =>
+    createMobileAgentActionAdapter({
+      ...callAdapter,
+      resolveUser: async (query: string) => {
+        try {
+          return await callAdapter.resolveUser(query);
+        } catch (error) {
+          const choices = (
+            error as Error & {
+              profileChoices?: AgentMessage['profileChoices'];
+            }
+          ).profileChoices;
+          if (choices?.length) ambiguityRef.current = choices;
+          throw error;
+        }
+      },
+      navigate: (route, params) => {
+        setMinimized(true);
+        const routeAliases: Record<string, string> = {
+          messages: 'Message',
+          message: 'Message',
+          home: 'Home',
+          friends: 'Connects',
+          videos: 'Videos',
+          menu: 'Menu',
+          profile: 'Menu',
+          settings: 'Menu',
+          tasks: 'Menu',
+          task: 'Menu',
+        };
+        const normalizedRoute =
+          routeAliases[String(route).trim().toLowerCase()] || route;
+        const normalizedParams =
+          String(route).trim().toLowerCase() === 'messages' ||
+          String(route).trim().toLowerCase() === 'message'
+            ? { screen: 'MessageList', ...(params || {}) }
+            : String(route).trim().toLowerCase() === 'profile'
+            ? { screen: 'MyProfile', ...(params || {}) }
+            : String(route).trim().toLowerCase() === 'settings'
+            ? { screen: 'Settings', ...(params || {}) }
+            : ['tasks', 'task'].includes(String(route).trim().toLowerCase())
+            ? { screen: 'Tasks', ...(params || {}) }
+            : params;
+        const ownId = String(
+          (profile as Record<string, unknown> | null)?._id || '',
+        );
+        const connectId = String(
+          (normalizedParams as Record<string, unknown> | undefined)
+            ?.connectId || '',
+        );
+        if (
+          normalizedRoute === 'ConnectProfile' &&
+          ownId &&
+          connectId === ownId
+        ) {
+          return navigateWithQueue('Menu', { screen: 'MyProfile' });
+        }
+        return navigateWithQueue(normalizedRoute, normalizedParams);
+      },
+      playVideo: videoId => {
+        setMinimized(true);
+        return navigateWithQueue('Videos', {
+          screen: 'SingleWatch',
+          params: { watchId: videoId },
+        });
+      },
+      searchVideo: async (query: string) => {
+        const response = await api.get('/search', {
+          params: { input: query },
+        });
+        const data = response.data as {
+          videos?: Array<Record<string, unknown>>;
+        };
+        const video = Array.isArray(data?.videos) ? data.videos[0] : null;
+        const videoId = String(video?._id || video?.id || '');
+        if (!videoId) throw new Error('I could not find a matching video.');
+        setMinimized(true);
+        await navigateWithQueue('Videos', {
+          screen: 'SingleWatch',
+          params: { watchId: videoId },
+        });
+      },
+      searchYoutube: async (query: string) => {
+        setMinimized(true);
+        await navigateWithQueue('Menu', {
+          screen: 'MediaPlayer',
+          params: { searchQuery: query },
+        });
+      },
+      downloadYoutube: async (options: {
+        query?: string;
+        url?: string;
+        videoId?: string;
+        title?: string;
+        thumbnail?: string;
+        quality?: number;
+        audioOnly?: boolean;
+      }) => {
+        setMinimized(true);
+        let url =
+          options.url ||
+          (options.videoId ? toWatchUrl(options.videoId) : null);
+        let title = options.title;
+        let thumbnail = options.thumbnail;
+        if (!url && options.query) {
+          const response = await api.get('/yt-download/youtube/search', {
+            params: { q: options.query, maxResults: 1, _ts: Date.now() },
+          });
+          const result = Array.isArray(response.data?.items)
+            ? response.data.items[0]
+            : null;
+          url = String(result?.url || '').trim() || null;
+          title = title || String(result?.title || '').trim() || undefined;
+          thumbnail =
+            thumbnail ||
+            String(result?.thumbnail || '').trim() ||
+            undefined;
+        }
+        if (!url || !extractYouTubeVideoId(url)) {
+          throw new Error('I could not find a downloadable YouTube video.');
+        }
+        const job = startBackgroundYoutubeDownload({
+          url,
+          title: title || `YouTube ${extractYouTubeVideoId(url)}`,
+          quality: options.quality || 1080,
+          audioOnly: options.audioOnly,
+        });
+        await navigateWithQueue('Menu', {
+          screen: 'MediaPlayer',
+          params: {
+            playUrl: url,
+            playTitle: title,
+            playPoster: thumbnail,
+            autoplay: true,
+          },
+        });
+        if (!job) throw new Error('Could not start the YouTube download.');
+      },
+      startLudo: openLudo,
+      inviteLudoPlayer,
+      endCall: callAdapter.endCall,
+      changeSetting: callAdapter.changeSetting,
+      startChess: () => setChessGameActive(true),
+      startVoiceInput: async () => {
+        await startListening(listenLanguage);
+      },
+      stopVoiceInput: async () => {
+        await transcribe.stop();
+      },
+      speakText: async value => {
+        if (shouldSpeak) {
+          await transcribe.stop({ discard: true });
+          await restoreChatPlaybackAudioMode();
+          const reader = createAgentSpeechController(replyLanguage, {
+            onSpeechStart: () => transcribe.stop({ discard: true }),
+          });
+          reader.update(value, replyLanguage);
+          await reader.finish();
+          speechControllerRef.current = reader;
+        }
+      },
+      stopSpeaking: () => speechControllerRef.current?.stop(),
+      logout,
+      clearAgentChat: clearChat,
+    });
+
   const send = async (textOverride?: string) => {
     clearVoiceAutoSend();
     const text = (textOverride ?? input).trim();
@@ -1135,7 +1767,47 @@ const AIAgentModal: React.FC<Props> = ({
     // In Auto, answer (and speak) in the language the user just used.
     const replyLanguage: Exclude<AgentSpeechLanguage, 'auto'> =
       language === 'auto' ? detectAgentSpeechLanguage(text) : speechLanguage;
+    lastReplyLanguageRef.current = replyLanguage;
     transcribe.stop({ discard: true }).catch(() => {});
+    setVoiceRefining(false);
+    const echoUser = () => {
+      voiceInputBaseRef.current = '';
+      setInput('');
+      setVoiceTranscript('');
+      setMessages(previous => [
+        ...previous,
+        { id: id(), type: 'user', content: text, timestamp: new Date().toISOString() },
+      ]);
+    };
+
+    // "Stop / bye / থামো" ends a hands-free conversation politely.
+    if (voiceConversation && STOP_CONVERSATION.test(text)) {
+      echoUser();
+      setVoiceConversation(false);
+      await transcribe.stop({ discard: true });
+      const goodbye =
+        replyLanguage === 'bn-BD'
+          ? 'ঠিক আছে। দরকার হলে আবার ডাকবেন।'
+          : 'Okay. Call me whenever you need me.';
+      setMessages(previous => [
+        ...previous,
+        { id: id(), type: 'agent', content: goodbye, timestamp: new Date().toISOString() },
+      ]);
+      await speakLine(goodbye);
+      return;
+    }
+
+    // Answering "which person?" out loud runs the waiting action directly.
+    const waitingAction = ambiguousActionRef.current;
+    const spokenChoice =
+      waitingAction && ambiguityChoicesRef.current.length
+        ? matchSpokenChoice(text, ambiguityChoicesRef.current)
+        : null;
+    if (spokenChoice) {
+      echoUser();
+      await chooseProfileForAction(spokenChoice);
+      return;
+    }
     const user: AgentMessage = {
       id: id(),
       type: 'user',
@@ -1160,6 +1832,7 @@ const AIAgentModal: React.FC<Props> = ({
     });
     const shouldSpeak = speechEnabled;
     let callActionStarted = false;
+    let mediaStarted = false;
     if (shouldSpeak) {
       await transcribe.stop({ discard: true });
       await restoreChatPlaybackAudioMode();
@@ -1170,21 +1843,21 @@ const AIAgentModal: React.FC<Props> = ({
     try {
       const rawReply = await streamAgentReply(
         text,
-        [...messages, user],
+        // `text` is appended by streamAgentReply itself; send only prior turns.
+        messages.filter(item => !item.streaming && item.content.trim()),
         next => {
           if (generation !== generationRef.current) return;
           const machineReadable = isMachineReadableIntent(next);
+          // For JSON plans, show and speak the "message" as it streams so the
+          // agent starts talking before the whole plan has arrived.
+          const visible = machineReadable ? extractStreamingReply(next) : next;
           setMessages(previous =>
             previous.map(item =>
-              item.id === stream.id
-                ? { ...item, content: machineReadable ? '' : next }
-                : item,
+              item.id === stream.id ? { ...item, content: visible } : item,
             ),
           );
-          // Do not read machine-readable JSON while it is streaming; read the
-          // user-facing reply after the intent has been validated below.
-          if (shouldSpeak && !machineReadable)
-            speechController.update(next, replyLanguage);
+          if (shouldSpeak && visible)
+            speechController.update(visible, replyLanguage);
         },
         controller.signal,
         profileContext,
@@ -1223,6 +1896,7 @@ const AIAgentModal: React.FC<Props> = ({
             String(parameters.userName || contextualAction.targetName || '') ||
             undefined;
           agentMemoryRef.current = {
+            ...agentMemoryRef.current,
             activeUser: { id: idValue, name: nameValue },
             activeProfile: { id: idValue, name: nameValue },
             activeConversation:
@@ -1233,9 +1907,10 @@ const AIAgentModal: React.FC<Props> = ({
           };
         }
         const visibleReply = intent.actions?.length
-          ? replyLanguage === 'bn-BD'
-            ? 'ঠিক আছে, কাজটি করছি।'
-            : 'Got it. I’m taking care of that now.'
+          ? intent.reply ||
+            (replyLanguage === 'bn-BD'
+              ? 'ঠিক আছে, কাজটি করছি।'
+              : 'Got it. I’m taking care of that now.')
           : intent.reply || intent.ask?.question || '';
         if (visibleReply) {
           setMessages(previous =>
@@ -1243,177 +1918,12 @@ const AIAgentModal: React.FC<Props> = ({
               item.id === stream.id ? { ...item, content: visibleReply } : item,
             ),
           );
-          if (shouldSpeak && rawReply.trimStart().startsWith('{')) {
-            const actionSpeech = intent.actions?.length
-              ? getIntentSpeechText(intent.actions)
-              : visibleReply;
-            speechController.update(actionSpeech, replyLanguage);
+          if (shouldSpeak && isMachineReadableIntent(rawReply)) {
+            // Usually already spoken while streaming; update() skips repeats.
+            speechController.update(visibleReply, replyLanguage);
           }
         }
-        const adapter = createMobileAgentActionAdapter({
-          ...callAdapter,
-          resolveUser: async (query: string) => {
-            try {
-              return await callAdapter.resolveUser(query);
-            } catch (error) {
-              const choices = (
-                error as Error & {
-                  profileChoices?: AgentMessage['profileChoices'];
-                }
-              ).profileChoices;
-              if (choices?.length) ambiguityRef.current = choices;
-              throw error;
-            }
-          },
-          navigate: (route, params) => {
-            setMinimized(true);
-            const routeAliases: Record<string, string> = {
-              messages: 'Message',
-              message: 'Message',
-              home: 'Home',
-              friends: 'Connects',
-              videos: 'Videos',
-              menu: 'Menu',
-              profile: 'Menu',
-              settings: 'Menu',
-              tasks: 'Menu',
-              task: 'Menu',
-            };
-            const normalizedRoute =
-              routeAliases[String(route).trim().toLowerCase()] || route;
-            const normalizedParams =
-              String(route).trim().toLowerCase() === 'messages' ||
-              String(route).trim().toLowerCase() === 'message'
-                ? { screen: 'MessageList', ...(params || {}) }
-                : String(route).trim().toLowerCase() === 'profile'
-                ? { screen: 'MyProfile', ...(params || {}) }
-                : String(route).trim().toLowerCase() === 'settings'
-                ? { screen: 'Settings', ...(params || {}) }
-                : ['tasks', 'task'].includes(String(route).trim().toLowerCase())
-                ? { screen: 'Tasks', ...(params || {}) }
-                : params;
-            const ownId = String(
-              (profile as Record<string, unknown> | null)?._id || '',
-            );
-            const connectId = String(
-              (normalizedParams as Record<string, unknown> | undefined)
-                ?.connectId || '',
-            );
-            if (
-              normalizedRoute === 'ConnectProfile' &&
-              ownId &&
-              connectId === ownId
-            ) {
-              return navigateWithQueue('Menu', { screen: 'MyProfile' });
-            }
-            return navigateWithQueue(normalizedRoute, normalizedParams);
-          },
-          playVideo: videoId => {
-            setMinimized(true);
-            return navigateWithQueue('Videos', {
-              screen: 'SingleWatch',
-              params: { watchId: videoId },
-            });
-          },
-          searchVideo: async (query: string) => {
-            const response = await api.get('/search', {
-              params: { input: query },
-            });
-            const data = response.data as {
-              videos?: Array<Record<string, unknown>>;
-            };
-            const video = Array.isArray(data?.videos) ? data.videos[0] : null;
-            const videoId = String(video?._id || video?.id || '');
-            if (!videoId) throw new Error('I could not find a matching video.');
-            setMinimized(true);
-            await navigateWithQueue('Videos', {
-              screen: 'SingleWatch',
-              params: { watchId: videoId },
-            });
-          },
-          searchYoutube: async (query: string) => {
-            setMinimized(true);
-            await navigateWithQueue('Menu', {
-              screen: 'MediaPlayer',
-              params: { searchQuery: query },
-            });
-          },
-          downloadYoutube: async (options: {
-            query?: string;
-            url?: string;
-            videoId?: string;
-            title?: string;
-            thumbnail?: string;
-            quality?: number;
-            audioOnly?: boolean;
-          }) => {
-            setMinimized(true);
-            let url =
-              options.url ||
-              (options.videoId ? toWatchUrl(options.videoId) : null);
-            let title = options.title;
-            let thumbnail = options.thumbnail;
-            if (!url && options.query) {
-              const response = await api.get('/yt-download/youtube/search', {
-                params: { q: options.query, maxResults: 1, _ts: Date.now() },
-              });
-              const result = Array.isArray(response.data?.items)
-                ? response.data.items[0]
-                : null;
-              url = String(result?.url || '').trim() || null;
-              title = title || String(result?.title || '').trim() || undefined;
-              thumbnail =
-                thumbnail ||
-                String(result?.thumbnail || '').trim() ||
-                undefined;
-            }
-            if (!url || !extractYouTubeVideoId(url)) {
-              throw new Error('I could not find a downloadable YouTube video.');
-            }
-            const job = startBackgroundYoutubeDownload({
-              url,
-              title: title || `YouTube ${extractYouTubeVideoId(url)}`,
-              quality: options.quality || 1080,
-              audioOnly: options.audioOnly,
-            });
-            await navigateWithQueue('Menu', {
-              screen: 'MediaPlayer',
-              params: {
-                playUrl: url,
-                playTitle: title,
-                playPoster: thumbnail,
-                autoplay: true,
-              },
-            });
-            if (!job) throw new Error('Could not start the YouTube download.');
-          },
-          startLudo: openLudo,
-          inviteLudoPlayer,
-          endCall: callAdapter.endCall,
-          changeSetting: callAdapter.changeSetting,
-          startChess: () => setChessGameActive(true),
-          startVoiceInput: async () => {
-            await startListening(listenLanguage);
-          },
-          stopVoiceInput: async () => {
-            await transcribe.stop();
-          },
-          speakText: async value => {
-            if (shouldSpeak) {
-              await transcribe.stop({ discard: true });
-              await restoreChatPlaybackAudioMode();
-              const reader = createAgentSpeechController(replyLanguage, {
-                onSpeechStart: () => transcribe.stop({ discard: true }),
-              });
-              reader.update(value, replyLanguage);
-              await reader.finish();
-              speechControllerRef.current = reader;
-            }
-          },
-          stopSpeaking: () => speechControllerRef.current?.stop(),
-          logout,
-          clearAgentChat: clearChat,
-        });
+        const adapter = buildAdapter(shouldSpeak, replyLanguage);
         if (!autoMode && intent.actions?.length) {
           setPendingActions(intent.actions);
           if (shouldSpeak) speechController.finish();
@@ -1454,6 +1964,8 @@ const AIAgentModal: React.FC<Props> = ({
           // Sensitive actions always require an explicit confirmation, including
           // manual mode. Auto mode intentionally executes actions without a
           // confirmation prompt.
+          // Auto mode skips confirmation for sensitive actions; destructive
+          // ones (block, remove connect, delete, logout) always confirm.
           skipConfirmation: autoMode,
           onResolvedUser: resolved => {
             agentMemoryRef.current = {
@@ -1462,53 +1974,41 @@ const AIAgentModal: React.FC<Props> = ({
               activeProfile: resolved,
             };
           },
-          confirm: definition =>
-            new Promise<boolean>(resolve => {
-              Alert.alert(
-                'Confirm action',
-                `Allow the agent to ${definition.label.toLowerCase()}?`,
-                [
-                  {
-                    text: 'Cancel',
-                    style: 'cancel',
-                    onPress: () => resolve(false),
-                  },
-                  {
-                    text: 'Allow',
-                    style: 'destructive',
-                    onPress: () => resolve(true),
-                  },
-                ],
-              );
-            }),
+          onActionStart: action =>
+            setRunningActionLabel(getAgentActionLabel(action.action)),
+          confirm: async (definition, action) => {
+            // Let the spoken reply finish before asking.
+            if (shouldSpeak) await speechController.finish();
+            return confirmAgentAction(definition, action);
+          },
         });
         if (ambiguityRef.current?.length) {
           const profileChoices = ambiguityRef.current;
           ambiguityRef.current = undefined;
           ambiguousActionRef.current =
-            intent.actions?.find(action =>
-              [
-                'START_AUDIO_CALL',
-                'START_VIDEO_CALL',
-                'INVITE_LUDO_PLAYER',
-                'SEND_MESSAGE',
-                'OPEN_CHAT',
-                'VIEW_PROFILE',
-              ].includes(action.action),
+            intent.actions?.find(
+              action =>
+                action.targetName ||
+                action.parameters?.userName ||
+                action.parameters?.userId,
             ) || null;
+          ambiguityChoicesRef.current = profileChoices;
           setPendingActions([]);
+          const numbered = profileChoices
+            .map((choice, index) => `${index + 1}. ${choice.name}`)
+            .join(', ');
+          const question =
+            replyLanguage === 'bn-BD'
+              ? `একাধিক মানুষ পেয়েছি: ${numbered}। কাকে বোঝাচ্ছেন? নাম বা নম্বর বলুন।`
+              : `I found a few people: ${numbered}. Who did you mean? Say the name or number.`;
           setMessages(previous =>
             previous.map(item =>
               item.id === stream.id
-                ? {
-                    ...item,
-                    content:
-                      'I found multiple people. Choose the profile to use for this action.',
-                    profileChoices,
-                  }
+                ? { ...item, content: question, profileChoices }
                 : item,
             ),
           );
+          if (shouldSpeak) speechController.update(question, replyLanguage);
           return;
         }
         if (!startsCall) updateAutoActionRunning(false);
@@ -1524,23 +2024,51 @@ const AIAgentModal: React.FC<Props> = ({
           : completed.length
           ? completed.map(result => result.message).join(' ')
           : '';
-        if (shouldSpeak && outcome && failed.length)
-          speechController.update(outcome, replyLanguage);
-        if (failed.length) {
+        // Data lookups and real failures get a natural spoken report-back in
+        // the user's language instead of an English status line.
+        const needsReport = results.some(
+          result =>
+            (result.ok && result.action === 'QUERY_APP_DATA') ||
+            (!result.ok && !result.cancelled),
+        );
+        if (needsReport && generation === generationRef.current) {
+          const report = await narrateResults(
+            text,
+            results,
+            replyLanguage,
+            controller.signal,
+          ).catch(() => '');
+          if (report && generation === generationRef.current) {
+            setMessages(previous => [
+              ...previous,
+              {
+                id: id(),
+                type: 'agent',
+                content: report,
+                timestamp: new Date().toISOString(),
+              },
+            ]);
+            if (shouldSpeak) speechController.update(`${visibleReply} ${report}`, replyLanguage);
+          } else if (shouldSpeak && failed.length) {
+            speechController.update(`${visibleReply} ${outcome}`, replyLanguage);
+          }
+        }
+        setRunningActionLabel('');
+        mediaStarted = results.some(
+          result => result.ok && MEDIA_ACTIONS.has(result.action),
+        );
+        if (results.length) {
+          // The reply stays as the lead line; each action gets a ✓/✗ card.
           setMessages(previous =>
             previous.map(item =>
               item.id === stream.id
                 ? {
                     ...item,
-                    content: outcome,
+                    content: visibleReply,
+                    success: failed.length === 0,
+                    actionResults: results,
                   }
                 : item,
-            ),
-          );
-        } else if (outcome) {
-          setMessages(previous =>
-            previous.map(item =>
-              item.id === stream.id ? { ...item, content: outcome } : item,
             ),
           );
         }
@@ -1553,7 +2081,10 @@ const AIAgentModal: React.FC<Props> = ({
             item.id === stream.id
               ? {
                   ...item,
-                  content: 'দুঃখিত, এই কাজটি এই Expo অ্যাপে সমর্থিত নয়।',
+                  content:
+                    replyLanguage === 'bn-BD'
+                      ? 'দুঃখিত, এই কাজটি এখনো মোবাইল অ্যাপে করা যায় না।'
+                      : "Sorry, I can't do that in the mobile app yet.",
                 }
               : item,
           ),
@@ -1600,10 +2131,12 @@ const AIAgentModal: React.FC<Props> = ({
       }
     } finally {
       updateAutoActionRunning(false);
+      setRunningActionLabel('');
       if (generation === generationRef.current) setLoading(false);
       if (
         voiceConversation &&
         !callActionStarted &&
+        !mediaStarted &&
         generation === generationRef.current
       ) {
         if (shouldSpeak) {
@@ -1611,6 +2144,9 @@ const AIAgentModal: React.FC<Props> = ({
         }
         const started = await startListening(listenLanguage);
         if (!started) setVoiceConversation(false);
+      } else if (voiceConversation && mediaStarted) {
+        // Media is playing now; tap the mic to talk again.
+        setVoiceConversation(false);
       }
     }
   };
@@ -1658,6 +2194,9 @@ const AIAgentModal: React.FC<Props> = ({
       language: AgentSpeechLanguage,
       options?: Parameters<typeof transcribe.start>[1],
     ) => {
+      // Open the mic only once the agent has finished talking and the speaker
+      // has gone quiet, so its own voice is not recorded.
+      await waitForAgentSilence();
       await playMicrophoneStartCue();
       return transcribe.start(language, options);
     },
@@ -1785,15 +2324,16 @@ const AIAgentModal: React.FC<Props> = ({
     }
     if (voiceStartInFlightRef.current) return;
     voiceStartInFlightRef.current = true;
+    // Tapping the mic while the agent talks interrupts it, like a person.
+    await speechControllerRef.current?.stop().catch(() => {});
     setVoiceConversation(true);
     setVoiceTranscript('');
-    setVoiceLanguageMenuOpen(true);
+    // Voice in -> voice out: a spoken conversation is answered out loud.
+    setSpeechEnabled(true);
     let started = false;
     try {
-      if (speechEnabled) {
-        await announceListening(speechLanguage);
-      }
-      started = await startListening(listenLanguage);
+      await announceListening(speechLanguage);
+      started = await startListening(listenLanguage, { skipStop: true });
     } finally {
       voiceStartInFlightRef.current = false;
     }
@@ -1844,92 +2384,182 @@ const AIAgentModal: React.FC<Props> = ({
     const started = await startListening(listenLanguage, { skipStop: true });
     if (!started) setVoiceConversation(false);
   };
-  const quickPrompts = [
-    'Open my profile',
-    'Show my messages',
-    'Start a Ludo game',
+  const capabilities: Array<{
+    icon: React.ComponentProps<typeof Icon>['name'];
+    title: string;
+    prompt: string;
+    tint: string;
+  }> = [
+    { icon: 'chat', title: 'Messages', prompt: 'Open my messages', tint: '#3B82F6' },
+    { icon: 'videocam', title: 'Calls', prompt: 'Start a video call', tint: '#10B981' },
+    { icon: 'edit', title: 'Post', prompt: 'Create a post with a funny caption', tint: '#F59E0B' },
+    { icon: 'task-alt', title: 'Tasks', prompt: 'What are my open tasks?', tint: '#8B5CF6' },
+    { icon: 'ondemand-video', title: 'YouTube', prompt: 'Search YouTube for lo-fi music', tint: '#EF4444' },
+    { icon: 'sports-esports', title: 'Games', prompt: 'Start a Ludo game', tint: '#14B8A6' },
+    { icon: 'event-note', title: 'Plan', prompt: 'Add an event tomorrow at 10:00: team meeting', tint: '#EC4899' },
+    { icon: 'notifications', title: 'Updates', prompt: 'Any new notifications?', tint: '#0EA5E9' },
   ];
-  const renderMessage = ({ item }: { item: AgentMessage }) => {
-    const isUser = item.type === 'user';
-    const isAction = item.type === 'action-result';
-    return (
-      <View style={[styles.messageRow, isUser && styles.userMessageRow]}>
-        {!isUser && (
+
+  const [copiedMessageId, setCopiedMessageId] = React.useState<string | null>(
+    null,
+  );
+  const copyMessage = React.useCallback(async (item: AgentMessage) => {
+    const text = [
+      item.content,
+      ...(item.actionResults || []).map(result => result.message),
+    ]
+      .filter(Boolean)
+      .join('\n');
+    if (!text.trim()) return;
+    try {
+      await Clipboard.setStringAsync(text);
+      setCopiedMessageId(item.id);
+      setTimeout(
+        () => setCopiedMessageId(current => (current === item.id ? null : current)),
+        1500,
+      );
+    } catch (error) {
+      if (__DEV__) console.warn('[AI] Copy failed:', error);
+    }
+  }, []);
+
+  const renderActionResults = (results: NonNullable<AgentMessage['actionResults']>) => (
+    <View
+      style={[
+        styles.resultCard,
+        {
+          backgroundColor: colors.surface.secondary,
+          borderColor: colors.border.primary,
+        },
+      ]}
+    >
+      {results.map((result, index) => {
+        const tone = result.ok
+          ? colors.status.success
+          : result.cancelled
+          ? colors.text.tertiary
+          : colors.status.error;
+        return (
           <View
+            key={`${result.action}-${index}`}
             style={[
-              styles.avatar,
-              {
-                backgroundColor: isAction
-                  ? colors.status.success
-                  : colors.primary,
+              styles.resultRow,
+              index > 0 && {
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: colors.border.primary,
               },
             ]}
           >
             <Icon
-              name={isAction ? 'check' : 'psychology'}
-              size={15}
-              color="#fff"
+              name={result.ok ? 'check-circle' : result.cancelled ? 'block' : 'error'}
+              size={18}
+              color={tone}
+              style={styles.resultIcon}
             />
-          </View>
-        )}
-        <View style={styles.messageColumn}>
-          <View
-            style={[
-              styles.bubble,
-              {
-                backgroundColor: isUser
-                  ? colors.primary
-                  : colors.surface.secondary,
-                borderColor: isAction
-                  ? colors.status.success
-                  : colors.border.primary,
-              },
-              isUser ? styles.userBubble : styles.agentBubble,
-            ]}
-          >
-            {item.streaming && !item.content ? (
-              <View style={styles.typingDots}>
-                <View
-                  style={[
-                    styles.dot,
-                    { backgroundColor: colors.text.secondary },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.dot,
-                    { backgroundColor: colors.text.secondary },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.dot,
-                    { backgroundColor: colors.text.secondary },
-                  ]}
-                />
-              </View>
-            ) : (
-              <Text
-                style={[
-                  styles.messageText,
-                  { color: isUser ? '#fff' : colors.text.primary },
-                ]}
-              >
-                {item.content || ' '}
+            <View style={styles.resultBody}>
+              <Text style={[styles.resultLabel, { color: tone }]}>
+                {result.label || getAgentActionLabel(result.action)}
               </Text>
-            )}
+              <Text
+                selectable
+                style={[styles.resultText, { color: colors.text.primary }]}
+              >
+                {result.message}
+              </Text>
+            </View>
           </View>
+        );
+      })}
+    </View>
+  );
+
+  const renderMessage = ({ item, index }: { item: AgentMessage; index: number }) => {
+    const isUser = item.type === 'user';
+    const isLast = index === messages.length - 1;
+    const hasResults = Boolean(item.actionResults?.length);
+    const showBubble = Boolean(item.content) || (item.streaming && !hasResults);
+    const choiceIcon: React.ComponentProps<typeof Icon>['name'] =
+      item.choiceAction === 'START_VIDEO_CALL'
+        ? 'videocam'
+        : item.choiceAction === 'START_AUDIO_CALL'
+        ? 'call'
+        : item.choiceAction === 'SEND_MESSAGE' || item.choiceAction === 'OPEN_CHAT'
+        ? 'chat'
+        : item.choiceAction === 'INVITE_LUDO_PLAYER'
+        ? 'sports-esports'
+        : 'arrow-forward';
+    return (
+      <View style={[styles.messageRow, isUser && styles.userMessageRow]}>
+        {!isUser && (
+          <LinearGradient
+            colors={[colors.primary, '#8B5CF6']}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.avatar}
+          >
+            <Icon name="auto-awesome" size={14} color="#fff" />
+          </LinearGradient>
+        )}
+        <Pressable
+          style={[styles.messageColumn, isUser && styles.userMessageColumn]}
+          onLongPress={() => {
+            void copyMessage(item);
+          }}
+          delayLongPress={350}
+        >
+          {showBubble ? (
+            <View
+              style={[
+                styles.bubble,
+                isUser
+                  ? [styles.userBubble, { backgroundColor: colors.primary }]
+                  : [
+                      styles.agentBubble,
+                      {
+                        backgroundColor: colors.surface.secondary,
+                        borderColor: colors.border.primary,
+                      },
+                    ],
+              ]}
+            >
+              {item.streaming && !item.content ? (
+                runningActionLabel && isLast ? (
+                  <View style={styles.runningRow}>
+                    <ActivityIndicator size="small" color={colors.primary} />
+                    <Text style={[styles.runningText, { color: colors.text.secondary }]}>
+                      {runningActionLabel}…
+                    </Text>
+                  </View>
+                ) : (
+                  <TypingDots color={colors.text.secondary} />
+                )
+              ) : (
+                <Text
+                  style={[
+                    styles.messageText,
+                    { color: isUser ? '#fff' : colors.text.primary },
+                  ]}
+                >
+                  {item.content}
+                </Text>
+              )}
+            </View>
+          ) : null}
+          {hasResults ? renderActionResults(item.actionResults!) : null}
           {item.profileChoices?.length ? (
             <View style={styles.profileChoices}>
               {item.profileChoices.map(choice => (
                 <Pressable
                   key={choice.id}
-                  onPress={() => chooseProfileForAction(choice)}
-                  style={[
+                  onPress={() => {
+                    void chooseProfileForAction(choice);
+                  }}
+                  style={({ pressed }) => [
                     styles.profileChoice,
                     {
                       backgroundColor: colors.surface.secondary,
                       borderColor: colors.border.primary,
+                      opacity: pressed ? 0.7 : 1,
                     },
                   ]}
                 >
@@ -1950,15 +2580,14 @@ const AIAgentModal: React.FC<Props> = ({
                   )}
                   <View style={styles.profileChoiceText}>
                     <Text
-                      style={[
-                        styles.profileChoiceName,
-                        { color: colors.text.primary },
-                      ]}
+                      numberOfLines={1}
+                      style={[styles.profileChoiceName, { color: colors.text.primary }]}
                     >
                       {choice.name}
                     </Text>
                     {choice.username ? (
                       <Text
+                        numberOfLines={1}
                         style={[
                           styles.profileChoiceUsername,
                           { color: colors.text.secondary },
@@ -1968,99 +2597,284 @@ const AIAgentModal: React.FC<Props> = ({
                       </Text>
                     ) : null}
                   </View>
-                  <Icon name="call" size={18} color={colors.primary} />
+                  <View
+                    style={[
+                      styles.profileChoiceAction,
+                      { backgroundColor: `${colors.primary}18` },
+                    ]}
+                  >
+                    <Icon name={choiceIcon} size={17} color={colors.primary} />
+                  </View>
                 </Pressable>
               ))}
             </View>
           ) : null}
-          <Text style={[styles.time, { color: colors.text.tertiary }]}>
-            {new Date(item.timestamp).toLocaleTimeString([], {
-              hour: 'numeric',
-              minute: '2-digit',
-            })}
+          <Text
+            style={[
+              styles.time,
+              isUser && styles.userTime,
+              { color: copiedMessageId === item.id ? colors.primary : colors.text.tertiary },
+            ]}
+          >
+            {copiedMessageId === item.id
+              ? 'Copied'
+              : new Date(item.timestamp).toLocaleTimeString([], {
+                  hour: 'numeric',
+                  minute: '2-digit',
+                })}
           </Text>
-        </View>
+        </Pressable>
       </View>
     );
   };
-  const runPendingAction = async (action: AgentActionIntent) => {
-    try {
-      const adapter = createMobileAgentActionAdapter({
-        ...callAdapter,
-        startLudo: openLudo,
-        inviteLudoPlayer,
-        startChess: () => setChessGameActive(true),
-        logout,
-        clearAgentChat: clearChat,
-      });
-      if (autoMode) {
-        updateAutoActionRunning(true);
-        await new Promise<void>(resolve => setTimeout(resolve, 0));
+
+  const renderEmptyState = () => (
+    <View style={styles.emptyState}>
+      <LinearGradient
+        colors={[colors.primary, '#8B5CF6']}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={styles.heroOrb}
+      >
+        <Icon name="auto-awesome" size={30} color="#fff" />
+      </LinearGradient>
+      <Text style={[styles.heroTitle, { color: colors.text.primary }]}>
+        {settings.language === 'bn' ? 'কী করতে পারি?' : 'What can I do for you?'}
+      </Text>
+      <Text style={[styles.heroSubtitle, { color: colors.text.secondary }]}>
+        {settings.language === 'bn'
+          ? 'বলুন বা লিখুন — আমি Connect-এ কাজগুলো করে দেব।'
+          : 'Type or speak — I can run actions across Connect for you.'}
+      </Text>
+      <Pressable
+        onPress={() => {
+          void toggleVoice();
+        }}
+        disabled={!transcribe.supported}
+        style={({ pressed }) => [
+          styles.heroTalk,
+          { opacity: pressed ? 0.85 : 1, transform: [{ scale: pressed ? 0.97 : 1 }] },
+        ]}
+        accessibilityRole="button"
+        accessibilityLabel={bn ? 'কথা বলতে চাপুন' : 'Tap to talk'}
+      >
+        <LinearGradient
+          colors={[colors.primary, '#8B5CF6']}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={styles.heroTalkCircle}
+        >
+          <Icon name="mic" size={44} color="#fff" />
+        </LinearGradient>
+        <Text style={[styles.heroTalkLabel, { color: colors.text.primary }]}>
+          {bn ? 'কথা বলতে চাপুন' : 'Tap to talk'}
+        </Text>
+        <Text style={[styles.heroTalkHint, { color: colors.text.secondary }]}>
+          {bn
+            ? 'বাংলা বা ইংরেজি — যেভাবে খুশি বলুন'
+            : 'Speak in Bangla or English'}
+        </Text>
+      </Pressable>
+      <View style={styles.capabilityGrid}>
+        {capabilities.map(capability => (
+          <Pressable
+            key={capability.title}
+            onPress={() => {
+              void send(capability.prompt);
+            }}
+            disabled={loading}
+            style={({ pressed }) => [
+              styles.capabilityCard,
+              {
+                backgroundColor: colors.surface.secondary,
+                borderColor: colors.border.primary,
+                opacity: pressed ? 0.75 : 1,
+                transform: [{ scale: pressed ? 0.98 : 1 }],
+              },
+            ]}
+          >
+            <View
+              style={[
+                styles.capabilityIcon,
+                { backgroundColor: `${capability.tint}1F` },
+              ]}
+            >
+              <Icon name={capability.icon} size={18} color={capability.tint} />
+            </View>
+            <Text style={[styles.capabilityTitle, { color: colors.text.primary }]}>
+              {capability.title}
+            </Text>
+            <Text
+              numberOfLines={2}
+              style={[styles.capabilityPrompt, { color: colors.text.secondary }]}
+            >
+              {capability.prompt}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+
+  const isFreshChat =
+    messages.length <= 1 && messages.every(item => item.type !== 'user');
+  const bn = settings.language === 'bn';
+  const voicePhase: {
+    label: string;
+    hint: string;
+    color: string;
+    icon: React.ComponentProps<typeof Icon>['name'];
+    busy: boolean;
+  } = runningActionLabel
+    ? {
+        label: bn ? 'কাজ করছি…' : 'Doing it…',
+        hint: runningActionLabel,
+        color: colors.primary,
+        icon: 'bolt',
+        busy: true,
       }
-      const startsCall =
-        action.action === 'START_AUDIO_CALL' ||
-        action.action === 'START_VIDEO_CALL';
+    : voiceRefining
+    ? {
+        label: bn ? 'বুঝছি…' : 'Understanding…',
+        hint: bn ? 'আপনার কথা ঠিকভাবে লিখছি' : 'Getting your words right',
+        color: colors.status.warning,
+        icon: 'graphic-eq',
+        busy: true,
+      }
+    : loading
+    ? {
+        label: bn ? 'ভাবছি…' : 'Thinking…',
+        hint: bn ? 'এক মুহূর্ত' : 'One moment',
+        color: colors.status.warning,
+        icon: 'auto-awesome',
+        busy: true,
+      }
+    : transcribe.listening
+    ? {
+        label: bn ? 'শুনছি… বলুন' : 'Listening… go ahead',
+        hint: bn
+          ? 'যেমন: "রহিমকে ভিডিও কল দাও"'
+          : 'For example: "Video call Rahim"',
+        color: colors.status.error,
+        icon: 'mic',
+        busy: false,
+      }
+    : {
+        label: bn ? 'মাইক বন্ধ' : 'Mic paused',
+        hint: bn ? 'আবার বলতে মাইক চাপুন' : 'Tap the mic to talk again',
+        color: colors.text.secondary,
+        icon: 'mic-none',
+        busy: false,
+      };
+  const statusTone = loading
+    ? colors.status.warning
+    : transcribe.listening
+    ? colors.status.error
+    : colors.status.success;
+  const statusLabel = runningActionLabel
+    ? `Running · ${runningActionLabel}`
+    : voiceRefining
+    ? 'Understanding your voice…'
+    : loading
+    ? 'Thinking…'
+    : transcribe.listening
+    ? 'Listening…'
+    : voiceConversation
+    ? 'Hands-free voice mode'
+    : autoMode
+    ? 'Auto-runs actions'
+    : 'Asks before acting';
+
+  const runPendingAction = async (action: AgentActionIntent) => {
+    const startsCall =
+      action.action === 'START_AUDIO_CALL' ||
+      action.action === 'START_VIDEO_CALL';
+    let mediaStarted = false;
+    try {
+      const adapter = buildAdapter(speechEnabled, lastReplyLanguageRef.current);
+      updateAutoActionRunning(true);
+      setRunningActionLabel(getAgentActionLabel(action.action));
+      await new Promise<void>(resolve => setTimeout(resolve, 0));
       if (startsCall) {
         setVoiceConversation(false);
         await transcribe.stop({ discard: true });
         await restoreChatPlaybackAudioMode();
       }
+      // Tapping Run / picking a person is the confirmation for sensitive
+      // actions; destructive ones still ask.
       const results = await executeAgentActions([action], adapter, {
-        skipConfirmation: autoMode,
-        confirm: definition =>
-          new Promise<boolean>(resolve => {
-            Alert.alert(
-              'Confirm action',
-              `Allow the agent to ${definition.label.toLowerCase()}?`,
-              [
-                {
-                  text: 'Cancel',
-                  style: 'cancel',
-                  onPress: () => resolve(false),
-                },
-                {
-                  text: 'Allow',
-                  style: 'destructive',
-                  onPress: () => resolve(true),
-                },
-              ],
-            );
-          }),
+        skipConfirmation: true,
+        confirm: confirmAgentAction,
       });
-      const result = results[0];
+      mediaStarted = results.some(
+        result => result.ok && MEDIA_ACTIONS.has(result.action),
+      );
       setPendingActions(previous => previous.filter(item => item !== action));
+      if (ambiguityRef.current?.length) {
+        const profileChoices = ambiguityRef.current;
+        ambiguityRef.current = undefined;
+        ambiguousActionRef.current = action;
+        ambiguityChoicesRef.current = profileChoices;
+        const question = `I found a few people: ${profileChoices
+          .map((choice, index) => `${index + 1}. ${choice.name}`)
+          .join(', ')}. Who did you mean?`;
+        setMessages(previous => [
+          ...previous,
+          {
+            id: id(),
+            type: 'agent',
+            content: question,
+            timestamp: new Date().toISOString(),
+            profileChoices,
+          },
+        ]);
+        await speakLine(question);
+        return;
+      }
+      const message = results.map(result => result.message).join(' ');
       setMessages(previous => [
         ...previous,
         {
           id: id(),
           type: 'action-result',
-          content: result?.message || 'Action completed.',
+          content: '',
           timestamp: new Date().toISOString(),
-          success: result?.ok,
+          success: results.every(result => result.ok),
+          actionResults: results,
         },
       ]);
+      if (!startsCall) await speakLine(message);
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Action failed.';
       setMessages(previous => [
         ...previous,
         {
           id: id(),
           type: 'action-result',
-          content: error instanceof Error ? error.message : 'Action failed.',
+          content: message,
           timestamp: new Date().toISOString(),
           success: false,
         },
       ]);
+      await speakLine(message);
     } finally {
       updateAutoActionRunning(false);
+      setRunningActionLabel('');
+      // Keep a hands-free conversation going after a tap or spoken choice.
+      if (voiceConversation && mediaStarted) {
+        setVoiceConversation(false);
+      } else if (voiceConversation && !startsCall && !isCallBusy()) {
+        const started = await startListening(listenLanguage);
+        if (!started) setVoiceConversation(false);
+      }
     }
   };
-  const chooseProfileForAction = (
-    choice: NonNullable<AgentMessage['profileChoices']>[number],
-  ) => {
+  const chooseProfileForAction = async (choice: ProfileChoice) => {
     const action = ambiguousActionRef.current;
     if (!action) return;
     ambiguousActionRef.current = null;
-    runPendingAction({
+    ambiguityChoicesRef.current = [];
+    await runPendingAction({
       ...action,
       parameters: {
         ...(action.parameters || {}),
@@ -2068,29 +2882,53 @@ const AIAgentModal: React.FC<Props> = ({
         userName: choice.name,
       },
       targetName: choice.name,
-    }).catch(error => {
-      setMessages(previous => [
-        ...previous,
-        {
-          id: id(),
-          type: 'action-result',
-          content: error instanceof Error ? error.message : 'Action failed.',
-          timestamp: new Date().toISOString(),
-          success: false,
-        },
-      ]);
     });
+  };
+
+  const availableProviders = providerStatus
+    ? (Object.keys(providerLabels) as AIProvider[]).filter(
+        provider =>
+          providerStatus.enabled[provider] !== false &&
+          providerStatus.configured[provider],
+      )
+    : [];
+  const describePendingAction = (action: AgentActionIntent) => {
+    const parameters = action.parameters || {};
+    return (
+      [
+        parameters.userName || action.targetName,
+        parameters.message ||
+          parameters.caption ||
+          parameters.content ||
+          parameters.text ||
+          parameters.title ||
+          parameters.name ||
+          action.messageText,
+        parameters.query || action.searchQuery,
+        parameters.date,
+      ]
+        .map(value => String(value || '').trim())
+        .filter(Boolean)
+        .join(' · ') || 'Tap Run to continue'
+    );
+  };
+  const runAllPendingActions = async () => {
+    for (const action of [...pendingActions]) {
+      // Sequential on purpose: later actions may depend on earlier ones.
+      await runPendingAction(action);
+    }
   };
 
   return (
     <>
       {visible && !minimized && (
-        <Modal animationType="slide" onRequestClose={close}>
+        <Modal
+          animationType="slide"
+          onRequestClose={close}
+          statusBarTranslucent={false}
+        >
           <SafeAreaView
-            style={[
-              styles.safe,
-              { backgroundColor: colors.background.primary },
-            ]}
+            style={[styles.safe, { backgroundColor: colors.background.primary }]}
           >
             <KeyboardAvoidingView
               style={styles.flex}
@@ -2106,85 +2944,42 @@ const AIAgentModal: React.FC<Props> = ({
                   },
                 ]}
               >
-                <View
-                  style={[
-                    styles.headerIcon,
-                    { backgroundColor: `${colors.primary}20` },
-                  ]}
+                <LinearGradient
+                  colors={[colors.primary, '#8B5CF6']}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 1 }}
+                  style={styles.headerIcon}
                 >
-                  <Icon name="psychology" size={26} color={colors.primary} />
-                </View>
+                  <Icon name="auto-awesome" size={20} color="#fff" />
+                </LinearGradient>
                 <View style={styles.title}>
-                  <Text
-                    style={[styles.heading, { color: colors.text.primary }]}
-                  >
+                  <Text style={[styles.heading, { color: colors.text.primary }]}>
                     Connect AI
                   </Text>
                   <View style={styles.statusLine}>
-                    <View
-                      style={[
-                        styles.statusDot,
-                        { backgroundColor: colors.status.success },
-                      ]}
-                    />
+                    <View style={[styles.statusDot, { backgroundColor: statusTone }]} />
                     <Text
-                      style={[
-                        styles.statusText,
-                        { color: colors.text.secondary },
-                      ]}
+                      numberOfLines={1}
+                      style={[styles.statusText, { color: colors.text.secondary }]}
                     >
-                      {loading
-                        ? 'Thinking...'
-                        : transcribe.listening
-                        ? 'Listening for your command'
-                        : voiceConversation
-                        ? 'Hands-free voice mode'
-                        : 'Ready to help'}
+                      {statusLabel}
                     </Text>
                   </View>
                 </View>
-                <Pressable
-                  style={styles.headerButton}
-                  onPress={clear}
-                  accessibilityLabel="Clear AI chat"
-                >
-                  <Icon
-                    name="delete-outline"
-                    size={21}
-                    color={colors.text.secondary}
-                  />
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.headerButton,
-                    speechEnabled && { backgroundColor: `${colors.primary}18` },
-                  ]}
-                  onPress={() => {
-                    void toggleSpeech();
-                  }}
-                  accessibilityLabel={
-                    speechEnabled ? 'Turn speaking off' : 'Turn speaking on'
-                  }
-                >
-                  <Icon
-                    name={speechEnabled ? 'volume-up' : 'volume-off'}
-                    size={21}
-                    color={
-                      speechEnabled ? colors.primary : colors.text.secondary
-                    }
-                  />
-                </Pressable>
                 <Pressable
                   style={[
                     styles.modeButton,
                     {
                       backgroundColor: autoMode
-                        ? `${colors.primary}18`
+                        ? `${colors.primary}1F`
                         : colors.surface.secondary,
                     },
                   ]}
                   onPress={() => setAutoMode(value => !value)}
-                  accessibilityLabel={`Auto mode ${autoMode ? 'on' : 'off'}`}
+                  accessibilityRole="switch"
+                  accessibilityState={{ checked: autoMode }}
+                  accessibilityLabel={`Auto-run actions ${autoMode ? 'on' : 'off'}`}
+                  hitSlop={6}
                 >
                   <Icon
                     name={autoMode ? 'bolt' : 'touch-app'}
@@ -2194,144 +2989,161 @@ const AIAgentModal: React.FC<Props> = ({
                   <Text
                     style={[
                       styles.modeText,
-                      {
-                        color: autoMode
-                          ? colors.primary
-                          : colors.text.secondary,
-                      },
+                      { color: autoMode ? colors.primary : colors.text.secondary },
                     ]}
                   >
-                    {autoMode ? 'Auto' : 'Manual'}
+                    {autoMode ? 'Auto' : 'Ask'}
                   </Text>
+                </Pressable>
+                <Pressable
+                  style={[
+                    styles.headerButton,
+                    speechEnabled && { backgroundColor: `${colors.primary}18` },
+                  ]}
+                  onPress={() => {
+                    void toggleSpeech();
+                  }}
+                  accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
+                  hitSlop={4}
+                >
+                  <Icon
+                    name={speechEnabled ? 'volume-up' : 'volume-off'}
+                    size={20}
+                    color={speechEnabled ? colors.primary : colors.text.secondary}
+                  />
+                </Pressable>
+                <Pressable
+                  style={styles.headerButton}
+                  onPress={() => setMinimized(true)}
+                  accessibilityLabel="Minimize AI Agent"
+                  hitSlop={4}
+                >
+                  <Icon name="minimize" size={20} color={colors.text.secondary} />
                 </Pressable>
                 <Pressable
                   style={styles.headerButton}
                   onPress={close}
                   accessibilityLabel="Close AI Agent"
+                  hitSlop={4}
                 >
-                  <Icon name="close" size={25} color={colors.text.primary} />
+                  <Icon name="close" size={22} color={colors.text.primary} />
                 </Pressable>
               </View>
-              {providerStatus && (
-                <View
+              <View
+                style={[
+                  styles.toolbar,
+                  {
+                    backgroundColor: colors.surface.primary,
+                    borderBottomColor: colors.border.primary,
+                  },
+                ]}
+              >
+                <Pressable
+                  onPress={() => setProviderMenuOpen(value => !value)}
+                  disabled={!availableProviders.length}
                   style={[
-                    styles.providerBar,
-                    { backgroundColor: colors.surface.primary },
+                    styles.toolbarChip,
+                    { backgroundColor: colors.surface.secondary },
                   ]}
+                  accessibilityLabel="Select AI provider"
                 >
-                  <Pressable
-                    onPress={() => setProviderMenuOpen(value => !value)}
-                    style={[
-                      styles.providerSelector,
-                      { borderColor: colors.border.primary },
-                    ]}
-                    accessibilityLabel="Select AI provider"
-                  >
-                    <Text
-                      style={[
-                        styles.providerSelectorText,
-                        { color: colors.text.primary },
-                      ]}
-                    >
-                      AI Provider: {providerLabels[selectedProvider]}
-                    </Text>
+                  <Icon name="psychology" size={15} color={colors.primary} />
+                  <Text style={[styles.toolbarChipText, { color: colors.text.primary }]}>
+                    {providerLabels[selectedProvider]}
+                  </Text>
+                  {availableProviders.length > 1 ? (
                     <Icon
                       name={providerMenuOpen ? 'expand-less' : 'expand-more'}
-                      size={20}
+                      size={16}
                       color={colors.text.secondary}
                     />
-                  </Pressable>
-                  {providerMenuOpen && (
-                    <View
-                      style={[
-                        styles.providerMenu,
-                        {
-                          backgroundColor: colors.surface.secondary,
-                          borderColor: colors.border.primary,
-                        },
+                  ) : null}
+                </Pressable>
+                <View style={styles.flex} />
+                <Pressable
+                  onPress={clear}
+                  disabled={isFreshChat || loading}
+                  style={[
+                    styles.toolbarChip,
+                    {
+                      backgroundColor: colors.surface.secondary,
+                      opacity: isFreshChat || loading ? 0.45 : 1,
+                    },
+                  ]}
+                  accessibilityLabel="Clear AI chat"
+                >
+                  <Icon name="delete-outline" size={15} color={colors.text.secondary} />
+                  <Text style={[styles.toolbarChipText, { color: colors.text.secondary }]}>
+                    Clear
+                  </Text>
+                </Pressable>
+              </View>
+              {providerMenuOpen && availableProviders.length > 0 && (
+                <View
+                  style={[
+                    styles.providerMenu,
+                    {
+                      backgroundColor: colors.surface.primary,
+                      borderColor: colors.border.primary,
+                    },
+                  ]}
+                >
+                  {availableProviders.map(provider => (
+                    <Pressable
+                      key={provider}
+                      onPress={() => chooseProvider(provider)}
+                      style={({ pressed }) => [
+                        styles.providerOption,
+                        pressed && { backgroundColor: colors.surface.secondary },
                       ]}
                     >
-                      {(Object.keys(providerLabels) as AIProvider[])
-                        .filter(
-                          provider =>
-                            providerStatus.enabled[provider] !== false &&
-                            providerStatus.configured[provider],
-                        )
-                        .map(provider => (
-                          <Pressable
-                            key={provider}
-                            onPress={() => chooseProvider(provider)}
-                            style={styles.providerOption}
-                          >
-                            <Text
-                              style={[
-                                styles.providerOptionText,
-                                { color: colors.text.primary },
-                              ]}
-                            >
-                              {selectedProvider === provider ? '● ' : '○ '}
-                              {providerLabels[provider]}
-                            </Text>
-                          </Pressable>
-                        ))}
-                    </View>
-                  )}
+                      <Icon
+                        name={
+                          selectedProvider === provider
+                            ? 'radio-button-checked'
+                            : 'radio-button-unchecked'
+                        }
+                        size={18}
+                        color={
+                          selectedProvider === provider
+                            ? colors.primary
+                            : colors.text.tertiary
+                        }
+                      />
+                      <Text
+                        style={[styles.providerOptionText, { color: colors.text.primary }]}
+                      >
+                        {providerLabels[provider]}
+                      </Text>
+                      {providerStatus?.models[provider] ? (
+                        <Text
+                          numberOfLines={1}
+                          style={[styles.providerModel, { color: colors.text.tertiary }]}
+                        >
+                          {String(providerStatus.models[provider]).split('/').pop()}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  ))}
                 </View>
               )}
               <FlatList
                 ref={listRef}
                 style={styles.flex}
-                contentContainerStyle={styles.messages}
-                data={messages}
+                contentContainerStyle={[
+                  styles.messages,
+                  isFreshChat && styles.messagesEmpty,
+                ]}
+                data={isFreshChat ? [] : messages}
                 keyExtractor={item => item.id}
                 renderItem={renderMessage}
                 showsVerticalScrollIndicator={false}
-                ListFooterComponent={
-                  messages.length === 1 ? (
-                    <View style={styles.quickPromptWrap}>
-                      <Text
-                        style={[
-                          styles.quickPromptLabel,
-                          { color: colors.text.secondary },
-                        ]}
-                      >
-                        Try asking
-                      </Text>
-                      <View style={styles.quickPrompts}>
-                        {quickPrompts.map(prompt => (
-                          <Pressable
-                            key={prompt}
-                            onPress={() => {
-                              voiceInputBaseRef.current = prompt;
-                              setInput(prompt);
-                            }}
-                            style={[
-                              styles.quickPrompt,
-                              {
-                                borderColor: colors.border.primary,
-                                backgroundColor: colors.surface.secondary,
-                              },
-                            ]}
-                          >
-                            <Text
-                              style={[
-                                styles.quickPromptText,
-                                { color: colors.text.primary },
-                              ]}
-                            >
-                              {prompt}
-                            </Text>
-                          </Pressable>
-                        ))}
-                      </View>
-                    </View>
-                  ) : null
+                keyboardShouldPersistTaps="handled"
+                keyboardDismissMode="interactive"
+                onContentSizeChange={() =>
+                  listRef.current?.scrollToEnd({ animated: true })
                 }
-                ListEmptyComponent={
-                  <Text style={{ color: colors.text.secondary }}>
-                    Ask the AI Agent anything about Connect.
-                  </Text>
-                }
+                ListEmptyComponent={renderEmptyState}
               />
               {pendingActions.length > 0 && (
                 <View
@@ -2343,20 +3155,41 @@ const AIAgentModal: React.FC<Props> = ({
                     },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.actionTrayTitle,
-                      { color: colors.text.secondary },
-                    ]}
-                  >
-                    Suggested actions
-                  </Text>
-                  {pendingActions.map(action => (
-                    <Pressable
-                      key={`${action.id || action.action}-${
-                        action.targetName || ''
-                      }`}
-                      onPress={() => runPendingAction(action)}
+                  <View style={styles.actionTrayHeader}>
+                    <Text style={[styles.actionTrayTitle, { color: colors.text.secondary }]}>
+                      {pendingActions.length === 1
+                        ? 'Ready to run'
+                        : `${pendingActions.length} actions ready`}
+                    </Text>
+                    <View style={styles.actionTrayButtons}>
+                      <Pressable
+                        onPress={() => setPendingActions([])}
+                        hitSlop={6}
+                        accessibilityLabel="Dismiss suggested actions"
+                      >
+                        <Text style={[styles.actionTrayLink, { color: colors.text.secondary }]}>
+                          Dismiss
+                        </Text>
+                      </Pressable>
+                      {pendingActions.length > 1 ? (
+                        <Pressable
+                          onPress={() => {
+                            void runAllPendingActions();
+                          }}
+                          disabled={autoActionRunning}
+                          hitSlop={6}
+                          accessibilityLabel="Run all suggested actions"
+                        >
+                          <Text style={[styles.actionTrayLink, { color: colors.primary }]}>
+                            Run all
+                          </Text>
+                        </Pressable>
+                      ) : null}
+                    </View>
+                  </View>
+                  {pendingActions.map((action, index) => (
+                    <View
+                      key={`${action.id || action.action}-${index}`}
                       style={[
                         styles.actionCard,
                         {
@@ -2365,84 +3198,132 @@ const AIAgentModal: React.FC<Props> = ({
                         },
                       ]}
                     >
-                      <Icon
-                        name="play-arrow"
-                        size={18}
-                        color={colors.primary}
-                      />
+                      <View
+                        style={[
+                          styles.actionCardIcon,
+                          { backgroundColor: `${colors.primary}1A` },
+                        ]}
+                      >
+                        <Icon name="bolt" size={16} color={colors.primary} />
+                      </View>
                       <View style={styles.actionCardBody}>
-                        <Text
-                          style={[
-                            styles.actionCardTitle,
-                            { color: colors.text.primary },
-                          ]}
-                        >
-                          {action.type || action.action}
+                        <Text style={[styles.actionCardTitle, { color: colors.text.primary }]}>
+                          {getAgentActionLabel(action.action)}
                         </Text>
                         <Text
+                          numberOfLines={2}
                           style={[
                             styles.actionCardSubtitle,
                             { color: colors.text.secondary },
                           ]}
                         >
-                          {action.targetName ||
-                            action.messageText ||
-                            'Run this action'}
+                          {describePendingAction(action)}
                         </Text>
                       </View>
-                      <Text style={[styles.runText, { color: colors.primary }]}>
-                        Run
-                      </Text>
-                    </Pressable>
+                      <Pressable
+                        onPress={() => {
+                          void runPendingAction(action);
+                        }}
+                        disabled={autoActionRunning}
+                        style={({ pressed }) => [
+                          styles.runButton,
+                          {
+                            backgroundColor: colors.primary,
+                            opacity: autoActionRunning ? 0.5 : pressed ? 0.8 : 1,
+                          },
+                        ]}
+                        accessibilityLabel={`Run ${getAgentActionLabel(action.action)}`}
+                      >
+                        <Icon name="play-arrow" size={16} color="#fff" />
+                        <Text style={styles.runText}>Run</Text>
+                      </Pressable>
+                    </View>
                   ))}
                 </View>
               )}
               {voiceConversation && voiceLanguageMenuOpen && (
                 <View
-                  style={[
-                    styles.voiceLanguageBar,
-                    { backgroundColor: colors.surface.primary },
-                  ]}
+                  style={[styles.voiceLanguageBar, { backgroundColor: colors.surface.primary }]}
                 >
-                  {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(
-                    option => (
-                      <Pressable
-                        key={option}
-                        onPress={() => {
-                          void selectVoiceLanguage(option);
-                        }}
+                  <Text style={[styles.voiceLanguageLabel, { color: colors.text.secondary }]}>
+                    Voice
+                  </Text>
+                  {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
+                    <Pressable
+                      key={option}
+                      onPress={() => {
+                        void selectVoiceLanguage(option);
+                      }}
+                      style={[
+                        styles.voiceLanguageOption,
+                        {
+                          backgroundColor:
+                            language === option
+                              ? `${colors.primary}20`
+                              : colors.surface.secondary,
+                        },
+                      ]}
+                    >
+                      <Text
                         style={[
-                          styles.voiceLanguageOption,
+                          styles.language,
                           {
-                            backgroundColor:
-                              language === option
-                                ? `${colors.primary}20`
-                                : colors.surface.secondary,
+                            color:
+                              language === option ? colors.primary : colors.text.secondary,
                           },
                         ]}
                       >
-                        <Text
-                          style={[
-                            styles.language,
-                            {
-                              color:
-                                language === option
-                                  ? colors.primary
-                                  : colors.text.secondary,
-                            },
-                          ]}
-                        >
-                          {option === 'bn-BD'
-                            ? 'বাংলা'
-                            : option === 'en-US'
-                            ? 'English'
-                            : 'Auto'}
-                        </Text>
-                      </Pressable>
-                    ),
-                  )}
+                        {option === 'bn-BD' ? 'বাংলা' : option === 'en-US' ? 'English' : 'Auto'}
+                      </Text>
+                    </Pressable>
+                  ))}
                 </View>
               )}
+              {voiceConversation ? (
+                <View
+                  style={[
+                    styles.voicePanel,
+                    {
+                      backgroundColor: colors.surface.secondary,
+                      borderColor: colors.border.primary,
+                    },
+                  ]}
+                >
+                  <Pressable
+                    onPress={() => {
+                      void toggleVoice();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityLabel={voicePhase.label}
+                    hitSlop={8}
+                  >
+                    <PulseMic
+                      active={transcribe.listening}
+                      color={voicePhase.color}
+                      icon={voicePhase.icon}
+                      busy={voicePhase.busy}
+                    />
+                  </Pressable>
+                  <View style={styles.voicePanelText}>
+                    <Text style={[styles.voicePhase, { color: voicePhase.color }]}>
+                      {voicePhase.label}
+                    </Text>
+                    <Text
+                      numberOfLines={3}
+                      style={[
+                        styles.voiceTranscript,
+                        {
+                          color: voiceTranscript
+                            ? colors.text.primary
+                            : colors.text.tertiary,
+                        },
+                      ]}
+                    >
+                      {voiceTranscript || voicePhase.hint}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
               <View
                 style={[
                   styles.composer,
@@ -2452,35 +3333,32 @@ const AIAgentModal: React.FC<Props> = ({
                   },
                 ]}
               >
-                <View style={styles.voiceControl}>
-                  <Pressable
-                    style={[
-                      styles.iconButton,
-                      {
-                        backgroundColor: transcribe.listening
-                          ? `${colors.status.error}18`
-                          : colors.surface.secondary,
-                      },
-                    ]}
-                    onPress={toggleVoice}
-                    disabled={loading || !transcribe.supported}
-                    accessibilityLabel={
-                      transcribe.listening
-                        ? 'Stop hands-free voice commands'
-                        : 'Start hands-free voice commands'
+                <Pressable
+                  style={[
+                    styles.iconButton,
+                    {
+                      backgroundColor: transcribe.listening
+                        ? `${colors.status.error}1F`
+                        : colors.surface.secondary,
+                    },
+                  ]}
+                  onPress={toggleVoice}
+                  onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
+                  disabled={loading || !transcribe.supported}
+                  accessibilityLabel={
+                    transcribe.listening
+                      ? 'Stop hands-free voice commands'
+                      : 'Start hands-free voice commands'
+                  }
+                >
+                  <Icon
+                    name={transcribe.listening ? 'mic' : 'mic-none'}
+                    size={22}
+                    color={
+                      transcribe.listening ? colors.status.error : colors.text.secondary
                     }
-                  >
-                    <Icon
-                      name={transcribe.listening ? 'mic' : 'mic-none'}
-                      size={24}
-                      color={
-                        transcribe.listening
-                          ? colors.status.error
-                          : colors.text.secondary
-                      }
-                    />
-                  </Pressable>
-                </View>
+                  />
+                </Pressable>
                 <TextInput
                   value={input}
                   onChangeText={text => {
@@ -2488,7 +3366,11 @@ const AIAgentModal: React.FC<Props> = ({
                     setInput(text);
                   }}
                   multiline
-                  placeholder="Speak or type a command..."
+                  placeholder={
+                    settings.language === 'bn'
+                      ? 'কিছু জিজ্ঞেস করুন বা একটি কাজ বলুন…'
+                      : 'Ask anything or tell me what to do…'
+                  }
                   placeholderTextColor={colors.text.tertiary}
                   style={[
                     styles.input,
@@ -2503,22 +3385,34 @@ const AIAgentModal: React.FC<Props> = ({
                     void send();
                   }}
                   blurOnSubmit={false}
+                  returnKeyType="send"
                 />
-                <Pressable
-                  onPress={() => {
-                    void send();
-                  }}
-                  disabled={!input.trim() || loading}
-                  style={[
-                    styles.send,
-                    {
-                      backgroundColor: colors.primary,
-                      opacity: input.trim() && !loading ? 1 : 0.45,
-                    },
-                  ]}
-                >
-                  <Icon name="arrow-upward" size={21} color="#fff" />
-                </Pressable>
+                {loading ? (
+                  <Pressable
+                    onPress={stopGenerating}
+                    style={[styles.send, { backgroundColor: colors.text.primary }]}
+                    accessibilityLabel="Stop"
+                  >
+                    <Icon name="stop" size={20} color={colors.background.primary} />
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    onPress={() => {
+                      void send();
+                    }}
+                    disabled={!input.trim()}
+                    style={[
+                      styles.send,
+                      {
+                        backgroundColor: colors.primary,
+                        opacity: input.trim() ? 1 : 0.4,
+                      },
+                    ]}
+                    accessibilityLabel="Send"
+                  >
+                    <Icon name="arrow-upward" size={21} color="#fff" />
+                  </Pressable>
+                )}
               </View>
             </KeyboardAvoidingView>
           </SafeAreaView>
@@ -2532,6 +3426,7 @@ const AIAgentModal: React.FC<Props> = ({
             {
               transform: miniPosition.getTranslateTransform(),
               backgroundColor: colors.surface.primary,
+              borderColor: colors.border.primary,
             },
           ]}
         >
@@ -2541,27 +3436,40 @@ const AIAgentModal: React.FC<Props> = ({
             accessibilityRole="button"
             accessibilityLabel="Restore AI Agent"
           >
-            <Icon name="psychology" size={22} color={colors.primary} />
-            <View style={styles.agentMiniText}>
-              <Text
-                style={[
-                  styles.agentMiniStatus,
-                  { color: colors.text.secondary },
-                ]}
-              >
-                {autoActionRunning
-                  ? 'Running action...'
-                  : transcribe.listening
-                  ? voiceTranscript || 'Listening...'
-                  : 'Tap to restore'}
-              </Text>
-            </View>
+            <LinearGradient
+              colors={[colors.primary, '#8B5CF6']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.agentMiniOrb}
+            >
+              {autoActionRunning || loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Icon name="auto-awesome" size={18} color="#fff" />
+              )}
+            </LinearGradient>
+            <Text
+              numberOfLines={3}
+              style={[styles.agentMiniStatus, { color: colors.text.secondary }]}
+            >
+              {autoActionRunning
+                ? runningActionLabel || 'Running…'
+                : loading
+                ? 'Thinking…'
+                : transcribe.listening
+                ? voiceTranscript || 'Listening…'
+                : 'Tap to open'}
+            </Text>
           </Pressable>
           <View style={styles.agentMiniControls}>
             <Pressable
               style={[
                 styles.agentMiniMic,
-                { backgroundColor: `${colors.primary}20` },
+                {
+                  backgroundColor: transcribe.listening
+                    ? `${colors.status.error}24`
+                    : `${colors.primary}20`,
+                },
               ]}
               onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
               onPress={toggleVoice}
@@ -2569,8 +3477,8 @@ const AIAgentModal: React.FC<Props> = ({
             >
               <Icon
                 name={transcribe.listening ? 'mic' : 'mic-none'}
-                size={20}
-                color={colors.primary}
+                size={18}
+                color={transcribe.listening ? colors.status.error : colors.primary}
               />
             </Pressable>
             <Pressable
@@ -2585,13 +3493,11 @@ const AIAgentModal: React.FC<Props> = ({
               onPress={() => {
                 void toggleSpeech();
               }}
-              accessibilityLabel={
-                speechEnabled ? 'Turn speaking off' : 'Turn speaking on'
-              }
+              accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
             >
               <Icon
                 name={speechEnabled ? 'volume-up' : 'volume-off'}
-                size={20}
+                size={18}
                 color={speechEnabled ? colors.primary : colors.text.secondary}
               />
             </Pressable>
@@ -2606,44 +3512,31 @@ const AIAgentModal: React.FC<Props> = ({
                 },
               ]}
             >
-              {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(
-                option => (
-                  <Pressable
-                    key={`mini-${option}`}
-                    onPress={() => {
-                      setVoiceLanguageMenuOpen(false);
-                      void selectVoiceLanguage(option);
-                    }}
+              {(['auto', 'bn-BD', 'en-US'] as AgentSpeechLanguage[]).map(option => (
+                <Pressable
+                  key={`mini-${option}`}
+                  onPress={() => {
+                    setVoiceLanguageMenuOpen(false);
+                    void selectVoiceLanguage(option);
+                  }}
+                  style={[
+                    styles.agentMiniMenuOption,
+                    {
+                      backgroundColor:
+                        language === option ? `${colors.primary}20` : colors.surface.secondary,
+                    },
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.agentMiniMenuOption,
-                      {
-                        backgroundColor:
-                          language === option
-                            ? `${colors.primary}20`
-                            : colors.surface.secondary,
-                      },
+                      styles.language,
+                      { color: language === option ? colors.primary : colors.text.secondary },
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.language,
-                        {
-                          color:
-                            language === option
-                              ? colors.primary
-                              : colors.text.secondary,
-                        },
-                      ]}
-                    >
-                      {option === 'bn-BD'
-                        ? 'বাংলা'
-                        : option === 'en-US'
-                        ? 'English'
-                        : 'Auto'}
-                    </Text>
-                  </Pressable>
-                ),
-              )}
+                    {option === 'bn-BD' ? 'বাংলা' : option === 'en-US' ? 'English' : 'Auto'}
+                  </Text>
+                </Pressable>
+              ))}
             </View>
           )}
         </Animated.View>
@@ -2651,115 +3544,467 @@ const AIAgentModal: React.FC<Props> = ({
     </>
   );
 };
+
+/** Large mic badge; the ring breathes while listening or working. */
+const PulseMic = ({
+  active,
+  busy,
+  color,
+  icon,
+}: {
+  active: boolean;
+  busy: boolean;
+  color: string;
+  icon: React.ComponentProps<typeof Icon>['name'];
+}) => {
+  const pulse = React.useRef(new Animated.Value(0)).current;
+  const animate = active || busy;
+  React.useEffect(() => {
+    if (!animate) {
+      pulse.setValue(0);
+      return undefined;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulse, { toValue: 1, duration: 900, useNativeDriver: true }),
+        Animated.timing(pulse, { toValue: 0, duration: 900, useNativeDriver: true }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [animate, pulse]);
+  return (
+    <View style={styles.pulseWrap}>
+      <Animated.View
+        style={[
+          styles.pulseRing,
+          {
+            backgroundColor: `${color}33`,
+            opacity: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.9] }),
+            transform: [
+              { scale: pulse.interpolate({ inputRange: [0, 1], outputRange: [0.85, 1.12] }) },
+            ],
+          },
+        ]}
+      />
+      <View style={[styles.pulseCore, { backgroundColor: color }]}>
+        <Icon name={icon} size={26} color="#fff" />
+      </View>
+    </View>
+  );
+};
+
+/** Three softly pulsing dots used while the agent is thinking. */
+const TypingDots = ({ color }: { color: string }) => {
+  const values = React.useRef([0, 1, 2].map(() => new Animated.Value(0.3))).current;
+  React.useEffect(() => {
+    const loops = values.map((value, index) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(index * 150),
+          Animated.timing(value, { toValue: 1, duration: 320, useNativeDriver: true }),
+          Animated.timing(value, { toValue: 0.3, duration: 320, useNativeDriver: true }),
+          Animated.delay((2 - index) * 150),
+        ]),
+      ),
+    );
+    loops.forEach(loop => loop.start());
+    return () => loops.forEach(loop => loop.stop());
+  }, [values]);
+  return (
+    <View style={styles.typingDots} accessibilityLabel="Thinking">
+      {values.map((value, index) => (
+        <Animated.View
+          key={index}
+          style={[
+            styles.dot,
+            {
+              backgroundColor: color,
+              opacity: value,
+              transform: [
+                {
+                  translateY: value.interpolate({
+                    inputRange: [0.3, 1],
+                    outputRange: [0, -3],
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ))}
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   flex: { flex: 1 },
   header: {
-    minHeight: 56,
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
     gap: 6,
-    borderBottomWidth: StyleSheet.hairlineWidth,
   },
   headerIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 12,
+    width: 38,
+    height: 38,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  title: { flex: 1 },
-  heading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.2 },
-  statusLine: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 3,
-    gap: 5,
-  },
+  title: { flex: 1, marginLeft: 4 },
+  heading: { fontSize: 17, fontWeight: '700', letterSpacing: -0.3 },
+  statusLine: { flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 6 },
   statusDot: { width: 7, height: 7, borderRadius: 4 },
-  statusText: { fontSize: 12 },
+  statusText: { fontSize: 12, flexShrink: 1 },
   headerButton: {
-    minWidth: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   modeButton: {
     height: 30,
     borderRadius: 15,
-    paddingHorizontal: 8,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
   },
-  modeText: { fontSize: 11, fontWeight: '700' },
-  language: { fontSize: 11, fontWeight: '700' },
-  providerBar: { paddingHorizontal: 12, paddingVertical: 4, zIndex: 2 },
-  providerSelector: {
-    minHeight: 32,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 10,
+  modeText: { fontSize: 12, fontWeight: '700' },
+  toolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
     paddingHorizontal: 12,
+    paddingBottom: 8,
+    gap: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  toolbarChip: {
+    height: 28,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  toolbarChipText: { fontSize: 12, fontWeight: '600' },
+  providerMenu: {
+    position: 'absolute',
+    top: 102,
+    left: 12,
+    minWidth: 220,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+    paddingVertical: 6,
+    zIndex: 20,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  providerOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+  },
+  providerOptionText: { fontSize: 14, fontWeight: '600' },
+  providerModel: { fontSize: 11, marginLeft: 'auto', maxWidth: 110 },
+  language: { fontSize: 12, fontWeight: '700' },
+  voiceLanguageBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  voiceLanguageLabel: { fontSize: 12, fontWeight: '600', marginRight: 2 },
+  voiceLanguageOption: { paddingHorizontal: 11, paddingVertical: 6, borderRadius: 10 },
+  voicePanel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  voicePanelText: { flex: 1 },
+  voicePhase: { fontSize: 18, fontWeight: '800', letterSpacing: -0.2 },
+  voiceTranscript: { fontSize: 15, lineHeight: 21, marginTop: 3 },
+  pulseWrap: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },
+  pulseRing: { position: 'absolute', width: 64, height: 64, borderRadius: 32 },
+  pulseCore: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroTalk: { alignItems: 'center', marginBottom: 22 },
+  heroTalkCircle: {
+    width: 108,
+    height: 108,
+    borderRadius: 54,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
+  },
+  heroTalkLabel: { fontSize: 20, fontWeight: '800', marginTop: 12 },
+  heroTalkHint: { fontSize: 13, marginTop: 3 },
+  transcriptBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  transcriptText: { flex: 1, fontSize: 13, fontStyle: 'italic' },
+  messages: { paddingHorizontal: 14, paddingTop: 16, paddingBottom: 20, gap: 16 },
+  messagesEmpty: { flexGrow: 1, justifyContent: 'center' },
+  messageRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  userMessageRow: { justifyContent: 'flex-end' },
+  avatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 2,
+  },
+  messageColumn: { maxWidth: '86%', flexShrink: 1 },
+  userMessageColumn: { alignItems: 'flex-end' },
+  bubble: { paddingHorizontal: 14, paddingVertical: 10 },
+  userBubble: { borderRadius: 20, borderBottomRightRadius: 6 },
+  agentBubble: {
+    borderRadius: 20,
+    borderTopLeftRadius: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  messageText: { fontSize: 15, lineHeight: 22 },
+  time: { fontSize: 10, marginTop: 4, marginHorizontal: 6 },
+  userTime: { textAlign: 'right' },
+  runningRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  runningText: { fontSize: 13, fontWeight: '600' },
+  resultCard: {
+    marginTop: 6,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  resultRow: { flexDirection: 'row', paddingHorizontal: 12, paddingVertical: 10, gap: 10 },
+  resultIcon: { marginTop: 1 },
+  resultBody: { flex: 1 },
+  resultLabel: {
+    fontSize: 11,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  resultText: { fontSize: 14, lineHeight: 20 },
+  profileChoices: { marginTop: 8, gap: 7 },
+  profileChoice: {
+    minHeight: 56,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  profileChoiceImage: { width: 38, height: 38, borderRadius: 19 },
+  profileChoicePlaceholder: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileChoiceText: { flex: 1 },
+  profileChoiceName: { fontSize: 14, fontWeight: '700' },
+  profileChoiceUsername: { fontSize: 12, marginTop: 2 },
+  profileChoiceAction: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  typingDots: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  dot: { width: 7, height: 7, borderRadius: 4 },
+  emptyState: { alignItems: 'center', paddingVertical: 12 },
+  heroOrb: {
+    width: 64,
+    height: 64,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  heroTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.4, textAlign: 'center' },
+  heroSubtitle: {
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: 'center',
+    marginTop: 6,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  capabilityGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    rowGap: 10,
+    width: '100%',
+  },
+  capabilityCard: {
+    width: '48.5%',
+    minHeight: 108,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    padding: 12,
+  },
+  capabilityIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  capabilityTitle: { fontSize: 14, fontWeight: '700' },
+  capabilityPrompt: { fontSize: 12, lineHeight: 16, marginTop: 3 },
+  actionTray: {
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 4,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  actionTrayHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  providerSelectorText: { fontSize: 13, fontWeight: '600' },
-  voiceLanguageBar: {
-    flexDirection: 'row',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-  },
-  voiceLanguageOption: {
-    paddingHorizontal: 9,
-    paddingVertical: 5,
-    borderRadius: 8,
-  },
-  voiceControl: { alignItems: 'center', justifyContent: 'center' },
-  providerMenu: {
-    marginTop: 4,
+  actionTrayTitle: { fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.4 },
+  actionTrayButtons: { flexDirection: 'row', gap: 16 },
+  actionTrayLink: { fontSize: 13, fontWeight: '700' },
+  actionCard: {
+    minHeight: 58,
+    borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 8,
+  },
+  actionCardIcon: {
+    width: 32,
+    height: 32,
     borderRadius: 10,
-    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  actionCardBody: { flex: 1 },
+  actionCardTitle: { fontSize: 14, fontWeight: '700' },
+  actionCardSubtitle: { fontSize: 12, marginTop: 2 },
+  runButton: {
+    height: 32,
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  runText: { fontSize: 13, fontWeight: '700', color: '#fff' },
+  composer: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 10,
+    borderTopWidth: StyleSheet.hairlineWidth,
+  },
+  iconButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  input: {
+    flex: 1,
+    maxHeight: 120,
+    minHeight: 44,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: 16,
+    paddingTop: 11,
+    paddingBottom: 11,
+    fontSize: 15,
+  },
+  send: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   agentMini: {
     position: 'absolute',
     left: 16,
     top: '50%',
-    width: 96,
-    height: 132,
-    marginTop: -66,
-    borderRadius: 18,
+    width: 100,
+    minHeight: 136,
+    marginTop: -68,
+    borderRadius: 22,
+    borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: 8,
-    paddingVertical: 10,
-    flexDirection: 'column',
+    paddingVertical: 12,
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    elevation: 8,
+    elevation: 10,
     shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.22,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
   },
-  agentMiniContent: {
-    width: '100%',
-    flexDirection: 'column',
-    alignItems: 'center',
-    gap: 6,
-  },
-  agentMiniText: { alignItems: 'center' },
-  agentMiniTitle: { fontSize: 13, fontWeight: '700' },
-  agentMiniStatus: { fontSize: 10, marginTop: 2, textAlign: 'center' },
-  agentMiniControls: {
-    flexDirection: 'row',
+  agentMiniContent: { width: '100%', alignItems: 'center', gap: 6 },
+  agentMiniOrb: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
   },
+  agentMiniStatus: { fontSize: 11, textAlign: 'center', lineHeight: 14 },
+  agentMiniControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   agentMiniMic: {
     width: 36,
     height: 36,
@@ -2769,8 +4014,8 @@ const styles = StyleSheet.create({
   },
   agentMiniLanguageMenu: {
     position: 'absolute',
-    right: 0,
-    top: 48,
+    left: 106,
+    top: 40,
     minWidth: 118,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
@@ -2782,126 +4027,6 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 3 },
     elevation: 8,
   },
-  agentMiniMenuOption: {
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-  },
-  providerOption: { paddingHorizontal: 12, paddingVertical: 10 },
-  providerOptionText: { fontSize: 13 },
-  messages: { padding: 16, paddingBottom: 20, gap: 14 },
-  messageRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 },
-  userMessageRow: { justifyContent: 'flex-end' },
-  avatar: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  messageColumn: { maxWidth: '84%' },
-  bubble: {
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
-  },
-  userBubble: { borderRadius: 18, borderBottomRightRadius: 5 },
-  agentBubble: { borderRadius: 18, borderBottomLeftRadius: 5 },
-  messageText: { fontSize: 15, lineHeight: 22 },
-  time: { fontSize: 10, marginTop: 4, marginHorizontal: 4 },
-  profileChoices: { marginTop: 8, gap: 7 },
-  profileChoice: {
-    minHeight: 54,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 12,
-    paddingHorizontal: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-  },
-  profileChoiceImage: { width: 36, height: 36, borderRadius: 18 },
-  profileChoicePlaceholder: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  profileChoiceText: { flex: 1 },
-  profileChoiceName: { fontSize: 13, fontWeight: '700' },
-  profileChoiceUsername: { fontSize: 11, marginTop: 2 },
-  typingDots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingVertical: 3,
-    paddingHorizontal: 2,
-  },
-  dot: { width: 6, height: 6, borderRadius: 3 },
-  quickPromptWrap: { marginTop: 18 },
-  quickPromptLabel: { fontSize: 12, marginBottom: 9, fontWeight: '600' },
-  quickPrompts: { gap: 8 },
-  quickPrompt: {
-    alignSelf: 'flex-start',
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: 18,
-    paddingHorizontal: 13,
-    paddingVertical: 9,
-  },
-  quickPromptText: { fontSize: 13 },
-  actionTray: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 4,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  actionTrayTitle: { fontSize: 12, fontWeight: '600', marginBottom: 7 },
-  actionCard: {
-    minHeight: 52,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 9,
-    marginBottom: 7,
-  },
-  actionCardBody: { flex: 1 },
-  actionCardTitle: { fontSize: 13, fontWeight: '700' },
-  actionCardSubtitle: { fontSize: 11, marginTop: 2 },
-  runText: { fontSize: 12, fontWeight: '700' },
-  composer: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  iconButton: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  input: {
-    flex: 1,
-    maxHeight: 110,
-    minHeight: 44,
-    borderRadius: 22,
-    borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    fontSize: 15,
-  },
-  send: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  agentMiniMenuOption: { borderRadius: 8, paddingHorizontal: 10, paddingVertical: 7 },
 });
 export default AIAgentModal;

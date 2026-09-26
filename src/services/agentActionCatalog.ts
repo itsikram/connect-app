@@ -25,6 +25,16 @@ export type AgentActionName =
   | 'CREATE_AUTO_REPLY_RULE'
   | 'OPEN_LUDO'
   | 'INVITE_LUDO_PLAYER'
+  | 'CREATE_NOTE'
+  | 'CREATE_EVENT'
+  | 'CREATE_HABIT'
+  | 'CREATE_POST'
+  | 'DELETE_TASK'
+  | 'ADD_CONNECT'
+  | 'REMOVE_CONNECT'
+  | 'ACCEPT_CONNECT_REQUEST'
+  | 'DECLINE_CONNECT_REQUEST'
+  | 'QUERY_APP_DATA'
   | 'navigate_home'
   | 'navigate_connects'
   | 'navigate_videos'
@@ -44,6 +54,14 @@ export type AgentActionName =
   | 'navigate_cricbuzz'
   | 'navigate_maps'
   | 'navigate_contacts'
+  | 'navigate_notes'
+  | 'navigate_fitness'
+  | 'navigate_wallet'
+  | 'navigate_subscriptions'
+  | 'navigate_calendar'
+  | 'navigate_drive'
+  | 'navigate_mail'
+  | 'navigate_photos'
   | 'start_ludo'
   | 'start_chess'
   | 'start_voice_input'
@@ -83,34 +101,49 @@ export type AgentActionDefinition = {
   name: AgentActionName;
   label: string;
   sensitive?: boolean;
+  /** Irreversible or high-impact: always confirmed, even in Auto mode. */
+  destructive?: boolean;
+  /** Parameter hint shown to the model in the action catalog prompt. */
+  params?: string;
 };
 
 // Keep this list in sync with the routes and controls exposed by App.tsx/Menu.tsx.
-const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
-  ['NAVIGATE', 'Navigate'],
-  ['SEARCH_USERS', 'Find users'],
-  ['VIEW_PROFILE', 'View profile'],
-  ['OPEN_CHAT', 'Open chat'],
-  ['SEND_MESSAGE', 'Send message', true],
-  ['START_AUDIO_CALL', 'Start audio call', true],
-  ['START_VIDEO_CALL', 'Start video call', true],
-  ['END_CALL', 'End call', true],
-  ['SEARCH_VIDEO', 'Search videos'],
-  ['PLAY_VIDEO', 'Play video'],
-  ['SEARCH_YOUTUBE', 'Search YouTube'],
-  ['DOWNLOAD_YOUTUBE', 'Download YouTube video', true],
-  ['FOLLOW_USER', 'Follow user', true],
-  ['UNFOLLOW_USER', 'Unfollow user', true],
-  ['BLOCK_USER', 'Block user', true],
-  ['UNBLOCK_USER', 'Unblock user', true],
+// [name, label, sensitive?, destructive?, parameter hint for the model]
+const ACTIONS: readonly [AgentActionName, string, boolean?, boolean?, string?][] = [
+  ['NAVIGATE', 'Navigate', false, false, 'route (screen name), params?'],
+  ['SEARCH_USERS', 'Find users', false, false, 'query'],
+  ['VIEW_PROFILE', 'View profile', false, false, 'userName | userId ("me" = own profile)'],
+  ['OPEN_CHAT', 'Open chat', false, false, 'userName | userId'],
+  ['SEND_MESSAGE', 'Send message', true, false, 'userName | userId, message'],
+  ['START_AUDIO_CALL', 'Start audio call', true, false, 'userName | userId'],
+  ['START_VIDEO_CALL', 'Start video call', true, false, 'userName | userId'],
+  ['END_CALL', 'End call', true, false, 'userName | userId'],
+  ['SEARCH_VIDEO', 'Search videos', false, false, 'query (Connect videos)'],
+  ['PLAY_VIDEO', 'Play video', false, false, 'videoId'],
+  ['SEARCH_YOUTUBE', 'Search YouTube', false, false, 'query'],
+  ['DOWNLOAD_YOUTUBE', 'Download YouTube video', true, false, 'query | url | videoId, audioOnly?, quality?'],
+  ['FOLLOW_USER', 'Follow user', true, false, 'userName | userId'],
+  ['UNFOLLOW_USER', 'Unfollow user', true, false, 'userName | userId'],
+  ['BLOCK_USER', 'Block user', true, true, 'userName | userId'],
+  ['UNBLOCK_USER', 'Unblock user', true, false, 'userName | userId'],
+  ['ADD_CONNECT', 'Send connect request', true, false, 'userName | userId'],
+  ['REMOVE_CONNECT', 'Remove connect', true, true, 'userName | userId'],
+  ['ACCEPT_CONNECT_REQUEST', 'Accept connect request', true, false, 'userName? (omit = newest request)'],
+  ['DECLINE_CONNECT_REQUEST', 'Decline connect request', true, false, 'userName? (omit = newest request)'],
   ['OPEN_SETTINGS', 'Open settings'],
-  ['CHANGE_SETTING', 'Change setting', true],
-  ['CREATE_TASK', 'Create task', true],
+  ['CHANGE_SETTING', 'Change setting', true, false, 'setting, value'],
+  ['CREATE_TASK', 'Create task', true, false, 'text'],
   ['VIEW_TASKS', 'View tasks'],
-  ['UPDATE_TASK', 'Edit task', true],
-  ['CREATE_AUTO_REPLY_RULE', 'Set automatic reply', true],
+  ['UPDATE_TASK', 'Edit task', true, false, 'taskQuery | taskId, text?, completed?'],
+  ['DELETE_TASK', 'Delete task', true, true, 'taskQuery | taskId'],
+  ['CREATE_NOTE', 'Create note', true, false, 'content, title?'],
+  ['CREATE_EVENT', 'Add calendar event', true, false, 'title, date (YYYY-MM-DD), time? (HH:mm)'],
+  ['CREATE_HABIT', 'Create habit', true, false, 'name'],
+  ['CREATE_POST', 'Publish post', true, false, 'caption, publish? (false = open composer draft)'],
+  ['QUERY_APP_DATA', 'Look up my data', false, false, 'dataType: tasks|notes|notifications|connects|requests|events|habits|profile, query?'],
+  ['CREATE_AUTO_REPLY_RULE', 'Set automatic reply', true, false, 'triggerUserName, replyText'],
   ['OPEN_LUDO', 'Open Ludo'],
-  ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true],
+  ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true, false, 'userName | userId'],
   ['navigate_home', 'Open Home'],
   ['navigate_connects', 'Open Connects'],
   ['navigate_videos', 'Open Videos'],
@@ -119,6 +152,14 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['navigate_profile', 'Open profile'],
   ['navigate_settings', 'Open Settings'],
   ['navigate_tasks', 'Open Tasks'],
+  ['navigate_notes', 'Open Notes'],
+  ['navigate_fitness', 'Open Fitness'],
+  ['navigate_wallet', 'Open Wallet'],
+  ['navigate_subscriptions', 'Open Subscriptions'],
+  ['navigate_calendar', 'Open Calendar'],
+  ['navigate_drive', 'Open Google Drive'],
+  ['navigate_mail', 'Open Gmail'],
+  ['navigate_photos', 'Open Google Photos'],
   ['navigate_camera', 'Open Camera'],
   ['navigate_gallery', 'Open Gallery'],
   ['navigate_video_library', 'Open Video Library'],
@@ -134,18 +175,45 @@ const ACTIONS: readonly [AgentActionName, string, boolean?][] = [
   ['start_chess', 'Start Chess'],
   ['start_voice_input', 'Start voice input'],
   ['stop_voice_input', 'Stop voice input'],
-  ['speak_text', 'Read text aloud'],
+  ['speak_text', 'Read text aloud', false, false, 'messageText'],
   ['stop_speaking', 'Stop speaking'],
-  ['logout', 'Log out', true],
-  ['clear_agent_chat', 'Clear agent chat', true],
+  ['logout', 'Log out', true, true],
+  ['clear_agent_chat', 'Clear agent chat', true, true],
 ];
 
 export const AGENT_ACTION_CATALOG: readonly AgentActionDefinition[] =
-  ACTIONS.map(([name, label, sensitive]) => ({
+  ACTIONS.map(([name, label, sensitive, destructive, params]) => ({
     name,
     label,
     sensitive,
+    destructive,
+    params,
   }));
+
+export const getAgentActionLabel = (name: string) =>
+  AGENT_ACTION_CATALOG.find(definition => definition.name === name)?.label ||
+  name.replace(/_/g, ' ').toLowerCase();
+
+const PROMPT_HIDDEN_ACTIONS = new Set<AgentActionName>([
+  'start_voice_input',
+  'stop_voice_input',
+  'stop_speaking',
+]);
+
+/**
+ * Compact, model-facing description of every action the mobile app can run.
+ * Injected into the system prompt so the model only plans real actions.
+ */
+export const describeAgentActionsForPrompt = () =>
+  AGENT_ACTION_CATALOG.filter(
+    definition => !PROMPT_HIDDEN_ACTIONS.has(definition.name),
+  )
+    .map(definition =>
+      definition.params
+        ? `${definition.name}(${definition.params}): ${definition.label}`
+        : `${definition.name}: ${definition.label}`,
+    )
+    .join('\n');
 
 const definitionByName = new Map(
   AGENT_ACTION_CATALOG.map(definition => [definition.name, definition]),
@@ -188,6 +256,35 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   INVITE_LUDO: 'INVITE_LUDO_PLAYER',
   INVITE_LUDO_FRIEND: 'INVITE_LUDO_PLAYER',
   INVITE_FRIEND_TO_LUDO: 'INVITE_LUDO_PLAYER',
+  ADD_NOTE: 'CREATE_NOTE',
+  NEW_NOTE: 'CREATE_NOTE',
+  WRITE_NOTE: 'CREATE_NOTE',
+  ADD_EVENT: 'CREATE_EVENT',
+  CREATE_CALENDAR_EVENT: 'CREATE_EVENT',
+  ADD_HABIT: 'CREATE_HABIT',
+  NEW_POST: 'CREATE_POST',
+  WRITE_POST: 'CREATE_POST',
+  PUBLISH_POST: 'CREATE_POST',
+  SHARE_POST: 'CREATE_POST',
+  REMOVE_TASK: 'DELETE_TASK',
+  SEND_CONNECT_REQUEST: 'ADD_CONNECT',
+  ADD_FRIEND: 'ADD_CONNECT',
+  UNFRIEND: 'REMOVE_CONNECT',
+  DISCONNECT: 'REMOVE_CONNECT',
+  ACCEPT_CONNECT: 'ACCEPT_CONNECT_REQUEST',
+  ACCEPT_REQUEST: 'ACCEPT_CONNECT_REQUEST',
+  DECLINE_CONNECT: 'DECLINE_CONNECT_REQUEST',
+  DECLINE_REQUEST: 'DECLINE_CONNECT_REQUEST',
+  QUERY_CONTENT: 'QUERY_APP_DATA',
+  LOOKUP: 'QUERY_APP_DATA',
+  GET_MY_DETAILS: 'QUERY_APP_DATA',
+  OPEN_NOTES: 'navigate_notes',
+  OPEN_FITNESS: 'navigate_fitness',
+  OPEN_WALLET: 'navigate_wallet',
+  OPEN_CALENDAR: 'navigate_calendar',
+  OPEN_CHESS: 'start_chess',
+  PLAY_CHESS: 'start_chess',
+  PLAY_LUDO: 'start_ludo',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -214,13 +311,11 @@ const allowedActionKeys = new Set([
   'status',
   'parameters',
 ]);
-const allowedAskKeys = new Set(['field', 'question']);
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
-const hasOnlyKeys = (value: Record<string, unknown>, allowed: Set<string>) =>
-  Object.keys(value).every(key => allowed.has(key));
+const asOptionalString = (value: unknown) =>
+  value === undefined || value === null ? undefined : String(value);
 
 const optionalText = (
   value: unknown,
@@ -257,8 +352,16 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
   } catch {
     return { ok: false, error: 'Intent does not contain valid JSON.' };
   }
-  if (!isRecord(parsed) || !hasOnlyKeys(parsed, allowedIntentKeys)) {
-    return { ok: false, error: 'Intent contains unsupported fields.' };
+  if (!isRecord(parsed)) {
+    return { ok: false, error: 'Intent is not a JSON object.' };
+  }
+  // Models regularly add harmless extra fields; drop them instead of
+  // rejecting an otherwise valid plan.
+  parsed = Object.fromEntries(
+    Object.entries(parsed).filter(([key]) => allowedIntentKeys.has(key)),
+  );
+  if (!isRecord(parsed)) {
+    return { ok: false, error: 'Intent is not a JSON object.' };
   }
 
   try {
@@ -290,12 +393,16 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
     if (!intent.reply && intent.message) intent.reply = intent.message;
 
     if (parsed.ask !== undefined) {
-      if (!isRecord(parsed.ask) || !hasOnlyKeys(parsed.ask, allowedAskKeys)) {
-        throw new Error('ask contains unsupported fields');
+      if (!isRecord(parsed.ask)) {
+        throw new Error('ask must be an object');
       }
       intent.ask = {
-        field: optionalText(parsed.ask.field, 'ask.field', 80),
-        question: optionalText(parsed.ask.question, 'ask.question', 1000),
+        field: optionalText(asOptionalString(parsed.ask.field), 'ask.field', 80),
+        question: optionalText(
+          asOptionalString(parsed.ask.question),
+          'ask.question',
+          1000,
+        ),
       };
     }
 
@@ -304,13 +411,18 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
         throw new Error('actions must be an array of at most 8 items');
       }
       const unsupportedActions: string[] = [];
-      intent.actions = parsed.actions.map(rawAction => {
-        if (
-          !isRecord(rawAction) ||
-          !hasOnlyKeys(rawAction, allowedActionKeys)
-        ) {
-          throw new Error('action contains unsupported fields');
+      const mappedActions = parsed.actions.map(rawAction => {
+        if (!isRecord(rawAction)) {
+          throw new Error('each action must be an object');
         }
+        // Fold loose top-level fields (e.g. "query", "userName") into
+        // parameters so the executor can still use them.
+        const extraParameters = Object.fromEntries(
+          Object.entries(rawAction).filter(
+            ([key, entry]) =>
+              !allowedActionKeys.has(key) && entry !== undefined && entry !== null,
+          ),
+        );
         const requestedAction = rawAction.action || rawAction.type;
         const actionKey = typeof requestedAction === 'string'
           ? requestedAction.trim().toUpperCase().replace(/[\s-]+/g, '_')
@@ -328,30 +440,61 @@ export function parseAgentIntent(value: string): ParseAgentIntentResult {
           throw new Error('action.type is required');
         const definition = definitionByName.get(actionName as AgentActionName);
         if (!definition) unsupportedActions.push(actionName);
-        const parameters = isRecord(rawAction.parameters)
-          ? rawAction.parameters
+        const parameters =
+          isRecord(rawAction.parameters) || Object.keys(extraParameters).length
+            ? {
+                ...extraParameters,
+                ...(isRecord(rawAction.parameters) ? rawAction.parameters : {}),
+              }
+            : undefined;
+        const status = [
+          'pending',
+          'running',
+          'completed',
+          'failed',
+          'cancelled',
+        ].includes(String(rawAction.status))
+          ? (rawAction.status as AgentActionIntent['status'])
           : undefined;
-        if (
-          rawAction.status !== undefined &&
-          !['pending', 'running', 'completed', 'failed', 'cancelled'].includes(
-            String(rawAction.status),
-          )
-        ) {
-          throw new Error('action.status is invalid');
-        }
         return {
-          id: optionalText(rawAction.id, 'action.id', 120),
-          type: optionalText(rawAction.type, 'action.type', 80),
-          status: rawAction.status as AgentActionIntent['status'],
+          id: optionalText(asOptionalString(rawAction.id), 'action.id', 120),
+          type: optionalText(asOptionalString(rawAction.type), 'action.type', 80),
+          status,
           parameters,
           action: actionName as AgentActionName,
-          targetName: optionalText(rawAction.targetName, 'targetName', 160),
-          targetRoute: optionalText(rawAction.targetRoute, 'targetRoute', 160),
-          searchQuery: optionalText(rawAction.searchQuery, 'searchQuery', 500),
-          messageText: optionalText(rawAction.messageText, 'messageText', 2000),
+          targetName: optionalText(
+            asOptionalString(rawAction.targetName),
+            'targetName',
+            160,
+          ),
+          targetRoute: optionalText(
+            asOptionalString(rawAction.targetRoute),
+            'targetRoute',
+            160,
+          ),
+          searchQuery: optionalText(
+            asOptionalString(rawAction.searchQuery),
+            'searchQuery',
+            500,
+          ),
+          messageText: optionalText(
+            asOptionalString(rawAction.messageText),
+            'messageText',
+            2000,
+          ),
         };
       });
-      if (unsupportedActions.length) {
+      // Run whatever is supported; only fail when nothing runnable and
+      // nothing to say is left.
+      intent.actions = mappedActions.filter(action =>
+        definitionByName.has(action.action),
+      );
+      if (
+        unsupportedActions.length &&
+        !intent.actions.length &&
+        !intent.reply &&
+        !intent.ask?.question
+      ) {
         return {
           ok: false,
           error: 'Intent requested an unsupported action.',
@@ -413,18 +556,39 @@ export type MobileAgentActionAdapter = {
   updateTask?: (taskId: string, values: { text?: string; completed?: boolean }) => void | Promise<void>;
   resolveTask?: (query: string) => Promise<{ id: string } | null>;
   createAutoReplyRule?: (triggerUserName: string, replyText: string) => void | Promise<void>;
+  deleteTask?: (taskId: string) => void | Promise<void>;
+  createNote?: (content: string, title?: string) => void | Promise<void>;
+  createEvent?: (event: { title: string; date: string; time?: string }) => void | Promise<void>;
+  createHabit?: (name: string) => void | Promise<void>;
+  /** Returns true when the post was published, false when a draft was opened. */
+  createPost?: (caption: string, publish: boolean) => boolean | Promise<boolean>;
+  sendConnectRequest?: (userId: string) => void | Promise<void>;
+  removeConnect?: (userId: string) => void | Promise<void>;
+  /** Resolves the request by name (or newest) and returns the requester name. */
+  respondConnectRequest?: (
+    accept: boolean,
+    userName?: string,
+  ) => string | Promise<string>;
+  /** Returns a short, human-readable summary of the requested data. */
+  queryAppData?: (dataType: string, query?: string) => string | Promise<string>;
 };
 
 export type AgentActionResult = {
   action: string;
+  label?: string;
   ok: boolean;
   message: string;
   cancelled?: boolean;
 };
 
 export type AgentActionExecutionOptions = {
-  confirm?: (definition: AgentActionDefinition) => Promise<boolean>;
+  confirm?: (
+    definition: AgentActionDefinition,
+    action: AgentActionIntent,
+  ) => Promise<boolean>;
+  /** Skips confirmation for sensitive actions. Destructive ones still confirm. */
   skipConfirmation?: boolean;
+  onActionStart?: (action: AgentActionIntent, index: number) => void;
   onResolvedUser?: (user: { id: string; name?: string; profilePic?: string }) => void;
 };
 
@@ -460,7 +624,26 @@ const navigationTargets: Partial<
   navigate_cricbuzz: ['Menu', { screen: 'Cricbuzz' }],
   navigate_maps: ['Menu', { screen: 'GoogleMaps' }],
   navigate_contacts: ['Menu', { screen: 'GoogleContacts' }],
+  navigate_notes: ['Menu', { screen: 'Notes' }],
+  navigate_fitness: ['Menu', { screen: 'FitnessDashboard' }],
+  navigate_wallet: ['Menu', { screen: 'Wallet' }],
+  navigate_subscriptions: ['Menu', { screen: 'Subscriptions' }],
+  navigate_calendar: ['Menu', { screen: 'GoogleCalendar' }],
+  navigate_drive: ['Menu', { screen: 'GoogleDrive' }],
+  navigate_mail: ['Menu', { screen: 'GoogleMail' }],
+  navigate_photos: ['Menu', { screen: 'GooglePhotos' }],
 };
+
+const pickText = (...values: unknown[]) => {
+  for (const value of values) {
+    const text = value === undefined || value === null ? '' : String(value).trim();
+    if (text) return text;
+  }
+  return '';
+};
+
+const clip = (value: string, max = 60) =>
+  value.length > max ? `${value.slice(0, max - 1)}…` : value;
 
 const getActionSuccessMessage = (
   action: AgentActionIntent,
@@ -508,6 +691,18 @@ const getActionSuccessMessage = (
       return 'YouTube download started.';
     case 'CHANGE_SETTING':
       return `Setting "${String(parameters.setting || parameters.name || '')}" was updated.`;
+    case 'DELETE_TASK':
+      return 'Task deleted.';
+    case 'CREATE_NOTE':
+      return `Note saved: "${clip(pickText(parameters.title, parameters.content, parameters.text, action.messageText))}"`;
+    case 'CREATE_EVENT':
+      return `Event added: "${clip(pickText(parameters.title, action.messageText))}" on ${pickText(parameters.date)}${parameters.time ? ` at ${String(parameters.time)}` : ''}.`;
+    case 'CREATE_HABIT':
+      return `Habit created: "${clip(pickText(parameters.name, action.messageText))}"`;
+    case 'ADD_CONNECT':
+      return target ? `Connect request sent to ${target}.` : 'Connect request sent.';
+    case 'REMOVE_CONNECT':
+      return target ? `${target} was removed from your connects.` : 'Connect removed.';
     default:
       return `${definition.label} completed.`;
   }
@@ -521,7 +716,7 @@ export async function executeAgentActions(
   if (!actions?.length) return [];
   const results: AgentActionResult[] = [];
 
-  for (const action of actions) {
+  for (const [index, action] of actions.entries()) {
     const definition = definitionByName.get(action.action);
     if (!definition) {
       results.push({
@@ -531,20 +726,25 @@ export async function executeAgentActions(
       });
       continue;
     }
-    if (definition.sensitive && !options.skipConfirmation) {
+    const needsConfirmation =
+      definition.destructive ||
+      (definition.sensitive && !options.skipConfirmation);
+    if (needsConfirmation) {
       const confirmed = options.confirm
-        ? await options.confirm(definition)
+        ? await options.confirm(definition, action)
         : false;
       if (!confirmed) {
         results.push({
           action: action.action,
+          label: definition.label,
           ok: false,
           cancelled: true,
-          message: 'Action cancelled.',
+          message: `${definition.label} cancelled.`,
         });
         continue;
       }
     }
+    options.onActionStart?.(action, index);
 
     try {
       const parameters = action.parameters || {};
@@ -561,11 +761,14 @@ export async function executeAgentActions(
         await adapter.navigate('Menu', { screen: 'MyProfile' });
         results.push({
           action: action.action,
+          label: definition.label,
           ok: true,
           message: 'Your profile is open.',
         });
         continue;
       }
+      // Actions that report their own outcome text.
+      let customMessage = '';
       const canonicalNavigation: Partial<Record<AgentActionName, string>> = {
         NAVIGATE: String(parameters.route || action.targetRoute || ''),
         OPEN_SETTINGS: 'Settings',
@@ -587,6 +790,8 @@ export async function executeAgentActions(
         'START_VIDEO_CALL',
         'INVITE_LUDO_PLAYER',
         'END_CALL',
+        'ADD_CONNECT',
+        'REMOVE_CONNECT',
       ].includes(action.action);
       let resolvedUserId = String(parameters.userId || parameters.profileId || '');
       let resolvedUserName = String(parameters.userName || action.targetName || '');
@@ -628,11 +833,27 @@ export async function executeAgentActions(
         // The model may provide an ID without the avatar. Resolve by name as
         // well so outgoing call overlays can receive the callee's picture.
         if (resolvedName && adapter.resolveUser && !resolvedProfilePic) {
-          const resolved = await adapter.resolveUser(resolvedName);
-          if (!userId) userId = resolved?.id || '';
-          resolvedName = resolved?.name || resolvedName;
-          resolvedProfilePic = resolved?.profilePic;
-          if (resolved?.id) options.onResolvedUser?.(resolved);
+          if (!userId) {
+            const resolved = await adapter.resolveUser(resolvedName);
+            userId = resolved?.id || '';
+            resolvedName = resolved?.name || resolvedName;
+            resolvedProfilePic = resolved?.profilePic;
+            if (resolved?.id) options.onResolvedUser?.(resolved);
+          } else {
+            // The id is authoritative. Only borrow the name/photo when the
+            // name lookup points at that same person; a spoken "Mom" must
+            // never pull in some other user's name and picture.
+            try {
+              const resolved = await adapter.resolveUser(resolvedName);
+              if (resolved?.id === userId) {
+                resolvedName = resolved.name || resolvedName;
+                resolvedProfilePic = resolved.profilePic;
+                options.onResolvedUser?.(resolved);
+              }
+            } catch {
+              // Keep the id; the call screen looks the person up by id.
+            }
+          }
         }
         if (!userId) throw new Error('I need the person’s resolved user ID before starting the call.');
         const channelName = String(parameters.channelName || userId);
@@ -734,6 +955,93 @@ export async function executeAgentActions(
         if (!adapter.createAutoReplyRule)
           throw new Error('Automatic replies are unavailable.');
         await adapter.createAutoReplyRule(trigger, reply);
+      } else if (action.action === 'DELETE_TASK') {
+        let taskId = pickText(parameters.taskId, parameters.id);
+        const taskQuery = pickText(
+          parameters.taskQuery,
+          parameters.taskText,
+          parameters.text,
+          action.searchQuery,
+          action.messageText,
+        );
+        if (!taskId && taskQuery && adapter.resolveTask) {
+          taskId = String((await adapter.resolveTask(taskQuery))?.id || '');
+        }
+        if (!taskId) throw new Error('I could not find exactly one matching task.');
+        if (!adapter.deleteTask) throw new Error('Task deletion is unavailable.');
+        await adapter.deleteTask(taskId);
+      } else if (action.action === 'CREATE_NOTE') {
+        const content = pickText(
+          parameters.content,
+          parameters.text,
+          parameters.note,
+          action.messageText,
+          action.searchQuery,
+        );
+        if (!content) throw new Error('Tell me what the note should say.');
+        if (!adapter.createNote) throw new Error('Notes are unavailable.');
+        await adapter.createNote(content, pickText(parameters.title) || undefined);
+      } else if (action.action === 'CREATE_EVENT') {
+        const title = pickText(parameters.title, parameters.name, action.messageText);
+        const date = pickText(parameters.date);
+        if (!title) throw new Error('Tell me what the event is called.');
+        if (!/^\d{4}-\d{2}-\d{2}/.test(date))
+          throw new Error('Tell me which day the event is on.');
+        if (!adapter.createEvent) throw new Error('Calendar is unavailable.');
+        await adapter.createEvent({
+          title,
+          date: date.slice(0, 10),
+          time: pickText(parameters.time) || undefined,
+        });
+      } else if (action.action === 'CREATE_HABIT') {
+        const name = pickText(parameters.name, parameters.title, action.messageText);
+        if (!name) throw new Error('Tell me which habit to track.');
+        if (!adapter.createHabit) throw new Error('Habits are unavailable.');
+        await adapter.createHabit(name);
+      } else if (action.action === 'CREATE_POST') {
+        const caption = pickText(
+          parameters.caption,
+          parameters.text,
+          parameters.content,
+          action.messageText,
+          action.searchQuery,
+        );
+        if (!adapter.createPost) throw new Error('Posting is unavailable.');
+        const publish = Boolean(caption) && parameters.publish !== false;
+        const published = await adapter.createPost(caption, publish);
+        customMessage = published
+          ? `Posted: "${clip(caption, 120)}"`
+          : caption
+          ? `Draft ready — review it and tap Post: "${clip(caption, 120)}"`
+          : 'The post composer is open.';
+      } else if (action.action === 'ADD_CONNECT' || action.action === 'REMOVE_CONNECT') {
+        const handler =
+          action.action === 'ADD_CONNECT'
+            ? adapter.sendConnectRequest
+            : adapter.removeConnect;
+        if (!handler) throw new Error('Connect actions are unavailable.');
+        await handler(resolvedUserId);
+      } else if (
+        action.action === 'ACCEPT_CONNECT_REQUEST' ||
+        action.action === 'DECLINE_CONNECT_REQUEST'
+      ) {
+        if (!adapter.respondConnectRequest)
+          throw new Error('Connect requests are unavailable.');
+        const accept = action.action === 'ACCEPT_CONNECT_REQUEST';
+        const requester = await adapter.respondConnectRequest(
+          accept,
+          pickText(parameters.userName, action.targetName) || undefined,
+        );
+        customMessage = accept
+          ? `You are now connected with ${requester}.`
+          : `Declined ${requester}'s connect request.`;
+      } else if (action.action === 'QUERY_APP_DATA') {
+        if (!adapter.queryAppData) throw new Error('Data lookup is unavailable.');
+        customMessage = await adapter.queryAppData(
+          pickText(parameters.dataType, parameters.type, action.searchQuery) ||
+            'profile',
+          pickText(parameters.query) || undefined,
+        );
       } else if (target) {
         if (!adapter.navigate) throw new Error('Navigation is unavailable.');
         const params = action.action === 'NAVIGATE'
@@ -771,17 +1079,21 @@ export async function executeAgentActions(
       }
       results.push({
         action: action.action,
+        label: definition.label,
         ok: true,
-        message: getActionSuccessMessage(
-          action,
-          definition,
-          resolvedUserName,
-          parameters,
-        ),
+        message:
+          customMessage ||
+          getActionSuccessMessage(
+            action,
+            definition,
+            resolvedUserName,
+            parameters,
+          ),
       });
     } catch (error) {
       results.push({
         action: action.action,
+        label: definition.label,
         ok: false,
         message: error instanceof Error ? error.message : 'Action failed.',
       });

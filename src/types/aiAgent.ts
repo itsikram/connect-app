@@ -15,6 +15,16 @@ export interface AgentMessage {
   streaming?: boolean;
   success?: boolean;
   profileChoices?: Array<{ id: string; name: string; username?: string; profilePic?: string }>;
+  /** Action that a profile choice will run (drives the choice icon). */
+  choiceAction?: string;
+  /** Per-action outcome chips rendered under an agent reply. */
+  actionResults?: Array<{
+    action: string;
+    label?: string;
+    ok: boolean;
+    message: string;
+    cancelled?: boolean;
+  }>;
 }
 
 export interface AgentAction {

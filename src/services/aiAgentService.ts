@@ -1,6 +1,7 @@
 import api, { getAuthToken } from '../lib/api';
 import config from '../lib/config';
 import { AgentMessage, AgentStreamEvent } from '../types/aiAgent';
+import { describeAgentActionsForPrompt } from './agentActionCatalog';
 
 export type AIProvider = 'gemini' | 'openai' | 'cursor' | 'grok' | 'groq' | 'ollama';
 export interface AIProviderStatus {
@@ -37,10 +38,24 @@ REAL-LIFE COMMUNICATION
   unclear, ask one focused question instead of guessing.
 
 ACTION RULES
-- Return only actions available in the mobile app and use the exact action name in the "action"
-  field (not "type"). Give every action a unique id and status "pending".
-- Use SEARCH_USERS before any person-dependent action unless an authoritative id is already
-  present. Never guess an id. If multiple people match, ask the user to choose before acting.
+- Whenever the user asks you to DO something in the app (open, call, message, create, post,
+  search, download, play, invite, change, look up, etc.), return the matching action(s) instead of
+  describing how to do it. Only chat without actions for pure questions or conversation.
+- Use ONLY action names from the AVAILABLE ACTIONS list below, spelled exactly, in the "action"
+  field (not "type"). Put arguments in "parameters". Give every action a unique id and
+  status "pending".
+- For questions about the user's own tasks, notes, notifications, connects, requests, events,
+  habits, or profile, use QUERY_APP_DATA instead of guessing.
+- Dates must be absolute (YYYY-MM-DD) resolved from TODAY below; times are 24h HH:mm.
+- For person-dependent actions pass parameters.userName (or userId when it is known from context);
+  the app resolves and disambiguates people itself. Never guess an id.
+- Write userName the way it appears on the person's profile: prefer the exact matching name from
+  the known connects list; otherwise transliterate Bangla to English letters (রহিম -> Rahim).
+  Drop honorifics/relations such as ভাই, ভাইয়া, আপা, আপু, দা, দিদি, সাহেব, bhai, vai, apu.
+- For relationship words (my mom/মা/আম্মু, dad/বাবা/আব্বু, brother, sister, wife, husband, son,
+  daughter, best friend): if exactly one known connect's relationshipTypes (and gender) fits, pass
+  its userId and its real name as userName. Otherwise pass the word itself (e.g. userName "mom") and
+  the app will find the right person. Never invent a name.
 - For social actions, include targetName or userId and include messageText or parameters.message
   when a message is required.
 - Use SEARCH_YOUTUBE with parameters.query. Use DOWNLOAD_YOUTUBE with parameters.query,
@@ -60,11 +75,34 @@ Set speak to true when the wording is natural for voice playback. Keep message s
 for a mobile screen. If clarification is needed, ask exactly one specific question and return
 type "question" with no actions.
 `.trim();
+
+// Local models get a short prompt: the server truncates Ollama system prompts
+// to 5000 characters and the action list must survive that.
+const COMPACT_SYSTEM_PROMPT = `
+You are Connect AI inside the Connect mobile app. Reply in the user's language (Bangla, Banglish or
+English), briefly and warmly. When the user asks you to do something in the app, return the matching
+action(s) from AVAILABLE ACTIONS with arguments in "parameters"; never invent data, ids or results.
+For people pass parameters.userName in English letters without honorifics (রহিম ভাই -> Rahim).
+For "my mom", "আম্মু", "my wife" etc. pass the word itself as userName (e.g. "mom").
+Ask one short question if something is missing.
+Return ONLY JSON: {"type":"action|question|response","message":"text","actions":[{"id":"a1","action":"NAME","status":"pending","parameters":{}}]}
+`.trim();
+
+export const buildAgentSystemPrompt = (compact = false) => {
+  const now = new Date();
+  const pad = (value: number) => String(value).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(
+    now.getDate(),
+  )} (${now.toLocaleDateString('en-US', { weekday: 'long' })}) ${pad(
+    now.getHours(),
+  )}:${pad(now.getMinutes())}`;
+  return `${compact ? COMPACT_SYSTEM_PROMPT : SYSTEM_PROMPT}\n\nTODAY: ${today}\n\nAVAILABLE ACTIONS (name(parameters): purpose):\n${describeAgentActionsForPrompt()}`;
+};
 // Gemini is the cloud default; the provider selector still allows local or
 // other configured providers when needed.
 const DEFAULT_PROVIDER: AIProvider = 'gemini';
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  gemini: 'gemini-2.0-flash',
+  gemini: 'gemini-3.8-flash',
   openai: 'gpt-4o-mini',
   cursor: 'composer-2.5',
   grok: 'grok-3-mini',
@@ -179,10 +217,10 @@ export async function streamAgentReply(
     provider: providerConfig.provider,
     model: providerConfig.model,
     system: isOllama
-      ? `${SYSTEM_PROMPT}\nPreferred response language: ${
+      ? `${buildAgentSystemPrompt(true)}\nPreferred response language: ${
           providerOptions?.preferredLanguage === 'bn' ? 'Bangla' : 'English'
         }.${ollamaMemoryContext}`.slice(0, 5000)
-      : `${SYSTEM_PROMPT}\nPreferred response language: ${
+      : `${buildAgentSystemPrompt()}\nPreferred response language: ${
           providerOptions?.preferredLanguage === 'bn' ? 'Bangla' : 'English'
         }.${profileContext}${memoryContext}${connectsContext}`,
     messages: [

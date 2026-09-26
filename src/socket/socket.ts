@@ -3,6 +3,7 @@ import config from "../lib/config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 let socket: Socket | null = null;
+let socketProfileId: string | null = null;
 
 const getUserData = async () => {
     try {
@@ -59,6 +60,13 @@ const waitForConnect = (s: Socket): Promise<Socket> => {
 }
 
 export const initializeSocket = async (profileId: string): Promise<Socket> => {
+    // A socket authenticated as a different profile (logout → login as
+    // someone else) must not be reused: the server routes by that identity.
+    if (socket && profileId && socketProfileId && socketProfileId !== String(profileId)) {
+        socket.disconnect();
+        socket = null;
+        socketProfileId = null;
+    }
     if (socket) {
         if (socket.connected) {
             return socket;
@@ -97,6 +105,7 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
             reconnectionDelay: 1000,
             reconnectionDelayMax: 5000,
         });
+        socketProfileId = String(effectiveProfileId);
 
         // Add connection event listeners
         socket.on('connect', () => {
@@ -175,6 +184,7 @@ export const disconnectSocket = () => {
     if (socket) {
         socket.disconnect();
         socket = null;
+        socketProfileId = null;
     }
 }
 

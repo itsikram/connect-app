@@ -11,12 +11,11 @@ import { ThemeContext } from '../contexts/ThemeContext';
  * Android system bar handling.
  *
  * The app's layouts were built for Android drawing below the status bar and
- * above the navigation bar (safe-area insets of 0). Android 15+ forces
- * edge-to-edge, so content went under both bars there. The app shell and
- * every modal now reserve the real bar insets themselves on Android and hand
- * their children zero insets for those edges, so screens lay out the same on
- * every Android version. On older Android the insets are already 0 and
- * nothing changes; iOS is untouched.
+ * above the navigation bar (safe-area insets of 0). The app runs edge-to-edge
+ * on every Android version (edgeToEdgeEnabled in android/gradle.properties),
+ * so the app shell and every modal reserve the real bar insets themselves on
+ * Android and hand their children zero insets for those edges. That gives
+ * every Android device the same layout; iOS is untouched.
  */
 
 const RealInsetsContext = createContext<EdgeInsets | null>(null);

@@ -144,15 +144,27 @@ const OutgoingCall: React.FC = () => {
 
   // Close this screen once the peer accepts or ends the call
   useEffect(() => {
-    const handleAccepted = () => { 
+    // Ignore events for any other call (e.g. a stale event from a previous call).
+    const isThisCall = (data: any) =>
+      !data?.channelName || !channelName || String(data.channelName) === String(channelName);
+    const handleAccepted = (data: any) => {
+      if (!isThisCall(data)) return;
       setCallAccepted(true);
       setPlayBeep(false);
       setCallStatus('Call accepted!');
       setTimeout(() => safeGoBack(), 500);
     };
-    const handleEnd = () => { 
+    const handleEnd = (data: any) => {
+      if (!isThisCall(data)) return;
       setPlayBeep(false);
       setCallStatus('Call ended');
+      setTimeout(() => safeGoBack(), 1000);
+    };
+    // Server ring timeout — previously this screen stayed open indefinitely.
+    const handleNotAccepted = (data: any) => {
+      if (!isThisCall(data)) return;
+      setPlayBeep(false);
+      setCallStatus('No answer');
       setTimeout(() => safeGoBack(), 1000);
     };
     const handleUpdatedStatus = ({ from, status, channelName }: any) => {
@@ -168,14 +180,16 @@ const OutgoingCall: React.FC = () => {
     on(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
     on(isAudio ? 'audio-call-rejected' : 'video-call-rejected', handleEnd);
     on('updated-call-status', handleUpdatedStatus);
+    on('call-not-accepted', handleNotAccepted);
 
     return () => {
+      off('call-not-accepted', handleNotAccepted);
       off('call-accepted', handleAccepted);
       off(isAudio ? 'audio-call-ended' : 'video-call-ended', handleEnd);
       off(isAudio ? 'audio-call-rejected' : 'video-call-rejected', handleEnd);
       off('updated-call-status', handleUpdatedStatus);
     };
-  }, [on, off, navigation, isAudio]);
+  }, [on, off, navigation, isAudio, channelName]);
 
   const title = useMemo(() => (isAudio ? 'Outgoing Audio Call' : 'Outgoing Video Call'), [isAudio]);
 

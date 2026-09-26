@@ -1495,11 +1495,11 @@ function AppContentInner({
     : isEditPostScreen
     ? []
     : (['top', 'right', 'left'] as const);
-  // Android 15+ draws the app under the status and navigation bars
-  // (edge-to-edge), while older versions keep it between them. Reserve the
-  // bar space here so every Android version gets the same layout; the
-  // screens below see 0 insets for these edges, as on older Android. The
-  // chat thread and edit-post screens pad themselves.
+  // Android runs edge-to-edge on every version (edgeToEdgeEnabled in
+  // android/gradle.properties), so the app draws under the status and
+  // navigation bars. Reserve the bar space here so every device gets the
+  // same layout; the screens below see 0 insets for these edges. The chat
+  // thread and edit-post screens pad themselves.
   const realInsets = useRealSafeAreaInsets();
   const androidNavBarSpace =
     Platform.OS === 'android' && appSafeAreaEdges.length > 0

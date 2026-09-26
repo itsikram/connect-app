@@ -1,5 +1,10 @@
 import { Platform } from 'react-native';
 import * as Speech from 'expo-speech';
+import {
+  agentSpeechCancelled,
+  agentSpeechEnded,
+  agentSpeechStarted,
+} from './agentEcho';
 
 export type AgentSpeechLanguage = 'auto' | 'bn-BD' | 'en-US';
 type AgentSpeechControllerOptions = {
@@ -68,9 +73,16 @@ const speak = (
   new Promise<void>(resolve => {
     if (generation !== current()) return resolve();
     let settled = false;
+    // Tracked so the microphone stays closed while the agent talks and the
+    // agent's own words are never taken as a new command.
+    agentSpeechStarted(text);
+    // Some TTS engines occasionally never report completion.
+    const watchdog = setTimeout(() => finish(), 4000 + text.length * 120);
     const finish = () => {
       if (settled) return;
       settled = true;
+      clearTimeout(watchdog);
+      agentSpeechEnded();
       resolve();
     };
     Speech.speak(text, {
@@ -116,6 +128,7 @@ export function createAgentSpeechController(
     lastText = '';
     flushRequested = false;
     speechStartNotified = false;
+    agentSpeechCancelled();
     try {
       await Speech.stop();
     } catch {

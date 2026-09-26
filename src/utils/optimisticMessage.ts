@@ -54,9 +54,8 @@ export function isConversationMessage(msg: any, userId: any, connectId: any): bo
   const connect = idOf(connectId);
   const me = idOf(userId);
   if (!connect) return false;
+  if (!me) return sender === connect || receiver === connect;
   return (
-    sender === connect ||
-    receiver === connect ||
     (sender === me && receiver === connect) ||
     (sender === connect && receiver === me)
   );
