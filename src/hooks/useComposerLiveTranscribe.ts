@@ -588,8 +588,10 @@ export default function useComposerLiveTranscribe({
   }, [preserveAudioSession, stopCurrentRecording]);
 
   const streamGrowingFile = useCallback(
-    async (language: string) => {
-      const uri = await startFreshRecording();
+    async (language: string, preparedUri?: string | null) => {
+      // A recording started early (while the socket connected) keeps the
+      // user's first words; its file is streamed from the beginning.
+      const uri = preparedUri || (await startFreshRecording());
       if (!uri) return false;
 
       let offset = 0;
@@ -786,18 +788,31 @@ export default function useComposerLiveTranscribe({
         return false;
       }
 
+      let earlyRecording: Promise<string | null> | null = null;
       try {
-        if (!preserveAudioSession) {
-          await setChatRecordingAudioMode();
-        }
-        const token = (await AsyncStorage.getItem('authToken')) || '';
+        const [, storedToken] = await Promise.all([
+          preserveAudioSession ? Promise.resolve() : setChatRecordingAudioMode(),
+          AsyncStorage.getItem('authToken'),
+        ]);
+        // Start capturing immediately, in parallel with connecting to the
+        // speech server, so nothing said right after the tap is lost. The
+        // recorded file is streamed from its start once the socket is open.
+        wantListenRef.current = true;
+        earlyRecording = startFreshRecording().catch(error => {
+          if (__DEV__) console.warn('Early recording failed:', error);
+          return null;
+        });
+        setListening(true);
         const ws = await openSpeechSocket(
-          speechSocketUrl(token),
+          speechSocketUrl(storedToken || ''),
           handleSocketMessage,
         );
         if (activeTranscription?.token !== ownerToken) {
           ws.close();
           ownerTokenRef.current = null;
+          await earlyRecording;
+          await stopCurrentRecording();
+          setListening(false);
           return false;
         }
         wsRef.current = ws;
@@ -826,9 +841,10 @@ export default function useComposerLiveTranscribe({
         usedStreamRef.current = false;
         startSpeechSession(language);
 
+        const preparedUri = await earlyRecording;
         loopPromiseRef.current = (async () => {
           try {
-            const streamed = await streamGrowingFile(language);
+            const streamed = await streamGrowingFile(language, preparedUri);
             usedStreamRef.current = streamed === true;
             if (wantListenRef.current && streamed === false) {
               await streamPipelinedChunks(language);
@@ -859,6 +875,9 @@ export default function useComposerLiveTranscribe({
         return true;
       } catch (error) {
         console.error('Live transcription failed:', error);
+        // Let a recording that was still starting finish, so stop() can
+        // release it instead of leaving the microphone running.
+        if (earlyRecording) await earlyRecording.catch(() => null);
         await stop();
         return false;
       }
@@ -871,6 +890,8 @@ export default function useComposerLiveTranscribe({
       startSpeechSession,
       settings.language,
       stop,
+      startFreshRecording,
+      stopCurrentRecording,
       streamGrowingFile,
       streamPipelinedChunks,
     ],

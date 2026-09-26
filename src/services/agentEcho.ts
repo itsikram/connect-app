@@ -17,6 +17,23 @@ const ECHO_WORD_RATIO = 0.7;
 let recentSpeech: Array<{ words: string[]; at: number }> = [];
 let activeUtterances = 0;
 let lastSpeechEndedAt = 0;
+const speakingListeners = new Set<(speaking: boolean) => void>();
+let lastNotified = false;
+
+const notifySpeaking = () => {
+  const speaking = activeUtterances > 0;
+  if (speaking === lastNotified) return;
+  lastNotified = speaking;
+  speakingListeners.forEach(listener => listener(speaking));
+};
+
+/** Subscribe to "agent started/stopped talking" (drives the Stop button). */
+export const onAgentSpeakingChange = (listener: (speaking: boolean) => void) => {
+  speakingListeners.add(listener);
+  return () => {
+    speakingListeners.delete(listener);
+  };
+};
 
 const toWords = (text: string) =>
   String(text || '')
@@ -35,18 +52,21 @@ export const agentSpeechStarted = (text: string) => {
   const now = Date.now();
   recentSpeech = recentSpeech.filter(item => now - item.at < RECENT_SPEECH_MS);
   if (words.length) recentSpeech.push({ words, at: now });
+  notifySpeaking();
 };
 
 /** Call when a spoken piece finished, was stopped, or failed. */
 export const agentSpeechEnded = () => {
   activeUtterances = Math.max(0, activeUtterances - 1);
   lastSpeechEndedAt = Date.now();
+  notifySpeaking();
 };
 
 /** Call when all agent speech is cancelled at once. */
 export const agentSpeechCancelled = () => {
   activeUtterances = 0;
   lastSpeechEndedAt = Date.now();
+  notifySpeaking();
 };
 
 export const isAgentSpeaking = () => activeUtterances > 0;
@@ -99,4 +119,5 @@ export const resetAgentEcho = () => {
   recentSpeech = [];
   activeUtterances = 0;
   lastSpeechEndedAt = 0;
+  lastNotified = false;
 };
