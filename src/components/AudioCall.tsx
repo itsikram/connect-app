@@ -51,6 +51,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
+  const isSpeakerOnRef = useRef(true);
+  isSpeakerOnRef.current = isSpeakerOn;
   const [mediaActive, setMediaActive] = useState(false);
   const [engineWarm, setEngineWarm] = useState(false);
 
@@ -115,6 +117,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setCallDuration(0);
     setIsMinimized(false);
     setIsMuted(false);
+    setIsSpeakerOn(true);
     microphonePublishedRef.current = false;
     callStartTime.current = null;
     callSeenStatusSentRef.current = false;
@@ -358,8 +361,27 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       setOutgoingCallStatus('Calling...');
       setEngineWarm(true);
       prefetchAgoraJoin(detail.channelName, numericUid).catch(() => {});
-      Audio.requestPermissionsAsync().catch(() => {});
-      configureInCallAudio(true).catch(() => {});
+      // Ask for the microphone the moment the call is placed (not after the
+      // other side answers), then open it in the call engine while ringing so
+      // audio flows the instant the call is accepted.
+      (async () => {
+        try {
+          const permission = await Audio.requestPermissionsAsync();
+          if (!permission.granted) {
+            emit('audio-call-cancel', { to, channelName: detail.channelName });
+            Alert.alert(
+              'Microphone needed',
+              'Allow microphone access for Expo Go / Connect in Settings to make audio calls.',
+            );
+            cleanupAudioCall();
+            return;
+          }
+          await configureInCallAudio(true);
+          engineRef.current?.preview(true);
+        } catch (error) {
+          console.warn('AudioCall: microphone warm-up failed', error);
+        }
+      })();
     };
     const onPushIncoming = (detail: any) => {
       if (detail?.isAudio === false) return;
@@ -541,6 +563,11 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (event.type === 'joined' || event.type === 'user-published') {
       engineRef.current?.resumeAudio();
     }
+    if (event.type === 'joined') {
+      // Re-assert the recording-capable session in case another sound switched
+      // it to playback-only just before the call was marked active.
+      configureInCallAudio(isSpeakerOnRef.current).catch(() => {});
+    }
     if (event.type === 'error') {
       console.warn('AudioCall media error', event.message);
     }
@@ -565,9 +592,25 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         ref={engineRef}
         visible={Boolean(isAudioCall || mediaActive || engineWarm)}
         isAudio
+        foreground={isAudioCall && !isMinimized}
         onEvent={handleEngineEvent}
       />
-      <Modal visible={isAudioCall && !isMinimized} animationType="slide" presentationStyle="fullScreen" onRequestClose={endCall}>
+      {/*
+        The Agora engine (a hidden WebView) is rendered OUTSIDE this modal so it
+        survives minimizing. A non-transparent fullScreen modal detaches the
+        screen underneath it from the window on iOS, and WebKit then stops
+        capturing the microphone in that WebView: the call connected but the
+        other side heard nothing. A transparent (overFullScreen) modal keeps it
+        attached — the same setup as the working live voice modal. The call UI
+        below has its own opaque background, so it looks the same.
+      */}
+      <Modal
+        visible={isAudioCall && !isMinimized}
+        animationType="slide"
+        transparent
+        presentationStyle="overFullScreen"
+        onRequestClose={endCall}
+      >
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
         <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
           <View style={styles.center}>

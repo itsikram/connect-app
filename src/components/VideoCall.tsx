@@ -545,6 +545,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         engineRef.current?.join({ ...pendingJoinRef.current, isAudio: false });
       }
     }
+    if (event.type === 'joined') {
+      // Re-assert the recording-capable session in case another sound switched
+      // it to playback-only just before the call was marked active.
+      configureInCallAudio(true).catch(() => {});
+    }
     if (event.type === 'user-left' && callAcceptedRef.current) {
       endCallForPeer();
       cleanupVideoCall();

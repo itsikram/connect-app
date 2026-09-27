@@ -70,6 +70,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         return published.indexOf(track) !== -1;
       }
 
+      // The OS silenced the capture source (e.g. the audio session switched
+      // away from recording). The track stays "live", so trackEnded misses it.
+      function trackSilenced(track) {
+        try {
+          var mst = track && track.getMediaStreamTrack && track.getMediaStreamTrack();
+          return !!mst && mst.readyState === 'live' && mst.muted === true;
+        } catch (e) {
+          return false;
+        }
+      }
+
       function trackEnded(track) {
         try {
           var mst = track && track.getMediaStreamTrack && track.getMediaStreamTrack();
@@ -146,6 +157,8 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         joining = false;
         stopHealthCheck();
         wantAudio = false;
+        micMuted = false;
+        micSilentChecks = 0;
         try {
           if (client) {
             try { await client.unpublish(localTracks); } catch (e) {}
@@ -305,9 +318,14 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           }
         }
         var audio = findTrack('audio');
-        if (wantAudio && !micMuted && (!audio || trackEnded(audio) || !isPublished(audio))) {
-          if (audio && trackEnded(audio)) {
-            post({ type: 'log', message: 'microphone track ended; restarting it' });
+        // Require two consecutive silent checks (~6s) so a momentary
+        // interruption doesn't restart the microphone.
+        micSilentChecks = audio && wantAudio && !micMuted && trackSilenced(audio) ? micSilentChecks + 1 : 0;
+        var micSilenced = micSilentChecks >= 2;
+        if (wantAudio && !micMuted && (!audio || trackEnded(audio) || micSilenced || !isPublished(audio))) {
+          if (audio && (trackEnded(audio) || micSilenced)) {
+            micSilentChecks = 0;
+            post({ type: 'log', message: 'microphone track ended or silenced; restarting it' });
             try { if (isPublished(audio)) await client.unpublish(audio); } catch (e) {}
             try { audio.stop && audio.stop(); } catch (e) {}
             try { await audio.close(); } catch (e) {}
@@ -321,6 +339,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       var healthBusy = false;
+      var micSilentChecks = 0;
       function startHealthCheck() {
         if (healthTimer) return;
         healthTimer = setInterval(function () {
@@ -385,6 +404,10 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         setAudioOnlyUi(isAudio);
         currentIsAudio = isAudio;
         wantAudio = publishAudio;
+        // A fresh join always starts unmuted (the native UI resets isMuted too).
+        if (!(client && joinedChannel === channelName && joinedUid === uid)) {
+          micMuted = false;
+        }
 
         if (client && joinedChannel === channelName && joinedUid === uid) {
           try {

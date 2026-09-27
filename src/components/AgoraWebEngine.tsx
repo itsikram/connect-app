@@ -42,12 +42,20 @@ export type AgoraWebEngineHandle = {
 type Props = {
   visible: boolean;
   isAudio: boolean;
+  /**
+   * Audio sessions only: render the WebView fully visible (it sits behind the
+   * call screen, which covers it). iOS can suspend microphone capture in a
+   * WKWebView it does not consider visible; the working video call keeps its
+   * WebView fully visible, so the audio call now does the same while its UI
+   * is on screen.
+   */
+  foreground?: boolean;
   onEvent?: (event: AgoraEngineEvent) => void;
   style?: ViewStyle;
 };
 
 const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWebEngine(
-  { visible, isAudio, onEvent, style },
+  { visible, isAudio, foreground = false, onEvent, style },
   ref,
 ) {
   const webViewRef = useRef<WebView>(null);
@@ -109,10 +117,15 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
     return null;
   }
 
-  const hide = !visible || isAudio;
+  const hide = !visible || (isAudio && !foreground);
 
   return (
-    <View style={[styles.wrap, hide && styles.hiddenAudio, style]} pointerEvents={hide ? 'none' : 'auto'} collapsable={false}>
+    <View
+      style={[styles.wrap, hide && styles.hiddenAudio, style]}
+      // An audio WebView never takes touches, even when fully visible.
+      pointerEvents={hide || isAudio ? 'none' : 'auto'}
+      collapsable={false}
+    >
       <WebView
         ref={webViewRef}
         source={{ html: AGORA_WEB_HTML, baseUrl: 'https://download.agora.io/' }}

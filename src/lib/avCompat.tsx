@@ -11,6 +11,7 @@ import {
 import AudioModuleNative from 'expo-audio/build/AudioModule';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import { isExpoGo } from './expoGo';
+import { isCallBusy } from './callSession';
 
 const toLegacyStatus = (status: any) => ({
   ...status,
@@ -163,17 +164,46 @@ export const Audio = {
   // setIsAudioActiveAsync(true) can fail while iOS is switching sessions;
   // players and recorders activate the session when they are actually used.
   setIsEnabledAsync: async (_enabled: boolean) => undefined,
-  setAudioModeAsync: async (mode: any) => setExpoAudioModeAsync({
-    allowsRecording: mode.allowsRecording ?? mode.allowsRecordingIOS,
-    playsInSilentMode: mode.playsInSilentMode ?? mode.playsInSilentModeIOS,
-    shouldPlayInBackground: mode.shouldPlayInBackground ?? mode.staysActiveInBackground,
-    shouldRouteThroughEarpiece: mode.shouldRouteThroughEarpiece ?? mode.playThroughEarpieceAndroid,
-    interruptionMode: mode.interruptionMode || mode.interruptionModeAndroid || mode.interruptionModeIOS,
-  }),
+  setAudioModeAsync: async (mode: any) => {
+    const allowsRecording = mode.allowsRecording ?? mode.allowsRecordingIOS;
+    // During a call / live voice, Agora (running in a WebView) is capturing
+    // the microphone. Playback-only modes set by ringtones, voice-message
+    // playback, the AI agent or composer transcription used to switch the
+    // audio session away from recording mid-call, so the other side heard
+    // nothing. Ignore them until the call ends.
+    if (isCallBusy() && allowsRecording === false) {
+      return;
+    }
+    return setExpoAudioModeAsync({
+      allowsRecording,
+      playsInSilentMode: mode.playsInSilentMode ?? mode.playsInSilentModeIOS,
+      shouldPlayInBackground: mode.shouldPlayInBackground ?? mode.staysActiveInBackground,
+      shouldRouteThroughEarpiece: mode.shouldRouteThroughEarpiece ?? mode.playThroughEarpieceAndroid,
+      interruptionMode: mode.interruptionMode || mode.interruptionModeAndroid || mode.interruptionModeIOS,
+    });
+  },
   IOSAudioQuality: AudioQuality,
   AndroidOutputFormat: { MPEG4: 'mpeg4', AAC_ADTS: 'aac_adts' },
   AndroidAudioEncoder: { AAC: 'aac' },
   IOSOutputFormat: { MPEG4AAC: 'aac ', LINEARPCM: 'lpcm' },
+};
+
+// Only one audible video may play at a time. Screens stay mounted underneath
+// the stack (e.g. a profile video tile under SingleWatch, or the feed under a
+// pop-out), so the same clip could play twice with a slight offset and sound
+// echoey. Whenever an unmuted player starts, pause every other unmuted one.
+const activeVideoPlayers = new Set<any>();
+
+const pauseOtherAudibleVideos = (current: any) => {
+  activeVideoPlayers.forEach((other) => {
+    if (other === current) return;
+    try {
+      if (other.playing && !other.muted) other.pause();
+    } catch (_) {
+      // Player was already released natively.
+      activeVideoPlayers.delete(other);
+    }
+  });
 };
 
 export const ResizeMode = { CONTAIN: 'contain', COVER: 'cover', STRETCH: 'fill' } as const;
@@ -203,13 +233,34 @@ export const Video = forwardRef<any, any>(function LegacyVideo(props, ref) {
   useEffect(() => {
     player.loop = Boolean(isLooping);
     player.muted = Boolean(isMuted);
-    if (shouldPlay) player.play(); else player.pause();
+    if (shouldPlay) {
+      if (!player.muted) pauseOtherAudibleVideos(player);
+      player.play();
+    } else {
+      player.pause();
+    }
   }, [
     player,
     isLooping,
     isMuted,
     shouldPlay,
   ]);
+
+  useEffect(() => {
+    activeVideoPlayers.add(player);
+    // Also covers playback started from native controls or fullscreen, and a
+    // playing player being unmuted.
+    const onAudible = () => {
+      if (player.playing && !player.muted) pauseOtherAudibleVideos(player);
+    };
+    const playingSubscription = player.addListener('playingChange', onAudible);
+    const mutedSubscription = player.addListener('mutedChange', onAudible);
+    return () => {
+      playingSubscription.remove();
+      mutedSubscription.remove();
+      activeVideoPlayers.delete(player);
+    };
+  }, [player]);
 
   useEffect(() => {
     // Expo Go cannot apply this app's expo-video config plugin, so its shared

@@ -689,7 +689,8 @@ const SingleMessage = () => {
   const isFocused = useIsFocused();
   const [appState, setAppState] = useState(AppState.currentState);
   const isAppActive = appState === 'active';
-  const shouldUseCamera = shareFaceModeEnabled && isFocused && isAppActive;
+  const shouldUseCamera =
+    shareFaceModeEnabled && isFocused && isAppActive && !isCallActive;
 
   useLayoutEffect(() => {
     if (!isFocused) {
@@ -1362,6 +1363,7 @@ const SingleMessage = () => {
     on('audio-call-ended', handleCallEnded);
     on('audio-call-cancelled', handleCallEnded);
     on('audio-call-rejected', handleCallEnded);
+    on('call-not-accepted', handleCallEnded);
     const localEnded = DeviceEventEmitter.addListener(
       CALL_EVENTS.LOCAL_ENDED,
       handleCallEnded,
@@ -1375,6 +1377,7 @@ const SingleMessage = () => {
       off('audio-call-ended', handleCallEnded);
       off('audio-call-cancelled', handleCallEnded);
       off('audio-call-rejected', handleCallEnded);
+      off('call-not-accepted', handleCallEnded);
       localEnded.remove();
     };
   }, [on, off]);
@@ -4270,6 +4273,9 @@ const SingleMessage = () => {
     }
 
     const channelName = `${myProfile._id}-${connect._id}`;
+    // Release the emotion-detection camera while the call rings, not only
+    // once it is answered, so it never competes with the call's capture.
+    setIsCallActive(true);
     emitStartVideoCall({
       to: String(connect._id),
       channelName,
@@ -4286,6 +4292,9 @@ const SingleMessage = () => {
     }
 
     const channelName = `${myProfile._id}-${connect._id}`;
+    // Release the emotion-detection camera while the call rings, not only
+    // once it is answered, so it never competes with the call's capture.
+    setIsCallActive(true);
     emitStartAudioCall({
       to: String(connect._id),
       channelName,

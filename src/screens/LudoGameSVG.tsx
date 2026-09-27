@@ -18,6 +18,7 @@ import {
   Image,
   ScrollView,
   Share,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
@@ -58,6 +59,7 @@ import {
   getRenderPlayerOrder,
   getTokenOffset,
   isHumanLudoProfileId,
+  isLobbySeatOccupied,
 } from '../lib/ludo/helpers';
 import {
   checkForCapture,
@@ -72,6 +74,7 @@ import {
 import { PlayerSelectionModal } from '../lib/ludo/PlayerSelectionModal';
 import { PlayerEditorModal } from '../lib/ludo/PlayerEditorModal';
 import { useLudoAudio } from '../lib/ludo/useLudoAudio';
+import { useConnectionHealth } from '../lib/ludo/useConnectionHealth';
 import type { ConnectUser, GameSnapshot, LudoInvite, Player } from '../lib/ludo/types';
 
 const CONNECT_LOGO = require('../assets/images/logo.png');
@@ -129,6 +132,12 @@ const LudoGameSVG = () => {
   const [incomingInviteRequest, setIncomingInviteRequest] = useState<LudoInvite | null>(null);
   const [diceSpin, setDiceSpin] = useState(0);
   const { soundsEnabled, playSound, toggleSounds } = useLudoAudio();
+  const connectionHealth = useConnectionHealth(onlineMode && Boolean(gameId), isConnected, emit);
+  // Online actions sent over a dead or very slow link arrive late or not at
+  // all, so the board waits until the connection is usable again.
+  const connectionReady = !onlineMode || !gameId || connectionHealth === 'ok';
+  const connectionReadyRef = useRef(connectionReady);
+  connectionReadyRef.current = connectionReady;
   const [showPlayerEditor, setShowPlayerEditor] = useState(false);
   const [editingPlayerIndex, setEditingPlayerIndex] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
@@ -325,6 +334,12 @@ const LudoGameSVG = () => {
   }, []);
 
   const advanceTurnForPlayer = useCallback((fromPlayer: number, actionType = 'turn_advance') => {
+    // In an online match only the host moves the turn on. A guest acting on
+    // its own timers can overtake the host's snapshots and then disagree
+    // about whose turn it is, so it simply waits for the host's update.
+    if (onlineModeRef.current && myPlayerIndexRef.current !== 0) return;
+    // Ignore timers that fire after the turn has already moved on.
+    if (currentPlayerRef.current !== fromPlayer) return;
     const nextPlayer = nextActivePlayer(
       fromPlayer,
       selectedPlayerCountRef.current,
@@ -340,7 +355,8 @@ const LudoGameSVG = () => {
     }
     setTimeout(() => {
       if (
-        !onlineModeRef.current &&
+        (!onlineModeRef.current || myPlayerIndexRef.current === currentPlayerRef.current) &&
+        !isMovingRef.current &&
         currentPlayerRef.current === nextPlayer &&
         diceValueRef.current === 0
       ) {
@@ -371,9 +387,14 @@ const LudoGameSVG = () => {
     if (nextGameEnded) {
       setGameEnded(true);
       gameEndedRef.current = true;
+      // Announce the result right away rather than with the next turn update,
+      // so the others see it even if the host leaves the moment it wins.
+      if (myPlayerIndexRef.current === 0 && onlineModeRef.current && gameIdRef.current) {
+        setTimeout(() => persistAndBroadcastGameState('game_ended'), 0);
+      }
     }
     return { didFinish: true, winners: nextWinners, gameEnded: nextGameEnded };
-  }, [playSound]);
+  }, [playSound, persistAndBroadcastGameState]);
 
   const animateTokenMovement = (
     playerIndex: number,
@@ -435,15 +456,21 @@ const LudoGameSVG = () => {
 
   const movePiece = (pieceId: number) => {
     if (isMovingRef.current && !isAutoMovingRef.current) return;
+    if (!connectionReadyRef.current) {
+      // Keep the roll; the piece can be moved once the connection is back.
+      isAutoMovingRef.current = false;
+      return;
+    }
     const effectiveDiceValue = diceValueRef.current > 0 ? diceValueRef.current : diceValue;
     const abortMove = (opts?: { skipTurnIfNoMoves?: boolean }) => {
       isMovingRef.current = false;
       isAutoMovingRef.current = false;
       if (!opts?.skipTurnIfNoMoves) return;
       const diceVal = diceValueRef.current > 0 ? diceValueRef.current : diceValue;
-      const remaining = getPlayablePieces(currentPlayerRef.current, diceVal);
+      const stuckPlayer = currentPlayerRef.current;
+      const remaining = getPlayablePieces(stuckPlayer, diceVal);
       if (remaining.length === 0 && diceVal > 0) {
-        setTimeout(() => advanceTurnForPlayer(currentPlayerRef.current), TURN_TRANSITION_DELAY_MS);
+        setTimeout(() => advanceTurnForPlayer(stuckPlayer), TURN_TRANSITION_DELAY_MS);
       }
     };
     if (effectiveDiceValue === 0 || (diceValueRef.current === 0 && diceValue === 0)) {
@@ -519,7 +546,8 @@ const LudoGameSVG = () => {
         if (keepTurn) {
           setTimeout(() => {
             if (
-              !onlineModeRef.current &&
+              (!onlineModeRef.current || myPlayerIndexRef.current === currentPlayerRef.current) &&
+              !isMovingRef.current &&
               currentPlayerRef.current === movingPlayerIndex &&
               diceValueRef.current === 0
             ) {
@@ -544,7 +572,8 @@ const LudoGameSVG = () => {
             }
             setTimeout(() => {
               if (
-                !onlineModeRef.current &&
+                (!onlineModeRef.current || myPlayerIndexRef.current === currentPlayerRef.current) &&
+                !isMovingRef.current &&
                 currentPlayerRef.current === nextPlayer &&
                 diceValueRef.current === 0
               ) {
@@ -553,9 +582,20 @@ const LudoGameSVG = () => {
             }, ROLL_UNLOCK_DELAY_MS);
           }, TURN_TRANSITION_DELAY_MS);
         }
-      } else {
+      } else if (pendingOwnMoveRef.current) {
+        // Wait for the host's snapshot to decide who plays next.
         setCanRollDice(false);
         isRollingRef.current = true;
+      } else {
+        // The host's snapshot for this move already arrived while the token
+        // was animating; honour it instead of locking the dice.
+        isRollingRef.current = false;
+        setCanRollDice(
+          gameStartedRef.current &&
+            !gameEndedRef.current &&
+            diceValueRef.current === 0 &&
+            currentPlayerRef.current === myPlayerIndexRef.current,
+        );
       }
       void didCapture;
     };
@@ -693,7 +733,7 @@ const LudoGameSVG = () => {
   };
 
   const rollDice = (controlledValue: number | null = null) => {
-    if (waitingForPlayers) return;
+    if (waitingForPlayers || !connectionReadyRef.current) return;
     const isBotTurn = !onlineMode && playersRef.current[currentPlayerRef.current]?.isBot;
     const isBotActingForCurrentPlayer = Boolean(
       botActingRef.current &&
@@ -762,7 +802,7 @@ const LudoGameSVG = () => {
             });
           }
           setTimeout(() => {
-            advanceTurnForPlayer(currentPlayerRef.current);
+            advanceTurnForPlayer(currentRollPlayer, 'three_consecutive_sixes');
           }, DICE_RESULT_DISPLAY_MS);
           return;
         }
@@ -792,7 +832,7 @@ const LudoGameSVG = () => {
         setConsecutiveSixes((prev) => ({ ...prev, [currentRollPlayer]: 0 }));
         consecutiveSixesRef.current[currentRollPlayer] = 0;
         setTimeout(
-          () => advanceTurnForPlayer(currentPlayerRef.current),
+          () => advanceTurnForPlayer(currentRollPlayer, 'turn_advance_no_playable_move'),
           DICE_RESULT_DISPLAY_MS,
         );
       } else if (playablePieces.length === 1) {
@@ -830,7 +870,7 @@ const LudoGameSVG = () => {
     const canControlBots = onlineMode
       ? myPlayerIndexRef.current === 0 && Boolean(gameId)
       : playWithComputer || playersRef.current.some((player) => player?.isBot);
-    if (!canControlBots || !gameStarted || gameEnded || waitingForPlayers) return;
+    if (!canControlBots || !gameStarted || gameEnded || waitingForPlayers || !connectionReady) return;
     const cp = currentPlayerRef.current;
     const player = playersRef.current[cp];
     if (!player?.isBot) {
@@ -904,6 +944,7 @@ const LudoGameSVG = () => {
     diceValue,
     canRollDice,
     maxSteps,
+    connectionReady,
   ]);
 
   useEffect(() => {
@@ -938,15 +979,13 @@ const LudoGameSVG = () => {
       if (isPreMoveDiceSnapshot) return;
       pendingOwnMoveRef.current = false;
     }
-    if (
-      snapshotVersion > 0 &&
-      snapshotVersion <= latestSnapshotVersionRef.current
-    ) {
-      // The host receives its own snapshots back from the server. Re-applying
-      // them would roll back anything that changed locally since sending, so
-      // only take the seat details the server adds (buffered accepts and
-      // online/offline flags).
-      if (isHost && snapshotVersion === latestSnapshotVersionRef.current && Array.isArray(payload.players)) {
+    const isStaleOrOwn = snapshotVersion > 0 && snapshotVersion <= latestSnapshotVersionRef.current;
+    if (isStaleOrOwn || (isHost && gameStartedRef.current)) {
+      // The host is the authority for turn, dice and match start. What it
+      // receives is its own echo or a server re-broadcast of an older snapshot
+      // with a seat change; applying either would roll the host back. Only
+      // take the seat details (buffered accepts, online/offline flags).
+      if (isHost && Array.isArray(payload.players)) {
         let changed = false;
         const merged = playersRef.current.map((seat, index) => {
           const incoming = payload.players[index];
@@ -1192,9 +1231,19 @@ const LudoGameSVG = () => {
       persistAndBroadcastGameState('player_left_replaced_by_bot');
     };
     const setSeatOffline = (payload: any, offline: boolean) => {
-      if (!isActiveHostedGame(payload) || !payload?.profileId) return;
-      const seatIndex = findSeat(payload.profileId);
-      if (seatIndex <= 0 || Boolean(playersRef.current[seatIndex]?.isOffline) === offline) return;
+      if (
+        !onlineModeRef.current ||
+        !payload?.profileId ||
+        String(payload?.gameId || '') !== String(gameIdRef.current || '') ||
+        String(payload.profileId) === String(myProfile?._id || '')
+      ) {
+        return;
+      }
+      // Everyone shows who is reconnecting (including the host, seat 0).
+      const seatIndex = playersRef.current.findIndex(
+        (seat) => String(seat?.profileId || '') === String(payload.profileId),
+      );
+      if (seatIndex < 0 || Boolean(playersRef.current[seatIndex]?.isOffline) === offline) return;
       const copy = clonePlayers(playersRef.current);
       copy[seatIndex] = {
         ...copy[seatIndex],
@@ -1203,6 +1252,8 @@ const LudoGameSVG = () => {
       };
       playersRef.current = copy;
       setPlayers(copy);
+      // Only the host moves the game on.
+      if (!isActiveHostedGame(payload) || seatIndex === 0) return;
       if (offline && currentPlayerRef.current === seatIndex) {
         advanceTurnForPlayer(seatIndex, 'turn_advance_player_offline');
         return;
@@ -1259,7 +1310,12 @@ const LudoGameSVG = () => {
     if (!isConnected || !onlineMode || !gameId) return;
     emit('ludo:join', { gameId });
     emit('ludo:players:get', { gameId });
-  }, [isConnected, onlineMode, gameId, emit]);
+    // After a reconnect the host republishes its authoritative board so any
+    // update the others missed while it was away reaches them.
+    if (myPlayerIndexRef.current !== 0 || !gameStartedRef.current) return;
+    const timer = setTimeout(() => persistAndBroadcastGameState('host_resync'), 300);
+    return () => clearTimeout(timer);
+  }, [isConnected, onlineMode, gameId, emit, persistAndBroadcastGameState]);
 
   // Host: start the online match as soon as every seat has a player or bot.
   useEffect(() => {
@@ -1529,6 +1585,9 @@ const LudoGameSVG = () => {
     setCurrentPlayer(0);
     setDiceValueImmediate(0);
     setWinner(null);
+    const invitedSlots = new Set(
+      selectedConnects.map((f, idx) => invitedSlotByConnectId[String(f._id)] ?? idx + 1),
+    );
     setPlayers((prev) => {
       const max = Math.max(2, Math.min(4, selectedPlayerCount));
       const next: Player[] = [];
@@ -1561,6 +1620,23 @@ const LudoGameSVG = () => {
           const hasHumanConnect = isHumanLudoProfileId(seat?.profileId);
           if (!hasHumanConnect) {
             next[i] = { ...seat, name: `Computer ${i}`, isBot: true, profileId: `bot-${i}` };
+          }
+        }
+      }
+      if (onlineMode) {
+        // Seats nobody was invited to are played by the computer, so the match
+        // starts the moment every invited connect accepts.
+        for (let i = 1; i < next.length; i++) {
+          if (!invitedSlots.has(i) && !next[i].isBot) {
+            next[i] = {
+              ...next[i],
+              name: `Computer ${i}`,
+              avatar: undefined,
+              cover: undefined,
+              isBot: true,
+              isActive: true,
+              profileId: `bot-${i}`,
+            };
           }
         }
       }
@@ -1790,7 +1866,13 @@ const LudoGameSVG = () => {
 
   const effectiveCurrentPlayer = currentPlayerRef.current ?? currentPlayer;
   const effectiveDiceForUi = diceValueRef.current || diceValue || 0;
-  const canTapDice = canRollDice && effectiveDiceForUi === 0 && isMyTurn;
+  const canTapDice = canRollDice && effectiveDiceForUi === 0 && isMyTurn && connectionReady;
+  const offlinePeers = players
+    .map((seat, index) => ({ seat, index }))
+    .filter(
+      ({ seat, index }) =>
+        index !== myPlayerIndex && seat && !seat.isBot && seat.isOffline && isHumanLudoProfileId(seat.profileId),
+    );
   const turnHint = !gameStarted
     ? 'Waiting…'
     : !isMyTurn
@@ -1831,6 +1913,7 @@ const LudoGameSVG = () => {
     const isAnimating = tokenAnimation?.key === animationKey;
     const canMove =
       isCurrent &&
+      connectionReady &&
       effectiveDiceForUi > 0 &&
       !isMovingRef.current &&
       !isAutoMovingRef.current &&
@@ -1841,6 +1924,7 @@ const LudoGameSVG = () => {
     return (
       <TouchableOpacity
         key={`token-${playerIndex}-${pieceIndex}`}
+        testID={`ludo-token-${playerIndex}-${pieceIndex}`}
         activeOpacity={0.85}
         onPress={() => {
           const currentDiceValue = diceValueRef.current > 0 ? diceValueRef.current : diceValue;
@@ -2035,6 +2119,29 @@ const LudoGameSVG = () => {
 
       {(gameStarted || waitingForPlayers) && (
         <ScrollView contentContainerStyle={[styles.stage, { paddingHorizontal: padding }]}>
+          {onlineMode && gameStarted && !gameEnded && offlinePeers.length > 0 && (
+            <View style={[styles.peerBanner, { width: BOARD_SIZE }]} testID="ludo-peer-offline">
+              <ActivityIndicator color="#FDD835" size="small" />
+              <Text style={styles.peerBannerText} numberOfLines={2}>
+                {offlinePeers.map(({ seat }) => seat.name || 'A player').join(', ')}{' '}
+                {offlinePeers.length === 1 ? 'is' : 'are'} reconnecting…
+                {offlinePeers.some(({ index }) => index === 0) ? ' The game resumes when the host is back.' : ' Their turns are skipped.'}
+              </Text>
+              {myPlayerIndex === 0 &&
+                offlinePeers
+                  .filter(({ index }) => index > 0)
+                  .map(({ index }) => (
+                    <TouchableOpacity
+                      key={`peer-bot-${index}`}
+                      testID={`peer-replace-bot-${index}`}
+                      style={styles.peerBannerBtn}
+                      onPress={() => replacePlayerWithBot(index)}
+                    >
+                      <Text style={styles.peerBannerBtnText}>Use computer</Text>
+                    </TouchableOpacity>
+                  ))}
+            </View>
+          )}
           <View style={[styles.boardWrap, { width: BOARD_SIZE, height: BOARD_SIZE }]}>
             <GameBoard
               boardSize={BOARD_SIZE}
@@ -2053,10 +2160,37 @@ const LudoGameSVG = () => {
             {waitingForPlayers && (
               <View style={styles.overlay}>
                 <View style={styles.card}>
-                  <Text style={styles.cardTitle}>Waiting for players…</Text>
-                  <Text style={styles.cardBody}>The match starts when everyone joins.</Text>
+                  <Text style={styles.cardTitle}>
+                    {myPlayerIndex === 0 ? 'Waiting for players…' : 'Joining the match…'}
+                  </Text>
+                  <Text style={styles.cardBody}>
+                    {myPlayerIndex === 0
+                      ? 'The match starts as soon as everyone you invited accepts.'
+                      : 'The match starts in a moment.'}
+                  </Text>
+                  <Text style={styles.seatCount}>
+                    Joined {countOccupiedLobbySeats(players, selectedPlayerCount)}/{selectedPlayerCount}
+                  </Text>
+                  <View style={styles.seatList}>
+                    {Array.from({ length: selectedPlayerCount }).map((_, i) => {
+                      const seat = players[i];
+                      const joined = isLobbySeatOccupied(seat, i);
+                      return (
+                        <View key={`seat-${i}`} style={styles.seatRow}>
+                          <View style={[styles.seatDot, { backgroundColor: seat?.color || THEME.accent }]} />
+                          <Text style={styles.seatName} numberOfLines={1}>
+                            {seat?.name || `Seat ${i + 1}`}
+                          </Text>
+                          <Text style={[styles.seatBadge, joined ? styles.seatBadgeJoined : styles.seatBadgeWaiting]}>
+                            {seat?.isBot ? 'Computer' : joined ? 'Joined' : 'Invited'}
+                          </Text>
+                        </View>
+                      );
+                    })}
+                  </View>
                   {myPlayerIndex === 0 && (
                     <TouchableOpacity
+                      testID="waiting-replace-bot"
                       style={styles.primaryBtn}
                       onPress={() => {
                         // Fill empty seats with bots; the auto-start effect then
@@ -2082,9 +2216,23 @@ const LudoGameSVG = () => {
                         }
                       }}
                     >
-                      <Text style={styles.primaryBtnText}>Replace with computer</Text>
+                      <Text style={styles.primaryBtnText}>Start with computer players</Text>
                     </TouchableOpacity>
                   )}
+                </View>
+              </View>
+            )}
+
+            {onlineMode && gameId && connectionHealth !== 'ok' && (
+              <View style={styles.overlay} testID="ludo-reconnecting">
+                <View style={styles.card}>
+                  <ActivityIndicator color={THEME.accent} size="large" />
+                  <Text style={[styles.cardTitle, { marginTop: 12 }]}>Reconnecting…</Text>
+                  <Text style={styles.cardBody}>
+                    {connectionHealth === 'slow'
+                      ? 'Your connection is slow. Your moves are paused until it recovers.'
+                      : 'Connection lost. Your game is safe and resumes automatically.'}
+                  </Text>
                 </View>
               </View>
             )}
@@ -2094,11 +2242,9 @@ const LudoGameSVG = () => {
               pointerEvents={canTapDice ? 'auto' : 'none'}
             >
               <TouchableOpacity
+                testID="ludo-dice"
                 onPress={() => rollDice()}
-                disabled={
-                  !canRollDice ||
-                  ((onlineMode || playWithComputer) && effectiveCurrentPlayer !== myPlayerIndex)
-                }
+                disabled={!canTapDice}
                 activeOpacity={0.85}
               >
                 <View style={{ width: diceSize, height: diceSize, alignItems: 'center', justifyContent: 'center' }}>
@@ -2169,7 +2315,11 @@ const LudoGameSVG = () => {
           </View>
           {onlineMode && (
             <Text style={styles.conn}>
-              {isConnected ? 'Online · connected' : 'Online · connecting…'}
+              {connectionHealth === 'ok'
+                ? 'Online · connected'
+                : connectionHealth === 'slow'
+                  ? 'Online · slow connection…'
+                  : 'Online · reconnecting…'}
             </Text>
           )}
         </ScrollView>
@@ -2281,6 +2431,49 @@ const styles = StyleSheet.create({
   },
   diceHitLow: { zIndex: 5 },
   conn: { color: THEME.muted, fontSize: 12, marginTop: 4 },
+  seatCount: { color: THEME.text, fontWeight: '700', fontSize: 13, marginBottom: 8 },
+  seatList: { width: '100%', gap: 6, marginBottom: 14 },
+  seatRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: THEME.surface,
+    borderRadius: THEME.radiusSm,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  seatDot: { width: 12, height: 12, borderRadius: 6 },
+  seatName: { flex: 1, color: THEME.text, fontSize: 13, fontWeight: '600' },
+  seatBadge: {
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  seatBadgeJoined: { color: '#06241f', backgroundColor: THEME.success },
+  seatBadgeWaiting: { color: THEME.warn, backgroundColor: 'rgba(240, 180, 41, 0.14)' },
+  peerBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    maxWidth: '100%',
+    backgroundColor: 'rgba(240, 180, 41, 0.12)',
+    borderColor: 'rgba(240, 180, 41, 0.45)',
+    borderWidth: 1,
+    borderRadius: THEME.radiusSm,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  peerBannerText: { flex: 1, color: THEME.text, fontSize: 12.5, lineHeight: 17 },
+  peerBannerBtn: {
+    backgroundColor: THEME.warn,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  peerBannerBtnText: { color: '#1b1300', fontWeight: '800', fontSize: 12 },
 });
 
 export default LudoGameSVG;
