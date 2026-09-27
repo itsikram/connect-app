@@ -48,6 +48,12 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
   const openChatFromNotification = useCallback(
     (response: Notifications.NotificationResponse | null | undefined) => {
       const data: any = response?.notification?.request?.content?.data || {};
+      if (data.type === 'recovery_reminder') {
+        // Only Recovery screens may be opened from a reminder payload.
+        const screen = typeof data.screen === 'string' && /^Recovery[A-Za-z]+$/.test(data.screen) ? data.screen : 'RecoveryHome';
+        memoizedNavigate('Menu', { screen });
+        return;
+      }
       if (!isChatNotification(data) && data.type !== 'missed_call') return;
       const tapId = response?.notification?.request?.identifier || null;
       if (tapId && tapId === lastHandledChatTapId) return;

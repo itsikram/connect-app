@@ -33,6 +33,7 @@ export type TrackedSubstance = {
   daysPerWeek: number;
   costPerUnit: number;
   yearsUsing?: number | null;
+  wakeUse?: string;
   approach: Approach;
   quitDate: string;
   streakStart?: string;

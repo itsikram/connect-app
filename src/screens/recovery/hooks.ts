@@ -90,3 +90,21 @@ export const useRecoveryDashboard = (lang: RecoveryLang, navigation?: any) => {
     },
   };
 };
+
+/** The last saved dashboard only (no network), for screens that must work offline such as SOS and Help. */
+export const useCachedDashboard = () => {
+  const [data, setData] = useState<RecoveryDashboard | null>(null);
+  useEffect(() => {
+    let active = true;
+    recoveryApi
+      .getCachedDashboard()
+      .then((cached) => {
+        if (active) setData(cached);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+  return data;
+};
