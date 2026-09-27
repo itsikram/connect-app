@@ -13,6 +13,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  Vibration,
   View,
 } from 'react-native';
 import Modal from './SystemBarsModal';
@@ -56,7 +57,12 @@ import {
   detectAgentSpeechLanguage,
 } from '../services/agentSpeechService';
 import { AgentMessage } from '../types/aiAgent';
-import { isLikelyAgentEcho, waitForAgentSilence } from '../services/agentEcho';
+import {
+  isAgentSpeaking,
+  isLikelyAgentEcho,
+  onAgentSpeakingChange,
+  waitForAgentSilence,
+} from '../services/agentEcho';
 import { findRelation, matchRelationConnects } from '../services/agentRelations';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
@@ -590,6 +596,9 @@ const AIAgentModal: React.FC<Props> = ({
   const [providerMenuOpen, setProviderMenuOpen] = React.useState(false);
   const [autoActionRunning, setAutoActionRunning] = React.useState(false);
   const [runningActionLabel, setRunningActionLabel] = React.useState('');
+  // True while the agent's voice is playing (drives the Stop button).
+  const [agentTalking, setAgentTalking] = React.useState(isAgentSpeaking());
+  React.useEffect(() => onAgentSpeakingChange(setAgentTalking), []);
   // True while the server re-checks the last utterance with Gemini.
   const [voiceRefining, setVoiceRefining] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
@@ -1492,8 +1501,10 @@ const AIAgentModal: React.FC<Props> = ({
     onClose();
   };
 
-  const stopGenerating = () => {
+  /** Cuts off whatever the agent is doing: thinking, speaking or acting. */
+  const interruptAgent = () => {
     generationRef.current += 1;
+    clearVoiceAutoSend();
     requestRef.current?.abort();
     speechControllerRef.current?.stop().catch(() => {});
     setLoading(false);
@@ -1504,6 +1515,23 @@ const AIAgentModal: React.FC<Props> = ({
         .filter(item => !(item.streaming && !item.content && !item.actionResults))
         .map(item => (item.streaming ? { ...item, streaming: false } : item)),
     );
+  };
+
+  /**
+   * The Stop button. In a hands-free conversation the agent then listens
+   * straight away, like a person who stops talking when interrupted.
+   */
+  const stopGenerating = () => {
+    interruptAgent();
+    if (voiceConversation && !transcribe.listening && !isCallBusy()) {
+      void startListening(
+        listenLanguage,
+        { skipStop: true },
+        { immediate: true },
+      ).then(started => {
+        if (!started) setVoiceConversation(false);
+      });
+    }
   };
 
   /** Speaks one line (voice output on), pausing the mic while talking. */
@@ -2193,36 +2221,24 @@ const AIAgentModal: React.FC<Props> = ({
     async (
       language: AgentSpeechLanguage,
       options?: Parameters<typeof transcribe.start>[1],
+      { immediate = false }: { immediate?: boolean } = {},
     ) => {
-      // Open the mic only once the agent has finished talking and the speaker
-      // has gone quiet, so its own voice is not recorded.
+      if (immediate) {
+        // The user tapped the mic / shook the phone: listen right now. Any
+        // agent speech was just cut off, so only a tiny tail is needed, and a
+        // short vibration replaces the (blocking) start sound.
+        Vibration.vibrate(30);
+        await waitForAgentSilence(120, 1500);
+        return transcribe.start(language, options);
+      }
+      // Automatic turn-taking: open the mic only once the agent has finished
+      // talking and the speaker has gone quiet, so its own voice is not
+      // recorded; the cue tells the user it is their turn.
       await waitForAgentSilence();
       await playMicrophoneStartCue();
       return transcribe.start(language, options);
     },
     [playMicrophoneStartCue, transcribe],
-  );
-
-  const announceListening = React.useCallback(
-    async (speechLanguage: Exclude<AgentSpeechLanguage, 'auto'>) => {
-      if (listeningPromptShownRef.current) {
-        return;
-      }
-      listeningPromptShownRef.current = true;
-      await transcribe.stop({ discard: true });
-      await restoreChatPlaybackAudioMode();
-      void speechControllerRef.current?.stop();
-      const speechController = createAgentSpeechController(speechLanguage, {
-        onSpeechStart: () => transcribe.stop({ discard: true }),
-      });
-      speechControllerRef.current = speechController;
-      speechController.update(
-        speechLanguage === 'bn-BD' ? 'আমি শুনছি' : 'Listening',
-        speechLanguage,
-      );
-      await speechController.finish();
-    },
-    [transcribe],
   );
 
   const selectVoiceLanguage = React.useCallback(
@@ -2239,12 +2255,12 @@ const AIAgentModal: React.FC<Props> = ({
       }
       setVoiceConversation(true);
       setVoiceTranscript('');
-      if (speechEnabled) {
-        await announceListening(
-          nextLanguage === 'auto' ? defaultSpeechLanguage : nextLanguage,
-        );
-      }
-      const started = await startListening(nextLanguage, { skipStop: true });
+      await speechControllerRef.current?.stop().catch(() => {});
+      const started = await startListening(
+        nextLanguage,
+        { skipStop: true },
+        { immediate: true },
+      );
       if (!started) {
         setVoiceConversation(false);
         Alert.alert(
@@ -2253,13 +2269,7 @@ const AIAgentModal: React.FC<Props> = ({
         );
       }
     },
-    [
-      announceListening,
-      defaultSpeechLanguage,
-      speechEnabled,
-      startListening,
-      transcribe,
-    ],
+    [startListening, transcribe],
   );
 
   React.useEffect(() => {
@@ -2285,23 +2295,19 @@ const AIAgentModal: React.FC<Props> = ({
       voiceStartInFlightRef.current = true;
       try {
         await speechControllerRef.current?.stop();
-        await announceListening(
-          autoStartVoiceLanguage === 'auto'
-            ? defaultSpeechLanguage
-            : autoStartVoiceLanguage,
+        // Shake-to-talk: start transcribing at once.
+        const started = await startListening(
+          autoStartVoiceLanguage,
+          { skipStop: true },
+          { immediate: true },
         );
-        const started = await startListening(autoStartVoiceLanguage, {
-          skipStop: true,
-        });
         if (!started) setVoiceConversation(false);
       } finally {
         voiceStartInFlightRef.current = false;
       }
     })();
   }, [
-    announceListening,
     autoStartVoiceLanguage,
-    defaultSpeechLanguage,
     startListening,
     transcribe,
     visible,
@@ -2324,7 +2330,8 @@ const AIAgentModal: React.FC<Props> = ({
     }
     if (voiceStartInFlightRef.current) return;
     voiceStartInFlightRef.current = true;
-    // Tapping the mic while the agent talks interrupts it, like a person.
+    // Tapping the mic while the agent thinks or talks interrupts it.
+    if (loading) interruptAgent();
     await speechControllerRef.current?.stop().catch(() => {});
     setVoiceConversation(true);
     setVoiceTranscript('');
@@ -2332,8 +2339,11 @@ const AIAgentModal: React.FC<Props> = ({
     setSpeechEnabled(true);
     let started = false;
     try {
-      await announceListening(speechLanguage);
-      started = await startListening(listenLanguage, { skipStop: true });
+      started = await startListening(
+        listenLanguage,
+        { skipStop: true },
+        { immediate: true },
+      );
     } finally {
       voiceStartInFlightRef.current = false;
     }
@@ -2354,16 +2364,16 @@ const AIAgentModal: React.FC<Props> = ({
       return;
     }
 
-    await announceListening(speechLanguage);
-
-    if (voiceConversation) {
+    if (voiceConversation && !transcribe.listening) {
       if (isCallBusy()) {
         setVoiceConversation(false);
         return;
       }
-      const started = await startListening(listenLanguage, {
-        skipStop: true,
-      });
+      const started = await startListening(
+        listenLanguage,
+        { skipStop: true },
+        { immediate: true },
+      );
       if (!started) setVoiceConversation(false);
     }
   };
@@ -2380,8 +2390,12 @@ const AIAgentModal: React.FC<Props> = ({
       return;
     }
     setVoiceConversation(true);
-    await announceListening(speechLanguage);
-    const started = await startListening(listenLanguage, { skipStop: true });
+    await speechControllerRef.current?.stop().catch(() => {});
+    const started = await startListening(
+      listenLanguage,
+      { skipStop: true },
+      { immediate: true },
+    );
     if (!started) setVoiceConversation(false);
   };
   const capabilities: Array<{
@@ -3306,7 +3320,11 @@ const AIAgentModal: React.FC<Props> = ({
                   </Pressable>
                   <View style={styles.voicePanelText}>
                     <Text style={[styles.voicePhase, { color: voicePhase.color }]}>
-                      {voicePhase.label}
+                      {agentTalking && !voicePhase.busy
+                        ? bn
+                          ? 'বলছি…'
+                          : 'Speaking…'
+                        : voicePhase.label}
                     </Text>
                     <Text
                       numberOfLines={3}
@@ -3322,6 +3340,21 @@ const AIAgentModal: React.FC<Props> = ({
                       {voiceTranscript || voicePhase.hint}
                     </Text>
                   </View>
+                  {voicePhase.busy || agentTalking ? (
+                    <Pressable
+                      onPress={stopGenerating}
+                      style={({ pressed }) => [
+                        styles.voiceStop,
+                        { backgroundColor: colors.status.error, opacity: pressed ? 0.8 : 1 },
+                      ]}
+                      accessibilityRole="button"
+                      accessibilityLabel={bn ? 'থামান' : 'Stop'}
+                      hitSlop={8}
+                    >
+                      <Icon name="stop" size={20} color="#fff" />
+                      <Text style={styles.voiceStopText}>{bn ? 'থামান' : 'Stop'}</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
               <View
@@ -3387,7 +3420,7 @@ const AIAgentModal: React.FC<Props> = ({
                   blurOnSubmit={false}
                   returnKeyType="send"
                 />
-                {loading ? (
+                {loading || agentTalking || autoActionRunning ? (
                   <Pressable
                     onPress={stopGenerating}
                     style={[styles.send, { backgroundColor: colors.text.primary }]}
@@ -3462,6 +3495,15 @@ const AIAgentModal: React.FC<Props> = ({
             </Text>
           </Pressable>
           <View style={styles.agentMiniControls}>
+            {loading || agentTalking || autoActionRunning ? (
+              <Pressable
+                style={[styles.agentMiniMic, { backgroundColor: colors.status.error }]}
+                onPress={stopGenerating}
+                accessibilityLabel="Stop"
+              >
+                <Icon name="stop" size={18} color="#fff" />
+              </Pressable>
+            ) : null}
             <Pressable
               style={[
                 styles.agentMiniMic,
@@ -3738,6 +3780,15 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
   },
   voicePanelText: { flex: 1 },
+  voiceStop: {
+    height: 44,
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  voiceStopText: { color: '#fff', fontSize: 15, fontWeight: '800' },
   voicePhase: { fontSize: 18, fontWeight: '800', letterSpacing: -0.2 },
   voiceTranscript: { fontSize: 15, lineHeight: 21, marginTop: 3 },
   pulseWrap: { width: 64, height: 64, alignItems: 'center', justifyContent: 'center' },

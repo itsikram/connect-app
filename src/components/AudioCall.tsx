@@ -123,6 +123,17 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setTimeout(() => { isTerminating.current = false; }, 400);
   }, [endMinimizedCall]);
 
+  // Join failed or the peer dropped out of the media channel: close the call
+  // on the server too, so the other side (web or app) and all their devices
+  // stop waiting in an empty call and the call log is written.
+  const endCallForPeer = useCallback((channelName?: string | null) => {
+    const peer = callerRef.current;
+    const channel = channelName || currentChannelRef.current;
+    if (peer && channel) {
+      emit('audio-call-end', { to: String(peer), channelName: channel });
+    }
+  }, [emit]);
+
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
@@ -153,8 +164,10 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       setActiveCallKind(null);
       setIsAudioCall(false);
       setCallAccepted(false);
+      endCallForPeer(channelName);
+      cleanupAudioCall();
     }
-  }, [numericUid]);
+  }, [numericUid, endCallForPeer, cleanupAudioCall]);
 
   useEffect(() => { startCallRef.current = startCall; }, [startCall]);
 
@@ -503,6 +516,18 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       }
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
+      endCallForPeer();
+      cleanupAudioCall();
+    }
+    // A failed join used to only log a warning, leaving both sides stuck on
+    // "connecting". End the call cleanly instead.
+    if (
+      event.type === 'error' &&
+      /^join failed/i.test(String(event.message || '')) &&
+      isJoiningOrJoined.current
+    ) {
+      Alert.alert('Call failed', 'Could not connect the call. Please try again.');
+      endCallForPeer();
       cleanupAudioCall();
     }
     if (event.type === 'audio-enabled') {
@@ -522,7 +547,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (__DEV__ && event.type === 'log') {
       console.log('[AudioCall]', event.message);
     }
-  }, [cleanupAudioCall]);
+  }, [cleanupAudioCall, endCallForPeer]);
 
   const statusText = callAccepted
     ? `Connected • ${formatDuration(callDuration)}`

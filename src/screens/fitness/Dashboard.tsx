@@ -409,7 +409,7 @@ const GoalCard = ({ profile, goalProgress, currentWeightKg, onPress }: { profile
   const current = currentWeightKg || profile.weightKg;
   const bmiText = profile.bmi ? `BMI ${profile.bmi}${profile.bmiCategory ? ` · ${profile.bmiCategory}` : ''}` : '';
   return (
-    <Card onPress={onPress}>
+    <Card onPress={onPress} style={profile.goal !== 'lose' ? { marginTop: 10 } : undefined}>
       <View style={s.cardHeader}>
         <Text style={[s.cardTitle, { color: colors.text.primary }]}>{profile.goal === 'lose' ? 'Weight-loss goal' : profile.goal === 'gain' ? 'Weight-gain goal' : 'Maintain weight'}</Text>
         <Text style={[s.link, { color: colors.primary }]}>Log weight</Text>

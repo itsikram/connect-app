@@ -23,6 +23,7 @@ export interface Player {
   profileId?: string;
   isBot?: boolean;
   isOffline?: boolean;
+  offlineSince?: number;
 }
 
 export interface CaptureHit {

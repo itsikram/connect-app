@@ -104,7 +104,7 @@ export const FitnessPage = ({ title, subtitle, navigation, right, children, refr
       style={[styles.page, { backgroundColor: colors.background.primary }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
-      <View style={[styles.header, { paddingTop: insets.top + 8, borderBottomColor: colors.border.primary, backgroundColor: colors.background.primary }]}>
+      <View style={[styles.header, { paddingTop: 8, borderBottomColor: colors.border.primary, backgroundColor: colors.background.primary }]}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Go back"
@@ -123,7 +123,7 @@ export const FitnessPage = ({ title, subtitle, navigation, right, children, refr
       <ScrollView
         ref={scrollRef as any}
         style={{ backgroundColor: colors.background.primary }}
-        contentContainerStyle={[styles.content, { paddingBottom: 110 + insets.bottom }]}
+        contentContainerStyle={[styles.content, { paddingBottom: 210 + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         refreshControl={onRefresh ? <RefreshControl refreshing={!!refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} /> : undefined}
       >

@@ -8,6 +8,9 @@ export type AgoraJoinCreds = {
 };
 
 const prefetchCache = new Map<string, Promise<AgoraJoinCreds>>();
+const prefetchTimes = new Map<string, number>();
+// Server tokens last 1h; refetch well before that.
+const PREFETCH_TTL_MS = 10 * 60 * 1000;
 
 function cacheKey(channelName: string, uid: number) {
   return `${channelName}:${uid}`;
@@ -16,7 +19,9 @@ function cacheKey(channelName: string, uid: number) {
 export function prefetchAgoraJoin(channelName: string, uid: number): Promise<AgoraJoinCreds> {
   const key = cacheKey(channelName, uid);
   const existing = prefetchCache.get(key);
-  if (existing) return existing;
+  const fetchedAt = prefetchTimes.get(key) || 0;
+  if (existing && Date.now() - fetchedAt < PREFETCH_TTL_MS) return existing;
+  prefetchTimes.set(key, Date.now());
 
   const request = api
     .post('/agora/token', { channelName, uid })
@@ -28,6 +33,7 @@ export function prefetchAgoraJoin(channelName: string, uid: number): Promise<Ago
     }))
     .catch((error) => {
       prefetchCache.delete(key);
+      prefetchTimes.delete(key);
       throw error;
     });
 

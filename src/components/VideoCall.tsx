@@ -122,6 +122,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     setTimeout(() => { isTerminating.current = false; }, 400);
   }, [endMinimizedCall]);
 
+  // Join failed or the peer dropped out of the media channel: close the call
+  // on the server too, so the other side (web or app) and all their devices
+  // stop waiting in an empty call and the call log is written.
+  const endCallForPeer = useCallback((channelName?: string | null) => {
+    const peer = callerRef.current;
+    const channel = channelName || currentChannelRef.current;
+    if (peer && channel) {
+      emit('video-call-end', { to: String(peer), channelName: channel });
+    }
+  }, [emit]);
+
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
@@ -153,8 +164,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setActiveCallKind(null);
       setIsVideoCall(false);
       setCallAccepted(false);
+      endCallForPeer(channelName);
+      cleanupVideoCall();
     }
-  }, [numericUid]);
+  }, [numericUid, endCallForPeer, cleanupVideoCall]);
 
   useEffect(() => { startCallRef.current = startCall; }, [startCall]);
 
@@ -533,6 +546,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
+      endCallForPeer();
+      cleanupVideoCall();
+    }
+    // A failed join used to only log a warning, leaving both sides stuck on
+    // "connecting". End the call cleanly instead.
+    if (
+      event.type === 'error' &&
+      /^join failed/i.test(String(event.message || '')) &&
+      isJoiningOrJoined.current
+    ) {
+      Alert.alert('Call failed', 'Could not connect the call. Please try again.');
+      endCallForPeer();
       cleanupVideoCall();
     }
     if (event.type === 'error') {
@@ -541,7 +566,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (__DEV__ && event.type === 'log') {
       console.log('[VideoCall]', event.message);
     }
-  }, [cleanupVideoCall]);
+  }, [cleanupVideoCall, endCallForPeer]);
 
   const statusText = callAccepted
     ? formatDuration(callDuration)

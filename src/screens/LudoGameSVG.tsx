@@ -52,6 +52,7 @@ import {
 import {
   applyPieceLifecycle,
   clonePlayers,
+  countOccupiedLobbySeats,
   generateGameId,
   getBoardSeatIndex,
   getRenderPlayerOrder,
@@ -164,6 +165,9 @@ const LudoGameSVG = () => {
   const botActingPlayerIndexRef = useRef<number | null>(null);
   const botTurnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recentMovesRef = useRef(new Map<string, { toSteps: number; timestamp: number; isCapture?: boolean }>());
+  // Guest only: set after sending our own move until the host's next snapshot
+  // confirms it, so a late pre-move dice snapshot cannot re-enable that roll.
+  const pendingOwnMoveRef = useRef(false);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const newGameDraftIdRef = useRef<string | null>(null);
   const autoStartLudoInviteRef = useRef(false);
@@ -249,7 +253,10 @@ const LudoGameSVG = () => {
   }, [selectedPlayerCount, selectedConnects, myProfile]);
 
   useEffect(() => {
-    if (!gameStartedRef.current) {
+    // An online guest's seats come from the host's snapshots; rebuilding them
+    // here would wipe a lobby snapshot when its player count is applied.
+    const isOnlineGuest = onlineModeRef.current && myPlayerIndexRef.current !== 0;
+    if (!gameStartedRef.current && !isOnlineGuest) {
       initializeGame(selectedPlayerCount, selectedConnects);
     }
     // Only rebuild seats when the player count changes. Connect assigns update seats directly.
@@ -317,7 +324,7 @@ const LudoGameSVG = () => {
     return Boolean(playersRef.current?.[playerIndex]?.isBot);
   }, []);
 
-  const advanceTurnForPlayer = useCallback((fromPlayer: number) => {
+  const advanceTurnForPlayer = useCallback((fromPlayer: number, actionType = 'turn_advance') => {
     const nextPlayer = nextActivePlayer(
       fromPlayer,
       selectedPlayerCountRef.current,
@@ -329,7 +336,7 @@ const LudoGameSVG = () => {
     setDiceValueImmediate(0);
     lastLocalDiceRollTimeRef.current = 0;
     if (myPlayerIndexRef.current === 0 && onlineModeRef.current && gameIdRef.current) {
-      persistAndBroadcastGameState('turn_advance');
+      persistAndBroadcastGameState(actionType);
     }
     setTimeout(() => {
       if (
@@ -581,6 +588,7 @@ const LudoGameSVG = () => {
       playersRef.current = finalPlayers;
       if (didCaptureOnMoveOut) playSound('capture');
       if (onlineMode && gameIdRef.current) {
+        if (myPlayerIndexRef.current !== 0) pendingOwnMoveRef.current = true;
         emit('ludo:move', {
           gameId: gameIdRef.current,
           by: myProfile?._id,
@@ -657,6 +665,7 @@ const LudoGameSVG = () => {
       playersRef.current = finalPlayers;
       if (didCapture) playSound('capture');
       if (onlineMode && gameIdRef.current) {
+        if (myPlayerIndexRef.current !== 0) pendingOwnMoveRef.current = true;
         emit('ludo:move', {
           gameId: gameIdRef.current,
           by: myProfile?._id,
@@ -918,10 +927,58 @@ const LudoGameSVG = () => {
       Number(payload.playersSeq || 0),
       Number(payload.stateVersion || 0),
     );
+    const isHost = myPlayerIndexRef.current === 0;
+    if (!isHost && pendingOwnMoveRef.current) {
+      // The host may have sent its dice snapshot just before our move reached
+      // it. Applying it would restore the used dice value and allow a second move.
+      const isPreMoveDiceSnapshot =
+        payload.currentPlayer === myPlayerIndexRef.current &&
+        Number(payload.diceValue || 0) > 0 &&
+        String(payload.lastActionType || '') === 'dice_roll';
+      if (isPreMoveDiceSnapshot) return;
+      pendingOwnMoveRef.current = false;
+    }
     if (
       snapshotVersion > 0 &&
-      snapshotVersion < latestSnapshotVersionRef.current
+      snapshotVersion <= latestSnapshotVersionRef.current
     ) {
+      // The host receives its own snapshots back from the server. Re-applying
+      // them would roll back anything that changed locally since sending, so
+      // only take the seat details the server adds (buffered accepts and
+      // online/offline flags).
+      if (isHost && snapshotVersion === latestSnapshotVersionRef.current && Array.isArray(payload.players)) {
+        let changed = false;
+        const merged = playersRef.current.map((seat, index) => {
+          const incoming = payload.players[index];
+          if (!seat || !incoming) return seat;
+          const next = { ...seat, isOffline: incoming.isOffline, offlineSince: incoming.offlineSince };
+          if (
+            index > 0 &&
+            isHumanLudoProfileId(incoming.profileId) &&
+            String(incoming.profileId) !== String(seat.profileId || '')
+          ) {
+            Object.assign(next, {
+              profileId: incoming.profileId,
+              name: incoming.name || seat.name,
+              avatar: incoming.avatar || seat.avatar,
+              cover: incoming.cover || seat.cover,
+              isBot: false,
+              isActive: true,
+            });
+          }
+          if (
+            next.profileId !== seat.profileId ||
+            Boolean(next.isOffline) !== Boolean(seat.isOffline)
+          ) {
+            changed = true;
+          }
+          return next;
+        });
+        if (changed) {
+          playersRef.current = merged;
+          setPlayers(merged);
+        }
+      }
       return;
     }
     if (snapshotVersion > 0) {
@@ -930,6 +987,16 @@ const LudoGameSVG = () => {
     if (Array.isArray(payload.players)) {
       playersRef.current = payload.players;
       setPlayers(payload.players);
+      // The server may seat a guest somewhere other than the invited slot.
+      if (!isHost && myProfile?._id) {
+        const mySeat = payload.players.findIndex(
+          (seat) => String(seat?.profileId || '') === String(myProfile._id),
+        );
+        if (mySeat > 0 && mySeat !== myPlayerIndexRef.current) {
+          myPlayerIndexRef.current = mySeat;
+          setMyPlayerIndex(mySeat);
+        }
+      }
     }
     if (typeof payload.currentPlayer === 'number') {
       setCurrentPlayerImmediate(payload.currentPlayer);
@@ -963,8 +1030,10 @@ const LudoGameSVG = () => {
         payload.currentPlayer === myPlayerIndexRef.current,
       ),
     );
-    setWaitingForPlayers(false);
-  }, [setCurrentPlayerImmediate, setDiceValueImmediate]);
+    if (typeof payload.gameStarted === 'boolean') {
+      setWaitingForPlayers(!payload.gameStarted && !payload.gameEnded);
+    }
+  }, [myProfile?._id, setCurrentPlayerImmediate, setDiceValueImmediate]);
 
   useEffect(() => {
     const onPlayers = (payload: GameSnapshot) => applyRemoteSnapshot(payload);
@@ -973,6 +1042,10 @@ const LudoGameSVG = () => {
       const connect = payload?.connect;
       const slotIndex = Number(payload?.slotIndex);
       if (!connect?._id || !Number.isInteger(slotIndex) || slotIndex < 1) return;
+      if (String(connect._id) === String(myProfile?._id || '') && myPlayerIndexRef.current !== 0) {
+        myPlayerIndexRef.current = slotIndex;
+        setMyPlayerIndex(slotIndex);
+      }
       setPlayers((prev) => {
         const copy = clonePlayers(prev);
         if (!copy[slotIndex]) return prev;
@@ -1009,43 +1082,140 @@ const LudoGameSVG = () => {
     const onRoll = (payload: any) => {
       if (!onlineModeRef.current || String(payload?.gameId) !== String(gameIdRef.current)) return;
       if (String(payload?.by) === String(myProfile?._id)) return;
-      if (typeof payload?.value === 'number') {
-        setDiceValueImmediate(payload.value);
-        setDiceSpin(payload.value);
-        diceResultVisibleUntilRef.current = Date.now() + DICE_RESULT_DISPLAY_MS;
+      const value = Number(payload?.value);
+      if (!Number.isInteger(value) || value < 1 || value > 6) return;
+      const rollingPlayer =
+        typeof payload?.currentPlayer === 'number' ? payload.currentPlayer : currentPlayerRef.current;
+      setCurrentPlayerImmediate(rollingPlayer);
+      setDiceValueImmediate(value);
+      setDiceSpin(value);
+      diceResultVisibleUntilRef.current = Date.now() + DICE_RESULT_DISPLAY_MS;
+      isRollingRef.current = false;
+
+      // Only the host publishes the resulting turn state; everyone else waits
+      // for its ludo:players snapshot.
+      if (myPlayerIndexRef.current !== 0) return;
+      const sixCount = consecutiveSixesRef.current[rollingPlayer] || 0;
+      const nextSixCount = value === 6 ? sixCount + 1 : 0;
+      consecutiveSixesRef.current = { ...consecutiveSixesRef.current, [rollingPlayer]: nextSixCount };
+      if (payload?.reachedSixLimit || nextSixCount >= 3) {
+        consecutiveSixesRef.current = { ...consecutiveSixesRef.current, [rollingPlayer]: 0 };
+        setConsecutiveSixes(consecutiveSixesRef.current);
+        setTimeout(() => advanceTurnForPlayer(rollingPlayer, 'three_consecutive_sixes'), DICE_RESULT_DISPLAY_MS);
+        return;
       }
+      setConsecutiveSixes(consecutiveSixesRef.current);
+      if (getPlayablePieces(rollingPlayer, value).length === 0) {
+        setTimeout(() => {
+          if (currentPlayerRef.current === rollingPlayer && diceValueRef.current === value) {
+            advanceTurnForPlayer(rollingPlayer, 'turn_advance_no_playable_move');
+          }
+        }, DICE_RESULT_DISPLAY_MS);
+        return;
+      }
+      persistAndBroadcastGameState('dice_roll');
     };
     const onMove = (payload: any) => {
       if (!onlineModeRef.current || String(payload?.gameId) !== String(gameIdRef.current)) return;
       if (String(payload?.by) === String(myProfile?._id)) return;
       if (typeof payload?.toSteps !== 'number') return;
-      setPlayers((prev) => {
-        const copy = clonePlayers(prev);
-        const pIdx = Number(payload.playerIndex);
-        const pcIdx = Number(payload.pieceIndex);
-        if (copy[pIdx]?.pieces?.[pcIdx]) {
-          copy[pIdx].pieces[pcIdx] = applyPieceLifecycle(
-            { ...copy[pIdx].pieces[pcIdx] },
-            payload.toSteps,
+      const pIdx = Number(payload.playerIndex);
+      const pcIdx = Number(payload.pieceIndex);
+      const captures: { playerIndex: number; pieceIndex: number }[] = Array.isArray(payload.captures)
+        ? payload.captures
+        : [];
+      const copy = clonePlayers(playersRef.current);
+      if (copy[pIdx]?.pieces?.[pcIdx]) {
+        copy[pIdx].pieces[pcIdx] = applyPieceLifecycle(
+          { ...copy[pIdx].pieces[pcIdx] },
+          payload.toSteps,
+          maxStepsRef.current,
+        );
+      }
+      captures.forEach((c) => {
+        if (copy[c.playerIndex]?.pieces?.[c.pieceIndex]) {
+          copy[c.playerIndex].pieces[c.pieceIndex] = applyPieceLifecycle(
+            { ...copy[c.playerIndex].pieces[c.pieceIndex] },
+            0,
             maxStepsRef.current,
           );
         }
-        (payload.captures || []).forEach((c: any) => {
-          if (copy[c.playerIndex]?.pieces?.[c.pieceIndex]) {
-            copy[c.playerIndex].pieces[c.pieceIndex] = applyPieceLifecycle(
-              { ...copy[c.playerIndex].pieces[c.pieceIndex] },
-              0,
-              maxStepsRef.current,
-            );
-          }
-        });
-        playersRef.current = copy;
-        return copy;
       });
+      playersRef.current = copy;
+      setPlayers(copy);
+      if (captures.length > 0) playSound('capture');
+
+      if (myPlayerIndexRef.current !== 0) return;
+      const { didFinish } = resolveWinnerStateForPlayer(copy, pIdx);
+      const keepTurn = !didFinish && (Number(payload.rolled) === 6 || captures.length > 0);
+      setDiceValueImmediate(0);
+      lastLocalDiceRollTimeRef.current = 0;
+      if (keepTurn) {
+        persistAndBroadcastGameState('keep_turn_after_remote_move');
+        return;
+      }
+      setTimeout(() => {
+        advanceTurnForPlayer(pIdx, 'turn_advance_after_remote_move');
+      }, TURN_TRANSITION_DELAY_MS);
     };
+    // Host only: keep the match moving when a player drops out. A player who
+    // left is replaced by a computer; an offline player's turns are skipped
+    // until they reconnect.
+    const isActiveHostedGame = (payload: any) =>
+      onlineModeRef.current &&
+      myPlayerIndexRef.current === 0 &&
+      String(payload?.gameId || '') === String(gameIdRef.current || '') &&
+      gameStartedRef.current &&
+      !gameEndedRef.current;
+    const findSeat = (profileId: unknown) =>
+      playersRef.current.findIndex(
+        (seat, index) => index > 0 && String(seat?.profileId || '') === String(profileId || ''),
+      );
+    const onPlayerLeft = (payload: any) => {
+      if (!isActiveHostedGame(payload) || !payload?.profileId) return;
+      const seatIndex = findSeat(payload.profileId);
+      if (seatIndex <= 0) return;
+      const copy = clonePlayers(playersRef.current);
+      copy[seatIndex] = {
+        ...copy[seatIndex],
+        name: `Computer ${seatIndex}`,
+        avatar: undefined,
+        cover: undefined,
+        profileId: `bot-${seatIndex}`,
+        isBot: true,
+        isActive: true,
+        isOffline: false,
+        offlineSince: undefined,
+      };
+      playersRef.current = copy;
+      setPlayers(copy);
+      persistAndBroadcastGameState('player_left_replaced_by_bot');
+    };
+    const setSeatOffline = (payload: any, offline: boolean) => {
+      if (!isActiveHostedGame(payload) || !payload?.profileId) return;
+      const seatIndex = findSeat(payload.profileId);
+      if (seatIndex <= 0 || Boolean(playersRef.current[seatIndex]?.isOffline) === offline) return;
+      const copy = clonePlayers(playersRef.current);
+      copy[seatIndex] = {
+        ...copy[seatIndex],
+        isOffline: offline,
+        offlineSince: offline ? Date.now() : undefined,
+      };
+      playersRef.current = copy;
+      setPlayers(copy);
+      if (offline && currentPlayerRef.current === seatIndex) {
+        advanceTurnForPlayer(seatIndex, 'turn_advance_player_offline');
+        return;
+      }
+      persistAndBroadcastGameState(offline ? 'player_offline' : 'player_online');
+    };
+    const onPlayerOffline = (payload: any) => setSeatOffline(payload, true);
+    const onPlayerOnline = (payload: any) => setSeatOffline(payload, false);
     const onInvites = (data: any) => {
-      const list = data?.invites || [];
-      if (list[0]) setIncomingInviteRequest(list[0]);
+      const list: LudoInvite[] = (data?.invites || []).filter(
+        (invite: LudoInvite) => String(invite?.gameId || '') !== String(gameIdRef.current || ''),
+      );
+      setIncomingInviteRequest(list[0] || null);
     };
     on('ludo:players', onPlayers);
     on('ludo:accepted', onAccepted);
@@ -1054,7 +1224,13 @@ const LudoGameSVG = () => {
     on('ludo:invites', onInvites);
     on('ludo:roll', onRoll);
     on('ludo:move', onMove);
+    on('ludo:player:left', onPlayerLeft);
+    on('ludo:player:offline', onPlayerOffline);
+    on('ludo:player:online', onPlayerOnline);
     return () => {
+      off('ludo:player:left', onPlayerLeft);
+      off('ludo:player:offline', onPlayerOffline);
+      off('ludo:player:online', onPlayerOnline);
       off('ludo:players', onPlayers);
       off('ludo:accepted', onAccepted);
       off('ludo:game:removed', onGameRemoved);
@@ -1063,13 +1239,64 @@ const LudoGameSVG = () => {
       off('ludo:roll', onRoll);
       off('ludo:move', onMove);
     };
-  }, [on, off, emit, applyRemoteSnapshot, myProfile?._id, setDiceValueImmediate, setLudoGameActive]);
+  }, [
+    on,
+    off,
+    emit,
+    applyRemoteSnapshot,
+    myProfile?._id,
+    setDiceValueImmediate,
+    setCurrentPlayerImmediate,
+    setLudoGameActive,
+    advanceTurnForPlayer,
+    getPlayablePieces,
+    persistAndBroadcastGameState,
+    resolveWinnerStateForPlayer,
+    playSound,
+  ]);
 
   useEffect(() => {
     if (!isConnected || !onlineMode || !gameId) return;
     emit('ludo:join', { gameId });
     emit('ludo:players:get', { gameId });
   }, [isConnected, onlineMode, gameId, emit]);
+
+  // Host: start the online match as soon as every seat has a player or bot.
+  useEffect(() => {
+    if (
+      !onlineMode ||
+      !gameId ||
+      myPlayerIndex !== 0 ||
+      !waitingForPlayers ||
+      gameStarted ||
+      gameEnded
+    ) {
+      return;
+    }
+    if (countOccupiedLobbySeats(players, selectedPlayerCount) < selectedPlayerCount) return;
+    const timer = setTimeout(() => {
+      gameStartedRef.current = true;
+      currentPlayerRef.current = 0;
+      diceValueRef.current = 0;
+      setGameStarted(true);
+      setCurrentPlayer(0);
+      setDiceValue(0);
+      setWaitingForPlayers(false);
+      setCanRollDice(true);
+      persistAndBroadcastGameState('game_auto_start_after_accept');
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [
+    onlineMode,
+    gameId,
+    myPlayerIndex,
+    waitingForPlayers,
+    gameStarted,
+    gameEnded,
+    players,
+    selectedPlayerCount,
+    persistAndBroadcastGameState,
+  ]);
 
   const getNextOpenSlot = useCallback(() => {
     const max = Math.max(2, Math.min(4, selectedPlayerCount));
@@ -1340,10 +1567,13 @@ const LudoGameSVG = () => {
       playersRef.current = next;
       return next;
     });
-    setGameStarted(true);
-    gameStartedRef.current = true;
-    setCanRollDice(true);
+    // Online matches start once every seat is filled (see the auto-start effect).
+    const startNow = !(onlineMode && myProfile?._id && newOnlineGameId);
+    setGameStarted(startNow);
+    gameStartedRef.current = startNow;
+    setCanRollDice(startNow);
     if (onlineMode && myProfile?._id && newOnlineGameId) {
+      latestSnapshotVersionRef.current = 0;
       setWaitingForPlayers(true);
       emit('ludo:join', { gameId: newOnlineGameId });
       selectedConnects.forEach((f, idx) => {
@@ -1380,8 +1610,10 @@ const LudoGameSVG = () => {
         setMyPlayerIndex(acceptedSlot);
         myPlayerIndexRef.current = acceptedSlot;
         setShowPlayerSelection(false);
-        setGameStarted(true);
-        gameStartedRef.current = true;
+        // The host's ludo:players snapshot decides when the match has started.
+        setGameStarted(false);
+        gameStartedRef.current = false;
+        latestSnapshotVersionRef.current = 0;
         setWaitingForPlayers(true);
         consumeLudoInvite();
         emit('ludo:join', { gameId: acceptedGameId });
@@ -1396,6 +1628,9 @@ const LudoGameSVG = () => {
           },
         });
         emit('ludo:players:get', { gameId: acceptedGameId });
+        // The flag only drives the host auto-start below; a guest must not
+        // carry it into a later lobby of its own.
+        autoStartLudoInviteRef.current = false;
         return;
       }
 
@@ -1432,6 +1667,7 @@ const LudoGameSVG = () => {
     autoStartLudoInviteRef.current = false;
     latestSnapshotVersionRef.current = 0;
     recentMovesRef.current.clear();
+    pendingOwnMoveRef.current = false;
     gameIdRef.current = null;
     newGameDraftIdRef.current = null;
     onlineModeRef.current = false;
@@ -1515,6 +1751,9 @@ const LudoGameSVG = () => {
     setMyPlayerIndex(Number(payload.slotIndex) || 1);
     myPlayerIndexRef.current = Number(payload.slotIndex) || 1;
     setShowPlayerSelection(false);
+    setGameStarted(false);
+    gameStartedRef.current = false;
+    latestSnapshotVersionRef.current = 0;
     setWaitingForPlayers(true);
     emit('ludo:join', { gameId: payload.gameId });
     emit('ludo:accept', {
@@ -1695,7 +1934,7 @@ const LudoGameSVG = () => {
       <View style={styles.bgBlobB} />
 
       <GameHeader
-        gameStarted={gameStarted}
+        gameStarted={gameStarted || waitingForPlayers}
         playWithComputer={playWithComputer}
         gameId={gameId}
         onStartGame={startNewGame}
@@ -1816,31 +2055,36 @@ const LudoGameSVG = () => {
                 <View style={styles.card}>
                   <Text style={styles.cardTitle}>Waiting for players…</Text>
                   <Text style={styles.cardBody}>The match starts when everyone joins.</Text>
-                  <TouchableOpacity
-                    style={styles.primaryBtn}
-                    onPress={() => {
-                      setPlayers((prev) => {
-                        const copy = clonePlayers(prev);
+                  {myPlayerIndex === 0 && (
+                    <TouchableOpacity
+                      style={styles.primaryBtn}
+                      onPress={() => {
+                        // Fill empty seats with bots; the auto-start effect then
+                        // starts the match and broadcasts it to joined players.
+                        const copy = clonePlayers(playersRef.current);
                         for (let i = 1; i < copy.length; i++) {
                           if (!isHumanLudoProfileId(copy[i]?.profileId)) {
                             copy[i] = {
                               ...copy[i],
                               name: `Computer ${i}`,
                               isBot: true,
+                              isActive: true,
                               profileId: `bot-${i}`,
                             };
                           }
                         }
                         playersRef.current = copy;
-                        return copy;
-                      });
-                      setPlayWithComputer(true);
-                      setWaitingForPlayers(false);
-                      setCanRollDice(true);
-                    }}
-                  >
-                    <Text style={styles.primaryBtnText}>Replace with computer</Text>
-                  </TouchableOpacity>
+                        setPlayers(copy);
+                        if (!onlineMode) {
+                          setPlayWithComputer(true);
+                          setWaitingForPlayers(false);
+                          setCanRollDice(true);
+                        }
+                      }}
+                    >
+                      <Text style={styles.primaryBtnText}>Replace with computer</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
               </View>
             )}

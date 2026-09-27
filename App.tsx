@@ -556,6 +556,16 @@ function TabBarWithLudoCheck(props: any) {
     routeName === 'SingleVideo' ||
     routeName === 'SingleWatch' ||
     routeName === 'EditPost' ||
+    routeName === 'FitnessOnboarding' ||
+    routeName === 'FitnessDashboard' ||
+    routeName === 'FitnessMeal' ||
+    routeName === 'FitnessConfirmation' ||
+    routeName === 'FitnessWeight' ||
+    routeName === 'FitnessProgress' ||
+    routeName === 'FitnessReminders' ||
+    routeName === 'FitnessCoach' ||
+    routeName === 'FitnessRecommendations' ||
+    routeName === 'FitnessWorkout' ||
     routeName === 'Camera' ||
     routeName === 'MediaPlayer' ||
     routeName === 'Facebook' ||

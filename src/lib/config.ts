@@ -36,7 +36,7 @@ const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
   const liveServerUrl = 'https://connect-server-hq4q.onrender.com';
 
-  return liveServerUrl;
+  // return liveServerUrl;
 
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 

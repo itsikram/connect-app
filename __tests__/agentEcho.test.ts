@@ -6,6 +6,7 @@ import {
   agentSpeechStarted,
   isAgentSpeaking,
   isLikelyAgentEcho,
+  onAgentSpeakingChange,
   resetAgentEcho,
   waitForAgentSilence,
 } from '../src/services/agentEcho';
@@ -52,5 +53,18 @@ describe('agent echo guard', () => {
     // 50ms of speech + a 200ms quiet tail.
     expect(Date.now() - startedAt).toBeGreaterThanOrEqual(230);
     expect(isAgentSpeaking()).toBe(false);
+  });
+
+  it('tells the Stop button when the agent starts and stops talking', () => {
+    const changes: boolean[] = [];
+    const unsubscribe = onAgentSpeakingChange(speaking => changes.push(speaking));
+    agentSpeechStarted('first sentence here');
+    agentSpeechStarted('second sentence here');
+    agentSpeechEnded();
+    agentSpeechEnded();
+    agentSpeechStarted('again');
+    unsubscribe();
+    agentSpeechEnded();
+    expect(changes).toEqual([true, false, true]);
   });
 });
