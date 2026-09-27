@@ -20,6 +20,13 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       will-change: transform; cursor: grab;
     }
     #local.hidden { display: none; }
+    /* Ringing: my camera fills the screen (WhatsApp style) until the other side's video arrives. */
+    #local.full {
+      top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+      width: 100% !important; height: 100% !important; max-width: none; max-height: none;
+      min-width: 0; min-height: 0; border-radius: 0; border: none; box-shadow: none;
+      transform: none !important; z-index: 1;
+    }
     /*
      * Keep the remote host mounted for audio-only calls. Some Android WebView
      * versions stop media elements under display:none, which makes Agora's
@@ -133,6 +140,13 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         } catch (e) {}
       }
 
+      function setLocalFull(full) {
+        var local = document.getElementById('local');
+        if (!local) return;
+        if (full) local.classList.add('full');
+        else local.classList.remove('full');
+      }
+
       function setAudioOnlyUi(isAudio) {
         var remote = document.getElementById('remote');
         var local = document.getElementById('local');
@@ -168,6 +182,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         await stopTracks();
         joinedChannel = '';
         joinedUid = null;
+        setLocalFull(false);
         var remote = document.getElementById('remote');
         if (remote) remote.innerHTML = '';
         post({ type: 'left' });
@@ -368,6 +383,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             }
             if (mediaType === 'video' && user.videoTrack) {
               user.videoTrack.play('remote', { fit: 'cover' });
+              setLocalFull(false);
             }
             post({ type: 'user-published', uid: user.uid, mediaType: mediaType });
           } catch (e) {
@@ -384,6 +400,13 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         });
         c.on('user-left', function (user) {
           post({ type: 'user-left', uid: user.uid });
+        });
+        // Lets the call screen show "Reconnecting…" while the link recovers.
+        c.on('connection-state-change', function (cur, prev, reason) {
+          post({ type: 'connection-state', state: cur, reason: reason || '' });
+        });
+        c.on('token-privilege-will-expire', function () {
+          post({ type: 'token-will-expire' });
         });
         c.on('network-quality', function (stats) {
           post({
@@ -466,7 +489,11 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
               }
               if (!isAudio && user.hasVideo) {
                 await client.subscribe(user, 'video');
-                if (user.videoTrack) user.videoTrack.play('remote', { fit: 'cover' });
+                if (user.videoTrack) {
+                  user.videoTrack.play('remote', { fit: 'cover' });
+                  setLocalFull(false);
+                }
+                post({ type: 'user-published', uid: user.uid, mediaType: 'video' });
               }
             } catch (subErr) {
               post({ type: 'log', message: 'existing remote subscribe failed: ' + (subErr && subErr.message) });
@@ -483,6 +510,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       async function preview(payload) {
         try {
           setAudioOnlyUi(!!payload.isAudio);
+          if (!payload.isAudio && !joinedChannel) setLocalFull(true);
           await createLocalTracks(!!payload.isAudio);
           post({ type: 'preview-ready' });
         } catch (e) {
@@ -556,6 +584,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           else if (cmd.type === 'resumeAudio') resumeAudio();
           else if (cmd.type === 'muteVideo') await muteVideo(!!cmd.muted);
           else if (cmd.type === 'switchCamera') await switchCamera();
+          else if (cmd.type === 'renewToken') {
+            if (client && cmd.token) await client.renewToken(cmd.token);
+          }
         else if (cmd.type === 'republish') {
           // Attempt to republish existing localTracks if any — defensive recovery
           try {

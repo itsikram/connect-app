@@ -16,11 +16,22 @@ import Modal from './SystemBarsModal';
 import { Audio } from '../lib/avCompat';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';
-import { useTheme } from '../contexts/ThemeContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
-import { prefetchAgoraJoin, clearAgoraJoinPrefetch } from '../lib/agoraJoin';
+import { prefetchAgoraJoin, clearAgoraJoinPrefetch, fetchAgoraToken } from '../lib/agoraJoin';
 import { hashProfileUid } from '../lib/agoraUid';
-import ProfileImage from './ProfileImage';
+import {
+  CallAvatar,
+  CallBackdrop,
+  CallControl,
+  CallControlBar,
+  CallHeader,
+  CALL_COLORS,
+  ENDED_SCREEN_MS,
+  IncomingCallActions,
+  endedLabelFor,
+  formatCallDuration,
+} from './call/CallUi';
+import { startRingback, stopRingback } from '../lib/callRingback';
 import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
 import { configureInCallAudio } from '../lib/callRingtone';
@@ -34,7 +45,6 @@ interface AudioCallProps {
 }
 
 const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
-  const { colors: themeColors, isDarkMode } = useTheme();
   const { on, off, emit } = useSocket();
   const { minimizeCall, endMinimizedCall, updateMinimizedCall } = useCallMinimize();
 
@@ -55,6 +65,16 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   isSpeakerOnRef.current = isSpeakerOn;
   const [mediaActive, setMediaActive] = useState(false);
   const [engineWarm, setEngineWarm] = useState(false);
+  // The other person is in the media channel; the timer starts here.
+  const [mediaConnected, setMediaConnected] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  // Outcome shown briefly after the call closes ("Call ended", "Declined"…).
+  const [endedInfo, setEndedInfo] = useState<{ label: string; name: string; pic: string } | null>(null);
+  const endedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callerNameRef = useRef('');
+  const callerPicRef = useRef('');
+  callerNameRef.current = callerName;
+  callerPicRef.current = callerProfilePic;
 
   const engineRef = useRef<AgoraWebEngineHandle>(null);
   const isTerminating = useRef(false);
@@ -85,14 +105,28 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   useEffect(() => { isMutedRef.current = isMuted; }, [isMuted]);
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  const showEnded = useCallback((label: string) => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    setEndedInfo({ label, name: callerNameRef.current, pic: callerPicRef.current });
+    endedTimerRef.current = setTimeout(() => {
+      endedTimerRef.current = null;
+      setEndedInfo(null);
+    }, ENDED_SCREEN_MS);
+  }, []);
+
+  const clearEnded = useCallback(() => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    endedTimerRef.current = null;
+    setEndedInfo(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+  }, []);
 
   const cleanupAudioCall = useCallback(async () => {
     isTerminating.current = true;
+    stopRingback().catch(() => {});
     await stopIncomingCallAlert();
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
@@ -118,6 +152,11 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setIsMinimized(false);
     setIsMuted(false);
     setIsSpeakerOn(true);
+    setMediaConnected(false);
+    setIsReconnecting(false);
+    receivingCallRef.current = false;
+    callAcceptedRef.current = false;
+    currentChannelRef.current = null;
     microphonePublishedRef.current = false;
     callStartTime.current = null;
     callSeenStatusSentRef.current = false;
@@ -144,9 +183,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (!permission.granted) {
         throw new Error('Microphone permission is required for audio calls.');
       }
+      stopRingback().catch(() => {});
       setCallAccepted(true);
       setCurrentChannel(channelName);
-      if (!callStartTime.current) callStartTime.current = Date.now();
       if (isJoiningOrJoined.current) return;
       isJoiningOrJoined.current = true;
       microphonePublishedRef.current = false;
@@ -211,9 +250,10 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     }
     if (connectIdToNotify && connectIdToNotify !== myId && currentChannelRef.current) {
       emit('audio-call-end', { to: String(connectIdToNotify), channelName: currentChannelRef.current });
+      showEnded('Call ended');
     }
     await cleanupAudioCall();
-  }, [cleanupAudioCall, emit, myId]);
+  }, [cleanupAudioCall, emit, myId, showEnded]);
 
   const markCallSeenIfNeeded = useCallback(() => {
     if (
@@ -248,10 +288,13 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (!from || !channelName) return;
     if (isTerminating.current) return;
     if (receivingCallRef.current && currentChannelRef.current === channelName) return;
-    if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) {
-      emit('audio-call-reject', { to: String(from), channelName });
+    const placingOwnCall = !!currentChannelRef.current && currentChannelRef.current !== channelName;
+    if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || placingOwnCall || isCallBusy()) {
+      emit('audio-call-reject', { to: String(from), channelName, reason: 'busy' });
       return;
     }
+    clearEnded();
+    setActiveCallKind('audio');
     const callerId = String(from);
     emit('update-call-status', { to: callerId, status: 'Ringing...' });
     if (!isAppFocused()) {
@@ -283,7 +326,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (isAppFocused()) {
       markCallSeenIfNeeded();
     }
-  }, [emit, markCallSeenIfNeeded, numericUid]);
+  }, [clearEnded, emit, markCallSeenIfNeeded, numericUid]);
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
@@ -300,6 +343,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (!isForActiveCall(channelName) || !currentChannelRef.current) return;
       if (!receivingCallRef.current && incomingCallRef.current?.from === myId) {
         stopIncomingCallAlert();
+        stopRingback().catch(() => {});
         setOutgoingCallStatus('');
         if (acceptedName) setCallerName(String(acceptedName));
         if (acceptedPic) setCallerProfilePic(String(acceptedPic));
@@ -309,6 +353,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     const onEnded = ({ channelName }: any = {}) => {
       if (!isForActiveCall(channelName)) return;
       stopIncomingCallAlert();
+      if (callAcceptedRef.current) showEnded('Call ended');
       cleanupAudioCall();
     };
     const onCancelled = ({ channelName }: any = {}) => {
@@ -316,20 +361,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       stopIncomingCallAlert();
       cleanupAudioCall();
     };
-    const onRejected = ({ channelName }: any = {}) => {
+    const onRejected = ({ channelName, reason }: any = {}) => {
       if (!isForActiveCall(channelName)) return;
       // A late duplicate reject must never tear down an answered call.
       if (callAcceptedRef.current || isJoiningOrJoined.current) return;
       stopIncomingCallAlert();
-      setOutgoingCallStatus('Call rejected');
-      setTimeout(() => cleanupAudioCall(), 500);
+      showEnded(endedLabelFor(reason || 'declined'));
+      cleanupAudioCall();
     };
     const onNotAccepted = ({ isAudio, channelName }: any) => {
       if (!isAudio) return;
       if (channelName && currentChannelRef.current && channelName !== currentChannelRef.current) return;
       stopIncomingCallAlert();
-      setOutgoingCallStatus('No answer');
-      setTimeout(() => cleanupAudioCall(), 500);
+      if (!receivingCallRef.current) showEnded('No answer');
+      cleanupAudioCall();
     };
     const onStatus = ({ from, status }: any) => {
       if (
@@ -342,10 +387,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       }
     };
     const onOutgoing = (detail: any) => {
+      if (!detail?.to || !detail?.channelName) return;
       if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) return;
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
       const to = String(detail.to);
+      clearEnded();
+      setActiveCallKind('audio');
+      // Place the call from here, so the other side never rings for a call
+      // this device refused to start (e.g. already on another call).
+      emit('audio-call', { to, channelName: detail.channelName, isAudio: true });
+      startRingback().catch(() => {});
+      currentChannelRef.current = detail.channelName;
+      callerRef.current = to;
+      receivingCallRef.current = false;
       setIsAudioCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -428,7 +483,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       subPush.remove();
       subReject.remove();
     };
-  }, [applyIncomingAudioCall, cleanupAudioCall, emit, myId, numericUid, off, on]);
+  }, [applyIncomingAudioCall, cleanupAudioCall, clearEnded, emit, myId, numericUid, off, on, showEnded]);
 
   useEffect(() => {
     const replayIncoming = takeLastIncomingCallFromPush();
@@ -460,7 +515,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   }, [receivingCall, incomingCall, callAccepted]);
 
   useEffect(() => {
-    if (!callAccepted) return;
+    if (!callAccepted || !mediaConnected) return;
     if (!callStartTime.current) callStartTime.current = Date.now();
     const tick = () => {
       const elapsed = Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000);
@@ -475,7 +530,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [callAccepted, updateMinimizedCall]);
+  }, [callAccepted, mediaConnected, updateMinimizedCall]);
 
   useEffect(() => {
     if (receivingCall && !callAccepted && isAppFocused()) {
@@ -537,8 +592,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         engineRef.current?.join({ ...pendingJoinRef.current, isAudio: true, publishAudio: true });
       }
     }
+    if (event.type === 'user-joined' || event.type === 'user-published') {
+      setMediaConnected(true);
+    }
+    if (event.type === 'connection-state') {
+      setIsReconnecting(event.state === 'RECONNECTING');
+    }
+    if (event.type === 'token-will-expire' && currentChannelRef.current) {
+      fetchAgoraToken(currentChannelRef.current, numericUid)
+        .then((creds) => engineRef.current?.renewToken(creds.token))
+        .catch(() => {});
+    }
     if (event.type === 'user-left' && callAcceptedRef.current) {
       endCallForPeer();
+      showEnded('Call ended');
       cleanupAudioCall();
     }
     // A failed join used to only log a warning, leaving both sides stuck on
@@ -574,15 +641,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (__DEV__ && event.type === 'log') {
       console.log('[AudioCall]', event.message);
     }
-  }, [cleanupAudioCall, endCallForPeer]);
+  }, [cleanupAudioCall, endCallForPeer, numericUid, showEnded]);
 
-  const statusText = callAccepted
-    ? `Connected • ${formatDuration(callDuration)}`
-    : receivingCall
-      ? `${callerName || 'Someone'} is calling you`
-      : `Calling ${callerName || 'Connect'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
+  let phase: 'incoming' | 'outgoing' | 'connecting' | 'connected' = 'outgoing';
+  if (callAccepted) phase = mediaConnected ? 'connected' : 'connecting';
+  else if (receivingCall) phase = 'incoming';
 
-  if (!isAudioCall && !mediaActive && !engineWarm) {
+  let statusText = outgoingCallStatus || 'Calling…';
+  if (phase === 'incoming') statusText = 'Incoming voice call';
+  else if (phase === 'connecting') statusText = 'Connecting…';
+  else if (phase === 'connected') statusText = formatCallDuration(callDuration);
+
+  const showEndedScreen = !!endedInfo && !isAudioCall;
+
+  if (!isAudioCall && !mediaActive && !engineWarm && !showEndedScreen) {
     return null;
   }
 
@@ -605,65 +677,88 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         below has its own opaque background, so it looks the same.
       */}
       <Modal
-        visible={isAudioCall && !isMinimized}
-        animationType="slide"
+        visible={(isAudioCall && !isMinimized) || showEndedScreen}
+        animationType="fade"
         transparent
         presentationStyle="overFullScreen"
-        onRequestClose={endCall}
+        onRequestClose={showEndedScreen ? clearEnded : endCall}
       >
-        <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
-        <SafeAreaView style={[styles.container, { backgroundColor: themeColors.background.primary }]}>
-          <View style={styles.center}>
-            {callerProfilePic ? (
-              <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
-            ) : (
-              <View style={[styles.avatar, styles.avatarPlaceholder, { backgroundColor: themeColors.gray?.[700] || '#333' }]}>
-                <Icon name="person" size={80} color="#fff" />
-              </View>
-            )}
-            <Text style={[styles.name, { color: themeColors.text.primary }]}>{callerName || 'Unknown'}</Text>
-            <Text style={[styles.status, { color: themeColors.text.secondary }]}>{statusText}</Text>
-          </View>
-
-          <View style={styles.controls}>
-            {callAccepted && (
-              <>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: isMuted ? '#666' : '#29B1A9' }]} onPress={toggleMute}>
-                  <Icon name={isMuted ? 'mic-off' : 'mic'} size={26} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: isSpeakerOn ? '#29B1A9' : '#666' }]} onPress={toggleSpeaker}>
-                  <Icon name={isSpeakerOn ? 'volume-up' : 'volume-down'} size={26} color="#fff" />
-                </TouchableOpacity>
-                <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.35)' }]} onPress={minimizeAudioCall}>
+        <StatusBar barStyle="light-content" />
+        <View style={styles.root}>
+          <CallBackdrop uri={showEndedScreen ? endedInfo?.pic : callerProfilePic} />
+          <SafeAreaView style={styles.container}>
+            <View style={styles.topRow}>
+              {callAccepted && !showEndedScreen ? (
+                <TouchableOpacity
+                  accessibilityRole="button"
+                  accessibilityLabel="Minimize call"
+                  style={styles.iconButton}
+                  onPress={minimizeAudioCall}
+                >
                   <Icon name="expand-more" size={26} color="#fff" />
                 </TouchableOpacity>
-              </>
-            )}
-            {receivingCall && !callAccepted && (
-              <TouchableOpacity style={[styles.btn, { backgroundColor: '#34C759' }]} onPress={answerCall}>
-                <Icon name="call" size={26} color="#fff" />
-              </TouchableOpacity>
-            )}
-            <TouchableOpacity style={[styles.btn, { backgroundColor: '#E53935' }]} onPress={endCall}>
-              <Icon name="call-end" size={26} color="#fff" />
-            </TouchableOpacity>
-          </View>
-          {callAccepted ? <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} /> : null}
-        </SafeAreaView>
+              ) : (
+                <View style={styles.iconButtonSpacer} />
+              )}
+            </View>
+            <CallHeader
+              name={showEndedScreen ? endedInfo?.name || '' : callerName}
+              status={showEndedScreen ? endedInfo?.label || '' : statusText}
+              reconnecting={!showEndedScreen && isReconnecting}
+            />
+            <View style={styles.center}>
+              <CallAvatar
+                uri={showEndedScreen ? endedInfo?.pic : callerProfilePic}
+                ringing={!showEndedScreen && (phase === 'incoming' || phase === 'outgoing')}
+              />
+            </View>
+            {callAccepted && !showEndedScreen ? (
+              <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} />
+            ) : null}
+            <View style={styles.bottom}>
+              {showEndedScreen ? null : phase === 'incoming' ? (
+                <IncomingCallActions onAccept={answerCall} onDecline={endCall} />
+              ) : (
+                <CallControlBar>
+                  <CallControl
+                    icon={isSpeakerOn ? 'volume-up' : 'volume-down'}
+                    label={isSpeakerOn ? 'Speaker on' : 'Speaker off'}
+                    active={isSpeakerOn}
+                    onPress={toggleSpeaker}
+                  />
+                  <CallControl
+                    icon={isMuted ? 'mic-off' : 'mic'}
+                    label={isMuted ? 'Unmute' : 'Mute'}
+                    active={isMuted}
+                    disabled={!callAccepted}
+                    onPress={toggleMute}
+                  />
+                  <CallControl icon="call-end" label="End call" danger onPress={endCall} />
+                </CallControlBar>
+              )}
+            </View>
+          </SafeAreaView>
+        </View>
       </Modal>
     </>
   );
 };
 
 const styles = StyleSheet.create({
+  root: { flex: 1, backgroundColor: CALL_COLORS.background },
   container: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
-  avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#29B1A9' },
-  avatarPlaceholder: { alignItems: 'center', justifyContent: 'center' },
-  name: { marginTop: 20, fontSize: 24, fontWeight: '700' },
-  status: { marginTop: 8, fontSize: 16, textAlign: 'center' },
-  controls: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 18, paddingBottom: 40 },
-  btn: { width: 64, height: 64, borderRadius: 32, alignItems: 'center', justifyContent: 'center' },
+  topRow: { flexDirection: 'row', paddingHorizontal: 12, paddingTop: 8 },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.25)',
+  },
+  iconButtonSpacer: { width: 40, height: 40 },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  bottom: { paddingHorizontal: 16, paddingBottom: 36, paddingTop: 12 },
 });
 
 export default AudioCall;

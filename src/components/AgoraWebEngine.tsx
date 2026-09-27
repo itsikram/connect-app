@@ -22,6 +22,8 @@ export type AgoraEngineEvent =
   | { type: 'user-unpublished'; uid: number; mediaType?: string }
   | { type: 'user-left'; uid: number }
   | { type: 'network-quality'; uplink: number; downlink: number }
+  | { type: 'connection-state'; state: string; reason?: string }
+  | { type: 'token-will-expire' }
   | { type: 'audio-enabled' }
   | { type: 'video-published' }
   | { type: 'error'; message: string }
@@ -37,6 +39,7 @@ export type AgoraWebEngineHandle = {
   muteVideo: (muted: boolean) => void;
   switchCamera: () => void;
   republish?: () => void;
+  renewToken: (token: string) => void;
 };
 
 type Props = {
@@ -97,6 +100,7 @@ const AgoraWebEngine = forwardRef<AgoraWebEngineHandle, Props>(function AgoraWeb
     muteVideo: (muted) => inject({ type: 'muteVideo', muted }),
     switchCamera: () => inject({ type: 'switchCamera' }),
     republish: () => inject({ type: 'republish' }),
+    renewToken: (token) => inject({ type: 'renewToken', token }),
   }), [inject]);
 
   const onMessage = useCallback((event: WebViewMessageEvent) => {

@@ -41,6 +41,12 @@ export function prefetchAgoraJoin(channelName: string, uid: number): Promise<Ago
   return request;
 }
 
+/** Always fetches a new token (used to renew one about to expire mid-call). */
+export async function fetchAgoraToken(channelName: string, uid: number): Promise<AgoraJoinCreds> {
+  const { data } = await api.post('/agora/token', { channelName, uid });
+  return { appId: String(data.appId), token: String(data.token), channelName, uid };
+}
+
 export function clearAgoraJoinPrefetch(channelName?: string): void {
   if (!channelName) {
     prefetchCache.clear();

@@ -566,8 +566,6 @@ const AIAgentModal: React.FC<Props> = ({
   const { setLudoGameActive, requestLudoInvite } = useLudoGame();
   const { setChessGameActive } = useChessGame();
   const {
-    startAudioCall,
-    startVideoCall,
     sendMessage: socketSendMessage,
     endAudioCall,
     endVideoCall,
@@ -1140,7 +1138,7 @@ const AIAgentModal: React.FC<Props> = ({
           calleeName: callee.name,
           calleeProfilePic: callee.profilePic,
         });
-        startAudioCall(userId, effectiveChannel);
+        // The AudioCall overlay places the call (emits "audio-call").
       },
       startVideoCall: async (
         userId: string,
@@ -1161,7 +1159,7 @@ const AIAgentModal: React.FC<Props> = ({
           calleeName: callee.name,
           calleeProfilePic: callee.profilePic,
         });
-        startVideoCall(userId, effectiveChannel);
+        // The VideoCall overlay places the call (emits "video-call").
       },
       followUser: async (userId: string) => {
         await profileAPI.follow(userId);
@@ -1359,8 +1357,6 @@ const AIAgentModal: React.FC<Props> = ({
     profile,
     requestLudoInvite,
     resolveUser,
-    startAudioCall,
-    startVideoCall,
     socketSendMessage,
     endAudioCall,
     endVideoCall,
