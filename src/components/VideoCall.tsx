@@ -16,9 +16,20 @@ import { Camera } from 'expo-camera';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useSocket } from '../contexts/SocketContext';
 import { useCallMinimize } from '../contexts/CallMinimizeContext';
-import { prefetchAgoraJoin, clearAgoraJoinPrefetch } from '../lib/agoraJoin';
+import { prefetchAgoraJoin, clearAgoraJoinPrefetch, fetchAgoraToken } from '../lib/agoraJoin';
 import { hashProfileUid } from '../lib/agoraUid';
-import ProfileImage from './ProfileImage';
+import {
+  CallAvatar,
+  CallBackdrop,
+  CallControl,
+  CallControlBar,
+  CallHeader,
+  ENDED_SCREEN_MS,
+  IncomingCallActions,
+  endedLabelFor,
+  formatCallDuration,
+} from './call/CallUi';
+import { startRingback, stopRingback } from '../lib/callRingback';
 import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
 import { configureInCallAudio } from '../lib/callRingtone';
@@ -50,6 +61,17 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [isCameraOn, setIsCameraOn] = useState(true);
   const [mediaActive, setMediaActive] = useState(false);
   const [engineWarm, setEngineWarm] = useState(false);
+  // The other person is in the media channel; the timer starts here.
+  const [mediaConnected, setMediaConnected] = useState(false);
+  const [remoteVideoOn, setRemoteVideoOn] = useState(false);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  // Outcome shown briefly after the call closes ("Call ended", "Declined"…).
+  const [endedInfo, setEndedInfo] = useState<{ label: string; name: string; pic: string } | null>(null);
+  const endedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callerNameRef = useRef('');
+  const callerPicRef = useRef('');
+  callerNameRef.current = callerName;
+  callerPicRef.current = callerProfilePic;
 
   const engineRef = useRef<AgoraWebEngineHandle>(null);
   const isTerminating = useRef(false);
@@ -81,14 +103,28 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   useEffect(() => { isCameraOnRef.current = isCameraOn; }, [isCameraOn]);
   useEffect(() => { incomingCallRef.current = incomingCall; }, [incomingCall]);
 
-  const formatDuration = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
+  const showEnded = useCallback((label: string) => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    setEndedInfo({ label, name: callerNameRef.current, pic: callerPicRef.current });
+    endedTimerRef.current = setTimeout(() => {
+      endedTimerRef.current = null;
+      setEndedInfo(null);
+    }, ENDED_SCREEN_MS);
+  }, []);
+
+  const clearEnded = useCallback(() => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+    endedTimerRef.current = null;
+    setEndedInfo(null);
+  }, []);
+
+  useEffect(() => () => {
+    if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
+  }, []);
 
   const cleanupVideoCall = useCallback(async () => {
     isTerminating.current = true;
+    stopRingback().catch(() => {});
     DeviceEventEmitter.emit('video-call-active', false);
     await stopIncomingCallAlert();
     try { engineRef.current?.leave(); } catch (_) {}
@@ -115,6 +151,12 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     setIsMinimized(false);
     setIsMuted(false);
     setIsCameraOn(true);
+    setMediaConnected(false);
+    setRemoteVideoOn(false);
+    setIsReconnecting(false);
+    receivingCallRef.current = false;
+    callAcceptedRef.current = false;
+    currentChannelRef.current = null;
     callStartTime.current = null;
     callSeenStatusSentRef.current = false;
     callIgnoredStatusSentRef.current = false;
@@ -140,9 +182,9 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       DeviceEventEmitter.emit('video-call-active', true);
       await new Promise(resolve => setTimeout(resolve, 150));
       if (isTerminating.current) return;
+      stopRingback().catch(() => {});
       setCallAccepted(true);
       setCurrentChannel(channelName);
-      if (!callStartTime.current) callStartTime.current = Date.now();
       if (isJoiningOrJoined.current) return;
       isJoiningOrJoined.current = true;
       setActiveCallKind('video');
@@ -208,9 +250,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     }
     if (connectIdToNotify && connectIdToNotify !== myId && currentChannelRef.current) {
       emit('video-call-end', { to: String(connectIdToNotify), channelName: currentChannelRef.current });
+      showEnded('Call ended');
     }
     await cleanupVideoCall();
-  }, [cleanupVideoCall, emit, myId]);
+  }, [cleanupVideoCall, emit, myId, showEnded]);
 
   const markCallSeenIfNeeded = useCallback(() => {
     if (
@@ -245,10 +288,13 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (!from || !channelName) return;
     if (isTerminating.current) return;
     if (receivingCallRef.current && currentChannelRef.current === channelName) return;
-    if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) {
-      emit('video-call-reject', { to: String(from), channelName });
+    const placingOwnCall = !!currentChannelRef.current && currentChannelRef.current !== channelName;
+    if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || placingOwnCall || isCallBusy()) {
+      emit('video-call-reject', { to: String(from), channelName, reason: 'busy' });
       return;
     }
+    clearEnded();
+    setActiveCallKind('video');
     const callerId = String(from);
     emit('update-call-status', { to: callerId, status: 'Ringing...' });
     if (!isAppFocused()) {
@@ -282,7 +328,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (isAppFocused()) {
       markCallSeenIfNeeded();
     }
-  }, [emit, markCallSeenIfNeeded, numericUid]);
+  }, [clearEnded, emit, markCallSeenIfNeeded, numericUid]);
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
@@ -299,6 +345,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       if (!isForActiveCall(channelName) || !currentChannelRef.current) return;
       if (!receivingCallRef.current && incomingCallRef.current?.from === myId) {
         stopIncomingCallAlert();
+        stopRingback().catch(() => {});
         setOutgoingCallStatus('');
         if (acceptedName) setCallerName(String(acceptedName));
         if (acceptedPic) setCallerProfilePic(String(acceptedPic));
@@ -308,6 +355,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     const onEnded = ({ channelName }: any = {}) => {
       if (!isForActiveCall(channelName)) return;
       stopIncomingCallAlert();
+      if (callAcceptedRef.current) showEnded('Call ended');
       cleanupVideoCall();
     };
     const onCancelled = ({ channelName }: any = {}) => {
@@ -315,20 +363,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       stopIncomingCallAlert();
       cleanupVideoCall();
     };
-    const onRejected = ({ channelName }: any = {}) => {
+    const onRejected = ({ channelName, reason }: any = {}) => {
       if (!isForActiveCall(channelName)) return;
       // A late duplicate reject must never tear down an answered call.
       if (callAcceptedRef.current || isJoiningOrJoined.current) return;
       stopIncomingCallAlert();
-      setOutgoingCallStatus('Call rejected');
-      setTimeout(() => cleanupVideoCall(), 500);
+      showEnded(endedLabelFor(reason || 'declined'));
+      cleanupVideoCall();
     };
     const onNotAccepted = ({ isAudio, channelName }: any) => {
       if (isAudio) return;
       if (channelName && currentChannelRef.current && channelName !== currentChannelRef.current) return;
       stopIncomingCallAlert();
-      setOutgoingCallStatus('No answer');
-      setTimeout(() => cleanupVideoCall(), 500);
+      if (!receivingCallRef.current) showEnded('No answer');
+      cleanupVideoCall();
     };
     const onStatus = ({ from, status }: any) => {
       if (
@@ -341,10 +389,20 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
     };
     const onOutgoing = (detail: any) => {
+      if (!detail?.to || !detail?.channelName) return;
       if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || isCallBusy()) return;
       callSeenStatusSentRef.current = false;
       callIgnoredStatusSentRef.current = false;
       const to = String(detail.to);
+      clearEnded();
+      setActiveCallKind('video');
+      // Place the call from here, so the other side never rings for a call
+      // this device refused to start (e.g. already on another call).
+      emit('video-call', { to, channelName: detail.channelName, isAudio: false });
+      startRingback().catch(() => {});
+      currentChannelRef.current = detail.channelName;
+      callerRef.current = to;
+      receivingCallRef.current = false;
       setIsVideoCall(true);
       setReceivingCall(false);
       setCaller(to);
@@ -411,7 +469,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       subPush.remove();
       subReject.remove();
     };
-  }, [applyIncomingVideoCall, cleanupVideoCall, emit, myId, numericUid, off, on]);
+  }, [applyIncomingVideoCall, cleanupVideoCall, clearEnded, emit, myId, numericUid, off, on, showEnded]);
 
   useEffect(() => {
     const replayIncoming = takeLastIncomingCallFromPush();
@@ -443,7 +501,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   }, [receivingCall, incomingCall, callAccepted]);
 
   useEffect(() => {
-    if (!callAccepted) return;
+    if (!callAccepted || !mediaConnected) return;
     if (!callStartTime.current) callStartTime.current = Date.now();
     const tick = () => {
       const elapsed = Math.floor((Date.now() - (callStartTime.current || Date.now())) / 1000);
@@ -458,7 +516,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     tick();
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [callAccepted, updateMinimizedCall]);
+  }, [callAccepted, mediaConnected, updateMinimizedCall]);
 
   useEffect(() => {
     if (receivingCall && !callAccepted && isAppFocused()) {
@@ -550,8 +608,26 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       // it to playback-only just before the call was marked active.
       configureInCallAudio(true).catch(() => {});
     }
+    if (event.type === 'user-joined' || event.type === 'user-published') {
+      setMediaConnected(true);
+    }
+    if (event.type === 'user-published' && event.mediaType === 'video') {
+      setRemoteVideoOn(true);
+    }
+    if (event.type === 'user-unpublished' && event.mediaType === 'video') {
+      setRemoteVideoOn(false);
+    }
+    if (event.type === 'connection-state') {
+      setIsReconnecting(event.state === 'RECONNECTING');
+    }
+    if (event.type === 'token-will-expire' && currentChannelRef.current) {
+      fetchAgoraToken(currentChannelRef.current, numericUid)
+        .then((creds) => engineRef.current?.renewToken(creds.token))
+        .catch(() => {});
+    }
     if (event.type === 'user-left' && callAcceptedRef.current) {
       endCallForPeer();
+      showEnded('Call ended');
       cleanupVideoCall();
     }
     // A failed join used to only log a warning, leaving both sides stuck on
@@ -571,29 +647,36 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (__DEV__ && event.type === 'log') {
       console.log('[VideoCall]', event.message);
     }
-  }, [cleanupVideoCall, endCallForPeer]);
+  }, [cleanupVideoCall, endCallForPeer, numericUid, showEnded]);
 
-  const statusText = callAccepted
-    ? formatDuration(callDuration)
-    : receivingCall
-      ? `${callerName || 'Someone'} is calling you`
-      : `Calling ${callerName || 'Connect'}${outgoingCallStatus ? ` • ${outgoingCallStatus}` : '...'}`;
+  let phase: 'incoming' | 'outgoing' | 'connecting' | 'connected' = 'outgoing';
+  if (callAccepted) phase = mediaConnected ? 'connected' : 'connecting';
+  else if (receivingCall) phase = 'incoming';
 
-  if (!isVideoCall && !mediaActive && !engineWarm) {
+  let statusText = outgoingCallStatus || 'Calling…';
+  if (phase === 'incoming') statusText = 'Incoming video call';
+  else if (phase === 'connecting') statusText = 'Connecting…';
+  else if (phase === 'connected') statusText = formatCallDuration(callDuration);
+
+  const showEndedScreen = !!endedInfo && !isVideoCall;
+
+  if (!isVideoCall && !mediaActive && !engineWarm && !showEndedScreen) {
     return null;
   }
 
-  const showRemotePlaceholder = !callAccepted;
   const showUi = isVideoCall && !isMinimized;
+  // Before the other side's picture arrives my own camera fills the screen
+  // (rendered by the engine); once connected their video is full screen.
+  const remoteVisible = phase === 'connected' && remoteVideoOn;
 
   return (
     <>
       <Modal
-        visible={showUi}
-        animationType="slide"
+        visible={showUi || showEndedScreen}
+        animationType="fade"
         presentationStyle="fullScreen"
         statusBarTranslucent
-        onRequestClose={endCall}
+        onRequestClose={showEndedScreen ? clearEnded : endCall}
       >
         <View style={styles.videoScreen}>
           <AgoraWebEngine
@@ -603,57 +686,85 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
             onEvent={handleEngineEvent}
             style={styles.engineFill}
           />
+          {showEndedScreen ? (
+            <View style={styles.endedScreen}>
+              <CallBackdrop uri={endedInfo?.pic} />
+              <View style={styles.endedContent}>
+                <CallHeader isVideo name={endedInfo?.name || ''} status={endedInfo?.label || ''} />
+                <View style={styles.center}>
+                  <CallAvatar uri={endedInfo?.pic} />
+                </View>
+              </View>
+            </View>
+          ) : null}
           {showUi ? (
             <View style={styles.overlay} pointerEvents="box-none">
               <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
-              {showRemotePlaceholder && (
-                <View style={styles.placeholder} pointerEvents="auto">
-                  {callerProfilePic ? (
-                    <ProfileImage uri={callerProfilePic} pixelSize={240} style={styles.avatar} />
-                  ) : (
-                    <View style={[styles.avatar, styles.avatarPlaceholder]}>
-                      <Icon name="person" size={80} color="#fff" />
-                    </View>
-                  )}
-                  <Text style={styles.name}>{callerName || 'Unknown'}</Text>
-                  <Text style={styles.status}>{statusText}</Text>
-                </View>
-              )}
-
-              {callAccepted && (
-                <View style={styles.topBar} pointerEvents="box-none">
-                  <Text style={styles.topTitle}>{callerName || 'Video call'}</Text>
-                  <Text style={styles.topStatus}>{statusText}</Text>
-                </View>
-              )}
-
-              <View style={styles.controls}>
-                {callAccepted && (
-                  <>
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: isMuted ? '#666' : '#29B1A9' }]} onPress={toggleMute}>
-                      <Icon name={isMuted ? 'mic-off' : 'mic'} size={24} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: isCameraOn ? '#29B1A9' : '#666' }]} onPress={toggleCamera}>
-                      <Icon name={isCameraOn ? 'videocam' : 'videocam-off'} size={24} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={switchCamera}>
-                      <Icon name="flip-camera-ios" size={24} color="#fff" />
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: 'rgba(0,0,0,0.45)' }]} onPress={minimizeVideoCall}>
-                      <Icon name="expand-more" size={24} color="#fff" />
-                    </TouchableOpacity>
-                  </>
-                )}
-                {receivingCall && !callAccepted && (
-                  <TouchableOpacity style={[styles.btn, { backgroundColor: '#34C759' }]} onPress={answerCall}>
-                    <Icon name="videocam" size={26} color="#fff" />
+              <View style={[styles.topShade, remoteVisible && styles.topShadeCompact]} pointerEvents="none" />
+              <View style={styles.bottomShade} pointerEvents="none" />
+              <View style={styles.topRow} pointerEvents="box-none">
+                {callAccepted ? (
+                  <TouchableOpacity
+                    accessibilityRole="button"
+                    accessibilityLabel="Minimize call"
+                    style={styles.iconButton}
+                    onPress={minimizeVideoCall}
+                  >
+                    <Icon name="expand-more" size={26} color="#fff" />
                   </TouchableOpacity>
-                )}
-                <TouchableOpacity style={[styles.btn, { backgroundColor: '#E53935' }]} onPress={endCall}>
-                  <Icon name="call-end" size={26} color="#fff" />
-                </TouchableOpacity>
+                ) : null}
               </View>
+              <CallHeader
+                isVideo
+                compact={remoteVisible}
+                name={callerName}
+                status={statusText}
+                reconnecting={isReconnecting}
+              />
+              {!remoteVisible && phase !== 'outgoing' && phase !== 'incoming' ? (
+                // Connected with the other camera off (or still connecting):
+                // show their photo like WhatsApp does.
+                <View style={styles.center} pointerEvents="none">
+                  <CallAvatar uri={callerProfilePic} />
+                </View>
+              ) : (
+                <View style={styles.center} pointerEvents="none">
+                  {phase === 'incoming' || phase === 'outgoing' ? (
+                    <View style={styles.smallAvatar}>
+                      <CallAvatar uri={callerProfilePic} ringing />
+                    </View>
+                  ) : null}
+                </View>
+              )}
               {callAccepted ? <CallTranscript enabled channelName={currentChannel} peerId={caller} myId={myId} /> : null}
+              <View style={styles.bottom} pointerEvents="box-none">
+                {phase === 'incoming' ? (
+                  <IncomingCallActions isVideo onAccept={answerCall} onDecline={endCall} />
+                ) : (
+                  <CallControlBar>
+                    <CallControl
+                      icon="flip-camera-ios"
+                      label="Switch camera"
+                      disabled={!isCameraOn}
+                      onPress={switchCamera}
+                    />
+                    <CallControl
+                      icon={isCameraOn ? 'videocam' : 'videocam-off'}
+                      label={isCameraOn ? 'Turn camera off' : 'Turn camera on'}
+                      active={!isCameraOn}
+                      onPress={toggleCamera}
+                    />
+                    <CallControl
+                      icon={isMuted ? 'mic-off' : 'mic'}
+                      label={isMuted ? 'Unmute' : 'Mute'}
+                      active={isMuted}
+                      disabled={!callAccepted}
+                      onPress={toggleMute}
+                    />
+                    <CallControl icon="call-end" label="End call" danger onPress={endCall} />
+                  </CallControlBar>
+                )}
+              </View>
             </View>
           ) : null}
         </View>
@@ -663,46 +774,46 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 };
 
 const styles = StyleSheet.create({
-  videoScreen: { flex: 1, backgroundColor: '#0b0f17' },
+  videoScreen: { flex: 1, backgroundColor: '#0b141a' },
   overlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 9999,
     elevation: 9999,
     backgroundColor: 'transparent',
-    paddingTop: 48,
+    paddingTop: 44,
   },
-  engineFill: { ...StyleSheet.absoluteFill, backgroundColor: '#0b0f17' },
-  hiddenEngine: { position: 'absolute', width: 2, height: 2, opacity: 0.01, overflow: 'hidden' },
-  placeholder: {
-    ...StyleSheet.absoluteFill,
+  engineFill: { ...StyleSheet.absoluteFill, backgroundColor: '#0b141a' },
+  topShade: {
+    position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#0b0f17',
-    zIndex: 1,
+    height: 200,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  avatar: { width: 140, height: 140, borderRadius: 70, borderWidth: 3, borderColor: '#29B1A9' },
-  avatarPlaceholder: { alignItems: 'center', justifyContent: 'center', backgroundColor: '#222' },
-  name: { marginTop: 20, fontSize: 24, fontWeight: '700', color: '#fff' },
-  status: { marginTop: 8, fontSize: 16, color: '#ccc', textAlign: 'center' },
-  topBar: { position: 'absolute', top: 66, left: 0, right: 0, alignItems: 'center' },
-  topTitle: { color: '#fff', fontSize: 18, fontWeight: '600' },
-  topStatus: { color: '#ddd', marginTop: 4 },
-  controls: {
+  topShadeCompact: { height: 130, backgroundColor: 'rgba(0,0,0,0.25)' },
+  bottomShade: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 0,
     left: 0,
     right: 0,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 16,
-    zIndex: 2,
+    height: 160,
+    backgroundColor: 'rgba(0,0,0,0.25)',
   },
-  btn: { width: 58, height: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center' },
+  topRow: { flexDirection: 'row', paddingHorizontal: 12, minHeight: 40 },
+  iconButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  smallAvatar: { transform: [{ scale: 0.6 }], marginTop: -120 },
+  bottom: { paddingHorizontal: 16, paddingBottom: 40, paddingTop: 12 },
+  endedScreen: { ...StyleSheet.absoluteFill, zIndex: 10000, elevation: 10000, backgroundColor: '#0b141a' },
+  endedContent: { flex: 1, paddingTop: 72 },
 });
 
 export default VideoCall;

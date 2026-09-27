@@ -517,8 +517,6 @@ const SingleMessage = () => {
     emit,
     on,
     off,
-    startVideoCall,
-    startAudioCall,
     checkUserActive,
   } = useSocket();
   const [isCallActive, setIsCallActive] = useState<boolean>(false);
@@ -4282,7 +4280,7 @@ const SingleMessage = () => {
       callerName: connect.fullName,
       callerProfilePic: connect.profilePic,
     });
-    startVideoCall(String(connect._id), channelName);
+    // The VideoCall overlay places the call (emits "video-call").
   };
 
   const handleAudioCall = () => {
@@ -4301,7 +4299,7 @@ const SingleMessage = () => {
       callerName: connect.fullName,
       callerProfilePic: connect.profilePic,
     });
-    startAudioCall(String(connect._id), channelName);
+    // The AudioCall overlay places the call (emits "audio-call").
   };
 
   // Handle live voice transfer — same event protocol as web ChatFooter
