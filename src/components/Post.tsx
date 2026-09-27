@@ -2341,14 +2341,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 ref={commentInputRef}
                 style={[
                   styles.fbFieldText,
-                  { height: commentInputHeight },
+                  // Stay one line until the user types; a wrapped
+                  // placeholder would otherwise grow the box.
+                  { height: commentText ? commentInputHeight : 38 },
                   { color: inputText },
                   isPostingComment ? { opacity: 0.6 } : null,
                 ]}
                 placeholder={
                   isPostingComment
                     ? 'Posting comment...'
-                    : 'Write a public comment…'
+                    : 'Write a comment…'
                 }
                 placeholderTextColor={subTextColor}
                 value={commentText}
@@ -2357,6 +2359,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 multiline
                 numberOfLines={1}
                 onContentSizeChange={event => {
+                  if (!commentText) {
+                    setCommentInputHeight(38);
+                    return;
+                  }
                   const nextHeight = Math.max(
                     38,
                     Math.min(120, event.nativeEvent.contentSize.height),
