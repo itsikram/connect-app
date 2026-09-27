@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Dimensions,
   PanResponder,
   Pressable,
   SafeAreaView,
@@ -631,6 +632,7 @@ const AIAgentModal: React.FC<Props> = ({
     new Animated.ValueXY({ x: 0, y: 0 }),
   ).current;
   const miniOffset = React.useRef({ x: 0, y: 0 });
+  const miniSize = React.useRef({ width: 0, height: 0 });
   const miniPanResponder = React.useMemo(
     () =>
       PanResponder.create({
@@ -646,10 +648,22 @@ const AIAgentModal: React.FC<Props> = ({
         },
         onPanResponderRelease: (_, gesture) => {
           miniPosition.flattenOffset();
-          miniOffset.current = {
-            x: miniOffset.current.x + gesture.dx,
-            y: miniOffset.current.y + gesture.dy,
+          // Keep the pill fully on screen after a drag.
+          const { width: screenW, height: screenH } = Dimensions.get('window');
+          const { width: pillW, height: pillH } = miniSize.current;
+          const baseTop = screenH / 2 - pillH / 2;
+          const clamp = (v: number, min: number, max: number) =>
+            Math.min(Math.max(v, min), Math.max(min, max));
+          const next = {
+            x: clamp(miniOffset.current.x + gesture.dx, 8 - 16, screenW - pillW - 8 - 16),
+            y: clamp(miniOffset.current.y + gesture.dy, 56 - baseTop, screenH - pillH - 96 - baseTop),
           };
+          miniOffset.current = next;
+          Animated.spring(miniPosition, {
+            toValue: next,
+            useNativeDriver: false,
+            friction: 7,
+          }).start();
         },
       }),
     [miniPosition],
@@ -3454,6 +3468,10 @@ const AIAgentModal: React.FC<Props> = ({
       {visible && minimized && (
         <Animated.View
           {...miniPanResponder.panHandlers}
+          onLayout={event => {
+            const { width, height } = event.nativeEvent.layout;
+            miniSize.current = { width, height };
+          }}
           style={[
             styles.agentMini,
             {
@@ -3468,6 +3486,7 @@ const AIAgentModal: React.FC<Props> = ({
             onPress={restoreAndListen}
             accessibilityRole="button"
             accessibilityLabel="Restore AI Agent"
+            hitSlop={4}
           >
             <LinearGradient
               colors={[colors.primary, '#8B5CF6']}
@@ -3481,27 +3500,50 @@ const AIAgentModal: React.FC<Props> = ({
                 <Icon name="auto-awesome" size={18} color="#fff" />
               )}
             </LinearGradient>
-            <Text
-              numberOfLines={3}
-              style={[styles.agentMiniStatus, { color: colors.text.secondary }]}
-            >
-              {autoActionRunning
-                ? runningActionLabel || 'Running…'
-                : loading
-                ? 'Thinking…'
-                : transcribe.listening
-                ? voiceTranscript || 'Listening…'
-                : 'Tap to open'}
-            </Text>
+            <View style={styles.agentMiniTextWrap}>
+              <Text
+                numberOfLines={1}
+                style={[styles.agentMiniTitle, { color: colors.text.primary }]}
+              >
+                AI Agent
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.agentMiniStatus,
+                  {
+                    color: transcribe.listening
+                      ? colors.status.error
+                      : autoActionRunning || loading
+                      ? colors.primary
+                      : colors.text.secondary,
+                  },
+                ]}
+              >
+                {autoActionRunning
+                  ? runningActionLabel || 'Running…'
+                  : loading
+                  ? 'Thinking…'
+                  : transcribe.listening
+                  ? voiceTranscript || 'Listening…'
+                  : agentTalking
+                  ? 'Speaking…'
+                  : 'Tap to open'}
+              </Text>
+            </View>
           </Pressable>
+          <View
+            style={[styles.agentMiniDivider, { backgroundColor: colors.border.primary }]}
+          />
           <View style={styles.agentMiniControls}>
             {loading || agentTalking || autoActionRunning ? (
               <Pressable
                 style={[styles.agentMiniMic, { backgroundColor: colors.status.error }]}
                 onPress={stopGenerating}
                 accessibilityLabel="Stop"
+                hitSlop={4}
               >
-                <Icon name="stop" size={18} color="#fff" />
+                <Icon name="stop" size={16} color="#fff" />
               </Pressable>
             ) : null}
             <Pressable
@@ -3516,10 +3558,11 @@ const AIAgentModal: React.FC<Props> = ({
               onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
               onPress={toggleVoice}
               accessibilityLabel="Voice input"
+              hitSlop={4}
             >
               <Icon
                 name={transcribe.listening ? 'mic' : 'mic-none'}
-                size={18}
+                size={17}
                 color={transcribe.listening ? colors.status.error : colors.primary}
               />
             </Pressable>
@@ -3528,7 +3571,7 @@ const AIAgentModal: React.FC<Props> = ({
                 styles.agentMiniMic,
                 {
                   backgroundColor: speechEnabled
-                    ? `${colors.primary}30`
+                    ? `${colors.primary}20`
                     : colors.surface.secondary,
                 },
               ]}
@@ -3536,10 +3579,11 @@ const AIAgentModal: React.FC<Props> = ({
                 void toggleSpeech();
               }}
               accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
+              hitSlop={4}
             >
               <Icon
                 name={speechEnabled ? 'volume-up' : 'volume-off'}
-                size={18}
+                size={17}
                 color={speechEnabled ? colors.primary : colors.text.secondary}
               />
             </Pressable>
@@ -4030,43 +4074,52 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     top: '50%',
-    width: 100,
-    minHeight: 136,
-    marginTop: -68,
-    borderRadius: 22,
+    marginTop: -28,
+    maxWidth: 320,
+    minHeight: 56,
+    borderRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
     elevation: 10,
     shadowColor: '#000',
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.25,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
-  agentMiniContent: { width: '100%', alignItems: 'center', gap: 6 },
+  agentMiniContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
   agentMiniOrb: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  agentMiniStatus: { fontSize: 11, textAlign: 'center', lineHeight: 14 },
+  agentMiniTextWrap: { flexShrink: 1, minWidth: 64, maxWidth: 120 },
+  agentMiniTitle: { fontSize: 13, fontWeight: '700', lineHeight: 17 },
+  agentMiniStatus: { fontSize: 11, lineHeight: 14 },
+  agentMiniDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 4 },
   agentMiniControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   agentMiniMic: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   agentMiniLanguageMenu: {
     position: 'absolute',
-    left: 106,
-    top: 40,
+    right: 8,
+    top: 62,
     minWidth: 118,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
