@@ -152,6 +152,10 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
   });
   const [loading, setLoading] = useState(false);
   const settingsRevisionRef = useRef(0);
+  // Latest settings, so back-to-back updates (e.g. several AI agent changes
+  // in one command) build on each other instead of a stale render's copy.
+  const latestSettingsRef = useRef(settings);
+  latestSettingsRef.current = settings;
 
   // Load settings from server and local storage
   const loadSettings = async () => {
@@ -220,7 +224,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       const normalizedValue = key === 'isShareEmotion'
         ? normalizeBoolean(value)
         : value;
-      const newSettings = { ...settings, [key]: normalizedValue };
+      const newSettings = { ...latestSettingsRef.current, [key]: normalizedValue };
+      latestSettingsRef.current = newSettings;
       setSettings(newSettings);
 
       // Save to local storage immediately
@@ -253,7 +258,8 @@ export const SettingsProvider: React.FC<SettingsProviderProps> = ({ children }) 
       } else if (syncedSettings.showTyping !== undefined) {
         syncedSettings.showIsTyping = syncedSettings.showTyping;
       }
-      const updatedSettings = { ...settings, ...syncedSettings };
+      const updatedSettings = { ...latestSettingsRef.current, ...syncedSettings };
+      latestSettingsRef.current = updatedSettings;
       setSettings(updatedSettings);
 
       // Save to local storage immediately

@@ -2,6 +2,8 @@ import api, { getAuthToken } from '../lib/api';
 import config from '../lib/config';
 import { AgentMessage, AgentStreamEvent } from '../types/aiAgent';
 import { describeAgentActionsForPrompt } from './agentActionCatalog';
+import { describeAgentSettingsForPrompt } from './agentSettings';
+import { RELATIONSHIP_OPTIONS } from './agentRelations';
 
 export type AIProvider = 'gemini' | 'openai' | 'cursor' | 'grok' | 'groq' | 'ollama';
 export interface AIProviderStatus {
@@ -58,6 +60,13 @@ ACTION RULES
   the app will find the right person. Never invent a name.
 - For social actions, include targetName or userId and include messageText or parameters.message
   when a message is required.
+- To change any app setting (theme, language, privacy, notifications, sounds, volume, message
+  options) return CHANGE_SETTING with parameters.setting set to an exact key from SETTINGS below and
+  parameters.value set to one of its values; for several settings at once use
+  parameters.settings {"key": value}. The app applies it immediately, so never just open Settings.
+- To label how a connect is related to the user ("set Rahim as my brother", "make her my best
+  friend", "remove colleague from Karim") return SET_RELATIONSHIP with userName, relationTypes (an
+  array of RELATIONSHIP TYPES) and mode: "set" replaces, "add" keeps existing, "remove" drops.
 - Use SEARCH_YOUTUBE with parameters.query. Use DOWNLOAD_YOUTUBE with parameters.query,
   parameters.url, or parameters.videoId; optional title, thumbnail, quality, and audioOnly
   parameters are supported.
@@ -84,6 +93,8 @@ English), briefly and warmly. When the user asks you to do something in the app,
 action(s) from AVAILABLE ACTIONS with arguments in "parameters"; never invent data, ids or results.
 For people pass parameters.userName in English letters without honorifics (রহিম ভাই -> Rahim).
 For "my mom", "আম্মু", "my wife" etc. pass the word itself as userName (e.g. "mom").
+Settings: CHANGE_SETTING {"setting":"themeMode","value":"dark"} changes it at once.
+Relationships: SET_RELATIONSHIP {"userName":"Rahim","relationTypes":["Sibling"],"mode":"set"}.
 Ask one short question if something is missing.
 Return ONLY JSON: {"type":"action|question|response","message":"text","actions":[{"id":"a1","action":"NAME","status":"pending","parameters":{}}]}
 `.trim();
@@ -96,7 +107,10 @@ export const buildAgentSystemPrompt = (compact = false) => {
   )} (${now.toLocaleDateString('en-US', { weekday: 'long' })}) ${pad(
     now.getHours(),
   )}:${pad(now.getMinutes())}`;
-  return `${compact ? COMPACT_SYSTEM_PROMPT : SYSTEM_PROMPT}\n\nTODAY: ${today}\n\nAVAILABLE ACTIONS (name(parameters): purpose):\n${describeAgentActionsForPrompt()}`;
+  const settingsAndRelations = compact
+    ? ''
+    : `\n\nSETTINGS (key=values): ${describeAgentSettingsForPrompt()}\n\nRELATIONSHIP TYPES: ${RELATIONSHIP_OPTIONS.join(', ')}`;
+  return `${compact ? COMPACT_SYSTEM_PROMPT : SYSTEM_PROMPT}\n\nTODAY: ${today}\n\nAVAILABLE ACTIONS (name(parameters): purpose):\n${describeAgentActionsForPrompt()}${settingsAndRelations}`;
 };
 // Gemini is the cloud default; the provider selector still allows local or
 // other configured providers when needed.

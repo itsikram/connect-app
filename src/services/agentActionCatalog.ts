@@ -19,6 +19,7 @@ export type AgentActionName =
   | 'UNBLOCK_USER'
   | 'OPEN_SETTINGS'
   | 'CHANGE_SETTING'
+  | 'SET_RELATIONSHIP'
   | 'CREATE_TASK'
   | 'VIEW_TASKS'
   | 'UPDATE_TASK'
@@ -131,7 +132,9 @@ const ACTIONS: readonly [AgentActionName, string, boolean?, boolean?, string?][]
   ['ACCEPT_CONNECT_REQUEST', 'Accept connect request', true, false, 'userName? (omit = newest request)'],
   ['DECLINE_CONNECT_REQUEST', 'Decline connect request', true, false, 'userName? (omit = newest request)'],
   ['OPEN_SETTINGS', 'Open settings'],
-  ['CHANGE_SETTING', 'Change setting', true, false, 'setting, value'],
+  // Settings and relationship tags are reversible, so they run immediately.
+  ['CHANGE_SETTING', 'Change setting', false, false, 'setting (key from SETTINGS), value; or settings: {key: value}'],
+  ['SET_RELATIONSHIP', 'Set connection relationship', false, false, 'userName | userId, relationTypes (e.g. ["Parent"]), mode? set|add|remove'],
   ['CREATE_TASK', 'Create task', true, false, 'text'],
   ['VIEW_TASKS', 'View tasks'],
   ['UPDATE_TASK', 'Edit task', true, false, 'taskQuery | taskId, text?, completed?'],
@@ -271,6 +274,15 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   ADD_FRIEND: 'ADD_CONNECT',
   UNFRIEND: 'REMOVE_CONNECT',
   DISCONNECT: 'REMOVE_CONNECT',
+  UPDATE_SETTING: 'CHANGE_SETTING',
+  SET_SETTING: 'CHANGE_SETTING',
+  TOGGLE_SETTING: 'CHANGE_SETTING',
+  CHANGE_THEME: 'CHANGE_SETTING',
+  UPDATE_RELATIONSHIP: 'SET_RELATIONSHIP',
+  CHANGE_RELATIONSHIP: 'SET_RELATIONSHIP',
+  SET_RELATION: 'SET_RELATIONSHIP',
+  EDIT_CONNECTION: 'SET_RELATIONSHIP',
+  UPDATE_CONNECTION: 'SET_RELATIONSHIP',
   ACCEPT_CONNECT: 'ACCEPT_CONNECT_REQUEST',
   ACCEPT_REQUEST: 'ACCEPT_CONNECT_REQUEST',
   DECLINE_CONNECT: 'DECLINE_CONNECT_REQUEST',
@@ -534,7 +546,14 @@ export type MobileAgentActionAdapter = {
   startAudioCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
   startVideoCall?: (userId: string, channelName: string, userName?: string, profilePic?: string) => void | Promise<void>;
   endCall?: (userId: string, channelName?: string) => void | Promise<void>;
-  changeSetting?: (setting: string, value: unknown) => void | Promise<void>;
+  /** Applies the setting at once; returns a short confirmation to show. */
+  changeSetting?: (setting: string, value: unknown) => string | void | Promise<string | void>;
+  /** Saves a connection's relationship tags; returns the tags now set. */
+  setRelationship?: (
+    userId: string,
+    relationTypes: unknown,
+    mode: 'set' | 'add' | 'remove',
+  ) => string[] | Promise<string[]>;
   playVideo?: (videoId: string) => void | Promise<void>;
   searchVideo?: (query: string) => void | Promise<void>;
   searchYoutube?: (query: string) => void | Promise<void>;
@@ -792,6 +811,7 @@ export async function executeAgentActions(
         'END_CALL',
         'ADD_CONNECT',
         'REMOVE_CONNECT',
+        'SET_RELATIONSHIP',
       ].includes(action.action);
       let resolvedUserId = String(parameters.userId || parameters.profileId || '');
       let resolvedUserName = String(parameters.userName || action.targetName || '');
@@ -823,10 +843,44 @@ export async function executeAgentActions(
         if (!adapter.endCall) throw new Error('Call controls are unavailable.');
         await adapter.endCall(resolvedUserId, String(parameters.channelName || '') || undefined);
       } else if (action.action === 'CHANGE_SETTING') {
-        const setting = String(parameters.setting || parameters.name || '').trim();
-        if (!setting) throw new Error('Tell me which setting to change.');
         if (!adapter.changeSetting) throw new Error('Settings controls are unavailable.');
-        await adapter.changeSetting(setting, parameters.value);
+        // One action may carry several settings: {"settings": {"key": value}}.
+        const batch = isRecord(parameters.settings)
+          ? Object.entries(parameters.settings)
+          : [[
+              String(parameters.setting || parameters.name || parameters.key || '').trim(),
+              parameters.value ?? parameters.enabled ?? parameters.state,
+            ] as [string, unknown]];
+        if (!batch.length || !batch[0][0])
+          throw new Error('Tell me which setting to change.');
+        const messages: string[] = [];
+        const failures: string[] = [];
+        for (const [setting, value] of batch) {
+          try {
+            const message = await adapter.changeSetting(setting, value);
+            if (message) messages.push(message);
+          } catch (error) {
+            failures.push(error instanceof Error ? error.message : String(error));
+          }
+        }
+        if (!messages.length && failures.length) throw new Error(failures[0]);
+        customMessage = [...messages, ...failures].join(' ');
+      } else if (action.action === 'SET_RELATIONSHIP') {
+        if (!adapter.setRelationship)
+          throw new Error('Relationship controls are unavailable.');
+        const rawMode = String(parameters.mode || '').trim().toLowerCase();
+        const mode = rawMode === 'add' || rawMode === 'remove' ? rawMode : 'set';
+        const requested =
+          parameters.relationTypes ??
+          parameters.relationshipTypes ??
+          parameters.relationship ??
+          parameters.relation ??
+          parameters.types;
+        const saved = await adapter.setRelationship(resolvedUserId, requested, mode);
+        const who = resolvedUserName || 'This connection';
+        customMessage = saved.length
+          ? `${who} is now saved as: ${saved.join(', ')}.`
+          : `Cleared the relationship for ${who}.`;
       } else if (action.action === 'START_AUDIO_CALL' || action.action === 'START_VIDEO_CALL') {
         let userId = resolvedUserId;
         let resolvedName = resolvedUserName;
