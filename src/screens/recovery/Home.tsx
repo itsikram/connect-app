@@ -1,8 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { recoveryApi } from '../../services/recoveryApi';
-import { setRecoveryLanguage, useRecoveryI18n } from './i18n';
+import { useRecoveryI18n } from './i18n';
 import { useRecoveryDashboard } from './hooks';
 import {
   Banner,
@@ -22,7 +22,6 @@ import {
   Segmented,
   SosButton,
   StatTile,
-  errorMessage,
 } from './ui';
 
 type Props = { navigation?: any };
@@ -30,7 +29,7 @@ type Props = { navigation?: any };
 export const RecoveryHome = ({ navigation }: Props) => {
   const { colors } = useTheme();
   const { lang, s, f, num, money, duration } = useRecoveryI18n();
-  const { data, setData, loading, refreshing, error, offsetMs, refresh, pullToRefresh } = useRecoveryDashboard(lang, navigation);
+  const { data, loading, refreshing, error, offsetMs, refresh, pullToRefresh } = useRecoveryDashboard(lang, navigation);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [daily, setDaily] = useState<{ note: string; mission: string } | null>(null);
   const [pending, setPending] = useState(0);
@@ -63,35 +62,6 @@ export const RecoveryHome = ({ navigation }: Props) => {
       .then((response) => setDaily(response.data))
       .catch(() => {});
   }, [data?.profile, data?.daily, data?.todayKey, lang]);
-
-  const openSettings = () =>
-    Alert.alert(s.home.settings, undefined, [
-      { text: s.home.editDetails, onPress: () => navigation.navigate('RecoveryOnboarding', { edit: true }) },
-      { text: s.home.settings, onPress: () => navigation.navigate('RecoverySettings') },
-      { text: lang === 'bn' ? 'English' : 'বাংলা', onPress: () => setRecoveryLanguage(lang === 'bn' ? 'en' : 'bn') },
-      {
-        text: s.home.deleteAll,
-        style: 'destructive',
-        onPress: () =>
-          Alert.alert(s.home.deleteConfirmTitle, s.home.deleteConfirmBody, [
-            { text: s.common.cancel, style: 'cancel' },
-            {
-              text: s.home.delete,
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await recoveryApi.reset();
-                  await recoveryApi.clearCache();
-                  setData({ profile: null });
-                } catch (resetError: any) {
-                  Alert.alert(s.home.title, errorMessage(resetError, s.common.saveError));
-                }
-              },
-            },
-          ]),
-      },
-      { text: s.common.cancel, style: 'cancel' },
-    ]);
 
   const sosFooter = <SosButton label={s.common.sos} onPress={() => navigation.navigate('RecoverySos')} />;
 
@@ -149,9 +119,6 @@ export const RecoveryHome = ({ navigation }: Props) => {
     { key: 'checkin', icon: 'calendar-check-outline', route: 'RecoveryCheckIn' },
     { key: 'plan', icon: 'map-marker-path', route: 'RecoveryPlan' },
     { key: 'progress', icon: 'chart-timeline-variant', route: 'RecoveryProgress' },
-    { key: 'journal', icon: 'notebook-edit-outline', route: 'RecoveryJournal' },
-    { key: 'learn', icon: 'book-open-page-variant-outline', route: 'RecoveryLearn' },
-    { key: 'roleplay', icon: 'account-voice', route: 'RecoveryRoleplay' },
     { key: 'slip', icon: 'restart', route: 'RecoveryLapse' },
     { key: 'help', icon: 'lifebuoy', route: 'RecoveryHelp' },
   ];
@@ -165,7 +132,7 @@ export const RecoveryHome = ({ navigation }: Props) => {
       showSos={false}
       refreshing={refreshing}
       onRefresh={pullToRefresh}
-      right={<HeaderIconButton icon="cog-outline" label={s.home.settings} onPress={openSettings} />}
+      right={<HeaderIconButton icon="cog-outline" label={s.home.settings} onPress={() => navigation.navigate('RecoverySettings')} />}
       footer={sosFooter}
     >
       {error ? <Banner icon="cloud-off-outline" text={s.common.offline} /> : null}

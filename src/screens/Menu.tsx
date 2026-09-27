@@ -171,6 +171,7 @@ const Menu = () => {
   const myProfile = useSelector((state: RootState) => state.profile);
   const { colors: themeColors, isDarkMode } = useTheme();
   const walletEnabled = useFeatureFlag('walletEnabled');
+  const recoveryEnabled = useFeatureFlag('recoveryEnabled');
   const { isLudoGameActive, setLudoGameActive } = useLudoGame();
   const { isChessGameActive, setChessGameActive } = useChessGame();
   const [query, setQuery] = useState('');
@@ -406,6 +407,9 @@ const Menu = () => {
     { id: 'tasks', label: 'Tasks', hint: 'Keep track of work', icon: 'checklist', color: '#10B981', onPress: () => (navigation as any).navigate('Menu', { screen: 'Tasks' }) },
     { id: 'notes', label: 'Notes', hint: 'Capture ideas and thoughts', icon: 'edit-note', color: '#6366F1', onPress: () => (navigation as any).navigate('Menu', { screen: 'Notes' }) },
     { id: 'fitness', label: 'Fitness', hint: 'Nutrition, workouts & healthy habits', icon: 'fitness-center', color: '#00C851', onPress: () => (navigation as any).navigate('Menu', { screen: 'FitnessDashboard' }) },
+    ...(recoveryEnabled
+      ? [{ id: 'recovery', label: 'Recovery', hint: 'Quit smoking & drugs with AI support', icon: 'spa', color: '#14B8A6', onPress: () => (navigation as any).navigate('Menu', { screen: 'RecoveryHome' }) }]
+      : []),
     ...(walletEnabled
       ? [{ id: 'wallet', label: 'Wallet', hint: 'View your coins', icon: 'monetization-on', color: '#F59E0B', onPress: goToWallet }]
       : []),
@@ -417,7 +421,7 @@ const Menu = () => {
         (orderIndex.get(a.id) ?? Number.MAX_SAFE_INTEGER) -
         (orderIndex.get(b.id) ?? Number.MAX_SAFE_INTEGER),
     );
-  }, [appOrder, walletEnabled]);
+  }, [appOrder, walletEnabled, recoveryEnabled]);
 
   const reorderShortcuts = useCallback((fromIndex: number, toIndex: number) => {
     const nextShortcuts = [...orderedShortcuts];

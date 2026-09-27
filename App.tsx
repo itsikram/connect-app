@@ -68,6 +68,18 @@ import FitnessReminders from './src/screens/FitnessReminders';
 import FitnessCoach from './src/screens/FitnessCoach';
 import FitnessRecommendations from './src/screens/FitnessRecommendations';
 import FitnessWorkout from './src/screens/FitnessWorkout';
+import {
+  RecoveryCheckIn,
+  RecoveryCoach,
+  RecoveryHelp,
+  RecoveryHome,
+  RecoveryLapse,
+  RecoveryOnboarding,
+  RecoveryPlan,
+  RecoveryProgress,
+  RecoverySettings,
+  RecoverySos,
+} from './src/screens/RecoveryScreens';
 import Settings from './src/screens/Settings';
 import Tasks from './src/screens/Tasks';
 import Notes from './src/screens/Notes';
@@ -367,6 +379,16 @@ function MenuStack() {
         name="FitnessRecommendations"
         component={FitnessRecommendations}
       />
+      <Stack.Screen name="RecoveryHome" component={RecoveryHome} />
+      <Stack.Screen name="RecoveryOnboarding" component={RecoveryOnboarding} />
+      <Stack.Screen name="RecoverySos" component={RecoverySos} />
+      <Stack.Screen name="RecoveryCoach" component={RecoveryCoach} />
+      <Stack.Screen name="RecoveryCheckIn" component={RecoveryCheckIn} />
+      <Stack.Screen name="RecoveryLapse" component={RecoveryLapse} />
+      <Stack.Screen name="RecoveryHelp" component={RecoveryHelp} />
+      <Stack.Screen name="RecoveryPlan" component={RecoveryPlan} />
+      <Stack.Screen name="RecoveryProgress" component={RecoveryProgress} />
+      <Stack.Screen name="RecoverySettings" component={RecoverySettings} />
       <Stack.Screen
         name="PaymentInstructions"
         component={PaymentInstructionsScreen}
@@ -566,6 +588,7 @@ function TabBarWithLudoCheck(props: any) {
     routeName === 'FitnessCoach' ||
     routeName === 'FitnessRecommendations' ||
     routeName === 'FitnessWorkout' ||
+    routeName.startsWith('Recovery') ||
     routeName === 'Camera' ||
     routeName === 'MediaPlayer' ||
     routeName === 'Facebook' ||
