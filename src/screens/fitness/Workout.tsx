@@ -134,8 +134,8 @@ export const FitnessWorkout = ({ navigation, route }: Props) => {
           const selected = item.value === type;
           return (
             <Pressable key={item.value} accessibilityRole="radio" accessibilityState={{ selected }} onPress={() => { setType(item.value as Workout['type']); if (!name || WORKOUT_TYPES.some((t) => t.label === name)) setName(item.label); }} style={[s.typeTile, { backgroundColor: selected ? colors.primary : colors.surface.primary, borderColor: selected ? colors.primary : colors.border.primary }]}>
-              <Icon name={item.icon} size={22} color={selected ? '#001014' : colors.text.secondary} />
-              <Text style={[s.typeLabel, { color: selected ? '#001014' : colors.text.primary }]}>{item.label}</Text>
+              <Icon name={item.icon} size={22} color={selected ? colors.onPrimary : colors.text.secondary} />
+              <Text style={[s.typeLabel, { color: selected ? colors.onPrimary : colors.text.primary }]}>{item.label}</Text>
             </Pressable>
           );
         })}

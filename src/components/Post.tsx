@@ -52,7 +52,8 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const POST_IMAGE_MAX_HEIGHT = 620;
 const PROFILE_PIC_SIZE = Math.min(280, SCREEN_WIDTH - 24);
-const SHOW_ACTION_LABELS = SCREEN_WIDTH > 420;
+// Labelled actions are easier to understand; only the narrowest phones fall back to icons.
+const SHOW_ACTION_LABELS = SCREEN_WIDTH >= 340;
 
 const sameId = (a: any, b: any) =>
   String(a?._id || a || '') === String(b?._id || b || '');
@@ -2124,48 +2125,53 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
         {showReactions ? (
           <Pressable style={styles.reactDismiss} onPress={handleOutsidePress} />
         ) : null}
-        <View
-          style={[styles.countsRow, { borderBottomColor: feed.postDivider }]}
-        >
-          <TouchableOpacity
-            style={styles.reactsCountLeft}
-            onPress={openSinglePost}
-            activeOpacity={0.7}
+        {totalReacts > 0 || totalComments > 0 || totalShares > 0 ? (
+          <View
+            style={[styles.countsRow, { borderBottomColor: feed.postDivider }]}
           >
-            <PlacedReactIcons placedReacts={placedReacts} />
-            <Text style={[styles.countText, { color: subTextColor }]}>
-              {post.reacts ? totalReacts : ''}{' '}
-              {totalReacts > 1 ? 'Reacts' : 'React'}
-            </Text>
-          </TouchableOpacity>
-          <View style={styles.countsRight}>
             <TouchableOpacity
-              style={styles.countItem}
+              style={styles.reactsCountLeft}
               onPress={openSinglePost}
               activeOpacity={0.7}
+              accessibilityLabel={`${totalReacts} ${totalReacts === 1 ? 'reaction' : 'reactions'}`}
             >
-              <Text style={[styles.countText, { color: subTextColor }]}>
-                {post.comments ? totalComments : ''}
-              </Text>
-              <FAIcon
-                name="comment"
-                size={13}
-                color={subTextColor}
-                solid={false}
-              />
+              {totalReacts > 0 ? (
+                <>
+                  <PlacedReactIcons placedReacts={placedReacts} />
+                  <Text style={[styles.countText, { color: subTextColor }]}>
+                    {totalReacts}
+                  </Text>
+                </>
+              ) : null}
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.countItem}
-              onPress={openSinglePost}
-              activeOpacity={0.7}
-            >
-              <Text style={[styles.countText, { color: subTextColor }]}>
-                {post.shares ? totalShares : ''}
-              </Text>
-              <FAIcon name="share" size={13} color={subTextColor} />
-            </TouchableOpacity>
+            <View style={styles.countsRight}>
+              {totalComments > 0 ? (
+                <TouchableOpacity
+                  style={styles.countItem}
+                  onPress={openSinglePost}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.countText, { color: subTextColor }]}>
+                    {totalComments} {totalComments === 1 ? 'comment' : 'comments'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+              {totalShares > 0 ? (
+                <TouchableOpacity
+                  style={styles.countItem}
+                  onPress={openSinglePost}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[styles.countText, { color: subTextColor }]}>
+                    {totalShares} {totalShares === 1 ? 'share' : 'shares'}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.countsDivider, { backgroundColor: feed.postDivider }]} />
+        )}
         <View
           style={[styles.actionBar, { borderBottomColor: feed.postDivider }]}
         >
@@ -2263,11 +2269,7 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
             <Text style={[styles.noCommentsText, { color: subTextColor }]}>
               Loading comments…
             </Text>
-          ) : comments.length === 0 ? (
-            <Text style={[styles.noCommentsText, { color: subTextColor }]}>
-              No comments yet
-            </Text>
-          ) : (
+          ) : comments.length === 0 ? null : (
             (showAllComments
               ? comments
               : [
@@ -2341,14 +2343,16 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 ref={commentInputRef}
                 style={[
                   styles.fbFieldText,
-                  { height: commentInputHeight },
+                  // Stay one line until the user types; a wrapped
+                  // placeholder would otherwise grow the box.
+                  { height: commentText ? commentInputHeight : 38 },
                   { color: inputText },
                   isPostingComment ? { opacity: 0.6 } : null,
                 ]}
                 placeholder={
                   isPostingComment
                     ? 'Posting comment...'
-                    : 'Write a public comment…'
+                    : 'Write a comment…'
                 }
                 placeholderTextColor={subTextColor}
                 value={commentText}
@@ -2357,6 +2361,10 @@ const Post: React.FC<PostProps> = ({ data, onPostDeleted, onPostUpdated }) => {
                 multiline
                 numberOfLines={1}
                 onContentSizeChange={event => {
+                  if (!commentText) {
+                    setCommentInputHeight(38);
+                    return;
+                  }
                   const nextHeight = Math.max(
                     38,
                     Math.min(120, event.nativeEvent.contentSize.height),
@@ -3043,6 +3051,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     marginHorizontal: 2,
+  },
+  countsDivider: {
+    height: 1,
+    marginTop: 8,
   },
   countsRow: {
     flexDirection: 'row',

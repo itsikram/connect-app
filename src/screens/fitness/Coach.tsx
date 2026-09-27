@@ -60,7 +60,7 @@ export const FitnessCoach = ({ navigation }: Props) => {
             style={[s.input, { color: colors.text.primary }]}
           />
           <Pressable accessibilityLabel="Send" disabled={!question.trim() || thinking} onPress={() => ask()} style={[s.send, { backgroundColor: colors.primary, opacity: !question.trim() || thinking ? 0.4 : 1 }]}>
-            <Icon name="arrow-up" size={20} color="#001014" />
+            <Icon name="arrow-up" size={20} color={colors.onPrimary} />
           </Pressable>
         </View>
       }
@@ -68,7 +68,7 @@ export const FitnessCoach = ({ navigation }: Props) => {
       {!turns.length ? (
         <>
           <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
-            <View style={[s.avatar, { backgroundColor: colors.primary }]}><Icon name="robot-happy-outline" size={30} color="#001014" /></View>
+            <View style={[s.avatar, { backgroundColor: colors.primary }]}><Icon name="robot-happy-outline" size={30} color={colors.onPrimary} /></View>
             <Text style={[s.heroTitle, { color: colors.text.primary }]}>Your personal coach</Text>
             <Muted style={{ textAlign: 'center', marginTop: 4 }}>Get answers grounded in your calorie and macro targets, today's meals, workouts, water, steps and sleep.</Muted>
           </Card>
@@ -83,7 +83,7 @@ export const FitnessCoach = ({ navigation }: Props) => {
         <View key={index} style={[s.bubbleRow, turn.role === 'user' ? s.right : s.left]}>
           {turn.role === 'coach' ? <View style={[s.miniAvatar, { backgroundColor: colors.surface.secondary }]}><Icon name="robot-happy-outline" size={16} color={colors.primary} /></View> : null}
           <View style={[s.bubble, turn.role === 'user' ? { backgroundColor: colors.primary, borderBottomRightRadius: 4 } : { backgroundColor: colors.surface.primary, borderColor: colors.border.primary, borderWidth: 1, borderBottomLeftRadius: 4 }]}>
-            <Text selectable style={[s.bubbleText, { color: turn.role === 'user' ? '#001014' : colors.text.primary }]}>{turn.text}</Text>
+            <Text selectable style={[s.bubbleText, { color: turn.role === 'user' ? colors.onPrimary : colors.text.primary }]}>{turn.text}</Text>
           </View>
         </View>
       ))}

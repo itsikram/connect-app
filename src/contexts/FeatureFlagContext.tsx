@@ -16,6 +16,7 @@ export const FEATURE_FLAG_NAMES = [
   'tippingEnabled',
   'affiliateLinksEnabled',
   'manualPaymentEnabled',
+  'recoveryEnabled',
 ] as const;
 
 export type FeatureFlagName = (typeof FEATURE_FLAG_NAMES)[number];
@@ -28,6 +29,8 @@ const DEFAULT_FEATURE_FLAGS: FeatureFlags = {
   tippingEnabled: false,
   affiliateLinksEnabled: false,
   manualPaymentEnabled: false,
+  // On by default on the server too (config/featureFlags.js), so it shows before the first fetch.
+  recoveryEnabled: true,
 };
 
 const STORAGE_KEY = '@connect/feature-flags';

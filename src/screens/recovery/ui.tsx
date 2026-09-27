@@ -32,10 +32,11 @@ export type { IconName, Option } from '../fitness/ui';
 /** Fixed hues; each use is paired with text so meaning never relies on colour alone. */
 export const REC = {
   sos: '#E5484D',
+  // Deeper red for filled SOS buttons so white text is 4.8:1.
+  sosFill: '#D92D3A',
   calm: '#3987e5',
   money: '#199e70',
   warm: '#c98500',
-  onPrimary: '#001014',
 };
 
 // ---------------------------------------------------------------------------
@@ -287,7 +288,7 @@ export const BreathingCircle = ({ lang, autoStart = false, onRound }: { lang: Re
             }}
             style={[styles.patternChip, { borderColor: pattern === key ? colors.primary : colors.border.primary, backgroundColor: pattern === key ? colors.primary : 'transparent' }]}
           >
-            <Text style={{ color: pattern === key ? REC.onPrimary : colors.text.primary, fontWeight: '700', fontSize: 13 }}>{key === 'box' ? s.boxPattern : s.relaxPattern}</Text>
+            <Text style={{ color: pattern === key ? colors.onPrimary : colors.text.primary, fontWeight: '700', fontSize: 13 }}>{key === 'box' ? s.boxPattern : s.relaxPattern}</Text>
           </Pressable>
         ))}
       </View>
@@ -464,8 +465,8 @@ export const MultiChips = ({ options, values, onToggle }: { options: Array<{ key
               { backgroundColor: selected ? colors.primary : colors.surface.secondary, borderColor: selected ? colors.primary : colors.border.primary, opacity: pressed ? 0.8 : 1 },
             ]}
           >
-            {selected ? <Icon name="check" size={14} color={REC.onPrimary} /> : null}
-            <Text style={{ color: selected ? REC.onPrimary : colors.text.primary, fontWeight: '600', fontSize: 14 }}>{option.label}</Text>
+            {selected ? <Icon name="check" size={14} color={colors.onPrimary} /> : null}
+            <Text style={{ color: selected ? colors.onPrimary : colors.text.primary, fontWeight: '600', fontSize: 14 }}>{option.label}</Text>
           </Pressable>
         );
       })}
@@ -502,9 +503,9 @@ export const InfoCard = ({ icon, title, children, tone }: { icon: IconName; titl
 
 const styles = StyleSheet.create({
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sosHeader: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: REC.sos },
-  sosButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 999, paddingVertical: 16, backgroundColor: REC.sos },
-  sosPulse: { borderRadius: 999, backgroundColor: REC.sos },
+  sosHeader: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center', backgroundColor: REC.sosFill },
+  sosButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, borderRadius: 999, paddingVertical: 16, backgroundColor: REC.sosFill },
+  sosPulse: { borderRadius: 999, backgroundColor: REC.sosFill },
   sosText: { color: '#ffffff', fontSize: 17, fontWeight: '800' },
   strip: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 8, marginBottom: 12, borderRadius: 12, borderWidth: 1, borderColor: REC.sos },
   stripText: { color: REC.sos, fontWeight: '800', fontSize: 13 },
@@ -514,7 +515,7 @@ const styles = StyleSheet.create({
   crisisHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   crisisTitle: { fontSize: 17, fontWeight: '800' },
   crisisBody: { fontSize: 15, lineHeight: 22 },
-  call999: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: REC.sos, borderRadius: 14, paddingVertical: 14 },
+  call999: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: REC.sosFill, borderRadius: 14, paddingVertical: 14 },
   call999Text: { color: '#ffffff', fontWeight: '800', fontSize: 16 },
   crisisLine: { flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1, borderRadius: 12, padding: 12 },
   crisisLineName: { fontSize: 15, fontWeight: '700' },

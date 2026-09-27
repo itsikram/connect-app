@@ -17,7 +17,7 @@ export const getFeedTokens = (colors: any, isDarkMode: boolean) => {
     composerField: isDarkMode ? colors.surface.elevated : colors.background.tertiary,
     cardBorder: colors.border.primary,
     ctaText: isDarkMode || isCyanAccent ? '#04222a' : '#FFFFFF',
-    promptCardBg: isDarkMode ? 'rgba(0, 40, 54, 0.96)' : `${colors.primary}18`,
+    promptCardBg: isDarkMode ? 'rgba(0, 40, 54, 0.96)' : `${colors.primary}10`,
     kicker: isDarkMode ? '#7ce7ff' : colors.primary,
     mediaBg: isDarkMode ? '#111111' : colors.background.tertiary,
     chipBg: isDarkMode ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.04)',

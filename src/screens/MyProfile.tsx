@@ -698,6 +698,7 @@ const MyProfile = () => {
               </View>
             )}
 
+            {formatMonthYear(myProfile?.user?.createdAt || myProfile?.createdAt) !== 'Unknown' ? (
             <View style={styles.detailsItem}>
               <Icon
                 name="schedule"
@@ -723,6 +724,7 @@ const MyProfile = () => {
                 </Text>
               </Text>
             </View>
+            ) : null}
           </View>
           {renderPosts()}
         </View>

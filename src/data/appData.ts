@@ -16,7 +16,7 @@ export const sampleApps: AppItem[] = [
     id: 'Ludu',
     name: 'Ludu',
     icon: 'gamepad',
-    color: '#25D366',
+    color: '#16A34A',
     onPress: () => {
       // Navigation will be handled by the AppGrid component
       console.log('Ludu pressed - navigation handled by AppGrid');
@@ -26,7 +26,7 @@ export const sampleApps: AppItem[] = [
     id: 'cricbuzz',
     name: 'Cricbuzz',
     icon: 'sports-cricket',
-    color: '#2BB673',
+    color: '#1E9E57',
     onPress: () => {
       // Navigation handled in Menu via handleAppPress
       console.log('Cricbuzz pressed');

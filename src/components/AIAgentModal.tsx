@@ -7,6 +7,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Animated,
+  Dimensions,
   PanResponder,
   Pressable,
   SafeAreaView,
@@ -21,7 +22,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
 import * as Clipboard from 'expo-clipboard';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSelector } from 'react-redux';
-import { useTheme } from '../contexts/ThemeContext';
+import { useTheme, ExtendedThemeType } from '../contexts/ThemeContext';
 import { useSettings } from '../contexts/SettingsContext';
 import { AuthContext } from '../contexts/AuthContext';
 import { useLudoGame } from '../contexts/LudoGameContext';
@@ -63,7 +64,13 @@ import {
   onAgentSpeakingChange,
   waitForAgentSilence,
 } from '../services/agentEcho';
-import { findRelation, matchRelationConnects } from '../services/agentRelations';
+import {
+  applyRelationshipChange,
+  findRelation,
+  matchRelationConnects,
+  normalizeRelationshipTypes,
+} from '../services/agentRelations';
+import { findAgentSetting, resolveAgentSetting } from '../services/agentSettings';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
 import api, { connectAPI, profileAPI, userAPI } from '../lib/api';
@@ -473,8 +480,10 @@ const getActionSpeechText = (action: AgentActionIntent) => {
       return 'Setting an automatic reply';
     case 'CHANGE_SETTING':
       return `Changing ${String(
-        parameters.setting || parameters.name || 'the setting',
+        parameters.setting || parameters.name || 'your settings',
       )}`;
+    case 'SET_RELATIONSHIP':
+      return withTarget('Updating your relationship with', 'Updating the relationship');
     case 'NAVIGATE':
       return `Opening ${String(
         parameters.route || action.targetRoute || 'the requested page',
@@ -534,10 +543,17 @@ const AIAgentModal: React.FC<Props> = ({
   voiceStartRequest = 0,
   restoreRequest = 0,
 }) => {
-  const { colors } = useTheme();
+  const { colors, setTheme } = useTheme();
   const { logout, user } = React.useContext(AuthContext);
   const profile = useSelector((state: RootState) => state.profile);
-  const { settings } = useSettings();
+  const { settings, updateSettings } = useSettings();
+  // The action adapter is memoized; read the latest settings through refs.
+  const settingsRef = React.useRef(settings);
+  settingsRef.current = settings;
+  const updateSettingsRef = React.useRef(updateSettings);
+  updateSettingsRef.current = updateSettings;
+  const setThemeRef = React.useRef(setTheme);
+  setThemeRef.current = setTheme;
   const profileContext = React.useMemo(
     () => ({
       ...(user?.profile && typeof user.profile === 'object'
@@ -550,8 +566,6 @@ const AIAgentModal: React.FC<Props> = ({
   const { setLudoGameActive, requestLudoInvite } = useLudoGame();
   const { setChessGameActive } = useChessGame();
   const {
-    startAudioCall,
-    startVideoCall,
     sendMessage: socketSendMessage,
     endAudioCall,
     endVideoCall,
@@ -631,6 +645,7 @@ const AIAgentModal: React.FC<Props> = ({
     new Animated.ValueXY({ x: 0, y: 0 }),
   ).current;
   const miniOffset = React.useRef({ x: 0, y: 0 });
+  const miniSize = React.useRef({ width: 0, height: 0 });
   const miniPanResponder = React.useMemo(
     () =>
       PanResponder.create({
@@ -646,10 +661,22 @@ const AIAgentModal: React.FC<Props> = ({
         },
         onPanResponderRelease: (_, gesture) => {
           miniPosition.flattenOffset();
-          miniOffset.current = {
-            x: miniOffset.current.x + gesture.dx,
-            y: miniOffset.current.y + gesture.dy,
+          // Keep the pill fully on screen after a drag.
+          const { width: screenW, height: screenH } = Dimensions.get('window');
+          const { width: pillW, height: pillH } = miniSize.current;
+          const baseTop = screenH / 2 - pillH / 2;
+          const clamp = (v: number, min: number, max: number) =>
+            Math.min(Math.max(v, min), Math.max(min, max));
+          const next = {
+            x: clamp(miniOffset.current.x + gesture.dx, 8 - 16, screenW - pillW - 8 - 16),
+            y: clamp(miniOffset.current.y + gesture.dy, 56 - baseTop, screenH - pillH - 96 - baseTop),
           };
+          miniOffset.current = next;
+          Animated.spring(miniPosition, {
+            toValue: next,
+            useNativeDriver: false,
+            friction: 7,
+          }).start();
         },
       }),
     [miniPosition],
@@ -1111,7 +1138,7 @@ const AIAgentModal: React.FC<Props> = ({
           calleeName: callee.name,
           calleeProfilePic: callee.profilePic,
         });
-        startAudioCall(userId, effectiveChannel);
+        // The AudioCall overlay places the call (emits "audio-call").
       },
       startVideoCall: async (
         userId: string,
@@ -1132,7 +1159,7 @@ const AIAgentModal: React.FC<Props> = ({
           calleeName: callee.name,
           calleeProfilePic: callee.profilePic,
         });
-        startVideoCall(userId, effectiveChannel);
+        // The VideoCall overlay places the call (emits "video-call").
       },
       followUser: async (userId: string) => {
         await profileAPI.follow(userId);
@@ -1160,8 +1187,41 @@ const AIAgentModal: React.FC<Props> = ({
         endAudioCall(userId, channelName, 'end');
         endVideoCall(userId, channelName, 'end');
       },
-      changeSetting: (setting: string, value: unknown) =>
-        navigateWithQueue('Menu', { screen: 'Settings', setting, value }),
+      changeSetting: async (setting: string, value: unknown) => {
+        const current = settingsRef.current as Record<string, unknown>;
+        const definitionKey = findAgentSetting(setting)?.key || setting;
+        const resolved = resolveAgentSetting(setting, value, current[definitionKey]);
+        const saved = await updateSettingsRef.current(resolved.updates);
+        if (!saved) throw new Error(`I couldn't save ${resolved.label.toLowerCase()}. Please try again.`);
+        if (resolved.key === 'themeMode') {
+          setThemeRef.current(resolved.value as ExtendedThemeType);
+        }
+        return `${resolved.label} set to ${resolved.display}.`;
+      },
+      setRelationship: async (
+        userId: string,
+        relationTypes: unknown,
+        mode: 'set' | 'add' | 'remove',
+      ) => {
+        const requested = normalizeRelationshipTypes(relationTypes);
+        if (!requested.length && mode !== 'set')
+          throw new Error('Tell me which relationship to use, for example Friend or Parent.');
+        let current: string[] = [];
+        if (mode !== 'set') {
+          const response = await connectAPI.getRelationships(userId);
+          current = Array.isArray(response.data?.relationTypes)
+            ? response.data.relationTypes.map(String)
+            : [];
+        }
+        const next = applyRelationshipChange(current, requested, mode);
+        await connectAPI.updateRelationships(userId, next);
+        // Keep "call my mom" style lookups in sync with the new tags.
+        knownConnectsRef.current = knownConnectsRef.current.map(connect =>
+          connect.id === userId ? { ...connect, relationshipTypes: next } : connect,
+        );
+        agentMemoryRef.current.knownConnects = knownConnectsRef.current;
+        return next;
+      },
       createTask: async (text: string) => {
         const response = await api.post('/tasks', { text });
         if (!response.data?.success)
@@ -1297,8 +1357,6 @@ const AIAgentModal: React.FC<Props> = ({
     profile,
     requestLudoInvite,
     resolveUser,
-    startAudioCall,
-    startVideoCall,
     socketSendMessage,
     endAudioCall,
     endVideoCall,
@@ -1764,6 +1822,7 @@ const AIAgentModal: React.FC<Props> = ({
       inviteLudoPlayer,
       endCall: callAdapter.endCall,
       changeSetting: callAdapter.changeSetting,
+      setRelationship: callAdapter.setRelationship,
       startChess: () => setChessGameActive(true),
       startVoiceInput: async () => {
         await startListening(listenLanguage);
@@ -2195,27 +2254,77 @@ const AIAgentModal: React.FC<Props> = ({
         },
       },
     ]);
+  // The "your turn" chime is loaded once and replayed, so it starts at once
+  // and never fails silently because a fresh player was still loading.
+  const listenCueRef = React.useRef<Audio.Sound | null>(null);
+  const listenCueLoadRef = React.useRef<Promise<Audio.Sound | null> | null>(
+    null,
+  );
+  const loadListenCue = React.useCallback(() => {
+    if (listenCueRef.current) return Promise.resolve(listenCueRef.current);
+    if (!listenCueLoadRef.current) {
+      listenCueLoadRef.current = Audio.Sound.createAsync(
+        require('../assets/sounds/agent/listenStart.wav'),
+        { shouldPlay: false, volume: 1 },
+      )
+        .then(({ sound }) => {
+          listenCueRef.current = sound;
+          return sound;
+        })
+        .catch(error => {
+          if (__DEV__) console.warn('[AI] Failed to load listening cue:', error);
+          return null;
+        })
+        .finally(() => {
+          listenCueLoadRef.current = null;
+        });
+    }
+    return listenCueLoadRef.current;
+  }, []);
+  React.useEffect(() => {
+    if (visible) void loadListenCue();
+  }, [loadListenCue, visible]);
+  React.useEffect(
+    () => () => {
+      listenCueRef.current?.unloadAsync().catch(() => {});
+      listenCueRef.current = null;
+    },
+    [],
+  );
+
+  /**
+   * Plays the listening chime to the end before the mic opens, so the user
+   * always hears that it is their turn and the chime is not transcribed.
+   */
   const playMicrophoneStartCue = React.useCallback(async () => {
-    let sound:
-      | Awaited<ReturnType<typeof Audio.Sound.createAsync>>['sound']
-      | null = null;
+    Vibration.vibrate(30);
     try {
+      // The previous turn may have left the session in recording mode, which
+      // routes iOS playback to the quiet earpiece.
       await restoreChatPlaybackAudioMode();
-      const result = await Audio.Sound.createAsync(
-        require('../assets/sounds/ludo/buttonClick.wav'),
-        { shouldPlay: true, volume: 0.35 },
-      );
-      sound = result.sound;
-      await new Promise<void>(resolve => setTimeout(resolve, 180));
+      const sound = await loadListenCue();
+      if (!sound) return;
+      await new Promise<void>(resolve => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(timeout);
+          sound.setOnPlaybackStatusUpdate(null);
+          resolve();
+        };
+        // The chime is ~340 ms; never hold the mic longer than this.
+        const timeout = setTimeout(finish, 700);
+        sound.setOnPlaybackStatusUpdate(status => {
+          if (status?.didJustFinish) finish();
+        });
+        sound.setVolumeAsync(1).catch(() => {});
+        sound.replayAsync().catch(finish);
+      });
     } catch (error) {
       if (__DEV__) console.warn('[AI] Failed to play microphone cue:', error);
-    } finally {
-      if (sound) {
-        await sound.stopAsync().catch(() => {});
-        await sound.unloadAsync().catch(() => {});
-      }
     }
-  }, []);
+  }, [loadListenCue]);
 
   const startListening = React.useCallback(
     async (
@@ -2223,18 +2332,13 @@ const AIAgentModal: React.FC<Props> = ({
       options?: Parameters<typeof transcribe.start>[1],
       { immediate = false }: { immediate?: boolean } = {},
     ) => {
-      if (immediate) {
-        // The user tapped the mic / shook the phone: listen right now. Any
-        // agent speech was just cut off, so only a tiny tail is needed, and a
-        // short vibration replaces the (blocking) start sound.
-        Vibration.vibrate(30);
-        await waitForAgentSilence(120, 1500);
-        return transcribe.start(language, options);
-      }
+      // Immediate: the user tapped the mic / shook the phone / hit Stop, so
+      // any agent speech was just cut off and only a tiny tail is needed.
       // Automatic turn-taking: open the mic only once the agent has finished
       // talking and the speaker has gone quiet, so its own voice is not
-      // recorded; the cue tells the user it is their turn.
-      await waitForAgentSilence();
+      // recorded. Either way the chime tells the user it is their turn.
+      if (immediate) await waitForAgentSilence(120, 1500);
+      else await waitForAgentSilence();
       await playMicrophoneStartCue();
       return transcribe.start(language, options);
     },
@@ -3454,6 +3558,10 @@ const AIAgentModal: React.FC<Props> = ({
       {visible && minimized && (
         <Animated.View
           {...miniPanResponder.panHandlers}
+          onLayout={event => {
+            const { width, height } = event.nativeEvent.layout;
+            miniSize.current = { width, height };
+          }}
           style={[
             styles.agentMini,
             {
@@ -3468,6 +3576,7 @@ const AIAgentModal: React.FC<Props> = ({
             onPress={restoreAndListen}
             accessibilityRole="button"
             accessibilityLabel="Restore AI Agent"
+            hitSlop={4}
           >
             <LinearGradient
               colors={[colors.primary, '#8B5CF6']}
@@ -3481,27 +3590,50 @@ const AIAgentModal: React.FC<Props> = ({
                 <Icon name="auto-awesome" size={18} color="#fff" />
               )}
             </LinearGradient>
-            <Text
-              numberOfLines={3}
-              style={[styles.agentMiniStatus, { color: colors.text.secondary }]}
-            >
-              {autoActionRunning
-                ? runningActionLabel || 'Running…'
-                : loading
-                ? 'Thinking…'
-                : transcribe.listening
-                ? voiceTranscript || 'Listening…'
-                : 'Tap to open'}
-            </Text>
+            <View style={styles.agentMiniTextWrap}>
+              <Text
+                numberOfLines={1}
+                style={[styles.agentMiniTitle, { color: colors.text.primary }]}
+              >
+                AI Agent
+              </Text>
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.agentMiniStatus,
+                  {
+                    color: transcribe.listening
+                      ? colors.status.error
+                      : autoActionRunning || loading
+                      ? colors.primary
+                      : colors.text.secondary,
+                  },
+                ]}
+              >
+                {autoActionRunning
+                  ? runningActionLabel || 'Running…'
+                  : loading
+                  ? 'Thinking…'
+                  : transcribe.listening
+                  ? voiceTranscript || 'Listening…'
+                  : agentTalking
+                  ? 'Speaking…'
+                  : 'Tap to open'}
+              </Text>
+            </View>
           </Pressable>
+          <View
+            style={[styles.agentMiniDivider, { backgroundColor: colors.border.primary }]}
+          />
           <View style={styles.agentMiniControls}>
             {loading || agentTalking || autoActionRunning ? (
               <Pressable
                 style={[styles.agentMiniMic, { backgroundColor: colors.status.error }]}
                 onPress={stopGenerating}
                 accessibilityLabel="Stop"
+                hitSlop={4}
               >
-                <Icon name="stop" size={18} color="#fff" />
+                <Icon name="stop" size={16} color="#fff" />
               </Pressable>
             ) : null}
             <Pressable
@@ -3516,10 +3648,11 @@ const AIAgentModal: React.FC<Props> = ({
               onLongPress={() => setVoiceLanguageMenuOpen(value => !value)}
               onPress={toggleVoice}
               accessibilityLabel="Voice input"
+              hitSlop={4}
             >
               <Icon
                 name={transcribe.listening ? 'mic' : 'mic-none'}
-                size={18}
+                size={17}
                 color={transcribe.listening ? colors.status.error : colors.primary}
               />
             </Pressable>
@@ -3528,7 +3661,7 @@ const AIAgentModal: React.FC<Props> = ({
                 styles.agentMiniMic,
                 {
                   backgroundColor: speechEnabled
-                    ? `${colors.primary}30`
+                    ? `${colors.primary}20`
                     : colors.surface.secondary,
                 },
               ]}
@@ -3536,10 +3669,11 @@ const AIAgentModal: React.FC<Props> = ({
                 void toggleSpeech();
               }}
               accessibilityLabel={speechEnabled ? 'Turn speaking off' : 'Turn speaking on'}
+              hitSlop={4}
             >
               <Icon
                 name={speechEnabled ? 'volume-up' : 'volume-off'}
-                size={18}
+                size={17}
                 color={speechEnabled ? colors.primary : colors.text.secondary}
               />
             </Pressable>
@@ -4030,43 +4164,52 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 16,
     top: '50%',
-    width: 100,
-    minHeight: 136,
-    marginTop: -68,
-    borderRadius: 22,
+    marginTop: -28,
+    maxWidth: 320,
+    minHeight: 56,
+    borderRadius: 28,
     borderWidth: StyleSheet.hairlineWidth,
-    paddingHorizontal: 8,
-    paddingVertical: 12,
+    paddingLeft: 8,
+    paddingRight: 8,
+    paddingVertical: 8,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
     gap: 8,
     elevation: 10,
     shadowColor: '#000',
-    shadowOpacity: 0.22,
+    shadowOpacity: 0.25,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
   },
-  agentMiniContent: { width: '100%', alignItems: 'center', gap: 6 },
+  agentMiniContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 1,
+  },
   agentMiniOrb: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  agentMiniStatus: { fontSize: 11, textAlign: 'center', lineHeight: 14 },
+  agentMiniTextWrap: { flexShrink: 1, minWidth: 64, maxWidth: 120 },
+  agentMiniTitle: { fontSize: 13, fontWeight: '700', lineHeight: 17 },
+  agentMiniStatus: { fontSize: 11, lineHeight: 14 },
+  agentMiniDivider: { width: StyleSheet.hairlineWidth, alignSelf: 'stretch', marginVertical: 4 },
   agentMiniControls: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   agentMiniMic: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
   },
   agentMiniLanguageMenu: {
     position: 'absolute',
-    left: 106,
-    top: 40,
+    right: 8,
+    top: 62,
     minWidth: 118,
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,

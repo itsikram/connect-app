@@ -834,11 +834,11 @@ const Videos = () => {
             ]}
           >
             <Icon name="videocam-outline" size={48} color={t.tertiary} />
-            <Text style={{ color: t.text, marginTop: 12, fontWeight: '600' }}>
-              No videos found.
+            <Text style={{ color: t.text, marginTop: 12, fontWeight: '700', fontSize: 17 }}>
+              No videos yet
             </Text>
-            <Text style={{ color: t.muted, marginTop: 4 }}>
-              Pull down to refresh
+            <Text style={{ color: t.muted, marginTop: 6, textAlign: 'center', paddingHorizontal: 32, lineHeight: 20 }}>
+              Videos shared by you and your connects will appear here. Pull down to refresh.
             </Text>
           </View>
         }

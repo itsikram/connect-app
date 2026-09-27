@@ -300,11 +300,9 @@ const Connects = () => {
           <Text style={[styles.headingTitle, { color: textColor }]}>
             Connect Requests
           </Text>
-          <TouchableOpacity>
-            <Text style={[styles.viewMoreBtn, { color: themeColors.primary }]}>
-              See All
-            </Text>
-          </TouchableOpacity>
+          {connectRequests.length > 0 ? (
+            <Text style={[styles.headingCount, { color: subTextColor }]}>{connectRequests.length}</Text>
+          ) : null}
         </View>
         <View style={styles.connectGridContainer}>
           {loading && <ConnectCardSkeleton count={4} />}
@@ -360,7 +358,10 @@ const Connects = () => {
                       {actionLoading?.id === connect._id && actionLoading.action === 'accept' ? (
                         <ActivityIndicator size="small" color={buttonText} />
                       ) : (
-                        <Icon name="person-add" size={22} color={buttonText} />
+                        <>
+                          <Icon name="person-add" size={18} color={buttonText} />
+                          <Text style={[styles.buttonLabel, { color: buttonText }]}>Confirm</Text>
+                        </>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -377,7 +378,7 @@ const Connects = () => {
                       {actionLoading?.id === connect._id && actionLoading.action === 'delete' ? (
                         <ActivityIndicator size="small" color={removeBtnText} />
                       ) : (
-                        <Icon name="person-remove" size={22} color={removeBtnText} />
+                        <Text style={[styles.buttonLabel, { color: removeBtnText }]}>Delete</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -386,7 +387,7 @@ const Connects = () => {
             ))}
           {!loading && connectRequests.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
-              You don't have any Connect Request to show
+              No new connect requests
             </Text>
           )}
         </View>
@@ -433,14 +434,14 @@ const Connects = () => {
                 >
                   {actionLoading?.id === connect._id && actionLoading.action === 'cancel'
                     ? <ActivityIndicator size="small" color={removeBtnText} />
-                    : <Text style={{ color: removeBtnText, fontWeight: '600' }}>Cancel</Text>}
+                    : <Text style={[styles.buttonLabel, { color: removeBtnText }]}>Cancel request</Text>}
                 </TouchableOpacity>
               </View>
             </View>
           ))}
           {!loading && sentRequests.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
-              You haven't sent any Connect Requests
+              You haven't sent any requests
             </Text>
           )}
         </View>
@@ -511,7 +512,10 @@ const Connects = () => {
                       {actionLoading?.id === connect._id && actionLoading.action === 'send' ? (
                         <ActivityIndicator size="small" color={buttonText} />
                       ) : (
-                        <Icon name="person-add" size={22} color={buttonText} />
+                        <>
+                          <Icon name="person-add" size={18} color={buttonText} />
+                          <Text style={[styles.buttonLabel, { color: buttonText }]}>Add</Text>
+                        </>
                       )}
                     </TouchableOpacity>
                     <TouchableOpacity
@@ -522,13 +526,13 @@ const Connects = () => {
                       onPress={() => {
                         handleDisconnect(connect._id);
                       }}
-                      accessibilityLabel="Disconnect"
+                      accessibilityLabel="Remove suggestion"
                       disabled={Boolean(actionLoading)}
                     >
                       {actionLoading?.id === connect._id && actionLoading.action === 'disconnect' ? (
                         <ActivityIndicator size="small" color={removeBtnText} />
                       ) : (
-                        <Icon name="person-remove" size={22} color={removeBtnText} />
+                        <Text style={[styles.buttonLabel, { color: removeBtnText }]}>Remove</Text>
                       )}
                     </TouchableOpacity>
                   </View>
@@ -537,7 +541,7 @@ const Connects = () => {
             ))}
           {!loading && connectSuggestions.length === 0 && (
             <Text style={[styles.dataNotFound, { color: subTextColor }]}>
-              You don't have any Connect Suggestions to show
+              No suggestions right now. Check back later.
             </Text>
           )}
         </View>
@@ -651,17 +655,22 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   buttonRow: {
-    flexDirection: 'row',
     width: '100%',
     gap: 8,
-    justifyContent: 'flex-start',
-    alignItems: 'stretch',
+  },
+  buttonLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  headingCount: {
+    fontSize: 15,
+    fontWeight: '600',
   },
   addConnectBtn: {
-    backgroundColor: '#29b1a9', // Using the primary color directly
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
+    flexDirection: 'row',
+    gap: 6,
+    borderRadius: 10,
+    minHeight: 40,
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
@@ -673,13 +682,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   connectionActionBtn: {
-    backgroundColor: '#eee',
-    flex: 1,
-    borderRadius: 8,
-    paddingVertical: 8,
+    borderRadius: 10,
+    minHeight: 40,
     paddingHorizontal: 8,
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   connectionActionBtnText: {
     color: '#333',

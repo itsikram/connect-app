@@ -472,7 +472,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
   }, [postData, onPostCreated]);
 
   const profileName = user ? `${user.firstName || ''} ${user.surname || ''}` : '';
-  const textInputPlaceholder = `What's On Your Mind ${user?.firstName || 'there'}?`;
+  const textInputPlaceholder = user?.firstName ? `What's on your mind, ${user.firstName}?` : "What's on your mind?";
 
   // Theme colors
   const feed = useFeedTokens();
@@ -507,7 +507,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           onPress={() => { openModal(); pickMedia('image'); }}
           activeOpacity={0.75}
         >
-          <Icon name="photo-library" size={22} color="#45bd62" />
+          <Icon name="photo-library" size={22} color={isDarkMode ? "#45bd62" : "#16A34A"} />
           <Text style={[styles.composerActionText, { color: feed.postText }]}>Photo/video</Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -515,7 +515,7 @@ const CreatePost = ({ onPostCreated, seedCaption, seedNonce }: CreatePostProps) 
           onPress={() => { openModal(); pickMedia('video'); }}
           activeOpacity={0.75}
         >
-          <Icon name="videocam" size={22} color="#f3425f" />
+          <Icon name="videocam" size={22} color={isDarkMode ? "#f3425f" : "#E11D48"} />
           <Text style={[styles.composerActionText, { color: feed.postText }]}>Live Video</Text>
         </TouchableOpacity>
       </View>

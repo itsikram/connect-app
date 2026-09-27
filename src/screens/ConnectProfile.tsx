@@ -594,12 +594,14 @@ const ConnectProfile = () => {
                     )}
 
 
+                    {formatMonthYear(connectData?.user?.createdAt || connectData?.createdAt) !== 'Unknown' ? (
                     <View style={styles.detailsItem}>
                         <Icon name="schedule" size={20} color={themeColors.text.secondary} />
                         <Text style={[styles.detailsText, { color: themeColors.text.primary }]}>
                             Joined <Text style={[styles.detailsStrong, { color: themeColors.text.primary }]}>{formatMonthYear(connectData?.user?.createdAt || connectData?.createdAt)}</Text>
                         </Text>
                     </View>
+                    ) : null}
                     </View>
                     {renderPosts()}
                 </>
