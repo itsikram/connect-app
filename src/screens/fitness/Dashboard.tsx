@@ -123,7 +123,7 @@ export const FitnessDashboard = ({ navigation }: Props) => {
     return (
       <FitnessPage title="Fitness" navigation={navigation}>
         <Card style={{ alignItems: 'center', paddingVertical: 28 }}>
-          <View style={[s.heroIcon, { backgroundColor: colors.primary }]}><Icon name="heart-pulse" size={34} color="#001014" /></View>
+          <View style={[s.heroIcon, { backgroundColor: colors.primary }]}><Icon name="heart-pulse" size={34} color={colors.onPrimary} /></View>
           <Text style={[s.welcomeTitle, { color: colors.text.primary }]}>Your personal health coach</Text>
           <Muted style={{ textAlign: 'center', marginTop: 6 }}>Answer a few questions and get science-based daily targets for calories, macros, water, steps, workouts and sleep, plus a projected date for reaching your goal.</Muted>
           {[
@@ -227,7 +227,7 @@ export const FitnessDashboard = ({ navigation }: Props) => {
                 <Text style={[s.nextTitle, { color: colors.text.primary }]}>Next best step: {nextAction.title}</Text>
                 <Muted style={{ fontSize: 13 }}>{nextAction.body}</Muted>
               </View>
-              <Pressable onPress={runAction} style={[s.nextButton, { backgroundColor: colors.primary }]}><Text style={s.nextButtonText}>{nextAction.cta}</Text></Pressable>
+              <Pressable onPress={runAction} style={[s.nextButton, { backgroundColor: colors.primary }]}><Text style={[s.nextButtonText, { color: colors.onPrimary }]}>{nextAction.cta}</Text></Pressable>
             </View>
           ) : <Muted style={{ marginTop: 10 }}>Every target hit today. Outstanding work!</Muted>}
         </Card>
@@ -512,7 +512,7 @@ const s = StyleSheet.create({
   nextAction: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 14, padding: 12, marginTop: 14 },
   nextTitle: { fontSize: 14, fontWeight: '700', marginBottom: 2 },
   nextButton: { borderRadius: 999, paddingHorizontal: 12, paddingVertical: 8 },
-  nextButtonText: { color: '#001014', fontWeight: '800', fontSize: 13 },
+  nextButtonText: { fontWeight: '800', fontSize: 13 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 2 },
   habit: { width: '48.5%', flexGrow: 1, flexBasis: '46%', padding: 14, marginBottom: 0, gap: 6 },
   habitHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },

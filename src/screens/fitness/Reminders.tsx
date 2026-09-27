@@ -116,7 +116,7 @@ export const FitnessReminders = ({ navigation }: Props) => {
               const selected = days.includes(day);
               return (
                 <Pressable key={day} accessibilityLabel={['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][day]} accessibilityState={{ selected }} onPress={() => toggleDay(day)} style={[s.day, { backgroundColor: selected ? colors.primary : colors.surface.secondary, borderColor: selected ? colors.primary : colors.border.primary }]}>
-                  <Text style={{ color: selected ? '#001014' : colors.text.primary, fontWeight: '700' }}>{label}</Text>
+                  <Text style={{ color: selected ? colors.onPrimary : colors.text.primary, fontWeight: '700' }}>{label}</Text>
                 </Pressable>
               );
             })}

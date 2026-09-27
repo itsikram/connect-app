@@ -211,8 +211,8 @@ export const Chip = ({ label, selected, onPress, icon }: { label: string; select
         { backgroundColor: selected ? colors.primary : colors.surface.secondary, borderColor: selected ? colors.primary : colors.border.primary, opacity: pressed ? 0.8 : 1 },
       ]}
     >
-      {icon ? <Icon name={icon} size={16} color={selected ? '#001014' : colors.text.secondary} /> : null}
-      <Text style={[styles.chipText, { color: selected ? '#001014' : colors.text.primary }]}>{label}</Text>
+      {icon ? <Icon name={icon} size={16} color={selected ? colors.onPrimary : colors.text.secondary} /> : null}
+      <Text style={[styles.chipText, { color: selected ? colors.onPrimary : colors.text.primary }]}>{label}</Text>
     </Pressable>
   );
 };
@@ -245,7 +245,7 @@ export const OptionCards = ({ options, value, onChange }: { options: Option[]; v
           >
             {option.icon ? (
               <View style={[styles.optionIcon, { backgroundColor: selected ? colors.primary : colors.surface.secondary }]}>
-                <Icon name={option.icon} size={22} color={selected ? '#001014' : colors.text.secondary} />
+                <Icon name={option.icon} size={22} color={selected ? colors.onPrimary : colors.text.secondary} />
               </View>
             ) : null}
             <View style={{ flex: 1 }}>
@@ -274,7 +274,7 @@ export const Segmented = ({ options, value, onChange }: { options: Option[]; val
             onPress={() => onChange(option.value)}
             style={[styles.segment, selected && { backgroundColor: colors.primary }]}
           >
-            <Text style={[styles.segmentText, { color: selected ? '#001014' : colors.text.secondary }]}>{option.label}</Text>
+            <Text style={[styles.segmentText, { color: selected ? colors.onPrimary : colors.text.secondary }]}>{option.label}</Text>
           </Pressable>
         );
       })}
@@ -296,7 +296,7 @@ export const Button = ({ label, onPress, icon, variant = 'primary', loadingLabel
   const { colors } = useTheme();
   const [loading, setLoading] = useState(false);
   const background = variant === 'primary' ? colors.primary : variant === 'danger' ? 'transparent' : variant === 'ghost' ? 'transparent' : colors.surface.secondary;
-  const foreground = variant === 'primary' ? '#001014' : variant === 'danger' ? colors.status.error : variant === 'ghost' ? colors.primary : colors.text.primary;
+  const foreground = variant === 'primary' ? colors.onPrimary : variant === 'danger' ? colors.status.error : variant === 'ghost' ? colors.primary : colors.text.primary;
   const border = variant === 'danger' ? colors.status.error : variant === 'ghost' ? 'transparent' : variant === 'primary' ? colors.primary : colors.border.primary;
   const handlePress = async () => {
     if (loading || disabled) return;

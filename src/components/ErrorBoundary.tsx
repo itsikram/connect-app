@@ -1,6 +1,10 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { colors } from '../theme/colors';
+import { themes } from '../theme/colors';
+
+// This screen can render outside the ThemeProvider, so it uses the default
+// (dark) palette directly; every pair here passes WCAG AA contrast.
+const palette = themes.dark;
 
 interface Props {
   children: ReactNode;
@@ -59,16 +63,19 @@ class ErrorBoundary extends Component<Props, State> {
     if (this.state.hasError) {
       return (
         <View style={styles.container}>
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>!</Text>
+          </View>
           <Text style={styles.title}>Something went wrong</Text>
           <Text style={styles.message}>
-            The app encountered an unexpected error. Please try again.
+            Sorry, this screen hit an unexpected problem. Your data is safe. Try again, and if it keeps happening, restart the app.
           </Text>
           {__DEV__ && this.state.error && (
             <Text style={styles.errorText}>
               Error: {this.state.error.toString()}
             </Text>
           )}
-          <TouchableOpacity style={styles.retryButton} onPress={this.handleRetry}>
+          <TouchableOpacity style={styles.retryButton} onPress={this.handleRetry} accessibilityRole="button">
             <Text style={styles.retryButtonText}>Try Again</Text>
           </TouchableOpacity>
         </View>
@@ -84,43 +91,60 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: colors.background.light,
+    padding: 24,
+    backgroundColor: palette.background.primary,
+  },
+  badge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 18,
+    backgroundColor: palette.surface.secondary,
+  },
+  badgeText: {
+    fontSize: 28,
+    fontWeight: '800',
+    color: palette.primary,
   },
   title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colors.text.primary,
-    marginBottom: 16,
+    fontSize: 22,
+    fontWeight: '800',
+    color: palette.text.primary,
+    marginBottom: 10,
     textAlign: 'center',
   },
   message: {
-    fontSize: 16,
-    color: colors.text.secondary,
+    fontSize: 15,
+    color: palette.text.secondary,
     textAlign: 'center',
     marginBottom: 24,
-    lineHeight: 24,
+    lineHeight: 22,
+    maxWidth: 360,
   },
   errorText: {
     fontSize: 12,
-    color: colors.error,
+    color: palette.text.secondary,
     textAlign: 'center',
     marginBottom: 24,
     padding: 16,
-    backgroundColor: colors.gray[100],
+    backgroundColor: palette.surface.primary,
     borderRadius: 8,
     fontFamily: 'monospace',
   },
   retryButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 8,
+    backgroundColor: palette.primary,
+    paddingHorizontal: 28,
+    paddingVertical: 14,
+    borderRadius: 14,
+    minWidth: 180,
+    alignItems: 'center',
   },
   retryButtonText: {
-    color: colors.white,
+    color: palette.onPrimary,
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
 

@@ -168,7 +168,7 @@ export const RecoveryCoach = ({ navigation, route }: Props) => {
                   onPress={() => send()}
                   style={[styles.send, { backgroundColor: colors.primary, opacity: !draft.trim() || thinking || aiOff ? 0.4 : 1 }]}
                 >
-                  <Icon name="arrow-up" size={20} color={REC.onPrimary} />
+                  <Icon name="arrow-up" size={20} color={colors.onPrimary} />
                 </Pressable>
               }
             />
@@ -189,7 +189,7 @@ export const RecoveryCoach = ({ navigation, route }: Props) => {
         <>
           <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
             <View style={[styles.avatar, { backgroundColor: colors.primary }]}>
-              <Icon name="robot-happy-outline" size={30} color={REC.onPrimary} />
+              <Icon name="robot-happy-outline" size={30} color={colors.onPrimary} />
             </View>
             <Text style={[styles.heroTitle, { color: colors.text.primary }]}>{s.coach.title}</Text>
             <Muted style={{ textAlign: 'center', marginTop: 4 }}>{s.coach.intro}</Muted>
@@ -221,7 +221,7 @@ export const RecoveryCoach = ({ navigation, route }: Props) => {
                     : { backgroundColor: colors.surface.primary, borderColor: message.risk === 'crisis' ? REC.sos : colors.border.primary, borderWidth: 1, borderBottomLeftRadius: 4 },
                 ]}
               >
-                <Text selectable style={[styles.bubbleText, { color: mine ? REC.onPrimary : colors.text.primary }]}>{message.text}</Text>
+                <Text selectable style={[styles.bubbleText, { color: mine ? colors.onPrimary : colors.text.primary }]}>{message.text}</Text>
               </View>
               {!mine ? (
                 <View style={styles.bubbleActions}>

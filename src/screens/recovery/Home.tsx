@@ -91,7 +91,7 @@ export const RecoveryHome = ({ navigation }: Props) => {
       <RecoveryPage title={s.home.title} navigation={navigation} showSos={false} footer={sosFooter}>
         <Card style={{ alignItems: 'center', paddingVertical: 26 }}>
           <View style={[styles.heroIcon, { backgroundColor: colors.primary }]}>
-            <Icon name="sprout" size={34} color={REC.onPrimary} />
+            <Icon name="sprout" size={34} color={colors.onPrimary} />
           </View>
           <Text style={[styles.welcomeTitle, { color: colors.text.primary }]}>{s.home.welcomeTitle}</Text>
           <Muted style={{ textAlign: 'center', marginTop: 6 }}>{s.home.welcomeBody}</Muted>

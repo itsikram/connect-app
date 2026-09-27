@@ -26,6 +26,7 @@ interface ProfessionalTabBarProps {
 }
 
 const ICON_SIZE = 22;
+const BADGE_RED = '#DC2626';
 
 const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   state,
@@ -136,7 +137,8 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
               <View
                 style={[
                   styles.badge,
-                  { backgroundColor: themeColors.status.error },
+                  // Fixed red so white digits stay readable (4.8:1); ring matches the bar.
+                  { backgroundColor: BADGE_RED, borderColor: themeColors.surface.header },
                 ]}
               >
                 <Text style={styles.badgeText}>
@@ -230,18 +232,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: -2,
     right: 2,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 1.5,
-    borderColor: '#1E1F20',
   },
   badgeText: {
     color: '#FFFFFF',
-    fontSize: 9,
+    fontSize: 10,
     fontWeight: '800',
     textAlign: 'center',
     lineHeight: 12,

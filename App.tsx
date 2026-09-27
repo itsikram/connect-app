@@ -1438,7 +1438,8 @@ function AppContentInner({
   const previousUserRef = React.useRef(user);
 
   React.useEffect(() => {
-    if (!user || isInitializing) return undefined;
+    // Shake detection needs the native accelerometer (not available on web).
+    if (!user || isInitializing || Platform.OS === 'web') return undefined;
 
     Accelerometer.setUpdateInterval(20);
     let previous: { x: number; y: number; z: number } | null = null;

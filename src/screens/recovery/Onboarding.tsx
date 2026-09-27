@@ -277,7 +277,7 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
     <>
       <Card style={{ alignItems: 'center', paddingVertical: 22 }}>
         <View style={[styles.heroIcon, { backgroundColor: colors.primary }]}>
-          <Icon name="sprout" size={32} color={REC.onPrimary} />
+          <Icon name="sprout" size={32} color={colors.onPrimary} />
         </View>
         <Text style={[styles.heading, { color: colors.text.primary, textAlign: 'center' }]}>{s.onboarding.welcomeTitle}</Text>
         <Muted style={{ textAlign: 'center', marginTop: 6 }}>{s.onboarding.welcomeBody}</Muted>
@@ -497,7 +497,7 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
   const renderReview = () => (
     <Card style={{ alignItems: 'center', paddingVertical: 24 }}>
       <View style={[styles.heroIcon, { backgroundColor: colors.primary }]}>
-        <Icon name="map-marker-path" size={30} color={REC.onPrimary} />
+        <Icon name="map-marker-path" size={30} color={colors.onPrimary} />
       </View>
       <Text style={[styles.heading, { color: colors.text.primary, textAlign: 'center' }]}>{editing ? s.onboarding.editTitle : s.onboarding.reviewTitle}</Text>
       {!editing ? <Muted style={{ textAlign: 'center', marginTop: 6 }}>{s.onboarding.reviewBody}</Muted> : null}

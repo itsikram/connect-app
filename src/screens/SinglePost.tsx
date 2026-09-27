@@ -2033,8 +2033,9 @@ const SinglePost = () => {
               <View style={styles.statsLeft}>
                 <PlacedReactIcons placedReacts={placedReacts} />
                 <Text style={styles.statsText}>
-                  {post.reacts ? totalReacts : ''}{' '}
-                  {totalReacts > 1 ? 'Reacts' : 'React'}
+                  {totalReacts > 0
+                    ? `${totalReacts} ${totalReacts === 1 ? 'reaction' : 'reactions'}`
+                    : 'Be the first to react'}
                 </Text>
               </View>
               <View style={styles.statsRight}>

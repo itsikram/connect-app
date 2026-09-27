@@ -73,7 +73,10 @@ export const colors = {
 // Theme definitions
 export const themes = {
   light: {
-    primary: '#00D4FF',
+    // Deeper brand cyan: 5:1 as text on white and with white text on it
+    // (the dark theme's #00D4FF is only 1.8:1 against white).
+    primary: '#0077A8',
+    onPrimary: '#FFFFFF',
     secondary: '#5856D6',
     background: {
       primary: '#FFFFFF',
@@ -89,23 +92,23 @@ export const themes = {
     text: {
       primary: '#1A1A1A',
       secondary: '#5F6368',
-      tertiary: '#9AA0A6',
+      tertiary: '#6B7280',
       inverse: '#FFFFFF',
     },
     border: {
       primary: '#E8EAED',
       secondary: '#DADCE0',
       tertiary: '#F1F3F4',
-      focus: '#00D4FF',
+      focus: '#0077A8',
       subtle: 'rgba(0, 0, 0, 0.05)',
       muted: 'rgba(0, 0, 0, 0.1)',
       strong: 'rgba(0, 0, 0, 0.2)',
     },
     status: {
-      success: '#00C851',
-      warning: '#FF8800',
-      error: '#FF4444',
-      info: '#007AFF',
+      success: '#15803D',
+      warning: '#B45309',
+      error: '#DC2626',
+      info: '#0369A1',
     },
     gray: {
       50: '#F8F9FA',
@@ -122,6 +125,7 @@ export const themes = {
   },
   dark: {
     primary: '#00D4FF',
+    onPrimary: '#001014',
     secondary: '#8A8AFF',
     background: {
       primary: '#0A0A0B',
@@ -169,12 +173,13 @@ export const themes = {
     },
   },
   blue: {
-    primary: '#1976D2',
+    primary: '#1565C0',
+    onPrimary: '#FFFFFF',
     secondary: '#42A5F5',
     background: {
       primary: '#F5F9FF',
-      secondary: '#E3F2FD',
-      tertiary: '#BBDEFB',
+      secondary: '#EDF4FD',
+      tertiary: '#E3EEFB',
     },
     surface: {
       primary: '#FFFFFF',
@@ -183,16 +188,16 @@ export const themes = {
       header: '#FFFFFF', // Header background color for blue theme
     },
     text: {
-      primary: '#0D47A1',
-      secondary: '#1565C0',
-      tertiary: '#42A5F5',
+      primary: '#0F172A',
+      secondary: '#334155',
+      tertiary: '#64748B',
       inverse: '#FFFFFF',
     },
     border: {
       primary: '#BBDEFB',
       secondary: '#90CAF9',
       tertiary: '#E3F2FD',
-      focus: '#1976D2',
+      focus: '#1565C0',
       subtle: 'rgba(25, 118, 210, 0.05)',
       muted: 'rgba(25, 118, 210, 0.1)',
       strong: 'rgba(25, 118, 210, 0.2)',
@@ -218,11 +223,12 @@ export const themes = {
   },
   green: {
     primary: '#2E7D32',
+    onPrimary: '#FFFFFF',
     secondary: '#4CAF50',
     background: {
-      primary: '#F1F8E9',
-      secondary: '#E8F5E8',
-      tertiary: '#C8E6C9',
+      primary: '#F4F9F1',
+      secondary: '#EAF4E6',
+      tertiary: '#DDEDD7',
     },
     surface: {
       primary: '#FFFFFF',
@@ -231,9 +237,9 @@ export const themes = {
       header: '#FFFFFF', // Header background color for green theme
     },
     text: {
-      primary: '#1B5E20',
-      secondary: '#2E7D32',
-      tertiary: '#4CAF50',
+      primary: '#14231A',
+      secondary: '#374151',
+      tertiary: '#6B7280',
       inverse: '#FFFFFF',
     },
     border: {
@@ -266,11 +272,12 @@ export const themes = {
   },
   purple: {
     primary: '#7B1FA2',
+    onPrimary: '#FFFFFF',
     secondary: '#9C27B0',
     background: {
-      primary: '#F3E5F5',
-      secondary: '#E1BEE7',
-      tertiary: '#CE93D8',
+      primary: '#FAF5FC',
+      secondary: '#F3E5F5',
+      tertiary: '#EBDDF0',
     },
     surface: {
       primary: '#FFFFFF',
@@ -279,9 +286,9 @@ export const themes = {
       header: '#FFFFFF', // Header background color for purple theme
     },
     text: {
-      primary: '#4A148C',
-      secondary: '#6A1B9A',
-      tertiary: '#8E24AA',
+      primary: '#1F1330',
+      secondary: '#4B4453',
+      tertiary: '#6B6475',
       inverse: '#FFFFFF',
     },
     border: {

@@ -114,7 +114,7 @@ export const RecoveryLapse = ({ navigation, route }: Props) => {
             {debrief.chain.map((item, index) => (
               <View key={`${index}-${item}`} style={styles.chainRow}>
                 <View style={[styles.chainDot, { backgroundColor: colors.primary }]}>
-                  <Text style={styles.chainNumber}>{num(index + 1)}</Text>
+                  <Text style={[styles.chainNumber, { color: colors.onPrimary }]}>{num(index + 1)}</Text>
                 </View>
                 <Text style={[styles.body, { color: colors.text.primary, flex: 1 }]}>{item}</Text>
               </View>
@@ -233,7 +233,7 @@ const styles = StyleSheet.create({
   reflection: { fontSize: 16, lineHeight: 24 },
   chainRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 8 },
   chainDot: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  chainNumber: { color: REC.onPrimary, fontWeight: '800', fontSize: 12 },
+  chainNumber: { fontWeight: '800', fontSize: 12 },
   noteBox: { borderWidth: 1, borderRadius: 14, paddingHorizontal: 12, minHeight: 80 },
   noteInput: { fontSize: 15, minHeight: 76, textAlignVertical: 'top', paddingVertical: 10 },
   keep: { flexDirection: 'row', gap: 6, alignItems: 'flex-start', marginTop: 4 },
