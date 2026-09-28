@@ -1,4 +1,5 @@
 const { getDefaultConfig } = require('expo/metro-config');
+const { withTunnelBoost } = require('./scripts/expo-control/tunnelBoost');
 
 /**
  * Metro configuration for Expo
@@ -24,4 +25,6 @@ config.resolver = {
   sourceExts: [...new Set([...(config.resolver.sourceExts || []), 'ts', 'tsx', 'js', 'jsx', 'svg'])],
 };
 
-module.exports = config;
+// Compresses bundles for Expo Go over a tunnel; only active when launched by
+// the expo-control daemon (EXPO_TUNNEL_BOOST=1).
+module.exports = withTunnelBoost(config);
