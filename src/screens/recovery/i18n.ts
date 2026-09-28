@@ -458,6 +458,16 @@ const en = {
     exportData: 'Export my data',
     exportHint: 'Share a copy of everything Recovery has stored for you.',
     saved: 'Saved',
+    checkinReminderTitle: 'Daily check-in reminder',
+    checkinReminderBody: 'A reminder at {time} each day. Off when unchecked.',
+  },
+  reminders: {
+    checkin: 'How was today? Take 30 seconds for your check-in.',
+    checkinDiscreet: 'You have a daily check-in waiting.',
+    nudge: 'This is often a tough time. Want to try 2 minutes of slow breathing?',
+    nudgeDiscreet: 'Take a moment for yourself. Open the app for a short break.',
+    milestone: 'You just reached {label} free! Open the app to celebrate.',
+    milestoneDiscreet: 'You reached a new milestone. Open the app to see it.',
   },
 };
 
@@ -916,6 +926,16 @@ const bn: Strings = {
     exportData: 'আমার তথ্য এক্সপোর্ট',
     exportHint: 'রিকভারিতে আপনার যা কিছু রাখা আছে তার একটি কপি শেয়ার করুন।',
     saved: 'সংরক্ষিত হয়েছে',
+    checkinReminderTitle: 'প্রতিদিনের চেক-ইন রিমাইন্ডার',
+    checkinReminderBody: 'প্রতিদিন {time}-এ মনে করিয়ে দেবে। বন্ধ করলে আর আসবে না।',
+  },
+  reminders: {
+    checkin: 'আজকের দিনটা কেমন গেল? ৩০ সেকেন্ডে চেক-ইন করে নিন।',
+    checkinDiscreet: 'আপনার প্রতিদিনের চেক-ইন অপেক্ষা করছে।',
+    nudge: 'এই সময়টা প্রায়ই কঠিন হয়। ২ মিনিট ধীরে শ্বাস নেবেন?',
+    nudgeDiscreet: 'নিজের জন্য একটু সময় নিন। ছোট বিরতির জন্য অ্যাপটি খুলুন।',
+    milestone: 'আপনি {label} মুক্ত থাকলেন! উদযাপন করতে অ্যাপটি খুলুন।',
+    milestoneDiscreet: 'আপনি নতুন একটি মাইলফলকে পৌঁছেছেন। দেখতে অ্যাপটি খুলুন।',
   },
 };
 

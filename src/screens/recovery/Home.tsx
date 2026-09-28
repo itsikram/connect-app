@@ -4,6 +4,7 @@ import { useTheme } from '../../contexts/ThemeContext';
 import { recoveryApi } from '../../services/recoveryApi';
 import { useRecoveryI18n } from './i18n';
 import { useRecoveryDashboard } from './hooks';
+import { syncRecoveryReminders } from './reminders';
 import {
   Banner,
   Button,
@@ -46,6 +47,11 @@ export const RecoveryHome = ({ navigation }: Props) => {
     const unsubscribe = navigation?.addListener?.('focus', sync);
     return () => unsubscribe?.();
   }, [lang, navigation, refresh]);
+
+  // Keep on-device reminders (check-in, risky times, next milestone) in step with fresh data.
+  useEffect(() => {
+    if (data && !error) syncRecoveryReminders(data, lang);
+  }, [data, error, lang]);
 
   // The AI note is generated once per day, after the dashboard is on screen.
   useEffect(() => {

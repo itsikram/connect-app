@@ -28,6 +28,9 @@ interface LiveVoiceModalProps {
     // Voice is actually flowing to/from the friend's device.
     isStreaming?: boolean;
     peerJoined?: boolean;
+    // Receiver only: remember to turn the mic on automatically for this friend.
+    autoMicrophone?: boolean;
+    onToggleAutoMicrophone?: (enabled: boolean) => void;
 }
 
 const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
@@ -45,6 +48,8 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
     connectionQuality = 4,
     isStreaming = false,
     peerJoined = false,
+    autoMicrophone = false,
+    onToggleAutoMicrophone,
 }) => {
     const { colors: themeColors, isDarkMode } = useTheme();
     const pulseAnim = React.useRef(new Animated.Value(1)).current;
@@ -189,6 +194,28 @@ const LiveVoiceModal: React.FC<LiveVoiceModalProps> = ({
                                 )}
                                 <Text style={styles.stopButtonText}>
                                     {microphonePending ? 'Turning on microphone...' : 'Turn on microphone'}
+                                </Text>
+                            </TouchableOpacity>
+                        ) : null}
+
+                        {role === 'receiver' && onToggleAutoMicrophone ? (
+                            <TouchableOpacity
+                                style={[styles.autoMicRow, { backgroundColor: themeColors.surface.secondary || (isDarkMode ? '#252525' : '#F5F5F5') }]}
+                                onPress={() => onToggleAutoMicrophone(!autoMicrophone)}
+                                activeOpacity={0.7}
+                                accessibilityRole="checkbox"
+                                accessibilityState={{ checked: autoMicrophone }}
+                            >
+                                <Icon
+                                    name={autoMicrophone ? 'check-box' : 'check-box-outline-blank'}
+                                    size={22}
+                                    color={autoMicrophone ? '#1DB954' : themeColors.text.secondary}
+                                />
+                                <Text style={[styles.detailText, { color: themeColors.text.secondary }]}>
+                                    Auto turn on my microphone for{' '}
+                                    <Text style={{ fontWeight: '600', color: themeColors.text.primary }}>
+                                        {connectName || 'this friend'}
+                                    </Text>
                                 </Text>
                             </TouchableOpacity>
                         ) : null}
@@ -380,6 +407,14 @@ const styles = StyleSheet.create({
         padding: 12,
         borderRadius: 6,
         gap: 8,
+    },
+    autoMicRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingVertical: 12,
+        paddingHorizontal: 15,
+        borderRadius: 8,
     },
     stopButtonText: {
         color: '#FFFFFF',

@@ -5,6 +5,7 @@ import { RecoveryLang, RecoveryProfile, SupportContact, recoveryApi } from '../.
 import { ContactsEditor } from './Onboarding';
 import { cleanPhone } from './helpers';
 import { useRecoveryDashboard } from './hooks';
+import { clearRecoveryReminders, getCheckinReminderTime, setCheckinReminderTime, syncRecoveryReminders } from './reminders';
 import { setRecoveryLanguage, useRecoveryI18n } from './i18n';
 import { Banner, Button, Card, Muted, RecoveryPage, SectionHeader, Segmented, errorMessage } from './ui';
 
@@ -12,12 +13,24 @@ type Props = { navigation?: any };
 
 export const RecoverySettings = ({ navigation }: Props) => {
   const { colors } = useTheme();
-  const { lang, override, s } = useRecoveryI18n();
+  const { lang, override, s, f } = useRecoveryI18n();
   const { data, setData } = useRecoveryDashboard(lang, navigation);
   const profile = data?.profile;
   const [settings, setSettings] = useState<RecoveryProfile['settings'] | null>(null);
   const [contacts, setContacts] = useState<SupportContact[] | null>(null);
   const [message, setMessage] = useState('');
+  const [checkinTime, setCheckinTime] = useState<string | null>(null);
+
+  useEffect(() => {
+    getCheckinReminderTime().then(setCheckinTime);
+  }, []);
+
+  const toggleCheckinReminder = async (on: boolean) => {
+    const value = on ? '21:00' : 'off';
+    setCheckinTime(value);
+    await setCheckinReminderTime(value);
+    syncRecoveryReminders(data, lang);
+  };
 
   useEffect(() => {
     if (!profile) return;
@@ -32,6 +45,8 @@ export const RecoverySettings = ({ navigation }: Props) => {
     try {
       await recoveryApi.saveProfile({ settings: next }, lang);
       setMessage(s.settings.saved);
+      // Discreet wording and risky-time nudges change what is scheduled.
+      if (data?.profile) syncRecoveryReminders({ ...data, profile: { ...data.profile, settings: next } }, lang);
     } catch (saveError: any) {
       setSettings(settings);
       setMessage(errorMessage(saveError, s.common.saveError));
@@ -74,6 +89,7 @@ export const RecoverySettings = ({ navigation }: Props) => {
           try {
             await recoveryApi.reset();
             await recoveryApi.clearCache();
+            await clearRecoveryReminders();
             setData({ profile: null });
             navigation.navigate('RecoveryHome');
           } catch (resetError: any) {
@@ -121,6 +137,19 @@ export const RecoverySettings = ({ navigation }: Props) => {
             {row('aiEnabled', s.settings.aiTitle, s.settings.aiBody)}
             {row('discreet', s.settings.discreetTitle, s.settings.discreetBody)}
             {row('riskNudges', s.settings.nudgesTitle, s.settings.nudgesBody)}
+            <View style={styles.switchRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.rowTitle, { color: colors.text.primary }]}>{s.settings.checkinReminderTitle}</Text>
+                <Muted style={{ fontSize: 13, marginTop: 2 }}>{f(s.settings.checkinReminderBody, { time: checkinTime && checkinTime !== 'off' ? checkinTime : '21:00' })}</Muted>
+              </View>
+              <Switch
+                accessibilityLabel={s.settings.checkinReminderTitle}
+                value={checkinTime !== null && checkinTime !== 'off'}
+                disabled={checkinTime === null}
+                onValueChange={toggleCheckinReminder}
+                trackColor={{ true: colors.primary, false: colors.border.primary }}
+              />
+            </View>
           </Card>
 
           <SectionHeader title={s.settings.peopleTitle} />

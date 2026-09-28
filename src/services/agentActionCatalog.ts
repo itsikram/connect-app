@@ -1,4 +1,5 @@
 import { navigate as navigateWithQueue } from '../lib/navigationService';
+import { isHealthAction } from './agentHealth';
 
 export type AgentActionName =
   | 'NAVIGATE'
@@ -36,6 +37,24 @@ export type AgentActionName =
   | 'ACCEPT_CONNECT_REQUEST'
   | 'DECLINE_CONNECT_REQUEST'
   | 'QUERY_APP_DATA'
+  | 'FITNESS_SUMMARY'
+  | 'LOG_MEAL'
+  | 'LOG_WEIGHT'
+  | 'LOG_WATER'
+  | 'LOG_STEPS'
+  | 'LOG_SLEEP'
+  | 'LOG_WORKOUT'
+  | 'FITNESS_REMINDER'
+  | 'ASK_FITNESS_COACH'
+  | 'FOOD_RECOMMENDATIONS'
+  | 'FITNESS_PROGRESS'
+  | 'RECOVERY_SUMMARY'
+  | 'RECOVERY_CHECKIN'
+  | 'LOG_CRAVING'
+  | 'LOG_LAPSE'
+  | 'ASK_RECOVERY_COACH'
+  | 'RECOVERY_SOS'
+  | 'RECOVERY_HELP'
   | 'navigate_home'
   | 'navigate_connects'
   | 'navigate_videos'
@@ -63,6 +82,18 @@ export type AgentActionName =
   | 'navigate_drive'
   | 'navigate_mail'
   | 'navigate_photos'
+  | 'navigate_fitness_meal'
+  | 'navigate_fitness_weight'
+  | 'navigate_fitness_workout'
+  | 'navigate_fitness_reminders'
+  | 'navigate_fitness_coach'
+  | 'navigate_fitness_food'
+  | 'navigate_recovery'
+  | 'navigate_recovery_checkin'
+  | 'navigate_recovery_coach'
+  | 'navigate_recovery_plan'
+  | 'navigate_recovery_progress'
+  | 'navigate_recovery_settings'
   | 'start_ludo'
   | 'start_chess'
   | 'start_voice_input'
@@ -145,6 +176,26 @@ const ACTIONS: readonly [AgentActionName, string, boolean?, boolean?, string?][]
   ['CREATE_POST', 'Publish post', true, false, 'caption, publish? (false = open composer draft)'],
   ['QUERY_APP_DATA', 'Look up my data', false, false, 'dataType: tasks|notes|notifications|connects|requests|events|habits|profile, query?'],
   ['CREATE_AUTO_REPLY_RULE', 'Set automatic reply', true, false, 'triggerUserName, replyText'],
+  // Fitness
+  ['FITNESS_SUMMARY', "Today's fitness summary"],
+  ['LOG_MEAL', 'Log meal', true, false, 'name, mealType? breakfast|lunch|dinner|snack, calories, proteinG, carbsG, fatG, estimated?'],
+  ['LOG_WEIGHT', 'Log weight', true, false, 'weightKg | weightLb'],
+  ['LOG_WATER', 'Log water', true, false, 'amountMl | glasses (1 glass = 250 ml)'],
+  ['LOG_STEPS', 'Log steps', true, false, 'steps'],
+  ['LOG_SLEEP', 'Log sleep', true, false, 'hours'],
+  ['LOG_WORKOUT', 'Log workout', true, false, 'name, type walking|running|cycling|strength|hiit|yoga|swimming|sports|cardio|other, durationMin, intensity? light|moderate|vigorous'],
+  ['FITNESS_REMINDER', 'Set fitness reminder', true, false, 'title, time (HH:mm), type? meal|water|workout|weight|custom'],
+  ['ASK_FITNESS_COACH', 'Ask fitness coach', false, false, 'question'],
+  ['FOOD_RECOMMENDATIONS', 'Food suggestions'],
+  ['FITNESS_PROGRESS', 'Fitness progress'],
+  // Recovery (addiction recovery program)
+  ['RECOVERY_SUMMARY', 'Recovery progress summary'],
+  ['RECOVERY_CHECKIN', 'Recovery check-in', true, false, 'mood 1-5, craving 0-10, stress? 1-5, sleepHours?, triggers? [stress|boredom|loneliness|friends|tea_stall|after_meals|late_night|money|family_conflict|work_study|celebration|anger|sadness|cant_sleep|places|social_media], note?'],
+  ['LOG_CRAVING', 'Log craving', true, false, 'intensity 1-10, outcome resisted|used|unsure, trigger?'],
+  ['LOG_LAPSE', 'Record a slip'],
+  ['ASK_RECOVERY_COACH', 'Talk to recovery coach', false, false, 'message, mode? coach|sos|lapse'],
+  ['RECOVERY_SOS', 'Recovery SOS (urge right now)'],
+  ['RECOVERY_HELP', 'Crisis help & helplines'],
   ['OPEN_LUDO', 'Open Ludo'],
   ['INVITE_LUDO_PLAYER', 'Invite Ludo player', true, false, 'userName | userId'],
   ['navigate_home', 'Open Home'],
@@ -163,6 +214,18 @@ const ACTIONS: readonly [AgentActionName, string, boolean?, boolean?, string?][]
   ['navigate_drive', 'Open Google Drive'],
   ['navigate_mail', 'Open Gmail'],
   ['navigate_photos', 'Open Google Photos'],
+  ['navigate_fitness_meal', 'Open meal logging'],
+  ['navigate_fitness_weight', 'Open weight tracking'],
+  ['navigate_fitness_workout', 'Open workouts'],
+  ['navigate_fitness_reminders', 'Open fitness reminders'],
+  ['navigate_fitness_coach', 'Open fitness coach'],
+  ['navigate_fitness_food', 'Open food suggestions'],
+  ['navigate_recovery', 'Open Recovery'],
+  ['navigate_recovery_checkin', 'Open recovery check-in'],
+  ['navigate_recovery_coach', 'Open recovery coach'],
+  ['navigate_recovery_plan', 'Open recovery plan'],
+  ['navigate_recovery_progress', 'Open recovery progress'],
+  ['navigate_recovery_settings', 'Open recovery settings'],
   ['navigate_camera', 'Open Camera'],
   ['navigate_gallery', 'Open Gallery'],
   ['navigate_video_library', 'Open Video Library'],
@@ -297,6 +360,24 @@ const ACTION_ALIASES: Record<string, AgentActionName> = {
   OPEN_CHESS: 'start_chess',
   PLAY_CHESS: 'start_chess',
   PLAY_LUDO: 'start_ludo',
+  // Names used by the server's older tool list and by other clients.
+  FITNESS_DASHBOARD: 'FITNESS_SUMMARY',
+  FITNESS_RECOMMENDATIONS: 'FOOD_RECOMMENDATIONS',
+  LOG_FITNESS_MEAL: 'LOG_MEAL',
+  LOG_FITNESS_WEIGHT: 'LOG_WEIGHT',
+  CREATE_FITNESS_REMINDER: 'FITNESS_REMINDER',
+  LOG_FOOD: 'LOG_MEAL',
+  ADD_MEAL: 'LOG_MEAL',
+  DRINK_WATER: 'LOG_WATER',
+  ADD_WATER: 'LOG_WATER',
+  ADD_WORKOUT: 'LOG_WORKOUT',
+  LOG_EXERCISE: 'LOG_WORKOUT',
+  LOG_RECOVERY: 'RECOVERY_CHECKIN',
+  RECOVERY_SUPPORT: 'ASK_RECOVERY_COACH',
+  RECOVERY_COACH: 'ASK_RECOVERY_COACH',
+  SOS: 'RECOVERY_SOS',
+  CRISIS_HELP: 'RECOVERY_HELP',
+  LOG_SLIP: 'LOG_LAPSE',
 };
 const allowedIntentKeys = new Set([
   'reply',
@@ -590,6 +671,11 @@ export type MobileAgentActionAdapter = {
   ) => string | Promise<string>;
   /** Returns a short, human-readable summary of the requested data. */
   queryAppData?: (dataType: string, query?: string) => string | Promise<string>;
+  /** Runs a fitness / recovery action and returns the reply to show. */
+  runHealthAction?: (
+    action: string,
+    parameters: Record<string, unknown>,
+  ) => string | Promise<string>;
 };
 
 export type AgentActionResult = {
@@ -651,6 +737,18 @@ const navigationTargets: Partial<
   navigate_drive: ['Menu', { screen: 'GoogleDrive' }],
   navigate_mail: ['Menu', { screen: 'GoogleMail' }],
   navigate_photos: ['Menu', { screen: 'GooglePhotos' }],
+  navigate_fitness_meal: ['Menu', { screen: 'FitnessMeal' }],
+  navigate_fitness_weight: ['Menu', { screen: 'FitnessWeight' }],
+  navigate_fitness_workout: ['Menu', { screen: 'FitnessWorkout' }],
+  navigate_fitness_reminders: ['Menu', { screen: 'FitnessReminders' }],
+  navigate_fitness_coach: ['Menu', { screen: 'FitnessCoach' }],
+  navigate_fitness_food: ['Menu', { screen: 'FitnessRecommendations' }],
+  navigate_recovery: ['Menu', { screen: 'RecoveryHome' }],
+  navigate_recovery_checkin: ['Menu', { screen: 'RecoveryCheckIn' }],
+  navigate_recovery_coach: ['Menu', { screen: 'RecoveryCoach' }],
+  navigate_recovery_plan: ['Menu', { screen: 'RecoveryPlan' }],
+  navigate_recovery_progress: ['Menu', { screen: 'RecoveryProgress' }],
+  navigate_recovery_settings: ['Menu', { screen: 'RecoverySettings' }],
 };
 
 const pickText = (...values: unknown[]) => {
@@ -1089,6 +1187,18 @@ export async function executeAgentActions(
         customMessage = accept
           ? `You are now connected with ${requester}.`
           : `Declined ${requester}'s connect request.`;
+      } else if (isHealthAction(action.action)) {
+        if (!adapter.runHealthAction)
+          throw new Error('Fitness and recovery actions are unavailable.');
+        customMessage = await adapter.runHealthAction(action.action, {
+          ...parameters,
+          ...(action.messageText && !parameters.message
+            ? { message: action.messageText }
+            : {}),
+          ...(action.searchQuery && !parameters.query
+            ? { query: action.searchQuery }
+            : {}),
+        });
       } else if (action.action === 'QUERY_APP_DATA') {
         if (!adapter.queryAppData) throw new Error('Data lookup is unavailable.');
         customMessage = await adapter.queryAppData(

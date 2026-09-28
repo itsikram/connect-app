@@ -78,6 +78,7 @@ import {
   getTypeLabel,
   getSourceLabel,
   normalizePlaylistItem,
+  watchesToPlaylistItems,
   loadPlayQueue,
   savePlayQueue,
   loadPlaybackState,
@@ -108,51 +109,18 @@ type MediaSource = {
   poster?: string;
 };
 
-const ToolBtn = ({
-  icon,
-  onPress,
-  disabled,
-  primary,
-  active,
-  spinning,
-  color,
-  primaryColor,
-  primaryText,
-  btnBg,
-  btnBorder,
-  activeBg,
-}: {
-  icon: string;
-  onPress: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-  active?: boolean;
-  spinning?: boolean;
-  color: string;
-  primaryColor: string;
-  primaryText: string;
-  btnBg: string;
-  btnBorder: string;
-  activeBg: string;
-}) => (
-  <Pressable
-    onPress={onPress}
-    disabled={disabled}
-    style={[
-      styles.toolBtn,
-      { backgroundColor: btnBg, borderColor: btnBorder },
-      primary && { backgroundColor: primaryColor, borderColor: primaryColor, width: 52, height: 52, borderRadius: 26 },
-      active && { backgroundColor: activeBg, borderColor: activeBg },
-      disabled && styles.toolBtnDisabled,
-    ]}
-  >
-    {spinning ? (
-      <ActivityIndicator size="small" color={primary ? primaryText : color} />
-    ) : (
-      <Icon name={icon as any} size={primary ? 22 : 18} color={primary ? primaryText : color} />
-    )}
-  </Pressable>
-);
+const TABS = [
+  { id: 'queue', label: 'Up next', icon: 'queue-play-next' },
+  { id: 'library', label: 'Library', icon: 'video-library' },
+  { id: 'saved', label: 'Playlists', icon: 'playlist-play' },
+  { id: 'add', label: 'Add', icon: 'add-circle-outline' },
+] as const;
+
+const SEARCH_SCOPES = [
+  { id: 'all', label: 'All' },
+  { id: 'watch', label: 'Watches' },
+  { id: 'youtube', label: 'YouTube' },
+] as const;
 
 const MediaPlayer = ({ route, navigation }: any) => {
   const t = useWatchTokens();
@@ -180,6 +148,14 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [youtubeResults, setYoutubeResults] = useState<any[]>([]);
   const [youtubeSearching, setYoutubeSearching] = useState(false);
   const [youtubeSearchError, setYoutubeSearchError] = useState('');
+  const [serverWatchResults, setServerWatchResults] = useState<PlaylistItem[]>([]);
+  const [watchSearching, setWatchSearching] = useState(false);
+  const [watchSearchError, setWatchSearchError] = useState('');
+  const [watchAuthors, setWatchAuthors] = useState<Record<string, string>>({});
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchScope, setSearchScope] = useState<'all' | 'watch' | 'youtube'>('all');
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [activeTab, setActiveTab] = useState<'queue' | 'library' | 'saved' | 'add'>('queue');
   const [youtubeDownload, setYoutubeDownload] = useState<{
     queueId: string;
     title: string;
@@ -207,30 +183,67 @@ const MediaPlayer = ({ route, navigation }: any) => {
   const [videoDuration, setVideoDuration] = useState(0);
   const [showEqualizerModal, setShowEqualizerModal] = useState(false);
 
+  // Search runs against two sources in parallel: Watches stored on our server
+  // (all of them, not just the recent page cached in the library) and YouTube.
   useEffect(() => {
     const query = searchQuery.trim();
     if (!query) {
       setYoutubeResults([]);
       setYoutubeSearchError('');
+      setServerWatchResults([]);
+      setWatchSearchError('');
+      setYoutubeSearching(false);
+      setWatchSearching(false);
       return undefined;
     }
     let cancelled = false;
-    const timer = setTimeout(async () => {
-      setYoutubeSearching(true);
+    setYoutubeSearching(true);
+    setWatchSearching(true);
+    const timer = setTimeout(() => {
       setYoutubeSearchError('');
-      try {
-        const response = await api.get('/yt-download/youtube/search', {
-          params: { q: query, maxResults: 8, _ts: Date.now() },
+      setWatchSearchError('');
+      api
+        .get('watch/search', { params: { q: query, limit: 12 } })
+        .then((response) => {
+          if (cancelled) return;
+          const list = Array.isArray(response.data) ? response.data : [];
+          const authors: Record<string, string> = {};
+          list.forEach((w: any) => {
+            const author = w?.author;
+            const name =
+              author?.displayName ||
+              author?.fullName ||
+              [author?.user?.firstName, author?.user?.surname].filter(Boolean).join(' ');
+            if (w?._id && name) authors[String(w._id)] = name;
+          });
+          setWatchAuthors((prev) => ({ ...prev, ...authors }));
+          setServerWatchResults(watchesToPlaylistItems(list));
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setServerWatchResults([]);
+            setWatchSearchError('Could not search Watches on the server.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setWatchSearching(false);
         });
-        if (!cancelled) setYoutubeResults(response.data?.items || []);
-      } catch (_) {
-        if (!cancelled) {
-          setYoutubeResults([]);
-          setYoutubeSearchError('YouTube search failed. Check your connection or API configuration.');
-        }
-      } finally {
-        if (!cancelled) setYoutubeSearching(false);
-      }
+      api
+        .get('/yt-download/youtube/search', {
+          params: { q: query, maxResults: 8, _ts: Date.now() },
+        })
+        .then((response) => {
+          if (!cancelled) setYoutubeResults(response.data?.items || []);
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setYoutubeResults([]);
+            setYoutubeSearchError('YouTube search failed. Check your connection or API configuration.');
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setYoutubeSearching(false);
+        });
     }, 350);
     return () => {
       cancelled = true;
@@ -238,12 +251,15 @@ const MediaPlayer = ({ route, navigation }: any) => {
     };
   }, [searchQuery]);
 
+  // Apply a search requested via navigation params once per distinct value, so
+  // clearing the field afterwards does not bring the old query back.
   useEffect(() => {
     const requestedQuery = String(params.searchQuery || '').trim();
-    if (requestedQuery && requestedQuery !== searchQuery) {
+    if (requestedQuery) {
       setSearchQuery(requestedQuery);
+      setSearchOpen(true);
     }
-  }, [params.searchQuery, searchQuery]);
+  }, [params.searchQuery]);
 
   const videoRef = useRef<any | null>(null);
   const playUrlHandledRef = useRef('');
@@ -318,10 +334,30 @@ const MediaPlayer = ({ route, navigation }: any) => {
 
   const filteredVideos = useMemo(() => {
     let list = filterPlaylist(allVideos, filter);
-    const q = searchQuery.trim().toLowerCase();
+    const q = libraryQuery.trim().toLowerCase();
     if (q) list = list.filter((v) => v.title.toLowerCase().includes(q));
     return sortPlaylist(list, sortMode, playlistOrder);
-  }, [allVideos, filter, searchQuery, sortMode, playlistOrder]);
+  }, [allVideos, filter, libraryQuery, sortMode, playlistOrder]);
+
+  // Watch results = library Watches/saved copies matching the query (instant)
+  // followed by server matches, de-duplicated by Watch id.
+  const watchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return [];
+    const seen = new Set<string>();
+    const out: PlaylistItem[] = [];
+    const push = (video: PlaylistItem) => {
+      const key = video.sourceId || video.id;
+      if (seen.has(key)) return;
+      seen.add(key);
+      out.push(video);
+    };
+    allVideos
+      .filter((v) => (v.type === 'watch' || v.type === 'saved') && v.title.toLowerCase().includes(q))
+      .forEach(push);
+    serverWatchResults.forEach(push);
+    return out.slice(0, 15);
+  }, [searchQuery, allVideos, serverWatchResults]);
 
   const usingQueue = playQueue.length > 0;
   const playbackList = useMemo(() => {
@@ -1013,6 +1049,44 @@ const MediaPlayer = ({ route, navigation }: any) => {
     return item.queueId;
   }, []);
 
+  const playVideoNow = useCallback((video: PlaylistItem) => {
+    const existingIndex = playQueue.findIndex((item) => item.videoId === video.id);
+    let target: QueueItem | null = existingIndex >= 0 ? playQueue[existingIndex] : null;
+    if (!target) {
+      target = videoToQueueItem(video);
+      if (!target) return;
+      const appended = target;
+      setPlayQueue((prev) => [...prev, appended]);
+      setQueueIndex(playQueue.length);
+    } else {
+      setQueueIndex(existingIndex);
+    }
+    setPlayPass(1);
+    setIsPlaying(true);
+    if (isThisPip && watchPip?.updatePip) {
+      watchPip.updatePip({
+        libraryVideoId: target.queueId,
+        videoId: target.videoId,
+        videoUrl: target.url,
+        title: target.title,
+        thumbnail: target.thumbnail || '',
+        currentTime: 0,
+        playing: true,
+        playPass: 1,
+      });
+    }
+  }, [playQueue, isThisPip, watchPip]);
+
+  const handlePlayWatchResult = useCallback((video: PlaylistItem) => {
+    playVideoNow(video);
+    setSearchQuery('');
+    setActiveTab('queue');
+  }, [playVideoNow]);
+
+  const handleQueueWatchResult = useCallback((video: PlaylistItem) => {
+    addToPlayQueue(video);
+  }, [addToPlayQueue]);
+
   const handleSelectYoutubeResult = useCallback(async (result: any) => {
     if (!result?.url) return;
     const youtubeId = result.videoId;
@@ -1030,8 +1104,9 @@ const MediaPlayer = ({ route, navigation }: any) => {
         })) ||
       watchVideos.find((video) => video.youtubeId === youtubeId);
     if (existingWatch) {
-      addToPlayQueue(existingWatch);
+      playVideoNow(existingWatch);
       setSearchQuery('');
+      setActiveTab('queue');
       return;
     }
     const existing = allVideos.find((video) => video.url === result.url);
@@ -1050,6 +1125,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
     }
     const downloadQueueId = addToPlayQueue(selectedVideo);
     setSearchQuery('');
+    setActiveTab('queue');
     try {
       if (!downloadQueueId) {
         throw new Error('Could not add the video to the playlist.');
@@ -1141,7 +1217,7 @@ const MediaPlayer = ({ route, navigation }: any) => {
       });
       Alert.alert('Download failed', error?.message || 'Could not start YouTube download.');
     }
-  }, [addToPlayQueue, allVideos, refreshLibrary, watchVideos]);
+  }, [addToPlayQueue, playVideoNow, allVideos, refreshLibrary, watchVideos]);
 
   const updateQueuePlayCount = useCallback((queueId: string, nextCount: number) => {
     setPlayQueue((prev) =>
@@ -1366,6 +1442,8 @@ const MediaPlayer = ({ route, navigation }: any) => {
     }
   };
 
+  const showSearchPanel = searchOpen && !!searchQuery.trim();
+
   const playerIsPlaying = isThisPip ? watchPip?.pip?.playing !== false : isPlaying;
 
   const formatTime = useCallback((seconds: number) => {
@@ -1415,15 +1493,6 @@ const MediaPlayer = ({ route, navigation }: any) => {
     }
   }, [currentTrackKey, persistPlaybackState]);
 
-  const toolBtnTheme = {
-    color: t.text,
-    primaryColor: t.primary,
-    primaryText: t.ctaText,
-    btnBg: t.btnBg,
-    btnBorder: t.chipBorder,
-    activeBg: t.success + '38',
-  };
-
   const renderReorder = (
     index: number,
     length: number,
@@ -1452,13 +1521,23 @@ const MediaPlayer = ({ route, navigation }: any) => {
       <StatusBar barStyle={t.statusBar} backgroundColor={t.pageBg} />
       <KeyboardSafeView nested>
         <View style={styles.header}>
-          <Pressable style={[styles.headerBtn, { backgroundColor: t.btnBg }]} onPress={() => navigation.goBack()}>
-            <Icon name="arrow-back" size={20} color={t.text} />
+          <Pressable
+            style={[styles.headerBtn, { backgroundColor: t.overlay }]}
+            onPress={() => navigation.goBack()}
+            hitSlop={6}
+            accessibilityLabel="Go back"
+          >
+            <Icon name="arrow-back" size={22} color={t.text} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: t.text }]}>Video Player</Text>
+          <View style={styles.headerCenter}>
+            <Text style={[styles.headerTitle, { color: t.text }]}>Media</Text>
+            <Text style={[styles.headerSubtitle, { color: t.muted }]} numberOfLines={1}>
+              {stats.total} in library · {playQueue.length} up next
+            </Text>
+          </View>
           {currentYoutubeId ? (
             <Pressable
-              style={[styles.headerBtn, { backgroundColor: t.btnBg }]}
+              style={[styles.headerBtn, { backgroundColor: t.overlay }]}
               onPress={() =>
                 setDownloadTarget({
                   videoId: currentYoutubeId,
@@ -1468,93 +1547,294 @@ const MediaPlayer = ({ route, navigation }: any) => {
               }
               accessibilityLabel="Download this YouTube video"
             >
-              <Icon name="download" size={20} color="#FF0000" />
+              <Icon name="file-download" size={22} color={t.text} />
             </Pressable>
           ) : (
-            <View style={styles.headerBtn} />
+            <Pressable
+              style={[styles.headerBtn, { backgroundColor: t.overlay }]}
+              onPress={() => refreshLibrary({ showSpinner: true })}
+              disabled={libraryLoading}
+              accessibilityLabel="Refresh library"
+            >
+              {libraryLoading ? (
+                <ActivityIndicator size="small" color={t.primary} />
+              ) : (
+                <Icon name="refresh" size={22} color={t.text} />
+              )}
+            </Pressable>
           )}
         </View>
 
-        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-          <View style={styles.stats}>
-            <Text style={[styles.statPill, { color: t.muted, backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>{stats.total} total</Text>
-            <Text style={[styles.statPill, { color: t.muted, backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>{stats.watches} watches</Text>
-            <Text style={[styles.statPill, { color: t.muted, backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>{stats.saved} saved</Text>
-            <Text style={[styles.statPill, { color: t.muted, backgroundColor: t.chipBg, borderColor: t.chipBorder }]}>{stats.custom} custom</Text>
+        <View style={styles.searchWrap}>
+          <View
+            style={[
+              styles.searchBar,
+              {
+                backgroundColor: t.inputBg,
+                borderColor: showSearchPanel ? t.primary : 'transparent',
+              },
+            ]}
+          >
+            <Icon name="search" size={20} color={showSearchPanel ? t.primary : t.muted} />
+            <VoiceTextInput
+              wrapperStyle={styles.searchInputWrap}
+              style={[styles.searchInput, { color: t.text }]}
+              placeholder="Search Watches & YouTube"
+              placeholderTextColor={t.placeholder}
+              value={searchQuery}
+              onChangeText={(text) => {
+                setSearchQuery(text);
+                setSearchOpen(true);
+              }}
+              onFocus={() => setSearchOpen(true)}
+              returnKeyType="search"
+              autoCorrect={false}
+              rightAccessory={
+                searchQuery ? (
+                  <Pressable
+                    hitSlop={8}
+                    style={[styles.searchClear, { backgroundColor: t.chipBg }]}
+                    onPress={() => setSearchQuery('')}
+                    accessibilityLabel="Clear search"
+                  >
+                    <Icon name="close" size={14} color={t.muted} />
+                  </Pressable>
+                ) : undefined
+              }
+            />
           </View>
+        </View>
 
-          {libraryError ? <Text style={[styles.error, { color: t.error }]}>{libraryError}</Text> : null}
-          {currentVideo ? (
-            <View style={[styles.stage, { backgroundColor: t.surface, borderColor: t.border }]}>
-              <View style={styles.stageHeader}>
-                <View style={{ flex: 1 }}>
+        <View style={styles.body}>
+          <ScrollView
+            contentContainerStyle={styles.scroll}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {libraryError ? (
+              <View style={[styles.errorBanner, { backgroundColor: t.error + '1A' }]}>
+                <Icon name="error-outline" size={16} color={t.error} />
+                <Text style={[styles.errorText, { color: t.error }]}>{libraryError}</Text>
+              </View>
+            ) : null}
+
+            {currentVideo ? (
+              <View style={[styles.stage, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={[styles.stageFrame, isFullscreen && styles.hiddenStageFrame]}>
+                  {isThisPip ? (
+                    <View style={[styles.pipPlaceholder, { backgroundColor: t.pageBgAlt }]}>
+                      <Icon name="picture-in-picture-alt" size={32} color={t.muted} />
+                      <Text style={[styles.pipPlaceholderText, { color: t.text }]}>Playing in pop-out mode</Text>
+                      <Pressable style={[styles.pillBtn, { backgroundColor: t.primary }]} onPress={restoreFromPip}>
+                        <Text style={[styles.pillBtnText, { color: t.ctaText }]}>Return here</Text>
+                      </Pressable>
+                    </View>
+                  ) : (
+                    <>
+                      {!isFullscreen ? <ExpoVideo
+                        key={currentTrackKey}
+                        ref={(node) => {
+                          videoRef.current = node;
+                        }}
+                        source={videoSource}
+                        style={styles.video}
+                        resizeMode={ResizeMode.CONTAIN}
+                        shouldPlay={isPlaying && !bgActiveRef.current}
+                        isLooping={false}
+                        useNativeControls={false}
+                        progressUpdateIntervalMillis={500}
+                        posterSource={
+                          currentVideo.thumbnail ? { uri: currentVideo.thumbnail } : undefined
+                        }
+                        onPlaybackStatusUpdate={onPlaybackStatusUpdate}
+                      /> : null}
+                      {!isFullscreen && !mediaReady ? (
+                        <View style={styles.cover} pointerEvents="none">
+                          {currentVideo.thumbnail ? (
+                            <Image source={{ uri: currentVideo.thumbnail }} style={styles.coverImg} />
+                          ) : null}
+                          <View style={styles.coverSpinner}>
+                            <ActivityIndicator color="#fff" />
+                          </View>
+                        </View>
+                      ) : null}
+                      <View style={styles.stageBadges} pointerEvents="box-none">
+                        <View style={styles.stageBadge}>
+                          <Text style={styles.stageBadgeText}>{getTypeLabel(currentVideo.type)}</Text>
+                        </View>
+                        {watchPip && !isThisPip ? (
+                          <Pressable style={styles.stageBadge} onPress={minimizeToPip} hitSlop={6}>
+                            <Icon name="picture-in-picture-alt" size={13} color="#fff" />
+                            <Text style={styles.stageBadgeText}>Pop out</Text>
+                          </Pressable>
+                        ) : null}
+                      </View>
+                    </>
+                  )}
+                </View>
+
+                <View style={styles.stageBody}>
                   <Text style={[styles.stageTitle, { color: t.text }]} numberOfLines={2}>
                     {currentVideo.title}
                   </Text>
-                  <Text style={[styles.stageMeta, { color: t.muted }]}>
+                  <Text style={[styles.stageMeta, { color: t.muted }]} numberOfLines={1}>
                     {getSourceLabel(currentVideo)}
                     {' · '}
-                    {usingQueue ? 'Playlist' : 'Library'} {playbackIndex + 1} of {playbackList.length}
+                    {usingQueue ? 'Up next' : 'Library'} {playbackIndex + 1}/{playbackList.length}
                     {currentPlayback?.playCount > 1
                       ? ` · Repeat ${playPass}/${clampPlayCount(currentPlayback.playCount)}`
                       : ''}
                   </Text>
-                </View>
-                <View style={styles.stageActions}>
-                  <Text style={[styles.badge, { color: t.ctaText, backgroundColor: t.primarySoft }]}>{getTypeLabel(currentVideo.type)}</Text>
-                  {watchPip && !isThisPip ? (
-                    <Pressable style={[styles.popupBadge, { backgroundColor: t.primarySoft }]} onPress={minimizeToPip}>
-                      <Icon name="picture-in-picture-alt" size={13} color={t.primary} />
-                      <Text style={[styles.popupBadgeText, { color: t.primary }]}>Popup</Text>
-                    </Pressable>
-                  ) : null}
-                </View>
-              </View>
 
-              <View style={[styles.stageFrame, isFullscreen && styles.hiddenStageFrame]}>
-                {isThisPip ? (
-                  <View style={[styles.pipPlaceholder, { backgroundColor: t.pageBgAlt }]}>
-                    <Text style={[styles.pipPlaceholderText, { color: t.text }]}>Playing in pop-out mode</Text>
-                    <Pressable style={[styles.secondaryBtn, { backgroundColor: t.btnBg }]} onPress={restoreFromPip}>
-                      <Text style={[styles.secondaryBtnText, { color: t.text }]}>Return here</Text>
+                  {!isThisPip ? (
+                    <View style={styles.progressBlock}>
+                      <Slider
+                        style={styles.scrubSlider}
+                        minimumValue={0}
+                        maximumValue={Math.max(videoDuration, 1)}
+                        value={Math.min(videoPosition, Math.max(videoDuration, 1))}
+                        minimumTrackTintColor={t.primary}
+                        maximumTrackTintColor={t.chipBorder}
+                        thumbTintColor={t.primary}
+                        disabled={videoDuration <= 0}
+                        onValueChange={setVideoPosition}
+                        onSlidingComplete={handleSeekTo}
+                      />
+                      <View style={styles.timeRow}>
+                        <Text style={[styles.timeText, { color: t.muted }]}>{formatTime(videoPosition)}</Text>
+                        <Text style={[styles.timeText, { color: t.muted }]}>{formatTime(videoDuration)}</Text>
+                      </View>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.transport}>
+                    <Pressable
+                      style={styles.transportSide}
+                      onPress={() => {
+                        setIsLooping((prev) => {
+                          const next = !prev;
+                          if (isThisPip) watchPip?.updatePip?.({ looping: next });
+                          return next;
+                        });
+                      }}
+                      accessibilityLabel="Repeat"
+                    >
+                      <Icon name="repeat" size={22} color={isLooping ? t.primary : t.muted} />
+                      {isLooping ? <View style={[styles.activeDot, { backgroundColor: t.primary }]} /> : null}
+                    </Pressable>
+                    <Pressable
+                      style={[styles.transportBtn, playbackList.length <= 1 && styles.disabled]}
+                      onPress={handlePrev}
+                      disabled={playbackList.length <= 1}
+                      accessibilityLabel="Previous"
+                    >
+                      <Icon name="skip-previous" size={32} color={t.text} />
+                    </Pressable>
+                    <Pressable
+                      style={[styles.playBtn, { backgroundColor: t.primary }]}
+                      onPress={togglePlayPause}
+                      accessibilityLabel={playerIsPlaying ? 'Pause' : 'Play'}
+                    >
+                      <Icon name={playerIsPlaying ? 'pause' : 'play-arrow'} size={34} color={t.ctaText} />
+                    </Pressable>
+                    <Pressable
+                      style={[styles.transportBtn, playbackList.length <= 1 && styles.disabled]}
+                      onPress={handleNext}
+                      disabled={playbackList.length <= 1}
+                      accessibilityLabel="Next"
+                    >
+                      <Icon name="skip-next" size={32} color={t.text} />
+                    </Pressable>
+                    <Pressable
+                      style={styles.transportSide}
+                      onPress={toggleFullscreen}
+                      accessibilityLabel="Fullscreen"
+                    >
+                      <Icon name={isFullscreen ? 'fullscreen-exit' : 'fullscreen'} size={24} color={t.muted} />
                     </Pressable>
                   </View>
-                ) : (
-                  <>
-                    {!isFullscreen ? <ExpoVideo
+
+                  <View style={[styles.actionRow, { borderTopColor: t.border }]}>
+                    {watchPip && !isThisPip ? (
+                      <Pressable style={styles.actionItem} onPress={minimizeToPip}>
+                        <Icon name="picture-in-picture-alt" size={20} color={t.text} />
+                        <Text style={[styles.actionLabel, { color: t.muted }]}>Pop out</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable style={styles.actionItem} onPress={() => setShowEqualizerModal(true)}>
+                      <Icon name="equalizer" size={20} color={t.text} />
+                      <Text style={[styles.actionLabel, { color: t.muted }]}>Equalizer</Text>
+                    </Pressable>
+                    {currentYoutubeId ? (
+                      <Pressable
+                        style={styles.actionItem}
+                        onPress={() =>
+                          setDownloadTarget({
+                            videoId: currentYoutubeId,
+                            title: currentVideo?.title || 'YouTube video',
+                            thumbnail: currentVideo?.thumbnail || undefined,
+                          })
+                        }
+                      >
+                        <Icon name="file-download" size={20} color={t.text} />
+                        <Text style={[styles.actionLabel, { color: t.muted }]}>Download</Text>
+                      </Pressable>
+                    ) : null}
+                    <Pressable
+                      style={styles.actionItem}
+                      onPress={() => refreshLibrary({ showSpinner: true })}
+                      disabled={libraryLoading}
+                    >
+                      {libraryLoading ? (
+                        <ActivityIndicator size="small" color={t.text} />
+                      ) : (
+                        <Icon name="refresh" size={20} color={t.text} />
+                      )}
+                      <Text style={[styles.actionLabel, { color: t.muted }]}>Refresh</Text>
+                    </Pressable>
+                  </View>
+                </View>
+
+                {isFullscreen ? (
+                  <Modal
+                    visible
+                    animationType="fade"
+                    supportedOrientations={['landscape']}
+                    onRequestClose={toggleFullscreen}
+                  >
+                  <View style={styles.fullscreenOverlay}>
+                    <ExpoVideo
                       key={currentTrackKey}
                       ref={(node) => {
                         videoRef.current = node;
                       }}
                       source={videoSource}
-                      style={styles.video}
+                      style={styles.fullscreenVideo}
                       resizeMode={ResizeMode.CONTAIN}
                       shouldPlay={isPlaying && !bgActiveRef.current}
                       isLooping={false}
                       useNativeControls={false}
                       progressUpdateIntervalMillis={500}
-                      posterSource={
-                        currentVideo.thumbnail ? { uri: currentVideo.thumbnail } : undefined
-                      }
                       onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-                    /> : null}
-                    {!isFullscreen && !mediaReady ? (
-                      <View style={styles.cover} pointerEvents="none">
-                        {currentVideo.thumbnail ? (
-                          <Image source={{ uri: currentVideo.thumbnail }} style={styles.coverImg} />
-                        ) : (
-                          <ActivityIndicator color={t.mediaIcon} />
-                        )}
-                      </View>
-                    ) : null}
-
-                    {!isFullscreen ? <View style={[styles.videoController, { backgroundColor: 'rgba(0,0,0,0.38)' }]}>
+                    />
+                    <View style={styles.fullscreenTopBar}>
+                      <Pressable style={styles.fullscreenIconBtn} onPress={toggleFullscreen} hitSlop={8}>
+                        <Icon name="arrow-back" size={24} color="#fff" />
+                      </Pressable>
+                      <Text style={styles.fullscreenTitle} numberOfLines={1}>
+                        {currentVideo.title}
+                      </Text>
+                      <Pressable style={styles.fullscreenIconBtn} onPress={toggleFullscreen} hitSlop={8}>
+                        <Icon name="fullscreen-exit" size={23} color="#fff" />
+                      </Pressable>
+                    </View>
+                    <View style={styles.fullscreenBottomBar}>
                       <View style={styles.timeRow}>
-                        <Text style={[styles.timeText, { color: '#fff' }]}>{formatTime(videoPosition)}</Text>
-                        <Text style={[styles.timeText, { color: '#fff' }]}>{formatTime(videoDuration)}</Text>
+                        <Text style={styles.fullscreenTimeText}>{formatTime(videoPosition)}</Text>
+                        <Text style={styles.fullscreenTimeText}>{formatTime(videoDuration)}</Text>
                       </View>
                       <Slider
-                        style={styles.scrubSlider}
+                        style={styles.fullscreenScrubSlider}
                         minimumValue={0}
                         maximumValue={Math.max(videoDuration, 1)}
                         value={Math.min(videoPosition, Math.max(videoDuration, 1))}
@@ -1565,497 +1845,700 @@ const MediaPlayer = ({ route, navigation }: any) => {
                         onValueChange={setVideoPosition}
                         onSlidingComplete={handleSeekTo}
                       />
-                    </View> : null}
-                  </>
-                )}
-              </View>
-
-              <View style={[styles.toolbar, { backgroundColor: t.overlay }]}>
-                <ToolBtn
-                  icon="refresh"
-                  onPress={() => refreshLibrary({ showSpinner: true })}
-                  disabled={libraryLoading}
-                  spinning={libraryLoading}
-                  {...toolBtnTheme}
-                />
-                <ToolBtn
-                  icon="skip-previous"
-                  onPress={handlePrev}
-                  disabled={playbackList.length <= 1}
-                  {...toolBtnTheme}
-                />
-                <ToolBtn
-                  icon={playerIsPlaying ? 'pause' : 'play-arrow'}
-                  onPress={togglePlayPause}
-                  primary
-                  {...toolBtnTheme}
-                />
-                <ToolBtn
-                  icon="skip-next"
-                  onPress={handleNext}
-                  disabled={playbackList.length <= 1}
-                  {...toolBtnTheme}
-                />
-                <ToolBtn
-                  icon="repeat"
-                  onPress={() => {
-                    setIsLooping((prev) => {
-                      const next = !prev;
-                      if (isThisPip) watchPip?.updatePip?.({ looping: next });
-                      return next;
-                    });
-                  }}
-                  active={isLooping}
-                  {...toolBtnTheme}
-                />
-                {watchPip && !isThisPip ? (
-                  <ToolBtn icon="picture-in-picture-alt" onPress={minimizeToPip} {...toolBtnTheme} />
-                ) : null}
-                <ToolBtn
-                  icon="equalizer"
-                  onPress={() => setShowEqualizerModal(true)}
-                  {...toolBtnTheme}
-                />
-                <ToolBtn
-                  icon={isFullscreen ? 'fullscreen-exit' : 'fullscreen'}
-                  onPress={toggleFullscreen}
-                  {...toolBtnTheme}
-                />
-              </View>
-              {isFullscreen ? (
-                <Modal
-                  visible
-                  animationType="fade"
-                  supportedOrientations={['landscape']}
-                  onRequestClose={toggleFullscreen}
-                >
-                <View style={styles.fullscreenOverlay}>
-                  <ExpoVideo
-                    key={currentTrackKey}
-                    ref={(node) => {
-                      videoRef.current = node;
-                    }}
-                    source={videoSource}
-                    style={styles.fullscreenVideo}
-                    resizeMode={ResizeMode.CONTAIN}
-                    shouldPlay={isPlaying && !bgActiveRef.current}
-                    isLooping={false}
-                    useNativeControls={false}
-                    progressUpdateIntervalMillis={500}
-                    onPlaybackStatusUpdate={onPlaybackStatusUpdate}
-                  />
-                  <View style={styles.fullscreenTopBar}>
-                    <Pressable style={styles.fullscreenIconBtn} onPress={toggleFullscreen} hitSlop={8}>
-                      <Icon name="arrow-back" size={24} color="#fff" />
-                    </Pressable>
-                    <Text style={styles.fullscreenTitle} numberOfLines={1}>
-                      {currentVideo.title}
-                    </Text>
-                    <Pressable style={styles.fullscreenIconBtn} onPress={toggleFullscreen} hitSlop={8}>
-                      <Icon name="fullscreen-exit" size={23} color="#fff" />
-                    </Pressable>
-                  </View>
-                  <View style={styles.fullscreenBottomBar}>
-                    <View style={styles.timeRow}>
-                      <Text style={styles.fullscreenTimeText}>{formatTime(videoPosition)}</Text>
-                      <Text style={styles.fullscreenTimeText}>{formatTime(videoDuration)}</Text>
-                    </View>
-                    <Slider
-                      style={styles.fullscreenScrubSlider}
-                      minimumValue={0}
-                      maximumValue={Math.max(videoDuration, 1)}
-                      value={Math.min(videoPosition, Math.max(videoDuration, 1))}
-                      minimumTrackTintColor={t.primary}
-                      maximumTrackTintColor="rgba(255,255,255,0.35)"
-                      thumbTintColor={t.primary}
-                      disabled={videoDuration <= 0}
-                      onValueChange={setVideoPosition}
-                      onSlidingComplete={handleSeekTo}
-                    />
-                    <View style={styles.fullscreenActions}>
-                      <Pressable style={styles.fullscreenActionBtn} onPress={handlePrev} disabled={playbackList.length <= 1}>
-                        <Icon name="skip-previous" size={28} color={playbackList.length <= 1 ? '#777' : '#fff'} />
-                      </Pressable>
-                      <Pressable style={[styles.fullscreenPlayBtn, { backgroundColor: t.primary }]} onPress={togglePlayPause}>
-                        <Icon name={playerIsPlaying ? 'pause' : 'play-arrow'} size={30} color={t.ctaText} />
-                      </Pressable>
-                      <Pressable style={styles.fullscreenActionBtn} onPress={handleNext} disabled={playbackList.length <= 1}>
-                        <Icon name="skip-next" size={28} color={playbackList.length <= 1 ? '#777' : '#fff'} />
-                      </Pressable>
-                    </View>
-                  </View>
-                </View>
-                </Modal>
-              ) : null}
-            </View>
-          ) : (
-            <View style={[styles.emptyStage, { borderColor: t.border, backgroundColor: t.surface }]}>
-              <Text style={styles.emptyIcon}>🎬</Text>
-              <Text style={[styles.emptyTitle, { color: t.text }]}>No videos in library</Text>
-              <Text style={[styles.emptyHint, { color: t.muted }]}>
-                Add a URL, upload a file, or save/download videos to populate your playlist
-              </Text>
-              <Pressable
-                style={[styles.secondaryBtn, { backgroundColor: t.btnBg }]}
-                onPress={() => refreshLibrary({ showSpinner: true })}
-                disabled={libraryLoading}
-              >
-                <Text style={[styles.secondaryBtnText, { color: t.text }]}>
-                  {libraryLoading ? 'Refreshing…' : 'Refresh library'}
-                </Text>
-              </Pressable>
-            </View>
-          )}
-
-          <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, { color: t.text }]}>Playlist</Text>
-              <Text style={[styles.count, { color: t.muted }]}>{playQueue.length} videos</Text>
-            </View>
-            <Text style={[styles.hint, { color: t.tertiary }]}>
-              Add clips, then set how many times each one plays before the next video starts.
-            </Text>
-            {playQueue.length > 0 ? (
-              <Pressable style={[styles.smallBtn, { backgroundColor: t.btnBg }]} onPress={clearPlayQueue}>
-                <Text style={[styles.smallBtnText, { color: t.text }]}>Clear playlist</Text>
-              </Pressable>
-            ) : null}
-            {playQueue.length > 1 ? (
-              <Text style={[styles.hint, { color: t.tertiary }]}>Use the arrow buttons to reorder the playlist</Text>
-            ) : null}
-            {playQueue.length > 0 ? (
-              playQueue.map((item, index) => (
-                <Pressable
-                  key={item.queueId}
-                  style={[
-                    styles.listItem,
-                    { backgroundColor: t.listBg },
-                    usingQueue && index === queueIndex && { backgroundColor: t.primarySoft },
-                  ]}
-                  onPress={() => handlePlayQueueItem(index)}
-                >
-                  {playQueue.length > 1
-                    ? renderReorder(index, playQueue.length, applyQueueReorder)
-                    : null}
-                  <View style={[styles.thumb, { backgroundColor: t.btnBg }]}>
-                    {item.thumbnail ? (
-                      <Image source={{ uri: item.thumbnail }} style={styles.coverImg} />
-                    ) : usingQueue && index === queueIndex && playerIsPlaying ? (
-                      <Text style={[styles.playingMark, { color: t.success }]}>▶</Text>
-                    ) : (
-                      <Text style={[styles.playNumber, { color: t.muted }]}>{index + 1}</Text>
-                    )}
-                  </View>
-                  <View style={styles.itemInfo}>
-                    <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>
-                      {item.title}
-                    </Text>
-                    <Text style={[styles.itemMeta, { color: t.muted }]}>
-                      {usingQueue && index === queueIndex
-                        ? `Playing ${playPass} of ${clampPlayCount(item.playCount)}`
-                        : `Play ${clampPlayCount(item.playCount)} time${clampPlayCount(item.playCount) === 1 ? '' : 's'}`}
-                    </Text>
-                    {youtubeDownload?.queueId === item.queueId ? (
-                      <View style={[styles.downloadProgress, { backgroundColor: t.surface, borderColor: t.border }]}>
-                        <View style={styles.downloadProgressHeader}>
-                          <Text style={[styles.itemMeta, { color: t.primary }]}>
-                            {youtubeDownload.percent}%
-                          </Text>
-                          <Text
-                            style={[styles.itemMeta, { color: youtubeDownload.error ? t.error : t.muted }]}
-                            numberOfLines={1}
-                          >
-                            {youtubeDownload.error || youtubeDownload.stage}
-                          </Text>
-                        </View>
-                        <View style={styles.downloadTrack}>
-                          <View
-                            style={[
-                              styles.downloadFill,
-                              {
-                                width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%`,
-                                backgroundColor: t.primary,
-                              },
-                            ]}
-                          />
-                        </View>
+                      <View style={styles.fullscreenActions}>
+                        <Pressable style={styles.fullscreenActionBtn} onPress={handlePrev} disabled={playbackList.length <= 1}>
+                          <Icon name="skip-previous" size={28} color={playbackList.length <= 1 ? '#777' : '#fff'} />
+                        </Pressable>
+                        <Pressable style={[styles.fullscreenPlayBtn, { backgroundColor: t.primary }]} onPress={togglePlayPause}>
+                          <Icon name={playerIsPlaying ? 'pause' : 'play-arrow'} size={30} color={t.ctaText} />
+                        </Pressable>
+                        <Pressable style={styles.fullscreenActionBtn} onPress={handleNext} disabled={playbackList.length <= 1}>
+                          <Icon name="skip-next" size={28} color={playbackList.length <= 1 ? '#777' : '#fff'} />
+                        </Pressable>
                       </View>
-                    ) : null}
+                    </View>
                   </View>
-                  <View style={styles.repeatControl}>
-                    <Pressable
-                      style={[styles.repeatBtn, { backgroundColor: t.btnBg }]}
-                      disabled={item.playCount <= MIN_PLAY_COUNT}
-                      onPress={() => updateQueuePlayCount(item.queueId, item.playCount - 1)}
-                    >
-                      <Text style={[styles.repeatBtnText, { color: t.text }]}>−</Text>
-                    </Pressable>
-                    <Text style={[styles.repeatValue, { color: t.text }]}>{item.playCount}</Text>
-                    <Pressable
-                      style={[styles.repeatBtn, { backgroundColor: t.btnBg }]}
-                      disabled={item.playCount >= MAX_PLAY_COUNT}
-                      onPress={() => updateQueuePlayCount(item.queueId, item.playCount + 1)}
-                    >
-                      <Text style={[styles.repeatBtnText, { color: t.text }]}>+</Text>
-                    </Pressable>
-                  </View>
-                  <Pressable
-                    style={styles.removeBtn}
-                    onPress={() => removeFromPlayQueue(item.queueId)}
-                  >
-                    <Text style={[styles.removeBtnText, { color: t.error }]}>×</Text>
-                  </Pressable>
-                </Pressable>
-              ))
-            ) : (
-              <View style={styles.emptyList}>
-                <Text style={[styles.emptyListTitle, { color: t.text }]}>Playlist is empty</Text>
-                <Text style={[styles.hint, { color: t.tertiary }]}>Add videos from the library below, or paste a URL</Text>
+                  </Modal>
+                ) : null}
               </View>
-            )}
-          </View>
-
-          <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, { color: t.text }]}>Saved playlists</Text>
-              <Text style={[styles.count, { color: t.muted }]}>{savedPlaylists.length}</Text>
-            </View>
-            {myProfileId ? (
-              <>
-                <View style={styles.playlistSaveForm}>
-                  <TextInput
-                    style={[styles.playlistNameInput, { color: t.text, borderColor: t.border }]}
-                    placeholder="Playlist name"
-                    placeholderTextColor={t.muted}
-                    value={playlistName}
-                    maxLength={120}
-                    onChangeText={setPlaylistName}
-                  />
+            ) : (
+              <View style={[styles.emptyStage, { borderColor: t.border, backgroundColor: t.surface }]}>
+                <View style={[styles.emptyIconWrap, { backgroundColor: t.primarySoft }]}>
+                  <Icon name="video-library" size={30} color={t.primary} />
+                </View>
+                <Text style={[styles.emptyTitle, { color: t.text }]}>Nothing playing yet</Text>
+                <Text style={[styles.emptyHint, { color: t.muted }]}>
+                  Search Watches or YouTube above, pick something from your library, or add a video link.
+                </Text>
+                <View style={styles.emptyActions}>
                   <Pressable
-                    style={[styles.smallBtn, { backgroundColor: t.primary }]}
-                    disabled={!playlistName.trim() || playQueue.length === 0 || savingPlaylist}
-                    onPress={saveCurrentPlaylist}
+                    style={[styles.pillBtn, { backgroundColor: t.primary }]}
+                    onPress={() => setActiveTab('library')}
                   >
-                    {savingPlaylist ? <ActivityIndicator color={t.ctaText} /> : <Text style={[styles.smallBtnText, { color: t.ctaText }]}>Save</Text>}
+                    <Text style={[styles.pillBtnText, { color: t.ctaText }]}>Browse library</Text>
+                  </Pressable>
+                  <Pressable
+                    style={[styles.pillBtn, { backgroundColor: t.chipBg }]}
+                    onPress={() => refreshLibrary({ showSpinner: true })}
+                    disabled={libraryLoading}
+                  >
+                    <Text style={[styles.pillBtnText, { color: t.text }]}>
+                      {libraryLoading ? 'Refreshing…' : 'Refresh'}
+                    </Text>
                   </Pressable>
                 </View>
-                {savedPlaylists.length > 0 ? savedPlaylists.map((playlist) => (
-                  <View key={playlist._id} style={[styles.savedPlaylistRow, { borderColor: t.border }]}>
-                    <Pressable style={styles.savedPlaylistLoad} onPress={() => loadNamedPlaylist(playlist)}>
-                      <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={1}>{playlist.name}</Text>
-                      <Text style={[styles.itemMeta, { color: t.muted }]}>{playlist.items?.length || 0} videos</Text>
-                    </Pressable>
-                    <Pressable onPress={() => removeNamedPlaylist(playlist)}>
-                      <Text style={[styles.removeBtnText, { color: t.error }]}>×</Text>
-                    </Pressable>
-                  </View>
-                )) : (
-                  <Text style={[styles.hint, { color: t.tertiary }]}>Save the current playlist to access it on any device.</Text>
-                )}
-              </>
-            ) : (
-              <Text style={[styles.hint, { color: t.tertiary }]}>Sign in to save playlists across devices.</Text>
-            )}
-          </View>
-
-          <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-            <View style={styles.cardHeader}>
-              <Text style={[styles.cardTitle, { color: t.text }]}>Library</Text>
-              <View style={styles.headerActions}>
-                <Text style={[styles.count, { color: t.muted }]}>{filteredVideos.length} videos</Text>
-                {filteredVideos.length > 0 ? (
-                  <Pressable
-                    style={[styles.smallBtn, { backgroundColor: t.btnBg }]}
-                    onPress={() => filteredVideos.forEach((video) => addToPlayQueue(video))}
-                  >
-                    <Text style={[styles.smallBtnText, { color: t.text }]}>Add all</Text>
-                  </Pressable>
-                ) : null}
               </View>
+            )}
+
+            <View style={[styles.tabs, { backgroundColor: t.overlay }]}>
+              {TABS.map((tab) => {
+                const active = activeTab === tab.id;
+                const count =
+                  tab.id === 'queue'
+                    ? playQueue.length
+                    : tab.id === 'library'
+                      ? stats.total
+                      : tab.id === 'saved'
+                        ? savedPlaylists.length
+                        : null;
+                return (
+                  <Pressable
+                    key={tab.id}
+                    style={[styles.tab, active && [styles.tabActive, { backgroundColor: t.surface }, t.chromeElevation]]}
+                    onPress={() => setActiveTab(tab.id)}
+                  >
+                    <Icon name={tab.icon} size={16} color={active ? t.primary : t.muted} />
+                    <Text
+                      style={[styles.tabText, { color: active ? t.text : t.muted }, active && styles.tabTextActive]}
+                      numberOfLines={1}
+                    >
+                      {tab.label}
+                    </Text>
+                    {count ? (
+                      <Text style={[styles.tabCount, { color: active ? t.primary : t.tertiary }]}>{count}</Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
-              {FILTER_OPTIONS.map((opt) => (
-                <Pressable
-                  key={opt.id}
-                  style={[
-                    styles.filterBtn,
-                    { backgroundColor: t.chipBg },
-                    filter === opt.id && { backgroundColor: t.primaryMid },
-                  ]}
-                  onPress={() => {
-                    setFilter(opt.id);
-                    setCurrentVideoIndex(0);
-                  }}
-                >
-                  <Text style={[styles.filterText, { color: t.muted }, filter === opt.id && { color: t.ctaText, fontWeight: '700' }]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            <VoiceTextInput
-              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-              placeholder="Search library…"
-              placeholderTextColor={t.placeholder}
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-            {searchQuery.trim() ? (
-              <View style={[styles.youtubeResults, { borderColor: t.border, backgroundColor: t.inputBg }]}>
-                <Text style={[styles.youtubeHeading, { color: t.muted }]}>
-                  YouTube {youtubeSearching ? 'searching…' : ''}
-                </Text>
-                {youtubeSearchError ? (
-                  <Text style={[styles.hint, { color: t.error }]}>{youtubeSearchError}</Text>
-                ) : null}
-                {youtubeResults.map((result) => (
-                  <Pressable
-                    key={result.videoId}
-                    style={[styles.youtubeResult, { borderTopColor: t.border }]}
-                    onPress={() => handleSelectYoutubeResult(result)}
-                  >
-                    <Image source={{ uri: result.thumbnail }} style={styles.youtubeThumb} />
-                    <View style={styles.youtubeResultInfo}>
-                      <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>{result.title}</Text>
-                      <Text style={[styles.itemMeta, { color: t.muted }]} numberOfLines={1}>
-                        {result.localWatch ? 'Already in Watch · added instantly' : result.channelTitle}
-                      </Text>
-                    </View>
-                    <Pressable
-                      hitSlop={8}
-                      style={styles.youtubeDownloadBtn}
-                      onPress={() =>
-                        setDownloadTarget({
-                          videoId: result.videoId,
-                          title: result.title || 'YouTube video',
-                          thumbnail: result.thumbnail,
-                        })
-                      }
-                      accessibilityLabel={`Download ${result.title || 'video'}`}
-                    >
-                      <Icon name="download" size={20} color="#FF0000" />
-                    </Pressable>
-                    <Icon name="add" size={20} color={t.primary} />
-                  </Pressable>
-                ))}
-                {!youtubeSearching && youtubeResults.length === 0 ? (
-                  <Text style={[styles.hint, { color: t.tertiary }]}>No YouTube results</Text>
-                ) : null}
-              </View>
-            ) : null}
-
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
-              {SORT_OPTIONS.map((opt) => (
-                <Pressable
-                  key={opt.id}
-                  style={[
-                    styles.filterBtn,
-                    { backgroundColor: t.chipBg },
-                    sortMode === opt.id && { backgroundColor: t.primaryMid },
-                  ]}
-                  onPress={() => {
-                    setSortMode(opt.id);
-                    setCurrentVideoIndex(0);
-                  }}
-                >
-                  <Text style={[styles.filterText, { color: t.muted }, sortMode === opt.id && { color: t.ctaText, fontWeight: '700' }]}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-
-            {sortMode === 'custom' && filteredVideos.length > 1 ? (
-              <Text style={[styles.hint, { color: t.tertiary }]}>Use the arrow buttons to reorder videos</Text>
-            ) : null}
-
-            {libraryLoading && filteredVideos.length === 0 ? (
-              <View style={styles.emptyList}>
-                <Text style={[styles.emptyListTitle, { color: t.text }]}>Loading your videos…</Text>
-              </View>
-            ) : filteredVideos.length > 0 ? (
-              filteredVideos.map((video, index) => (
-                <Pressable
-                  key={video.id}
-                  style={[
-                    styles.listItem,
-                    { backgroundColor: t.listBg },
-                    ((!usingQueue && index === currentVideoIndex) ||
-                      (usingQueue && currentPlayback?.videoId === video.id)) &&
-                      { backgroundColor: t.primarySoft },
-                  ]}
-                  onPress={() => handlePlayVideo(index)}
-                >
-                  {sortMode === 'custom'
-                    ? renderReorder(index, filteredVideos.length, applyPlaylistReorder)
-                    : null}
-                  <View style={[styles.thumb, { backgroundColor: t.btnBg }]}>
-                    {video.thumbnail ? (
-                      <Image source={{ uri: video.thumbnail }} style={styles.coverImg} />
-                    ) : !usingQueue && index === currentVideoIndex && playerIsPlaying ? (
-                      <Text style={[styles.playingMark, { color: t.success }]}>▶</Text>
-                    ) : (
-                      <Text style={[styles.playNumber, { color: t.muted }]}>{index + 1}</Text>
-                    )}
-                  </View>
-                  <View style={styles.itemInfo}>
-                    <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>
-                      {video.title}
+            {activeTab === 'queue' ? (
+              <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: t.text }]}>Up next</Text>
+                    <Text style={[styles.cardSubtitle, { color: t.muted }]}>
+                      Set how many times each video plays before moving on.
                     </Text>
-                    <Text style={[styles.itemMeta, { color: t.muted }]}>{getSourceLabel(video)}</Text>
                   </View>
-                  <Pressable style={[styles.addBtn, { backgroundColor: t.primarySoft }]} onPress={() => addToPlayQueue(video)}>
-                    <Text style={[styles.addBtnText, { color: t.primary }]}>Add</Text>
-                  </Pressable>
-                  {(video.type === 'url' || video.type === 'file') && (
-                    <Pressable style={styles.removeBtn} onPress={() => handleRemoveVideo(video)}>
-                      <Text style={[styles.removeBtnText, { color: t.error }]}>×</Text>
+                  {playQueue.length > 0 ? (
+                    <Pressable style={[styles.ghostBtn, { borderColor: t.border }]} onPress={clearPlayQueue}>
+                      <Icon name="clear-all" size={16} color={t.muted} />
+                      <Text style={[styles.ghostBtnText, { color: t.muted }]}>Clear</Text>
                     </Pressable>
-                  )}
-                </Pressable>
-              ))
-            ) : (
-              <View style={styles.emptyList}>
-                <Text style={[styles.emptyListTitle, { color: t.text }]}>No videos match this filter</Text>
-                <Text style={[styles.hint, { color: t.tertiary }]}>Try All or Server, or refresh the library</Text>
+                  ) : null}
+                </View>
+                {playQueue.length > 0 ? (
+                  playQueue.map((item, index) => {
+                    const isCurrent = usingQueue && index === queueIndex;
+                    return (
+                      <Pressable
+                        key={item.queueId}
+                        style={[
+                          styles.listItem,
+                          isCurrent && { backgroundColor: t.primarySoft },
+                        ]}
+                        onPress={() => handlePlayQueueItem(index)}
+                      >
+                        {playQueue.length > 1
+                          ? renderReorder(index, playQueue.length, applyQueueReorder)
+                          : null}
+                        <View style={[styles.thumb, { backgroundColor: t.chipBg }]}>
+                          {item.thumbnail ? (
+                            <Image source={{ uri: item.thumbnail }} style={styles.coverImg} />
+                          ) : (
+                            <Icon name="movie" size={20} color={t.muted} />
+                          )}
+                          {isCurrent ? (
+                            <View style={styles.thumbOverlay}>
+                              <Icon name={playerIsPlaying ? 'graphic-eq' : 'pause'} size={20} color="#fff" />
+                            </View>
+                          ) : null}
+                        </View>
+                        <View style={styles.itemInfo}>
+                          <Text
+                            style={[styles.itemTitle, { color: isCurrent ? t.primary : t.text }]}
+                            numberOfLines={2}
+                          >
+                            {item.title}
+                          </Text>
+                          <Text style={[styles.itemMeta, { color: t.muted }]}>
+                            {isCurrent
+                              ? `Now playing · ${playPass} of ${clampPlayCount(item.playCount)}`
+                              : `${getTypeLabel(item.type)} · plays ${clampPlayCount(item.playCount)}×`}
+                          </Text>
+                          {youtubeDownload?.queueId === item.queueId ? (
+                            <View style={styles.downloadProgress}>
+                              <View style={styles.downloadProgressHeader}>
+                                <Text style={[styles.itemMeta, { color: t.primary, fontWeight: '700' }]}>
+                                  {youtubeDownload.percent}%
+                                </Text>
+                                <Text
+                                  style={[styles.itemMeta, { flex: 1, color: youtubeDownload.error ? t.error : t.muted }]}
+                                  numberOfLines={1}
+                                >
+                                  {youtubeDownload.error || youtubeDownload.stage}
+                                </Text>
+                              </View>
+                              <View style={[styles.downloadTrack, { backgroundColor: t.chipBg }]}>
+                                <View
+                                  style={[
+                                    styles.downloadFill,
+                                    {
+                                      width: `${Math.min(100, Math.max(0, youtubeDownload.percent))}%`,
+                                      backgroundColor: youtubeDownload.error ? t.error : t.primary,
+                                    },
+                                  ]}
+                                />
+                              </View>
+                            </View>
+                          ) : null}
+                        </View>
+                        <View style={[styles.stepper, { borderColor: t.border }]}>
+                          <Pressable
+                            style={styles.stepperBtn}
+                            disabled={item.playCount <= MIN_PLAY_COUNT}
+                            onPress={() => updateQueuePlayCount(item.queueId, item.playCount - 1)}
+                            hitSlop={4}
+                            accessibilityLabel="Play fewer times"
+                          >
+                            <Icon name="remove" size={14} color={item.playCount <= MIN_PLAY_COUNT ? t.disabled : t.text} />
+                          </Pressable>
+                          <Text style={[styles.stepperValue, { color: t.text }]}>{item.playCount}×</Text>
+                          <Pressable
+                            style={styles.stepperBtn}
+                            disabled={item.playCount >= MAX_PLAY_COUNT}
+                            onPress={() => updateQueuePlayCount(item.queueId, item.playCount + 1)}
+                            hitSlop={4}
+                            accessibilityLabel="Play more times"
+                          >
+                            <Icon name="add" size={14} color={item.playCount >= MAX_PLAY_COUNT ? t.disabled : t.text} />
+                          </Pressable>
+                        </View>
+                        <Pressable
+                          style={styles.iconBtn}
+                          onPress={() => removeFromPlayQueue(item.queueId)}
+                          hitSlop={6}
+                          accessibilityLabel="Remove from up next"
+                        >
+                          <Icon name="close" size={18} color={t.muted} />
+                        </Pressable>
+                      </Pressable>
+                    );
+                  })
+                ) : (
+                  <View style={styles.emptyList}>
+                    <Icon name="queue-music" size={32} color={t.tertiary} />
+                    <Text style={[styles.emptyListTitle, { color: t.text }]}>Your queue is empty</Text>
+                    <Text style={[styles.hint, { color: t.tertiary }]}>
+                      Search above or add videos from your library.
+                    </Text>
+                    <Pressable
+                      style={[styles.pillBtn, { backgroundColor: t.primarySoft, marginTop: 10 }]}
+                      onPress={() => setActiveTab('library')}
+                    >
+                      <Text style={[styles.pillBtnText, { color: t.primary }]}>Open library</Text>
+                    </Pressable>
+                  </View>
+                )}
               </View>
-            )}
-          </View>
+            ) : null}
 
-          <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
-            <Text style={[styles.cardTitle, { color: t.text }]}>Add custom video</Text>
-            <Text style={[styles.inputLabel, { color: t.muted }]}>Video title (optional)</Text>
-            <VoiceTextInput
-              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-              placeholder="Enter video title"
-              placeholderTextColor={t.placeholder}
-              value={videoTitle}
-              onChangeText={setVideoTitle}
-            />
-            <Text style={[styles.inputLabel, { color: t.muted }]}>Video URL</Text>
-            <VoiceTextInput
-              style={[styles.input, { backgroundColor: t.inputBg, borderColor: t.border, color: t.text }]}
-              placeholder="https://example.com/video.mp4"
-              placeholderTextColor={t.placeholder}
-              value={videoUrl}
-              onChangeText={setVideoUrl}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-            <Pressable
-              style={[styles.primaryBtn, { backgroundColor: t.primary }, !videoUrl.trim() && styles.toolBtnDisabled]}
-              disabled={!videoUrl.trim()}
-              onPress={handleAddVideo}
-            >
-              <Text style={[styles.primaryBtnText, { color: t.ctaText }]}>Add from URL</Text>
-            </Pressable>
-            <Pressable style={[styles.secondaryBtn, { backgroundColor: t.btnBg }]} onPress={handleFileUpload}>
-              <Text style={[styles.secondaryBtnText, { color: t.text }]}>Upload file</Text>
-            </Pressable>
-          </View>
-        </ScrollView>
+            {activeTab === 'saved' ? (
+              <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: t.text }]}>Saved playlists</Text>
+                    <Text style={[styles.cardSubtitle, { color: t.muted }]}>
+                      Synced across all your devices.
+                    </Text>
+                  </View>
+                </View>
+                {myProfileId ? (
+                  <>
+                    <View style={styles.playlistSaveForm}>
+                      <TextInput
+                        style={[styles.playlistNameInput, { color: t.text, backgroundColor: t.inputBg }]}
+                        placeholder={playQueue.length ? 'Name this queue…' : 'Add videos to Up next first'}
+                        placeholderTextColor={t.placeholder}
+                        value={playlistName}
+                        maxLength={120}
+                        editable={playQueue.length > 0}
+                        onChangeText={setPlaylistName}
+                        onSubmitEditing={saveCurrentPlaylist}
+                        returnKeyType="done"
+                      />
+                      <Pressable
+                        style={[
+                          styles.saveBtn,
+                          { backgroundColor: t.primary },
+                          (!playlistName.trim() || playQueue.length === 0) && styles.disabled,
+                        ]}
+                        disabled={!playlistName.trim() || playQueue.length === 0 || savingPlaylist}
+                        onPress={saveCurrentPlaylist}
+                      >
+                        {savingPlaylist ? (
+                          <ActivityIndicator size="small" color={t.ctaText} />
+                        ) : (
+                          <Text style={[styles.pillBtnText, { color: t.ctaText }]}>Save</Text>
+                        )}
+                      </Pressable>
+                    </View>
+                    {savedPlaylists.length > 0 ? savedPlaylists.map((playlist) => (
+                      <Pressable
+                        key={playlist._id}
+                        style={[styles.savedPlaylistRow, { backgroundColor: t.listBg }]}
+                        onPress={() => {
+                          loadNamedPlaylist(playlist);
+                          setActiveTab('queue');
+                        }}
+                      >
+                        <View style={[styles.playlistIcon, { backgroundColor: t.primarySoft }]}>
+                          <Icon name="playlist-play" size={22} color={t.primary} />
+                        </View>
+                        <View style={styles.itemInfo}>
+                          <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={1}>{playlist.name}</Text>
+                          <Text style={[styles.itemMeta, { color: t.muted }]}>
+                            {playlist.items?.length || 0} videos · tap to load
+                          </Text>
+                        </View>
+                        <Pressable
+                          style={styles.iconBtn}
+                          onPress={() => removeNamedPlaylist(playlist)}
+                          hitSlop={6}
+                          accessibilityLabel={`Delete ${playlist.name}`}
+                        >
+                          <Icon name="delete-outline" size={20} color={t.muted} />
+                        </Pressable>
+                      </Pressable>
+                    )) : (
+                      <View style={styles.emptyList}>
+                        <Icon name="library-music" size={32} color={t.tertiary} />
+                        <Text style={[styles.hint, { color: t.tertiary }]}>
+                          No saved playlists yet. Name your current queue to save it.
+                        </Text>
+                      </View>
+                    )}
+                  </>
+                ) : (
+                  <Text style={[styles.hint, { color: t.tertiary }]}>Sign in to save playlists across devices.</Text>
+                )}
+              </View>
+            ) : null}
+
+            {activeTab === 'library' ? (
+              <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: t.text }]}>Library</Text>
+                    <Text style={[styles.cardSubtitle, { color: t.muted }]}>
+                      {stats.watches} watches · {stats.saved} saved · {stats.custom} custom
+                    </Text>
+                  </View>
+                  {filteredVideos.length > 0 ? (
+                    <Pressable
+                      style={[styles.ghostBtn, { borderColor: t.border }]}
+                      onPress={() => filteredVideos.forEach((video) => addToPlayQueue(video))}
+                    >
+                      <Icon name="playlist-add" size={16} color={t.primary} />
+                      <Text style={[styles.ghostBtnText, { color: t.primary }]}>Add all</Text>
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                <View style={[styles.filterInputRow, { backgroundColor: t.inputBg }]}>
+                  <Icon name="filter-list" size={18} color={t.muted} />
+                  <TextInput
+                    style={[styles.filterInput, { color: t.text }]}
+                    placeholder="Filter your library"
+                    placeholderTextColor={t.placeholder}
+                    value={libraryQuery}
+                    onChangeText={(text) => {
+                      setLibraryQuery(text);
+                      setCurrentVideoIndex(0);
+                    }}
+                    autoCorrect={false}
+                  />
+                  {libraryQuery ? (
+                    <Pressable hitSlop={8} onPress={() => setLibraryQuery('')}>
+                      <Icon name="close" size={16} color={t.muted} />
+                    </Pressable>
+                  ) : null}
+                </View>
+
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filters}>
+                  {FILTER_OPTIONS.map((opt) => {
+                    const active = filter === opt.id;
+                    return (
+                      <Pressable
+                        key={opt.id}
+                        style={[
+                          styles.chip,
+                          { backgroundColor: active ? t.primary : 'transparent', borderColor: active ? t.primary : t.border },
+                        ]}
+                        onPress={() => {
+                          setFilter(opt.id);
+                          setCurrentVideoIndex(0);
+                        }}
+                      >
+                        <Text style={[styles.chipText, { color: active ? t.ctaText : t.muted }, active && styles.chipTextActive]}>
+                          {opt.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+
+                <View style={styles.sortRow}>
+                  <Text style={[styles.hint, { color: t.tertiary }]}>
+                    {filteredVideos.length} video{filteredVideos.length === 1 ? '' : 's'}
+                  </Text>
+                  <Pressable
+                    style={styles.sortBtn}
+                    onPress={() => {
+                      const idx = SORT_OPTIONS.findIndex((opt) => opt.id === sortMode);
+                      setSortMode(SORT_OPTIONS[(idx + 1) % SORT_OPTIONS.length].id);
+                      setCurrentVideoIndex(0);
+                    }}
+                    accessibilityLabel="Change sort order"
+                  >
+                    <Icon name="sort" size={16} color={t.muted} />
+                    <Text style={[styles.sortText, { color: t.muted }]}>
+                      {SORT_OPTIONS.find((opt) => opt.id === sortMode)?.label}
+                    </Text>
+                  </Pressable>
+                </View>
+
+                {libraryLoading && filteredVideos.length === 0 ? (
+                  <View style={styles.emptyList}>
+                    <ActivityIndicator color={t.primary} />
+                    <Text style={[styles.hint, { color: t.tertiary }]}>Loading your videos…</Text>
+                  </View>
+                ) : filteredVideos.length > 0 ? (
+                  filteredVideos.map((video, index) => {
+                    const isCurrent =
+                      (!usingQueue && index === currentVideoIndex) ||
+                      (usingQueue && currentPlayback?.videoId === video.id);
+                    return (
+                      <Pressable
+                        key={video.id}
+                        style={[styles.listItem, isCurrent && { backgroundColor: t.primarySoft }]}
+                        onPress={() => handlePlayVideo(index)}
+                      >
+                        {sortMode === 'custom' && !libraryQuery.trim()
+                          ? renderReorder(index, filteredVideos.length, applyPlaylistReorder)
+                          : null}
+                        <View style={[styles.thumbWide, { backgroundColor: t.chipBg }]}>
+                          {video.thumbnail ? (
+                            <Image source={{ uri: video.thumbnail }} style={styles.coverImg} />
+                          ) : (
+                            <Icon name="movie" size={20} color={t.muted} />
+                          )}
+                          {isCurrent ? (
+                            <View style={styles.thumbOverlay}>
+                              <Icon name={playerIsPlaying ? 'graphic-eq' : 'pause'} size={20} color="#fff" />
+                            </View>
+                          ) : null}
+                        </View>
+                        <View style={styles.itemInfo}>
+                          <Text
+                            style={[styles.itemTitle, { color: isCurrent ? t.primary : t.text }]}
+                            numberOfLines={2}
+                          >
+                            {video.title}
+                          </Text>
+                          <View style={styles.metaRow}>
+                            <Icon
+                              name={video.online ? 'cloud-queue' : 'phone-android'}
+                              size={12}
+                              color={t.tertiary}
+                            />
+                            <Text style={[styles.itemMeta, { color: t.muted, marginTop: 0 }]}>
+                              {getSourceLabel(video)}
+                            </Text>
+                          </View>
+                        </View>
+                        <Pressable
+                          style={[styles.roundBtn, { backgroundColor: t.primarySoft }]}
+                          onPress={() => addToPlayQueue(video)}
+                          hitSlop={4}
+                          accessibilityLabel="Add to up next"
+                        >
+                          <Icon name="playlist-add" size={18} color={t.primary} />
+                        </Pressable>
+                        {(video.type === 'url' || video.type === 'file') && (
+                          <Pressable
+                            style={styles.iconBtn}
+                            onPress={() => handleRemoveVideo(video)}
+                            hitSlop={6}
+                            accessibilityLabel="Remove from library"
+                          >
+                            <Icon name="close" size={18} color={t.muted} />
+                          </Pressable>
+                        )}
+                      </Pressable>
+                    );
+                  })
+                ) : (
+                  <View style={styles.emptyList}>
+                    <Icon name="search-off" size={32} color={t.tertiary} />
+                    <Text style={[styles.emptyListTitle, { color: t.text }]}>No videos match</Text>
+                    <Text style={[styles.hint, { color: t.tertiary }]}>
+                      Try another filter, or search Watches & YouTube at the top.
+                    </Text>
+                  </View>
+                )}
+              </View>
+            ) : null}
+
+            {activeTab === 'add' ? (
+              <View style={[styles.card, { backgroundColor: t.surface, borderColor: t.border }]}>
+                <View style={styles.cardHeader}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.cardTitle, { color: t.text }]}>Add a video</Text>
+                    <Text style={[styles.cardSubtitle, { color: t.muted }]}>
+                      Paste a direct link or pick a file from this device.
+                    </Text>
+                  </View>
+                </View>
+                <Pressable
+                  style={[styles.uploadTile, { borderColor: t.border, backgroundColor: t.listBg }]}
+                  onPress={handleFileUpload}
+                >
+                  <View style={[styles.emptyIconWrap, { backgroundColor: t.primarySoft, marginBottom: 0 }]}>
+                    <Icon name="upload-file" size={24} color={t.primary} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.itemTitle, { color: t.text }]}>Choose from device</Text>
+                    <Text style={[styles.itemMeta, { color: t.muted }]}>MP4, MOV, WEBM and more</Text>
+                  </View>
+                  <Icon name="chevron-right" size={22} color={t.muted} />
+                </Pressable>
+                <View style={styles.dividerRow}>
+                  <View style={[styles.dividerLine, { backgroundColor: t.border }]} />
+                  <Text style={[styles.hint, { color: t.tertiary }]}>or from a link</Text>
+                  <View style={[styles.dividerLine, { backgroundColor: t.border }]} />
+                </View>
+                <Text style={[styles.inputLabel, { color: t.muted }]}>Video URL</Text>
+                <VoiceTextInput
+                  style={[styles.input, { backgroundColor: t.inputBg, color: t.text }]}
+                  placeholder="https://example.com/video.mp4"
+                  placeholderTextColor={t.placeholder}
+                  value={videoUrl}
+                  onChangeText={setVideoUrl}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                />
+                <Text style={[styles.inputLabel, { color: t.muted }]}>Title (optional)</Text>
+                <VoiceTextInput
+                  style={[styles.input, { backgroundColor: t.inputBg, color: t.text }]}
+                  placeholder="Give it a name"
+                  placeholderTextColor={t.placeholder}
+                  value={videoTitle}
+                  onChangeText={setVideoTitle}
+                />
+                <Pressable
+                  style={[styles.primaryBtn, { backgroundColor: t.primary }, !videoUrl.trim() && styles.disabled]}
+                  disabled={!videoUrl.trim()}
+                  onPress={() => {
+                    handleAddVideo();
+                    setActiveTab('queue');
+                  }}
+                >
+                  <Icon name="add-link" size={18} color={t.ctaText} />
+                  <Text style={[styles.primaryBtnText, { color: t.ctaText }]}>Add to Up next</Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </ScrollView>
+
+          {showSearchPanel ? (
+            <>
+              <Pressable
+                style={[styles.searchBackdrop, { backgroundColor: t.isDarkMode ? 'rgba(0,0,0,0.5)' : 'rgba(0,0,0,0.25)' }]}
+                onPress={() => setSearchOpen(false)}
+                accessibilityLabel="Close search results"
+              />
+              <View
+                style={[
+                  styles.searchPanel,
+                  { backgroundColor: t.surface, borderColor: t.border },
+                  t.chromeElevation,
+                ]}
+              >
+                <View style={styles.scopeRow}>
+                  {SEARCH_SCOPES.map((scope) => {
+                    const active = searchScope === scope.id;
+                    const count =
+                      scope.id === 'watch'
+                        ? watchResults.length
+                        : scope.id === 'youtube'
+                          ? youtubeResults.length
+                          : watchResults.length + youtubeResults.length;
+                    const loading =
+                      scope.id === 'watch'
+                        ? watchSearching
+                        : scope.id === 'youtube'
+                          ? youtubeSearching
+                          : watchSearching || youtubeSearching;
+                    return (
+                      <Pressable
+                        key={scope.id}
+                        style={[
+                          styles.scopeChip,
+                          { backgroundColor: active ? t.primary : t.chipBg },
+                        ]}
+                        onPress={() => setSearchScope(scope.id)}
+                      >
+                        <Text style={[styles.scopeText, { color: active ? t.ctaText : t.text }]}>
+                          {scope.label}
+                        </Text>
+                        {loading ? (
+                          <ActivityIndicator size="small" color={active ? t.ctaText : t.muted} style={styles.scopeSpinner} />
+                        ) : (
+                          <Text style={[styles.scopeCount, { color: active ? t.ctaText : t.muted }]}>{count}</Text>
+                        )}
+                      </Pressable>
+                    );
+                  })}
+                </View>
+
+                <ScrollView
+                  style={styles.searchScroll}
+                  keyboardShouldPersistTaps="handled"
+                  nestedScrollEnabled
+                >
+                  {searchScope !== 'youtube' ? (
+                    <View style={styles.resultSection}>
+                      <View style={styles.sectionHeader}>
+                        <View style={[styles.sectionIcon, { backgroundColor: t.primarySoft }]}>
+                          <Icon name="ondemand-video" size={14} color={t.primary} />
+                        </View>
+                        <Text style={[styles.sectionTitle, { color: t.text }]}>Watches</Text>
+                        <Text style={[styles.sectionCaption, { color: t.tertiary }]}>on Connect</Text>
+                        {watchSearching ? <ActivityIndicator size="small" color={t.primary} /> : null}
+                      </View>
+                      {watchSearchError && watchResults.length === 0 ? (
+                        <Text style={[styles.resultNote, { color: t.error }]}>{watchSearchError}</Text>
+                      ) : null}
+                      {watchResults.map((video) => {
+                        const author = watchAuthors[video.sourceId];
+                        return (
+                          <Pressable
+                            key={`w-${video.id}`}
+                            style={({ pressed }) => [styles.resultRow, pressed && { backgroundColor: t.overlay }]}
+                            onPress={() => handlePlayWatchResult(video)}
+                          >
+                            <View style={[styles.resultThumb, { backgroundColor: t.chipBg }]}>
+                              {video.thumbnail ? (
+                                <Image source={{ uri: video.thumbnail }} style={styles.coverImg} />
+                              ) : (
+                                <Icon name="movie" size={20} color={t.muted} />
+                              )}
+                              <View style={styles.resultPlayBadge}>
+                                <Icon name="play-arrow" size={14} color="#fff" />
+                              </View>
+                            </View>
+                            <View style={styles.itemInfo}>
+                              <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>
+                                {video.title}
+                              </Text>
+                              <Text style={[styles.itemMeta, { color: t.muted }]} numberOfLines={1}>
+                                {video.type === 'saved' ? 'Saved on this device' : author || 'Watch'}
+                              </Text>
+                            </View>
+                            <Pressable
+                              style={[styles.roundBtn, { backgroundColor: t.primarySoft }]}
+                              onPress={() => handleQueueWatchResult(video)}
+                              hitSlop={6}
+                              accessibilityLabel={`Add ${video.title} to up next`}
+                            >
+                              <Icon name="playlist-add" size={18} color={t.primary} />
+                            </Pressable>
+                          </Pressable>
+                        );
+                      })}
+                      {!watchSearching && !watchSearchError && watchResults.length === 0 ? (
+                        <Text style={[styles.resultNote, { color: t.tertiary }]}>No Watches match “{searchQuery.trim()}”</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {searchScope !== 'watch' ? (
+                    <View style={[styles.resultSection, searchScope === 'all' && { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: t.border }]}>
+                      <View style={styles.sectionHeader}>
+                        <View style={[styles.sectionIcon, { backgroundColor: 'rgba(255,0,0,0.12)' }]}>
+                          <Icon name="smart-display" size={14} color="#FF0000" />
+                        </View>
+                        <Text style={[styles.sectionTitle, { color: t.text }]}>YouTube</Text>
+                        <Text style={[styles.sectionCaption, { color: t.tertiary }]}>downloads to Watch</Text>
+                        {youtubeSearching ? <ActivityIndicator size="small" color={t.primary} /> : null}
+                      </View>
+                      {youtubeSearchError ? (
+                        <Text style={[styles.resultNote, { color: t.error }]}>{youtubeSearchError}</Text>
+                      ) : null}
+                      {youtubeResults.map((result) => (
+                        <Pressable
+                          key={`y-${result.videoId}`}
+                          style={({ pressed }) => [styles.resultRow, pressed && { backgroundColor: t.overlay }]}
+                          onPress={() => handleSelectYoutubeResult(result)}
+                        >
+                          <View style={[styles.resultThumb, { backgroundColor: t.chipBg }]}>
+                            {result.thumbnail ? (
+                              <Image source={{ uri: result.thumbnail }} style={styles.coverImg} />
+                            ) : null}
+                          </View>
+                          <View style={styles.itemInfo}>
+                            <Text style={[styles.itemTitle, { color: t.text }]} numberOfLines={2}>{result.title}</Text>
+                            <View style={styles.metaRow}>
+                              {result.localWatch ? (
+                                <View style={[styles.inWatchBadge, { backgroundColor: t.success + '26' }]}>
+                                  <Icon name="check" size={10} color={t.success} />
+                                  <Text style={[styles.inWatchText, { color: t.success }]}>In Watch</Text>
+                                </View>
+                              ) : null}
+                              <Text style={[styles.itemMeta, { color: t.muted, marginTop: 0, flexShrink: 1 }]} numberOfLines={1}>
+                                {result.channelTitle}
+                              </Text>
+                            </View>
+                          </View>
+                          <Pressable
+                            hitSlop={6}
+                            style={[styles.roundBtn, { backgroundColor: t.chipBg }]}
+                            onPress={() =>
+                              setDownloadTarget({
+                                videoId: result.videoId,
+                                title: result.title || 'YouTube video',
+                                thumbnail: result.thumbnail,
+                              })
+                            }
+                            accessibilityLabel={`Download ${result.title || 'video'}`}
+                          >
+                            <Icon name="file-download" size={18} color={t.text} />
+                          </Pressable>
+                        </Pressable>
+                      ))}
+                      {!youtubeSearching && !youtubeSearchError && youtubeResults.length === 0 ? (
+                        <Text style={[styles.resultNote, { color: t.tertiary }]}>No YouTube results</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </View>
+            </>
+          ) : null}
+        </View>
       </KeyboardSafeView>
       <YoutubeDownloadBanner jobs={backgroundDownloads} />
       <YoutubeDownloadSheet
@@ -2089,12 +2572,14 @@ const MediaPlayer = ({ route, navigation }: any) => {
 };
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: 'blue' },
+  page: { flex: 1 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 10,
   },
   headerBtn: {
     width: 40,
@@ -2103,59 +2588,181 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  headerTitle: {
-    flex: 1,
-    textAlign: 'center',
-    fontSize: 22,
-    fontWeight: '700',
-  },
-  scroll: { paddingHorizontal: 14, paddingBottom: 100, gap: 14 },
-  stats: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center' },
-  statPill: {
-    fontSize: 12,
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-  },
-  error: { textAlign: 'center' },
-  downloadProgress: { borderWidth: 1, borderRadius: 8, padding: 6, gap: 4, marginTop: 4 },
-  downloadProgressHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  downloadTrack: { height: 6, borderRadius: 99, overflow: 'hidden', backgroundColor: 'rgba(148,163,184,0.25)' },
-  downloadFill: { height: '100%', borderRadius: 99 },
-  stage: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    borderWidth: 1,
-  },
-  stageHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 14,
-  },
-  stageTitle: { fontSize: 16, fontWeight: '700' },
-  stageMeta: { fontSize: 12, marginTop: 4 },
-  stageActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  badge: {
-    fontSize: 11,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  popupBadge: {
+  headerCenter: { flex: 1, minWidth: 0 },
+  headerTitle: { fontSize: 22, fontWeight: '800', letterSpacing: -0.3 },
+  headerSubtitle: { fontSize: 12, marginTop: 1 },
+  searchWrap: { paddingHorizontal: 16, paddingBottom: 12 },
+  searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 999,
+    gap: 8,
+    borderRadius: 14,
+    borderWidth: 1.5,
+    paddingLeft: 12,
+    paddingRight: 4,
+    minHeight: 48,
   },
-  popupBadgeText: { fontSize: 11, fontWeight: '700' },
+  searchInputWrap: { flex: 1 },
+  searchInput: { fontSize: 15, paddingVertical: 10 },
+  searchClear: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 6,
+  },
+  body: { flex: 1 },
+  searchBackdrop: { ...StyleSheet.absoluteFill },
+  searchPanel: {
+    position: 'absolute',
+    top: 0,
+    left: 12,
+    right: 12,
+    maxHeight: '88%',
+    borderRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: 'hidden',
+  },
+  scopeRow: { flexDirection: 'row', gap: 8, padding: 12, paddingBottom: 8 },
+  scopeChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    height: 32,
+    borderRadius: 16,
+  },
+  scopeText: { fontSize: 13, fontWeight: '600' },
+  scopeCount: { fontSize: 12, fontWeight: '600', opacity: 0.85 },
+  scopeSpinner: { transform: [{ scale: 0.7 }], width: 14, height: 14 },
+  searchScroll: { flexGrow: 0 },
+  resultSection: { paddingHorizontal: 8, paddingVertical: 6 },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 6,
+    paddingVertical: 8,
+  },
+  sectionIcon: {
+    width: 24,
+    height: 24,
+    borderRadius: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sectionTitle: { fontSize: 14, fontWeight: '700' },
+  sectionCaption: { flex: 1, fontSize: 12 },
+  resultRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 6,
+    paddingVertical: 7,
+    borderRadius: 12,
+  },
+  resultThumb: {
+    width: 104,
+    height: 58,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resultPlayBadge: {
+    position: 'absolute',
+    right: 5,
+    bottom: 5,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resultNote: { fontSize: 13, paddingHorizontal: 6, paddingVertical: 10 },
+  inWatchBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 6,
+  },
+  inWatchText: { fontSize: 10, fontWeight: '700' },
+  scroll: { paddingHorizontal: 16, paddingBottom: 110, gap: 14 },
+  errorBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+  },
+  errorText: { flex: 1, fontSize: 13 },
+  downloadProgress: { gap: 4, marginTop: 6 },
+  downloadProgressHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  downloadTrack: { height: 4, borderRadius: 99, overflow: 'hidden' },
+  downloadFill: { height: '100%', borderRadius: 99 },
+  stage: {
+    borderRadius: 20,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
   stageFrame: { width: '100%', aspectRatio: 16 / 9, backgroundColor: '#000', position: 'relative' },
   hiddenStageFrame: { opacity: 0 },
   video: { width: '100%', height: '100%', backgroundColor: '#000' },
+  stageBadges: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    right: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  stageBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  stageBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
+  stageBody: { paddingHorizontal: 16, paddingTop: 14 },
+  stageTitle: { fontSize: 17, fontWeight: '700', lineHeight: 22 },
+  stageMeta: { fontSize: 12, marginTop: 4 },
+  progressBlock: { marginTop: 8, marginHorizontal: -8 },
+  scrubSlider: { width: '100%', height: 30 },
+  timeRow: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 8 },
+  timeText: { fontSize: 11, fontWeight: '600', fontVariant: ['tabular-nums'] },
+  transport: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 10,
+  },
+  transportSide: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
+  transportBtn: { width: 52, height: 52, alignItems: 'center', justifyContent: 'center' },
+  playBtn: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeDot: { position: 'absolute', bottom: 6, width: 4, height: 4, borderRadius: 2 },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingVertical: 10,
+  },
+  actionItem: { alignItems: 'center', gap: 4, minWidth: 64, paddingVertical: 2 },
+  actionLabel: { fontSize: 11, fontWeight: '500' },
+  disabled: { opacity: 0.35 },
   fullscreenOverlay: {
     flex: 1,
     backgroundColor: '#000',
@@ -2223,177 +2830,222 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  videoController: {
-    position: 'absolute',
-    left: 8,
-    right: 8,
-    bottom: 8,
-    borderRadius: 10,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-  },
-  timeRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
-  timeText: { fontSize: 11, fontWeight: '600' },
-  scrubSlider: { width: '100%', height: 32 },
   cover: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#000',
   },
-  coverImg: { width: '100%', height: '100%' },
+  coverSpinner: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
+  coverImg: { ...StyleSheet.absoluteFill, width: '100%', height: '100%' },
   pipPlaceholder: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 12,
+    gap: 10,
   },
-  pipPlaceholderText: { fontSize: 14 },
-  toolbar: {
+  pipPlaceholderText: { fontSize: 14, fontWeight: '600' },
+  pillBtn: {
+    borderRadius: 999,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pillBtnText: { fontSize: 14, fontWeight: '700' },
+  emptyStage: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 20,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  emptyIconWrap: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  emptyTitle: { fontSize: 18, fontWeight: '700' },
+  emptyHint: { textAlign: 'center', marginTop: 6, marginBottom: 18, fontSize: 13, lineHeight: 19 },
+  emptyActions: { flexDirection: 'row', gap: 10 },
+  tabs: { flexDirection: 'row', borderRadius: 14, padding: 4, gap: 4 },
+  tab: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    flexWrap: 'wrap',
-    gap: 10,
-    paddingVertical: 12,
+    gap: 4,
+    paddingVertical: 9,
+    borderRadius: 10,
   },
-  toolBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  toolBtnDisabled: { opacity: 0.35 },
-  emptyStage: {
-    borderWidth: 2,
-    borderStyle: 'dashed',
-    borderRadius: 16,
-    padding: 28,
-    alignItems: 'center',
-  },
-  emptyIcon: { fontSize: 48, marginBottom: 12 },
-  emptyTitle: { fontSize: 20, fontWeight: '700' },
-  emptyHint: { textAlign: 'center', marginTop: 8, marginBottom: 16 },
+  tabActive: {},
+  tabText: { fontSize: 12, fontWeight: '600', flexShrink: 1 },
+  tabTextActive: { fontWeight: '700' },
+  tabCount: { fontSize: 11, fontWeight: '700' },
   card: {
-    borderRadius: 16,
-    borderWidth: 1,
+    borderRadius: 20,
+    borderWidth: StyleSheet.hairlineWidth,
     padding: 14,
-    gap: 10,
+    gap: 8,
   },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  cardTitle: { fontSize: 18, fontWeight: '700' },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  count: { fontSize: 12 },
-  hint: { fontSize: 12 },
-  smallBtn: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
+  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
+  cardTitle: { fontSize: 17, fontWeight: '700' },
+  cardSubtitle: { fontSize: 12, marginTop: 2 },
+  ghostBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 999,
+    paddingHorizontal: 12,
     paddingVertical: 6,
   },
-  smallBtnText: { fontSize: 12, fontWeight: '600' },
+  ghostBtnText: { fontSize: 12, fontWeight: '700' },
+  hint: { fontSize: 12, textAlign: 'center' },
   playlistSaveForm: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   playlistNameInput: {
     flex: 1,
-    minHeight: 38,
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    fontSize: 13,
+    height: 44,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    fontSize: 14,
+  },
+  saveBtn: {
+    height: 44,
+    minWidth: 72,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   savedPlaylistRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
+    gap: 12,
+    borderRadius: 14,
+    padding: 10,
   },
-  savedPlaylistLoad: { flex: 1, minWidth: 0 },
+  playlistIcon: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   listItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     paddingVertical: 8,
     paddingHorizontal: 6,
-    borderRadius: 10,
+    borderRadius: 14,
   },
   thumb: {
-    width: 48,
-    height: 48,
-    borderRadius: 8,
+    width: 56,
+    height: 56,
+    borderRadius: 10,
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
+  thumbWide: {
+    width: 88,
+    height: 50,
+    borderRadius: 10,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  thumbOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   itemInfo: { flex: 1, minWidth: 0 },
-  itemTitle: { fontSize: 13, fontWeight: '600' },
-  itemMeta: { fontSize: 11, marginTop: 2 },
-  playingMark: { fontSize: 14 },
-  playNumber: { fontSize: 13, fontWeight: '700' },
+  itemTitle: { fontSize: 14, fontWeight: '600', lineHeight: 19 },
+  itemMeta: { fontSize: 12, marginTop: 3 },
+  metaRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 4 },
   reorderCol: { gap: 2 },
   reorderBtn: {
     width: 22,
-    height: 18,
+    height: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  repeatControl: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  repeatBtn: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
+  stepper: {
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-  },
-  repeatBtnText: { fontSize: 14, fontWeight: '700' },
-  repeatValue: { minWidth: 16, textAlign: 'center', fontSize: 12 },
-  removeBtn: { width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
-  removeBtnText: { fontSize: 22, lineHeight: 24 },
-  addBtn: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-  },
-  addBtnText: { fontSize: 12, fontWeight: '700' },
-  emptyList: { paddingVertical: 16, alignItems: 'center' },
-  emptyListTitle: { fontSize: 14, marginBottom: 4 },
-  filters: { flexGrow: 0 },
-  filterBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 999,
+    height: 30,
+  },
+  stepperBtn: { width: 26, height: 28, alignItems: 'center', justifyContent: 'center' },
+  stepperValue: { minWidth: 22, textAlign: 'center', fontSize: 12, fontWeight: '700' },
+  iconBtn: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  roundBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyList: { paddingVertical: 24, alignItems: 'center', gap: 6 },
+  emptyListTitle: { fontSize: 15, fontWeight: '600' },
+  filterInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    height: 42,
+  },
+  filterInput: { flex: 1, fontSize: 14, paddingVertical: 0 },
+  filters: { flexGrow: 0 },
+  chip: {
+    paddingHorizontal: 14,
+    height: 32,
+    justifyContent: 'center',
+    borderRadius: 16,
+    borderWidth: 1,
     marginRight: 8,
   },
-  filterText: { fontSize: 12 },
-  input: {
+  chipText: { fontSize: 13, fontWeight: '500' },
+  chipTextActive: { fontWeight: '700' },
+  sortRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  sortBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 4 },
+  sortText: { fontSize: 12, fontWeight: '600' },
+  uploadTile: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     borderWidth: 1,
-    borderRadius: 10,
+    borderStyle: 'dashed',
+    borderRadius: 14,
+    padding: 12,
+  },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 },
+  dividerLine: { flex: 1, height: StyleSheet.hairlineWidth },
+  input: {
+    borderRadius: 12,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     fontSize: 14,
   },
-  youtubeResults: { borderWidth: 1, borderRadius: 10, padding: 8, gap: 4 },
-  youtubeHeading: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase' },
-  youtubeResult: { flexDirection: 'row', alignItems: 'center', gap: 8, borderTopWidth: 1, paddingVertical: 6 },
-  youtubeThumb: { width: 72, height: 42, borderRadius: 5 },
-  youtubeResultInfo: { flex: 1, minWidth: 0 },
-  youtubeDownloadBtn: { paddingHorizontal: 6, paddingVertical: 4 },
-  inputLabel: { fontSize: 12 },
+  inputLabel: { fontSize: 12, fontWeight: '600', marginTop: 2 },
   primaryBtn: {
-    borderRadius: 10,
-    paddingVertical: 12,
+    flexDirection: 'row',
+    gap: 8,
+    borderRadius: 14,
+    paddingVertical: 14,
     alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 6,
   },
-  primaryBtnText: { fontWeight: '700' },
-  secondaryBtn: {
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  secondaryBtnText: { fontWeight: '600' },
+  primaryBtnText: { fontSize: 15, fontWeight: '700' },
 });
 
 export default MediaPlayer;

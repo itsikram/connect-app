@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { useFeatureFlag } from '../contexts/FeatureFlagContext';
 import { ModernButton, ModernCard } from '../components/modern';
 import api from '../lib/api';
+import ScreenHeader from '../components/ScreenHeader';
 
 type Tier = { priceBDT: number; durationDays: number; enabled: boolean };
 
@@ -35,13 +36,13 @@ const SubscriptionScreen = ({ navigation }: { navigation: any }) => {
   };
 
   if (!enabled) {
-    return <SafeAreaView style={[styles.container, { backgroundColor: colors.background.primary }]}><Text style={[typography.h5, styles.center, { color: colors.text.primary }]}>Connect+ is currently unavailable.</Text></SafeAreaView>;
+    return <SafeAreaView style={[styles.container, { backgroundColor: colors.background.primary }]}><ScreenHeader title="Connect+" style={{ paddingHorizontal: spacing.md }} /><Text style={[typography.h5, styles.center, { color: colors.text.primary }]}>Connect+ is currently unavailable.</Text></SafeAreaView>;
   }
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background.primary }]}>
       <ScrollView contentContainerStyle={[styles.content, { padding: spacing.md, paddingBottom: 100 }]}>
-        <Text style={[typography.h3, { color: colors.text.primary }]}>Connect+ subscriptions</Text>
+        <ScreenHeader title="Connect+ subscriptions" />
         <Text style={[typography.body, { color: colors.text.secondary }]}>Choose a plan, send the exact amount by bKash or Nagad, and submit the TrxID for admin review.</Text>
         {loading ? <ActivityIndicator color={colors.primary} /> : Object.entries(tiers).map(([tier, plan]) => (
           <ModernCard key={tier} margin="none">

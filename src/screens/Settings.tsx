@@ -20,6 +20,7 @@ import {
 import { useTheme } from '../contexts/ThemeContext';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import KeyboardSafeView from '../components/KeyboardSafeView';
+import ScreenHeader from '../components/ScreenHeader';
 import { SettingsScrollContext } from '../components/settings/settingsUi';
 
 const ProfileSettings = React.lazy(
@@ -104,6 +105,7 @@ const Settings = () => {
         <StatusBar barStyle={isDarkMode ? 'light-content' : 'dark-content'} />
 
         <View style={styles.shell}>
+          <ScreenHeader title="Settings" style={styles.header} />
           <View
             style={[
               styles.navPanel,
@@ -112,66 +114,52 @@ const Settings = () => {
                 borderColor: themeColors.border.primary,
               },
             ]}
+            accessibilityRole="tablist"
           >
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.navContent}
-            >
-              {SETTINGS_NAV.map(tab => {
-                const isActive = activeTab === tab.id;
-                return (
-                  <TouchableOpacity
-                    key={tab.id}
+            {SETTINGS_NAV.map(tab => {
+              const isActive = activeTab === tab.id;
+              return (
+                <TouchableOpacity
+                  key={tab.id}
+                  style={[
+                    styles.navItem,
+                    isActive && {
+                      backgroundColor: themeColors.primary + '1F',
+                    },
+                    isPending && isActive && { opacity: 0.6 },
+                  ]}
+                  onPress={() => handleTabPress(tab.id)}
+                  activeOpacity={0.75}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={tab.title}
+                >
+                  <Icon
+                    name={tab.icon}
+                    size={22}
+                    color={
+                      isActive ? themeColors.primary : themeColors.text.secondary
+                    }
+                  />
+                  <Text
                     style={[
-                      styles.navItem,
-                      isActive && {
-                        backgroundColor: themeColors.primary + '1F',
+                      styles.navLabel,
+                      {
+                        color: isActive
+                          ? themeColors.primary
+                          : themeColors.text.secondary,
+                        fontWeight: isActive ? '700' : '500',
                       },
-                      isPending && isActive && { opacity: 0.6 },
                     ]}
-                    onPress={() => handleTabPress(tab.id)}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: isActive }}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.85}
                   >
-                    <View
-                      style={[
-                        styles.navIcon,
-                        {
-                          backgroundColor: isActive
-                            ? themeColors.primary + '2E'
-                            : themeColors.surface.secondary,
-                        },
-                      ]}
-                    >
-                      <Icon
-                        name={tab.icon}
-                        size={16}
-                        color={
-                          isActive
-                            ? themeColors.primary
-                            : themeColors.text.secondary
-                        }
-                      />
-                    </View>
-                    <Text
-                      style={[
-                        styles.navLabel,
-                        {
-                          color: isActive
-                            ? themeColors.text.primary
-                            : themeColors.text.secondary,
-                          fontWeight: isActive ? '700' : '500',
-                        },
-                      ]}
-                      numberOfLines={1}
-                    >
-                      {tab.title}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </ScrollView>
+                    {tab.title}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
           <ScrollView
@@ -234,39 +222,27 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   header: {
-    marginBottom: 12,
-    paddingHorizontal: 4,
-  },
-  headerTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.3,
+    marginBottom: 8,
+    paddingHorizontal: 2,
   },
   navPanel: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     borderRadius: 16,
     borderWidth: 1,
-    paddingVertical: 8,
-    paddingHorizontal: 8,
+    padding: 6,
     marginBottom: 12,
   },
-  navContent: {
-    gap: 6,
-  },
   navItem: {
-    minWidth: 86,
+    // Four per row so every section is visible without sideways scrolling.
+    width: '25%',
+    minHeight: 60,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    paddingHorizontal: 8,
+    gap: 4,
+    paddingVertical: 8,
+    paddingHorizontal: 2,
     borderRadius: 12,
-  },
-  navIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   navLabel: {
     fontSize: 12,

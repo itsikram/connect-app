@@ -86,8 +86,20 @@ describe('online Ludo (Expo clients)', () => {
     });
     expect(Date.now() - acceptedAt).toBeLessThan(3000);
 
-    const result = await playUntilEnd([host, guest]);
+    // Sixes happen in every game, so both players should see the comic pop-ups
+    // (their own and the opponent's).
+    const sawFx = new Set<string>();
+    const result = await playUntilEnd([host, guest], {
+      onTick: async () => {
+        [host, guest].forEach((c: any) => {
+          if (c.renderer.root.findAll((n: any) => n.props?.testID === 'ludo-fx-layer').length) {
+            sawFx.add(c.profile.fullName);
+          }
+        });
+      },
+    });
     expect(result.actions).toBeGreaterThan(0);
+    expect(Array.from(sawFx).sort()).toEqual(['Guest', 'Host']);
   });
 
   it('3 players, accept from the app header: uninvited seat is a computer, starts at once', async () => {

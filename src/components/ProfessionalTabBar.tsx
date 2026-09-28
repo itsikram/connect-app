@@ -1,9 +1,10 @@
 import React, { useEffect, useRef } from 'react';
 import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
-import FAIcon from 'react-native-vector-icons/FontAwesome5';
 import { TAB_BAR_BOTTOM_OFFSET } from './tabBarLayout';
+import { PRO_TAB_ICONS, ProTabIconName } from './tabBarIcons';
 import { useTheme } from '../contexts/ThemeContext';
 
 interface TabItem {
@@ -14,8 +15,7 @@ interface TabItem {
   badge?: number;
   haptic?: boolean;
   color?: string;
-  iconSet?: 'material' | 'fa5';
-  faStyle?: 'solid' | 'regular';
+  iconSet?: 'material' | 'fapro';
 }
 
 interface ProfessionalTabBarProps {
@@ -25,8 +25,49 @@ interface ProfessionalTabBarProps {
   tabs: TabItem[];
 }
 
-const ICON_SIZE = 22;
-const BADGE_RED = '#DC2626';
+// Mirrors web/src/partials/MobileBottomNav/MobileBottomNav.css so the app
+// and the mobile web bar look identical.
+const BAR_HEIGHT = 60;
+const ICON_SIZE = 19; // font-size: 19px -> glyph em box height
+const PALETTE = {
+  dark: {
+    background: 'rgba(18, 19, 21, 0.92)',
+    border: 'rgba(255, 255, 255, 0.08)',
+    inactive: '#9aa0a6',
+    active: '#00d4ff',
+    ring: '#121315',
+  },
+  light: {
+    background: 'rgba(255, 255, 255, 0.94)',
+    border: 'rgba(0, 0, 0, 0.08)',
+    inactive: '#65676b',
+    active: '#0099cc',
+    ring: '#FFFFFF',
+  },
+};
+const ACTIVE_PILL = 'rgba(0, 212, 255, 0.14)';
+const BADGE_BG = '#ff4444';
+
+const ProTabIcon = ({
+  name,
+  active,
+  color,
+}: {
+  name: ProTabIconName;
+  active: boolean;
+  color: string;
+}) => {
+  const glyph = PRO_TAB_ICONS[name][active ? 'solid' : 'light'];
+  return (
+    <Svg
+      width={(ICON_SIZE * glyph.width) / glyph.height}
+      height={ICON_SIZE}
+      viewBox={`0 0 ${glyph.width} ${glyph.height}`}
+    >
+      <Path d={glyph.d} fill={color} />
+    </Svg>
+  );
+};
 
 const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   state,
@@ -34,7 +75,8 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
   navigation,
   tabs,
 }) => {
-  const { colors: themeColors } = useTheme();
+  const { isDarkMode } = useTheme();
+  const palette = isDarkMode ? PALETTE.dark : PALETTE.light;
   const insets = useSafeAreaInsets();
   const activeAnims = useRef(tabs.map(() => new Animated.Value(0))).current;
 
@@ -42,7 +84,7 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
     tabs.forEach((_, index) => {
       Animated.timing(activeAnims[index], {
         toValue: state.index === index ? 1 : 0,
-        duration: 180,
+        duration: 150,
         useNativeDriver: true,
       }).start();
     });
@@ -83,101 +125,64 @@ const ProfessionalTabBar: React.FC<ProfessionalTabBarProps> = ({
         ? options.title
         : tab.label;
 
-    const iconColor = isActive
-      ? themeColors.primary
-      : themeColors.text.tertiary;
-    const iconSet = tab.iconSet ?? 'fa5';
-    const faStyle = tab.faStyle ?? 'regular';
-    const useSolid = isActive || faStyle === 'solid';
+    const color = isActive ? palette.active : palette.inactive;
     const badgeCount = Number(tab.badge) || 0;
-
-    const pillOpacity = activeAnims[index];
 
     return (
       <Pressable
         key={tab.name}
         style={styles.tabItem}
         onPress={() => handleTabPress(tab, index)}
-        android_ripple={{
-          color: themeColors.primary + '22',
-          borderless: true,
-          radius: 36,
-        }}
         accessibilityRole="tab"
         accessibilityState={{ selected: isActive }}
-        accessibilityLabel={String(label)}
+        accessibilityLabel={
+          badgeCount > 0 ? `${label}, ${badgeCount} new` : String(label)
+        }
       >
-        <View style={styles.tabInner}>
-          <View style={styles.iconHit}>
-            <Animated.View
-              pointerEvents="none"
-              style={[
-                styles.activePill,
-                {
-                  backgroundColor: themeColors.primary + '22',
-                  opacity: pillOpacity,
-                },
-              ]}
-            />
-            {iconSet === 'fa5' ? (
-              <FAIcon
-                name={tab.icon}
-                size={ICON_SIZE}
-                color={iconColor}
-                solid={useSolid}
-              />
-            ) : (
-              <MaterialIcon
-                name={tab.icon}
-                size={ICON_SIZE + 2}
-                color={iconColor}
-              />
-            )}
-            {badgeCount > 0 && (
-              <View
-                style={[
-                  styles.badge,
-                  // Fixed red so white digits stay readable (4.8:1); ring matches the bar.
-                  { backgroundColor: BADGE_RED, borderColor: themeColors.surface.header },
-                ]}
-              >
-                <Text style={styles.badgeText}>
-                  {badgeCount > 99 ? '99+' : badgeCount}
-                </Text>
-              </View>
-            )}
-          </View>
-          <Text
-            numberOfLines={1}
+        <View style={styles.iconWrap}>
+          <Animated.View
+            pointerEvents="none"
             style={[
-              styles.tabLabel,
-              {
-                color: iconColor,
-                fontWeight: isActive ? '700' : '500',
-              },
+              styles.activePill,
+              { backgroundColor: ACTIVE_PILL, opacity: activeAnims[index] },
             ]}
-          >
-            {label}
-          </Text>
+          />
+          {tab.iconSet === 'material' ? (
+            <MaterialIcon name={tab.icon} size={ICON_SIZE + 2} color={color} />
+          ) : (
+            <ProTabIcon
+              name={tab.icon as ProTabIconName}
+              active={isActive}
+              color={color}
+            />
+          )}
+          {badgeCount > 0 && (
+            <View style={[styles.badge, { borderColor: palette.ring }]}>
+              <Text style={styles.badgeText}>
+                {badgeCount > 99 ? '99+' : badgeCount}
+              </Text>
+            </View>
+          )}
         </View>
+        <Text numberOfLines={1} style={[styles.tabLabel, { color }]}>
+          {label}
+        </Text>
       </Pressable>
     );
   };
 
-  return (
-    descriptors[state.routes[state.index].key]?.options?.tabBarStyle?.display === 'none'
-      ? null
-      :
+  return descriptors[state.routes[state.index].key]?.options?.tabBarStyle
+    ?.display === 'none' ? null : (
     <View
       style={[
         styles.container,
         {
-          backgroundColor: themeColors.surface.header,
-          borderTopColor: themeColors.border.primary,
+          backgroundColor: palette.background,
+          borderTopColor: palette.border,
           // On Android the app shell already reserves the navigation bar
-          // (insets.bottom is 0 here), so no extra Android-only padding.
-          // The +20 offsets the container's negative `bottom`.
-          paddingBottom: Math.max(insets.bottom, 8) + 20,
+          // (insets.bottom is 0 here). The +20 offsets the container's
+          // negative `bottom`.
+          paddingBottom: insets.bottom + 20,
         },
       ]}
     >
@@ -194,63 +199,57 @@ const styles = StyleSheet.create({
     bottom: TAB_BAR_BOTTOM_OFFSET - 50,
     left: 0,
     right: 0,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 16,
+    borderTopWidth: 1,
   },
   tabsContainer: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    height: BAR_HEIGHT,
     paddingHorizontal: 4,
-    paddingTop: 6,
   },
   tabItem: {
     flex: 1,
+    minWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
+    gap: 3,
   },
-  tabInner: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 4,
-  },
-  iconHit: {
+  iconWrap: {
     width: 44,
-    height: 32,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
   activePill: {
     ...StyleSheet.absoluteFill,
-    borderRadius: 16,
+    borderRadius: 14,
   },
   badge: {
+    // 18px badge + 2px ring (web draws the ring with box-shadow).
     position: 'absolute',
-    top: -2,
-    right: 2,
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    top: -6,
+    right: 0,
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    paddingHorizontal: 5,
+    backgroundColor: BADGE_BG,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
-    borderWidth: 1.5,
   },
   badgeText: {
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
-    textAlign: 'center',
+    fontWeight: '700',
     lineHeight: 12,
+    textAlign: 'center',
   },
   tabLabel: {
+    maxWidth: '100%',
     fontSize: 11,
-    letterSpacing: 0.2,
-    textAlign: 'center',
+    fontWeight: '600',
+    letterSpacing: 0.11,
+    lineHeight: 12,
   },
 });
 

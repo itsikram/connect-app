@@ -70,6 +70,12 @@ import {
   matchRelationConnects,
   normalizeRelationshipTypes,
 } from '../services/agentRelations';
+import {
+  HEALTH_COACH_ACTIONS,
+  HEALTH_REPORT_ACTIONS,
+  isHealthAction,
+  planHealthAction,
+} from '../services/agentHealth';
 import { findAgentSetting, resolveAgentSetting } from '../services/agentSettings';
 import { AgentActionIntent } from '../services/agentActionCatalog';
 import { RootState } from '../store';
@@ -1351,6 +1357,55 @@ const AIAgentModal: React.FC<Props> = ({
       },
       queryAppData: (dataType: string, query?: string) =>
         summarizeAppData(dataType, query, profile, knownConnectsRef.current),
+      runHealthAction: async (
+        name: string,
+        parameters: Record<string, unknown>,
+      ) => {
+        if (!isHealthAction(name)) throw new Error('Unknown fitness action.');
+        const plan = planHealthAction(name, parameters);
+        const open = async (route: string, params?: Record<string, unknown>) => {
+          setMinimized(true);
+          await navigateWithQueue(route, params);
+        };
+        if (plan.kind === 'navigate') {
+          await open(plan.route, plan.params);
+          return plan.message;
+        }
+        try {
+          const response =
+            plan.method === 'get'
+              ? await api.get(plan.url, { params: plan.params })
+              : plan.method === 'put'
+              ? await api.put(plan.url, plan.body)
+              : await api.post(plan.url, plan.body);
+          const data = response.data;
+          const next = plan.thenOpen?.(data);
+          if (next) await open(next[0], next[1]);
+          return plan.format(data);
+        } catch (error: any) {
+          const status = error?.response?.status;
+          const body = error?.response?.data || {};
+          const recovery = plan.url.startsWith('/recovery');
+          if (recovery && (body.code === 'NOT_SET_UP' || status === 404)) {
+            await open('Menu', { screen: 'RecoveryOnboarding' });
+            throw new Error(
+              "Recovery isn't set up yet, so I opened the setup. It takes about a minute.",
+            );
+          }
+          if (!recovery && /profile first/i.test(String(body.message || ''))) {
+            await open('Menu', { screen: 'FitnessOnboarding' });
+            throw new Error(
+              "Your fitness profile isn't set up yet, so I opened the setup.",
+            );
+          }
+          if (recovery && body.code === 'AI_DISABLED') {
+            throw new Error(String(body.message));
+          }
+          throw new Error(
+            String(body.message || error?.message || 'That did not work. Please try again.'),
+          );
+        }
+      },
     };
   }, [
     onClose,
@@ -2115,9 +2170,18 @@ const AIAgentModal: React.FC<Props> = ({
         // the user's language instead of an English status line.
         const needsReport = results.some(
           result =>
-            (result.ok && result.action === 'QUERY_APP_DATA') ||
+            (result.ok &&
+              (result.action === 'QUERY_APP_DATA' ||
+                HEALTH_REPORT_ACTIONS.has(result.action))) ||
             (!result.ok && !result.cancelled),
         );
+        const coachAnswer = results
+          .filter(result => result.ok && HEALTH_COACH_ACTIONS.has(result.action))
+          .map(result => result.message)
+          .join(' ');
+        if (coachAnswer && shouldSpeak) {
+          speechController.update(`${visibleReply} ${coachAnswer}`, replyLanguage);
+        }
         if (needsReport && generation === generationRef.current) {
           const report = await narrateResults(
             text,

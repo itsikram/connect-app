@@ -13,6 +13,11 @@ jest.mock('react-native-safe-area-context', () => {
   };
 });
 
+// Offline saves use AsyncStorage; keep them in memory for tests.
+jest.mock('@react-native-async-storage/async-storage', () =>
+  require('@react-native-async-storage/async-storage/jest/async-storage-mock'),
+);
+
 jest.mock('react-redux', () => ({
   useSelector: (selector) => {
     const ctx = mockReact.useContext(mockClientContext);

@@ -9,7 +9,9 @@ type SoundType =
   | 'win'
   | 'turnChange'
   | 'buttonClick'
-  | 'pieceOut';
+  | 'pieceOut'
+  | 'rolledSix'
+  | 'threeSixes';
 
 const SOUND_SOURCES: Record<SoundType, number> = {
   diceRoll: require('../../assets/sounds/ludo/diceRoll.wav'),
@@ -19,7 +21,17 @@ const SOUND_SOURCES: Record<SoundType, number> = {
   turnChange: require('../../assets/sounds/ludo/turnChange.wav'),
   buttonClick: require('../../assets/sounds/ludo/buttonClick.wav'),
   pieceOut: require('../../assets/sounds/ludo/pieceOut.wav'),
+  rolledSix: require('../../assets/sounds/ludo/rolledSix.wav'),
+  threeSixes: require('../../assets/sounds/ludo/threeSixes.wav'),
 };
+
+// Cartoon effects generated from the web recipes (scripts/generate-ludo-sounds.js).
+// A slight random pitch keeps repeated sounds from feeling robotic; the
+// musical stings keep their tuning.
+const playbackRate = (soundType: SoundType) =>
+  soundType === 'win' || soundType === 'threeSixes' || soundType === 'rolledSix'
+    ? 1
+    : 1 + (Math.random() * 2 - 1) * 0.05;
 
 const configurePlayback = async () => {
   await Audio.setIsEnabledAsync(true);
@@ -128,6 +140,11 @@ export const useLudoAudio = () => {
         if (existing) {
           const status = await existing.getStatusAsync();
           if (status.isLoaded) {
+            try {
+              await existing.setRateAsync(playbackRate(soundType));
+            } catch {
+              // Pitch variation is optional polish.
+            }
             await existing.replayAsync();
             return;
           }

@@ -45,6 +45,7 @@ const LoginScreen = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [faceLoginMode, setFaceLoginMode] = useState(false);
+  const [focusedField, setFocusedField] = useState<'email' | 'password' | null>(null);
   const passwordRef = useRef<TextInput>(null);
   const { isDarkMode, colors: themeColors } = useTheme();
   const { login, faceLogin, googleSignIn, isLoading } = useContext(AuthContext);
@@ -122,6 +123,14 @@ const LoginScreen = () => {
     }
   };
 
+  const fieldBg = isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.72)';
+  const altBg = isDarkMode ? 'rgba(30,31,32,0.75)' : 'rgba(255,255,255,0.72)';
+  const fieldBorder = (field: 'email' | 'password') => {
+    if (error.toLowerCase().includes(field)) return themeColors.status.error;
+    if (focusedField === field) return themeColors.primary;
+    return themeColors.border.secondary;
+  };
+
   return (
     <KeyboardSafeView>
       <StatusBar
@@ -159,13 +168,14 @@ const LoginScreen = () => {
               <>
                 <View style={[
                   styles.input,
-                  { backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)', borderColor: themeColors.border.secondary },
-                  error.toLowerCase().includes('email') && { borderColor: themeColors.status.error },
+                  { backgroundColor: fieldBg, borderColor: fieldBorder('email') },
                 ]}>
-                  <Icon name="mail-outline" size={22} color={themeColors.primary} />
+                  <Icon name="mail-outline" size={20} color={focusedField === 'email' ? themeColors.primary : themeColors.text.secondary} />
                   <TextInput
                     value={email}
                     onChangeText={setEmail}
+                    onFocus={() => setFocusedField('email')}
+                    onBlur={() => setFocusedField(null)}
                     autoCapitalize="none"
                     keyboardType="email-address"
                     autoComplete="email"
@@ -177,18 +187,20 @@ const LoginScreen = () => {
                     accessibilityLabel="Email address"
                     placeholder="Email address"
                     placeholderTextColor={themeColors.text.tertiary}
+                    selectionColor={themeColors.primary}
                     style={[styles.nativeInput, { color: themeColors.text.primary }]}
                   />
                 </View>
                 <View style={[
                   styles.input,
-                  { backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)', borderColor: themeColors.border.secondary },
-                  error.toLowerCase().includes('password') && { borderColor: themeColors.status.error },
+                  { backgroundColor: fieldBg, borderColor: fieldBorder('password') },
                 ]}>
-                  <Icon name="lock-closed-outline" size={22} color={themeColors.primary} />
+                  <Icon name="lock-closed-outline" size={20} color={focusedField === 'password' ? themeColors.primary : themeColors.text.secondary} />
                   <TextInput
                     value={password}
                     onChangeText={setPassword}
+                    onFocus={() => setFocusedField('password')}
+                    onBlur={() => setFocusedField(null)}
                     ref={passwordRef}
                     secureTextEntry={!showPassword}
                     autoComplete="current-password"
@@ -198,33 +210,74 @@ const LoginScreen = () => {
                     accessibilityLabel="Password"
                     placeholder="Password"
                     placeholderTextColor={themeColors.text.tertiary}
+                    selectionColor={themeColors.primary}
                     style={[styles.nativeInput, { color: themeColors.text.primary }]}
                   />
-                  <TouchableOpacity onPress={() => setShowPassword(value => !value)} accessibilityLabel="Toggle password visibility" hitSlop={10}>
-                    <Icon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={22} color={themeColors.text.secondary} />
+                  <TouchableOpacity
+                    onPress={() => setShowPassword(value => !value)}
+                    accessibilityRole="button"
+                    accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                    hitSlop={12}
+                  >
+                    <Icon name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color={themeColors.text.secondary} />
                   </TouchableOpacity>
                 </View>
               </>
             ) : null}
-            {error ? <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text> : null}
+            {error ? (
+              <View style={styles.errorRow} accessibilityLiveRegion="polite">
+                <Icon name="alert-circle" size={16} color={themeColors.status.error} />
+                <Text style={[styles.error, { color: themeColors.status.error }]}>{error}</Text>
+              </View>
+            ) : null}
             {!faceLoginMode ? (
               <TouchableOpacity
                 onPress={handleLogin}
                 disabled={isLoading}
                 activeOpacity={0.85}
-                style={[styles.loginButton, { backgroundColor: themeColors.primary }, isLoading && styles.disabledButton]}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: isLoading, busy: isLoading }}
+                style={[styles.loginButton, { backgroundColor: themeColors.primary, shadowColor: themeColors.primary }, isLoading && styles.disabledButton]}
               >
                 {isLoading ? (
                   <View style={styles.loadingContent}>
-                    <ActivityIndicator size="small" color={themeColors.text.inverse} />
-                    <Text style={[styles.loginButtonText, { color: themeColors.text.inverse }]}>Logging in...</Text>
+                    <ActivityIndicator size="small" color={themeColors.onPrimary} />
+                    <Text style={[styles.loginButtonText, { color: themeColors.onPrimary }]}>Logging in…</Text>
                   </View>
                 ) : (
-                  <View style={styles.actionContent}>
-                    <Text style={[styles.loginButtonText, { color: themeColors.text.inverse }]}>Login</Text>
-                    <Text style={[styles.arrow, { color: themeColors.text.inverse }]}>→</Text>
-                  </View>
+                  <Text style={[styles.loginButtonText, { color: themeColors.onPrimary }]}>Log in</Text>
                 )}
+              </TouchableOpacity>
+            ) : (
+              <FaceCapture
+                onCapture={handleFaceLogin}
+                disabled={isLoading}
+                frameCount={15}
+                captureIntervalMs={50}
+              />
+            )}
+            <View style={styles.divider}>
+              <View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} />
+              <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>
+                {faceLoginMode ? 'OR' : 'OR CONTINUE WITH'}
+              </Text>
+              <View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} />
+            </View>
+            {!faceLoginMode ? (
+              <TouchableOpacity
+                style={[styles.altButton, { borderColor: themeColors.border.secondary, backgroundColor: altBg }]}
+                onPress={handleGoogleSignIn}
+                disabled={isLoading}
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel="Continue with Google"
+              >
+                <Image
+                  source={require('../assets/icons/google-logo.png')}
+                  style={styles.altIcon}
+                  resizeMode="contain"
+                />
+                <Text style={[styles.altButtonText, { color: themeColors.text.primary }]}>Continue with Google</Text>
               </TouchableOpacity>
             ) : null}
             <TouchableOpacity
@@ -233,50 +286,29 @@ const LoginScreen = () => {
                 setFaceLoginMode(value => !value);
               }}
               disabled={isLoading}
-              activeOpacity={0.85}
-              style={[styles.faceButton, { borderColor: themeColors.primary, backgroundColor: isDarkMode ? 'rgba(10,10,11,0.55)' : 'rgba(255,255,255,0.5)' }]}
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              style={[styles.altButton, { borderColor: themeColors.border.secondary, backgroundColor: altBg }]}
             >
-              <Icon name="scan-outline" size={24} color={themeColors.primary} />
-              <Text style={[styles.faceButtonText, { color: themeColors.text.primary }]}>{faceLoginMode ? 'Use password login' : 'Log in with Face'}</Text>
-            </TouchableOpacity>
-            {faceLoginMode ? (
-              <FaceCapture
-                onCapture={handleFaceLogin}
-                disabled={isLoading}
-                frameCount={15}
-                captureIntervalMs={50}
+              <Icon
+                name={faceLoginMode ? 'key-outline' : 'scan-outline'}
+                size={20}
+                color={themeColors.primary}
+                style={styles.altIconGlyph}
               />
-            ) : null}
-            {!faceLoginMode ? (
-              <>
-                <View style={styles.divider}>
-                  <View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} />
-                  <Text style={[styles.dividerText, { color: themeColors.text.secondary }]}>OR</Text>
-                  <View style={[styles.dividerLine, { backgroundColor: themeColors.border.secondary }]} />
-                </View>
-                <TouchableOpacity
-                  style={[styles.googleButton, { borderColor: themeColors.border.secondary, backgroundColor: isDarkMode ? 'rgba(30,31,32,0.75)' : 'rgba(255,255,255,0.56)' }]}
-                  onPress={handleGoogleSignIn}
-                  disabled={isLoading}
-                  activeOpacity={0.8}
-                >
-                  <Image
-                    source={require('../assets/icons/google-logo.png')}
-                    style={styles.googleLogo}
-                    resizeMode="contain"
-                    accessibilityLabel="Google logo"
-                  />
-                  <Text style={[styles.googleButtonText, { color: themeColors.text.primary }]}>Continue with Google</Text>
-                </TouchableOpacity>
-              </>
-            ) : null}
+              <Text style={[styles.altButtonText, { color: themeColors.text.primary }]}>
+                {faceLoginMode ? 'Use email and password' : 'Log in with Face'}
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() => navigation.navigate('Register')}
               disabled={isLoading}
               style={styles.link}
+              accessibilityRole="link"
+              hitSlop={8}
             >
               <Text style={[styles.linkText, { color: themeColors.text.secondary }]}>Don’t have an account? </Text>
-              <Text style={[styles.linkAction, { color: themeColors.primary }]}>Sign up →</Text>
+              <Text style={[styles.linkAction, { color: themeColors.primary }]}>Sign up</Text>
             </TouchableOpacity>
             <Toast />
           </View>
@@ -330,9 +362,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     marginBottom: 12,
   },
-  inputError: {
-    borderColor: '#E55353',
-  },
   nativeInput: {
     flex: 1,
     color: '#1B315C',
@@ -342,110 +371,85 @@ const styles = StyleSheet.create({
   },
   loginButton: {
     width: '100%',
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: '#08B9EA',
+    height: 54,
+    borderRadius: 16,
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 2,
-    marginBottom: 12,
-    shadowColor: '#08B9EA',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.24,
-    shadowRadius: 18,
-    elevation: 5,
+    marginTop: 4,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.22,
+    shadowRadius: 16,
+    elevation: 4,
   },
   disabledButton: {
     opacity: 0.7,
   },
-  actionContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
   loginButtonText: {
-    color: '#fff',
     fontSize: 17,
     fontWeight: '700',
     letterSpacing: 0.2,
-  },
-  arrow: {
-    color: '#fff',
-    fontSize: 24,
-    lineHeight: 26,
-    marginLeft: 10,
-    fontWeight: '300',
-  },
-  faceButton: {
-    width: '100%',
-    height: 56,
-    borderRadius: 28,
-    borderWidth: 1.5,
-    borderColor: '#08B9EA',
-    backgroundColor: 'rgba(255,255,255,0.5)',
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginBottom: 20,
-  },
-  faceButtonText: {
-    color: '#172B55',
-    fontSize: 16,
-    fontWeight: '700',
-    marginLeft: 10,
   },
   loadingContent: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  error: {
-    color: '#C62828',
-    fontSize: 13,
-    textAlign: 'center',
-    marginTop: -4,
+  errorRow: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: -2,
     marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  error: {
+    flex: 1,
+    fontSize: 13,
+    fontWeight: '500',
   },
   divider: {
     flexDirection: 'row',
     alignItems: 'center',
     width: '100%',
+    marginTop: 22,
     marginBottom: 16,
   },
   dividerLine: {
     flex: 1,
     height: StyleSheet.hairlineWidth * 2,
-    backgroundColor: '#D9E2EF',
   },
   dividerText: {
-    color: '#536B98',
-    marginHorizontal: 18,
-    fontSize: 13,
+    marginHorizontal: 12,
+    fontSize: 12,
     fontWeight: '600',
-    letterSpacing: 1,
+    letterSpacing: 0.8,
   },
-  googleButton: {
+  altButton: {
     width: '100%',
-    height: 56,
+    height: 52,
     borderRadius: 16,
-    borderWidth: 1.5,
-    borderColor: '#D8E3EF',
-    backgroundColor: 'rgba(255,255,255,0.56)',
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    marginBottom: 22,
+    marginBottom: 10,
   },
-  googleLogo: {
-    width: 22,
-    height: 22,
-    marginRight: 12,
+  altIcon: {
+    width: 20,
+    height: 20,
+    marginRight: 10,
   },
-  googleButtonText: {
-    color: '#172B55',
+  altIconGlyph: {
+    marginRight: 10,
+  },
+  altButtonText: {
     fontSize: 16,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   link: {
+    marginTop: 14,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

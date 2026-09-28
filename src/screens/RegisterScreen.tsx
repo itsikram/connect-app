@@ -51,6 +51,7 @@ const RegisterScreen = () => {
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
   const { colors: themeColors, isDarkMode } = useTheme();
   const { googleSignIn, register } = useContext(AuthContext);
 
@@ -310,7 +311,14 @@ const RegisterScreen = () => {
 
   const fieldStyle = (field: string) => [
     styles.input,
-    { backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.42)', borderColor: fieldErrors[field] ? themeColors.status.error : themeColors.border.secondary },
+    {
+      backgroundColor: isDarkMode ? 'rgba(10,10,11,0.72)' : 'rgba(255,255,255,0.72)',
+      borderColor: fieldErrors[field]
+        ? themeColors.status.error
+        : focusedField === field
+        ? themeColors.primary
+        : themeColors.border.secondary,
+    },
   ];
   const textInputStyle = { color: themeColors.text.primary };
 
@@ -334,8 +342,8 @@ const RegisterScreen = () => {
 
             <View style={[styles.tabs, { backgroundColor: isDarkMode ? 'rgba(30,31,32,0.78)' : 'rgba(255,255,255,0.6)' }]}>
               {TABS.map((item, index) => (
-                <TouchableOpacity key={item.key} onPress={() => handleTabPress(index)} style={[styles.tab, tab === index && { backgroundColor: themeColors.primary }]} activeOpacity={0.85}>
-                  <Text style={[styles.tabText, { color: tab === index ? themeColors.text.inverse : themeColors.text.secondary }]}>{index + 1}. {item.label}</Text>
+                <TouchableOpacity key={item.key} onPress={() => handleTabPress(index)} style={[styles.tab, tab === index && { backgroundColor: themeColors.primary }]} activeOpacity={0.85} accessibilityRole="tab" accessibilityState={{ selected: tab === index }}>
+                  <Text style={[styles.tabText, { color: tab === index ? themeColors.onPrimary : themeColors.text.secondary }]}>{index + 1}. {item.label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -347,17 +355,17 @@ const RegisterScreen = () => {
                   {(['firstName', 'surname'] as const).map((field) => (
                     <View key={field} style={[fieldStyle(field), styles.halfInput]}>
                       <Icon name="person-outline" size={22} color={themeColors.primary} />
-                      <TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} autoCapitalize="words" placeholder={field === 'firstName' ? 'First name' : 'Surname'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} />
+                      <TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} onFocus={() => setFocusedField(field)} onBlur={() => setFocusedField(null)} selectionColor={themeColors.primary} autoCapitalize="words" placeholder={field === 'firstName' ? 'First name' : 'Surname'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} />
                     </View>
                   ))}
                 </View>
                 <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.firstName || fieldErrors.surname || ' '}</Text>
-                <TouchableOpacity onPress={handleNext} style={[styles.actionButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Next Step  →</Text></TouchableOpacity>
+                <TouchableOpacity onPress={handleNext} style={[styles.actionButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.onPrimary }]}>Continue</Text></TouchableOpacity>
               </View>
             )}
             {tab === 1 && (
               <View style={styles.tabContent}>
-                <View style={fieldStyle('email')}><Icon name="mail-outline" size={22} color={themeColors.primary} /><TextInput value={formData.email} onChangeText={(value) => handleFieldChange('email', value)} autoCapitalize="none" keyboardType="email-address" autoComplete="email" textContentType="emailAddress" autoCorrect={false} accessibilityLabel="Email address" placeholder="Email address" placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /></View>
+                <View style={fieldStyle('email')}><Icon name="mail-outline" size={22} color={themeColors.primary} /><TextInput value={formData.email} onChangeText={(value) => handleFieldChange('email', value)} onFocus={() => setFocusedField('email')} onBlur={() => setFocusedField(null)} selectionColor={themeColors.primary} autoCapitalize="none" keyboardType="email-address" autoComplete="email" textContentType="emailAddress" autoCorrect={false} accessibilityLabel="Email address" placeholder="Email address" placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /></View>
                 <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors.email || ' '}</Text>
                 <TouchableOpacity
                   onPress={() => setShowDatePicker(true)}
@@ -416,18 +424,18 @@ const RegisterScreen = () => {
                     <Picker.Item label="Bangla" value="bn" />
                   </Picker>
                 </View>
-                <View style={styles.actionRow}><TouchableOpacity onPress={handleBack}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>← Back</Text></TouchableOpacity><TouchableOpacity onPress={handleNext} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Next Step  →</Text></TouchableOpacity></View>
+                <View style={styles.actionRow}><TouchableOpacity onPress={handleBack}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>Back</Text></TouchableOpacity><TouchableOpacity onPress={handleNext} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary }]}><Text style={[styles.actionText, { color: themeColors.onPrimary }]}>Continue</Text></TouchableOpacity></View>
               </View>
             )}
             {tab === 2 && (
               <View style={styles.tabContent}>
                 {(['password', 'confirmPassword'] as const).map((field) => (
                   <React.Fragment key={field}>
-                    <View style={fieldStyle(field)}><Icon name="lock-closed-outline" size={22} color={themeColors.primary} /><TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} secureTextEntry={field === 'password' ? !showPassword : !showConfirmPassword} autoComplete="new-password" textContentType="newPassword" accessibilityLabel={field === 'password' ? 'Password' : 'Confirm password'} placeholder={field === 'password' ? 'Password' : 'Confirm password'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /><TouchableOpacity hitSlop={10} accessibilityLabel="Toggle password visibility" onPress={() => field === 'password' ? setShowPassword(value => !value) : setShowConfirmPassword(value => !value)}><Icon name={(field === 'password' ? showPassword : showConfirmPassword) ? 'eye-off-outline' : 'eye-outline'} size={22} color={themeColors.text.secondary} /></TouchableOpacity></View>
+                    <View style={fieldStyle(field)}><Icon name="lock-closed-outline" size={22} color={themeColors.primary} /><TextInput value={formData[field]} onChangeText={(value) => handleFieldChange(field, value)} onFocus={() => setFocusedField(field)} onBlur={() => setFocusedField(null)} selectionColor={themeColors.primary} secureTextEntry={field === 'password' ? !showPassword : !showConfirmPassword} autoComplete="new-password" textContentType="newPassword" accessibilityLabel={field === 'password' ? 'Password' : 'Confirm password'} placeholder={field === 'password' ? 'Password' : 'Confirm password'} placeholderTextColor={themeColors.text.tertiary} style={[styles.nativeInput, textInputStyle]} /><TouchableOpacity hitSlop={10} accessibilityLabel="Toggle password visibility" onPress={() => field === 'password' ? setShowPassword(value => !value) : setShowConfirmPassword(value => !value)}><Icon name={(field === 'password' ? showPassword : showConfirmPassword) ? 'eye-off-outline' : 'eye-outline'} size={22} color={themeColors.text.secondary} /></TouchableOpacity></View>
                     <Text style={[styles.fieldError, { color: themeColors.status.error }]}>{fieldErrors[field] || ' '}</Text>
                   </React.Fragment>
                 ))}
-                <View style={styles.actionRow}><TouchableOpacity onPress={handleBack} disabled={isLoading}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>← Back</Text></TouchableOpacity><TouchableOpacity onPress={handleRegister} disabled={isLoading} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]}>{isLoading ? <View style={styles.loadingContent}><ActivityIndicator size="small" color={themeColors.text.inverse} /><Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Signing up...</Text></View> : <Text style={[styles.actionText, { color: themeColors.text.inverse }]}>Create Account  →</Text>}</TouchableOpacity></View>
+                <View style={styles.actionRow}><TouchableOpacity onPress={handleBack} disabled={isLoading}><Text style={[styles.secondaryAction, { color: themeColors.primary }]}>Back</Text></TouchableOpacity><TouchableOpacity onPress={handleRegister} disabled={isLoading} style={[styles.actionButton, styles.nextButton, { backgroundColor: themeColors.primary, opacity: isLoading ? 0.7 : 1 }]}>{isLoading ? <View style={styles.loadingContent}><ActivityIndicator size="small" color={themeColors.onPrimary} /><Text style={[styles.actionText, { color: themeColors.onPrimary }]}>Creating account…</Text></View> : <Text style={[styles.actionText, { color: themeColors.onPrimary }]}>Create account</Text>}</TouchableOpacity></View>
               </View>
             )}
 
@@ -502,9 +510,9 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', gap: 10 },
   input: {
     width: '100%',
-    height: 58,
-    borderWidth: 2,
-    borderRadius: 18,
+    height: 56,
+    borderWidth: 1.5,
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
@@ -521,9 +529,9 @@ const styles = StyleSheet.create({
   halfInput: { flex: 1 },
   nativeInput: { flex: 1, fontSize: 16, marginLeft: 12, paddingVertical: 0 },
   dateText: { flex: 1, fontSize: 16, marginLeft: 12 },
-  genderRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: 'transparent', borderRadius: 18, minHeight: 58, paddingHorizontal: 14, gap: 6 },
+  genderRow: { flexDirection: 'row', alignItems: 'center', borderWidth: 2, borderColor: 'transparent', borderRadius: 16, minHeight: 56, paddingHorizontal: 14, gap: 6 },
   genderOption: { paddingHorizontal: 8, paddingVertical: 8, borderRadius: 12 },
-  actionButton: { width: '100%', minHeight: 58, borderRadius: 29, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  actionButton: { width: '100%', minHeight: 54, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   nextButton: { flex: 1, marginTop: 0 },
   actionText: { fontSize: 17, fontWeight: '700' },
   secondaryAction: { fontSize: 16, fontWeight: '700', paddingHorizontal: 8 },
@@ -623,15 +631,15 @@ const styles = StyleSheet.create({
   },
   googleButton: {
     width: '100%',
-    height: 58,
-    borderRadius: 18,
-    borderWidth: 2,
+    height: 52,
+    borderRadius: 16,
+    borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 18,
   },
-  googleLogo: { width: 28, height: 28, marginRight: 16 },
+  googleLogo: { width: 20, height: 20, marginRight: 10 },
   googleText: { fontSize: 17, fontWeight: '700' },
   loginLink: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
 });

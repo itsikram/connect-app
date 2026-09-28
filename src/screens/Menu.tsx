@@ -56,6 +56,24 @@ const APP_SECTIONS: { title: string; ids: string[] }[] = [
   { title: 'Media', ids: ['mediaPlayer', 'youtube', 'camera', 'gallery', 'downloads', 'facebook'] },
   { title: 'Tools', ids: ['vpnBrowser', 'maps', 'contacts', 'gmail', 'calendar', 'drive', 'photos'] },
 ];
+const APP_HINTS: Record<string, string> = {
+  Ludu: 'Play Ludo with friends',
+  Chess: 'Classic strategy game',
+  cricbuzz: 'Live cricket scores',
+  mediaPlayer: 'Play videos & music',
+  youtube: 'Watch videos',
+  camera: 'Take photos & videos',
+  gallery: 'Your photos & videos',
+  downloads: 'Saved videos',
+  facebook: 'Browse Facebook',
+  vpnBrowser: 'Browse privately',
+  maps: 'Find places & routes',
+  contacts: 'Your Google contacts',
+  gmail: 'Read your email',
+  calendar: 'Events & schedule',
+  drive: 'Files in the cloud',
+  photos: 'Google Photos library',
+};
 const APP_MENU_ORDER_KEY = 'appMenuOrder';
 const APP_ORDER_ALIASES: Record<string, string> = {
   Ludu: 'ludo',
@@ -296,6 +314,7 @@ const Menu = () => {
     () =>
       sampleApps.map((app) => ({
         ...app,
+        hint: app.hint ?? (WORKING_APP_IDS.has(app.id) ? APP_HINTS[app.id] : 'Coming soon'),
         onPress: () => handleAppPress(app),
       })),
     [handleAppPress]
@@ -618,21 +637,13 @@ const Menu = () => {
             </Text>
           </View>
         ) : (
-          <View
-            style={[
-              styles.appsPanel,
-              {
-                backgroundColor: themeColors.surface.primary,
-                borderColor: themeColors.border.primary,
-              },
-            ]}
-          >
+          <View style={styles.appsPanel}>
             {sectionApps.map((section) => (
               <AppGrid
                 key={section.title}
                 title={section.title}
                 apps={section.apps}
-                columns={4}
+                variant="card"
                 onReorder={(fromIndex, toIndex) =>
                   reorderApps(section.apps.map((app) => app.id), fromIndex, toIndex)
                 }
@@ -661,7 +672,7 @@ const Menu = () => {
                 <AppGrid
                   title={normalizedQuery ? 'Other apps' : 'Coming soon'}
                   apps={comingSoonApps}
-                  columns={4}
+                  variant="card"
                   onReorder={(fromIndex, toIndex) =>
                     reorderApps(comingSoonApps.map((app) => app.id), fromIndex, toIndex)
                   }
@@ -891,11 +902,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   appsPanel: {
-    borderWidth: 1,
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingTop: 14,
-    paddingBottom: 8,
     marginBottom: 14,
   },
   moreToggle: {

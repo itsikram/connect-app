@@ -82,6 +82,16 @@ export const HOME_POSITIONS: PathPoint[][] = [
 export const STEP_DURATION_MS = 90;
 export const DICE_ROLL_ANIMATION_MS = 950;
 export const DICE_RESULT_DISPLAY_MS = 1000;
+// Minimum time every player sees a landed dice face before anyone can roll again online.
+export const DICE_MIN_VISIBLE_MS = 2000;
+
+// The dice sits in the 3x3 centre. It is kept a little smaller than the centre
+// so each colour's triangle keeps an outer band where finished tokens are
+// shown (in cells, measured from the board centre).
+export const CENTER_DICE_CELLS = 2.1;
+export const FINISHED_TOKEN_BAND_CELLS = 1.28;
+export const FINISHED_TOKEN_SIZE_CELLS = 0.4;
+export const FINISHED_TOKEN_GAP_CELLS = 0.5;
 export const AUTO_MOVE_DELAY_MS = 120;
 export const TURN_TRANSITION_DELAY_MS = 200;
 export const ROLL_UNLOCK_DELAY_MS = 100;

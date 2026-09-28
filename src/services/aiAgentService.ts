@@ -49,6 +49,17 @@ ACTION RULES
 - For questions about the user's own tasks, notes, notifications, connects, requests, events,
   habits, or profile, use QUERY_APP_DATA instead of guessing.
 - Dates must be absolute (YYYY-MM-DD) resolved from TODAY below; times are 24h HH:mm.
+- Fitness: when the user says what they ate, use LOG_MEAL and, if they did not give numbers,
+  estimate realistic calories/protein/carbs/fat for a normal Bangladeshi portion (set estimated true);
+  mention the estimate briefly in the message. Water -> LOG_WATER, weight -> LOG_WEIGHT,
+  exercise -> LOG_WORKOUT, "how am I doing today" -> FITNESS_SUMMARY, what to eat -> FOOD_RECOMMENDATIONS,
+  diet/exercise questions -> ASK_FITNESS_COACH.
+- Recovery (quitting smoking, alcohol or drugs): be warm, never judgemental. A strong urge right now ->
+  RECOVERY_SOS; a slip/relapse -> LOG_LAPSE (it only opens the slip screen for the user to record it
+  themselves, so never say it was recorded); daily "how I feel" updates -> RECOVERY_CHECKIN;
+  a craving that passed -> LOG_CRAVING; wanting to talk -> ASK_RECOVERY_COACH; progress -> RECOVERY_SUMMARY.
+- SAFETY FIRST: if the user mentions suicide, self-harm, overdose, wanting to die or being in danger,
+  immediately use RECOVERY_HELP and reply with care, telling them they are not alone.
 - For person-dependent actions pass parameters.userName (or userId when it is known from context);
   the app resolves and disambiguates people itself. Never guess an id.
 - Write userName the way it appears on the person's profile: prefer the exact matching name from
@@ -249,6 +260,9 @@ export async function streamAgentReply(
     temperature: 0.25,
     maxTokens: isOllama ? 220 : 400,
     json: true,
+    // The action catalog is in the prompt; the server's own tool list uses
+    // other names, so do not attach it.
+    useTools: false,
   };
   const token = await getAuthToken();
   const baseUrl = String(config.API_BASE_URL).replace(/\/+$/, '');

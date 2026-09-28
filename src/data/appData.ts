@@ -5,6 +5,7 @@ export interface AppItem {
   icon?: string;
   logo?: string;
   color?: string;
+  hint?: string; // Short description shown on card-style app tiles
   onPress?: () => void;
   packageName?: string; // For device apps
   isDeviceApp?: boolean; // Flag to identify device apps

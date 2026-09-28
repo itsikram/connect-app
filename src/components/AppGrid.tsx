@@ -4,6 +4,7 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
+  Pressable,
   Image,
   PanResponder,
 } from 'react-native';
@@ -17,6 +18,8 @@ interface AppGridProps {
   columns?: number;
   emptyLabel?: string;
   onReorder?: (fromIndex: number, toIndex: number) => void;
+  /** 'icon' renders a launcher-style icon grid; 'card' renders two-column shortcut cards. */
+  variant?: 'icon' | 'card';
 }
 
 const AppGrid: React.FC<AppGridProps> = ({
@@ -25,13 +28,16 @@ const AppGrid: React.FC<AppGridProps> = ({
   columns = 4,
   emptyLabel = 'No apps found',
   onReorder,
+  variant = 'icon',
 }) => {
   const { colors: themeColors } = useTheme();
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const dragStart = useRef({ x: 0, y: 0, index: 0 });
   const dragActive = useRef(false);
   const longPressReady = useRef(false);
-  const columnWidth = `${100 / columns}%` as `${number}%`;
+  const isCard = variant === 'card';
+  const gridColumns = isCard ? 2 : columns;
+  const columnWidth = `${100 / gridColumns}%` as `${number}%`;
 
   const createDragResponder = (index: number) =>
     PanResponder.create({
@@ -60,11 +66,11 @@ const AppGrid: React.FC<AppGridProps> = ({
         if (dragActive.current && onReorder) {
           const dx = event.nativeEvent.pageX - dragStart.current.x;
           const dy = event.nativeEvent.pageY - dragStart.current.y;
-          const columnMove = Math.round(dx / 84);
-          const rowMove = Math.round(dy / 82);
+          const columnMove = Math.round(dx / (isCard ? 170 : 84));
+          const rowMove = Math.round(dy / (isCard ? 100 : 82));
           const toIndex = Math.max(
             0,
-            Math.min(apps.length - 1, index + rowMove * columns + columnMove),
+            Math.min(apps.length - 1, index + rowMove * gridColumns + columnMove),
           );
           if (toIndex !== index) onReorder(index, toIndex);
         }
@@ -98,9 +104,59 @@ const AppGrid: React.FC<AppGridProps> = ({
       {title ? (
         <Text style={[styles.title, { color: themeColors.text.primary }]}>{title}</Text>
       ) : null}
-      <View style={styles.grid}>
+      <View style={[styles.grid, isCard && styles.cardGrid]}>
         {apps.map((app, index) => {
           const dragResponder = createDragResponder(index);
+          const longPressHandlers = {
+            onLongPress: () => {
+              longPressReady.current = true;
+            },
+            onPressOut: () => {
+              if (!dragActive.current) longPressReady.current = false;
+            },
+            delayLongPress: 450,
+          };
+          if (isCard) {
+            return (
+              <View
+                key={app.id}
+                style={[styles.cardWrapper, draggedIndex === index && styles.draggedItem]}
+                {...dragResponder.panHandlers}
+              >
+                <Pressable
+                  onPress={app.onPress}
+                  {...longPressHandlers}
+                  accessibilityRole="button"
+                  accessibilityLabel={app.name}
+                  disabled={!app.onPress}
+                  style={({ pressed }) => [
+                    styles.card,
+                    {
+                      backgroundColor: themeColors.surface.primary,
+                      borderColor: themeColors.border.primary,
+                      opacity: pressed ? 0.88 : 1,
+                    },
+                  ]}
+                >
+                  <View style={[styles.cardIcon, { backgroundColor: app.color || themeColors.primary }]}>
+                    {app.logo ? (
+                      <Image source={{ uri: app.logo }} style={styles.cardLogo} resizeMode="contain" />
+                    ) : (
+                      <Icon name={app.icon || 'apps'} size={20} color="#FFFFFF" />
+                    )}
+                  </View>
+                  <Text style={[styles.cardLabel, { color: themeColors.text.primary }]} numberOfLines={1}>
+                    {app.name}
+                  </Text>
+                  {app.hint ? (
+                    <Text style={[styles.cardHint, { color: themeColors.text.tertiary }]} numberOfLines={1}>
+                      {app.hint}
+                    </Text>
+                  ) : null}
+                </Pressable>
+              </View>
+            );
+          }
           return (
             <View
               key={app.id}
@@ -114,13 +170,7 @@ const AppGrid: React.FC<AppGridProps> = ({
               <TouchableOpacity
                 style={styles.appTouchable}
                 onPress={app.onPress}
-                onLongPress={() => {
-                  longPressReady.current = true;
-                }}
-                onPressOut={() => {
-                  if (!dragActive.current) longPressReady.current = false;
-                }}
-                delayLongPress={450}
+                {...longPressHandlers}
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel={app.name}
@@ -209,6 +259,41 @@ const styles = StyleSheet.create({
     lineHeight: 14,
     letterSpacing: 0.1,
     maxWidth: '100%',
+  },
+  cardGrid: {
+    gap: 10,
+  },
+  cardWrapper: {
+    width: '48%',
+    flexGrow: 1,
+    flexBasis: '47%',
+  },
+  card: {
+    width: '100%',
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 12,
+  },
+  cardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  cardLogo: {
+    width: 22,
+    height: 22,
+    borderRadius: 6,
+  },
+  cardLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  cardHint: {
+    marginTop: 2,
+    fontSize: 12,
   },
   draggedItem: {
     opacity: 0.55,

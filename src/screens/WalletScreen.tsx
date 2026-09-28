@@ -3,6 +3,7 @@ import { ActivityIndicator, RefreshControl, SafeAreaView, ScrollView, StatusBar,
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
+import ScreenHeader from '../components/ScreenHeader';
 import { ModernCard } from '../components/modern';
 import api from '../lib/api';
 import { useFeatureFlag } from '../contexts/FeatureFlagContext';
@@ -90,6 +91,7 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
   if (!enabled) {
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: colors.background.primary }]}>
+        <ScreenHeader title="My Wallet" style={{ paddingHorizontal: spacing.md }} />
         <Text style={[typography.h5, styles.disabledText, { color: colors.text.primary }]}>
           Wallet is currently unavailable.
         </Text>
@@ -104,7 +106,7 @@ const WalletScreen = ({ navigation }: { navigation: any }) => {
         contentContainerStyle={[styles.content, { padding: spacing.md, paddingBottom: 100 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} />}
       >
-        <Text style={[typography.h3, { color: colors.text.primary }]}>My Wallet</Text>
+        <ScreenHeader title="My Wallet" />
         <Text style={[typography.body, { color: colors.text.secondary }]}>
           Your balance is read from the server and updates after approved payments.
         </Text>

@@ -606,26 +606,24 @@ function TabBarWithLudoCheck(props: any) {
 
   const tabs = props.user
     ? [
-        // Order to match web header: Home, Connects, Videos, Message, Downloads/Menu
+        // Same tabs and icons as the web mobile bottom bar (MobileBottomNav)
         {
           name: 'Home',
-          icon: 'home',
+          icon: 'home-alt',
           label: 'Home',
           component: HomeStack,
           color: '#4CAF50',
           haptic: false,
-          iconSet: 'fa5',
-          faStyle: 'regular',
+          iconSet: 'fapro',
         },
         {
           name: 'Connects',
-          icon: 'user-friends',
+          icon: 'users',
           label: 'Connects',
           component: ConnectsStack,
           color: '#2196F3',
           haptic: false,
-          iconSet: 'fa5',
-          faStyle: 'regular',
+          iconSet: 'fapro',
           badge: connectRequestCount,
         },
         {
@@ -635,18 +633,16 @@ function TabBarWithLudoCheck(props: any) {
           component: VideosStack,
           color: '#FF9800',
           haptic: false,
-          iconSet: 'fa5',
-          faStyle: 'regular',
+          iconSet: 'fapro',
         },
         {
           name: 'Message',
-          icon: 'envelope',
+          icon: 'comment-alt-lines',
           label: 'Message',
           component: MessageStack,
           color: '#9C27B0',
           haptic: false,
-          iconSet: 'fa5',
-          faStyle: 'regular',
+          iconSet: 'fapro',
           badge: unreadMessageCount,
         },
         {
@@ -656,8 +652,7 @@ function TabBarWithLudoCheck(props: any) {
           component: MenuStack,
           color: '#607D8B',
           haptic: false,
-          iconSet: 'fa5',
-          faStyle: 'solid',
+          iconSet: 'fapro',
         },
       ]
     : [
@@ -684,8 +679,7 @@ function TabBarWithLudoCheck(props: any) {
           component: MenuStack,
           color: '#607D8B',
           haptic: false,
-          iconSet: 'fa5',
-          faStyle: 'solid',
+          iconSet: 'fapro',
         },
       ];
   return <ProfessionalTabBar {...props} tabs={tabs} />;

@@ -29,6 +29,10 @@ import AgoraWebEngine, {
   AgoraWebEngineHandle,
 } from './AgoraWebEngine';
 import LiveVoiceModal from './LiveVoiceModal';
+import {
+  isLiveVoiceAutoMicEnabled,
+  setLiveVoiceAutoMicEnabled,
+} from '../lib/liveVoiceAutoMic';
 
 const mapAgoraQuality = (uplink = 0, downlink = 0) => {
   const worst = Math.max(uplink || 0, downlink || 0);
@@ -77,6 +81,9 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
   // The friend's device is in the channel / their voice is arriving.
   const [peerJoined, setPeerJoined] = useState(false);
   const [remoteAudio, setRemoteAudio] = useState(false);
+  // Receiver: turn the mic on automatically for this friend.
+  const [autoMicrophone, setAutoMicrophone] = useState(false);
+  const autoMicAttemptedRef = useRef(false);
   // Streaming = voice is actually flowing to (or from) the friend's device,
   // not just that this device joined the channel.
   const isStreaming =
@@ -226,6 +233,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       setMicrophonePending(false);
       setPeerJoined(false);
       setRemoteAudio(false);
+      setAutoMicrophone(false);
+      autoMicAttemptedRef.current = false;
 
       broadcastStatus({
         active: false,
@@ -311,6 +320,15 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       setConnectionQuality(4);
       setPeerJoined(false);
       setRemoteAudio(false);
+      autoMicAttemptedRef.current = false;
+      setAutoMicrophone(false);
+      if (sessionRole === 'receiver') {
+        void isLiveVoiceAutoMicEnabled(myId, to).then(enabled => {
+          if (enabled && sessionId === sessionIdRef.current) {
+            setAutoMicrophone(true);
+          }
+        });
+      }
       // Start loading the Agora WebView immediately so incoming (web → app)
       // does not wait on mic permission / token before the engine can join.
       setMediaActive(true);
@@ -506,6 +524,7 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       microphonePending
     )
       return;
+    const sessionId = sessionIdRef.current;
     setMicrophonePending(true);
     try {
       const permission = await Audio.requestPermissionsAsync();
@@ -514,8 +533,11 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
           'Microphone permission is required to share your voice.',
         );
       await configureLiveVoiceAudio();
+      // The session ended while waiting on permission: nothing to enable.
+      if (sessionId !== sessionIdRef.current) return;
       engineRef.current?.enableAudio();
     } catch (error: any) {
+      if (sessionId !== sessionIdRef.current) return;
       setMicrophonePending(false);
       Alert.alert(
         'Microphone Error',
@@ -523,6 +545,40 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
       );
     }
   }, [microphoneEnabled, microphonePending]);
+
+  const toggleAutoMicrophone = useCallback(
+    (enabled: boolean) => {
+      void setLiveVoiceAutoMicEnabled(myId, peerIdRef.current, enabled);
+      // Checking the box also turns the mic on now (via the effect below).
+      autoMicAttemptedRef.current = false;
+      setAutoMicrophone(enabled);
+    },
+    [myId],
+  );
+
+  // Receiver with auto-mic on: turn the mic on once the session is live.
+  // Attempted once per session so a denied permission does not loop.
+  useEffect(() => {
+    if (
+      role !== 'receiver' ||
+      !isActive ||
+      !autoMicrophone ||
+      microphoneEnabled ||
+      microphonePending ||
+      autoMicAttemptedRef.current
+    ) {
+      return;
+    }
+    autoMicAttemptedRef.current = true;
+    void enableMicrophone();
+  }, [
+    role,
+    isActive,
+    autoMicrophone,
+    microphoneEnabled,
+    microphonePending,
+    enableMicrophone,
+  ]);
 
   // Let the chat screen know as soon as voice starts or stops flowing.
   useEffect(() => {
@@ -655,6 +711,8 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
           microphonePending={microphonePending}
           isStreaming={isStreaming}
           peerJoined={peerJoined}
+          autoMicrophone={autoMicrophone}
+          onToggleAutoMicrophone={toggleAutoMicrophone}
         />
       ) : null}
     </>

@@ -10,6 +10,9 @@ interface GameHeaderProps {
   onStartGame: () => void;
   onResetGame: () => void;
   onExitGame: () => void;
+  canPause?: boolean;
+  pauseDisabled?: boolean;
+  onPauseGame?: () => void;
 }
 
 export const GameHeader: React.FC<GameHeaderProps> = ({
@@ -19,6 +22,9 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   onStartGame,
   onResetGame,
   onExitGame,
+  canPause,
+  pauseDisabled,
+  onPauseGame,
 }) => {
   const insets = useSafeAreaInsets();
   const showExit = Boolean(gameId) || gameStarted;
@@ -57,12 +63,25 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
             <Text style={styles.btnPrimaryText}>Start</Text>
           </TouchableOpacity>
         ) : (
-          <TouchableOpacity
-            style={[styles.btn, styles.btnDanger]}
-            onPress={onResetGame}
-          >
-            <Text style={styles.btnDangerText}>Restart</Text>
-          </TouchableOpacity>
+          <>
+            {canPause && onPauseGame ? (
+              <TouchableOpacity
+                style={[styles.btn, styles.btnGhost, pauseDisabled && { opacity: 0.5 }]}
+                onPress={onPauseGame}
+                disabled={pauseDisabled}
+                testID="ludo-pause"
+                accessibilityLabel="Pause and save this game"
+              >
+                <Text style={styles.btnGhostText}>⏸ Pause</Text>
+              </TouchableOpacity>
+            ) : null}
+            <TouchableOpacity
+              style={[styles.btn, styles.btnDanger]}
+              onPress={onResetGame}
+            >
+              <Text style={styles.btnDangerText}>Restart</Text>
+            </TouchableOpacity>
+          </>
         )}
         {showExit && (
           <TouchableOpacity
