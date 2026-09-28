@@ -168,6 +168,13 @@ const routes = {
   'GET /api/access-key': () => ({ key: remoteAccess.getAccessKey() || null, liveEnv: remoteAccess.liveEnvFile }),
   'GET /api/status': () => controller.getState(),
   'GET /api/logs': (req, url) => controller.getLogs(Number(url.searchParams.get('since')) || 0, 1000),
+  // Polling alternative to /api/events for the live site: Cloudflare quick
+  // tunnels hold back event streams, so the browser polls this instead.
+  'GET /api/snapshot': (req, url) => ({
+    state: controller.getState(),
+    logs: controller.getLogs(Number(url.searchParams.get('since')) || 0, 500),
+    lastLogId: controller.logSeq,
+  }),
   'DELETE /api/logs': () => {
     controller.clearLogs();
     return { ok: true };
