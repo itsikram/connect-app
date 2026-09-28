@@ -30,25 +30,20 @@ const isExpoTunnelHost = (host: string): boolean =>
   host.endsWith('.ngrok-free.app') ||
   host.endsWith('.loca.lt');
 
-// Tunnel development can still use the local API, which is required for local
-// Ollama. Set EXPO_PUBLIC_LOCAL_API_URL when the computer's LAN address differs.
+const expoHost = Constants.expoConfig?.hostUri?.split(':')[0] || '';
+
+// Opened in Expo Go through a tunnel (e.g. started from the web /expo console):
+// the phone can be on any network and cannot reach this PC's LAN API, so use
+// the live servers exactly like a production build. The Expo control daemon
+// also sets EXPO_PUBLIC_CONNECT_TUNNEL=1 for tunnel runs.
+const isTunnelSession =
+  process.env.EXPO_PUBLIC_CONNECT_TUNNEL === '1' || isExpoTunnelHost(expoHost);
+
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
-  const liveServerUrl = 'https://connect-server-hq4q.onrender.com';
-
-  // return liveServerUrl;
-
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
 
-  const hostUri = Constants.expoConfig?.hostUri;
-  const host = hostUri?.split(':')[0];
-
-  if (host && isExpoTunnelHost(host)) {
-    return (
-      process.env.EXPO_PUBLIC_LOCAL_API_URL?.trim() ||
-      'http://192.168.1.102:4000'
-    ).replace(/\/$/, '');
-  }
+  const host = expoHost;
 
   if (
     host &&
@@ -146,7 +141,7 @@ const ENV: Record<Environment, EnvironmentConfig> = {
 const getEnvironment = (): Environment => {
   // For React Native, you might want to use __DEV__ or environment variables
   if (__DEV__) {
-    return 'development';
+    return isTunnelSession ? 'production' : 'development';
   }
   // You can add logic here to detect staging vs production
   return 'production';

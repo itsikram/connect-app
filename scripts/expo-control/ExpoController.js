@@ -340,6 +340,10 @@ class ExpoController extends EventEmitter {
     // must pick these from --no-dev itself or Babel transforms change.
     delete env.NODE_ENV;
     delete env.BABEL_ENV;
+    // Tells the app (src/lib/config.ts) to use the live servers: a phone on the
+    // tunnel cannot reach this PC's LAN API.
+    if (options.mode === 'tunnel') env.EXPO_PUBLIC_CONNECT_TUNNEL = '1';
+    else delete env.EXPO_PUBLIC_CONNECT_TUNNEL;
     if (options.mode === 'tunnel' && options.provider === 'expo-ws') env.EXPO_UNSTABLE_TUNNEL_V2 = '1';
     else delete env.EXPO_UNSTABLE_TUNNEL_V2;
 
