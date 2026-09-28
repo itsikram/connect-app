@@ -122,6 +122,17 @@ export const withIfThen = (plan: RecoveryPlan | null | undefined, item: { trigge
   return { ...base, ifThen: [...base.ifThen, item].slice(-10) };
 };
 
+/** Toggles a chip; picking "none" clears the others and any real answer clears "none". */
+export const toggleExclusive = (list: string[], key: string, noneKey = 'none') => {
+  if (list.includes(key)) return list.filter((item) => item !== key);
+  if (key === noneKey) return [noneKey];
+  return [...list.filter((item) => item !== noneKey), key];
+};
+
+/** Keys from `picked` whose option is marked as a red flag. */
+export const redFlagsIn = (picked: string[] = [], options: Array<{ key: string; redFlag?: unknown }> = []) =>
+  picked.filter((key) => options.some((option) => option.key === key && option.redFlag));
+
 /** Keeps only digits, "+", spaces and dashes in a typed phone number. */
 export const cleanPhone = (value: string) => value.replace(/[^\d+\-\s()]/g, '').slice(0, 24);
 

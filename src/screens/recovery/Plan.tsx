@@ -23,6 +23,7 @@ export const RecoveryPlanScreen = ({ navigation, route }: Props) => {
   const [newIf, setNewIf] = useState('');
   const [newThen, setNewThen] = useState('');
   const [newStep, setNewStep] = useState('');
+  const [newWarning, setNewWarning] = useState('');
 
   // Load the saved plan once; later dashboard refreshes must not wipe unsaved edits.
   useEffect(() => {
@@ -180,6 +181,59 @@ export const RecoveryPlanScreen = ({ navigation, route }: Props) => {
                   onPress={() => {
                     edit({ checklist: [...plan.checklist, { text: newStep.trim(), done: false }] });
                     setNewStep('');
+                  }}
+                />
+              </>
+            ) : null}
+          </Card>
+
+          {plan.replacements?.length ? (
+            <>
+              <SectionHeader title={s.plan.replacementsTitle} />
+              <Muted style={styles.hint}>{s.plan.replacementsHint}</Muted>
+              {plan.replacements.map((item, index) => (
+                <Card key={`${index}-${item.need}`}>
+                  <View style={styles.rowTop}>
+                    <Icon name="swap-horizontal" size={20} color={colors.primary} />
+                    <View style={{ flex: 1 }}>
+                      <Text style={[styles.body, { color: colors.text.primary, fontWeight: '800' }]}>{item.need}</Text>
+                      <Text style={[styles.body, { color: colors.text.primary, marginTop: 4 }]}>
+                        <Text style={{ fontWeight: '800', color: colors.primary }}>{`${s.plan.instead} `}</Text>
+                        {item.activity}
+                      </Text>
+                    </View>
+                    <Pressable accessibilityRole="button" accessibilityLabel={s.plan.remove} hitSlop={10} onPress={() => edit({ replacements: (plan.replacements || []).filter((_, position) => position !== index) })}>
+                      <Icon name="close" size={18} color={colors.text.tertiary} />
+                    </Pressable>
+                  </View>
+                </Card>
+              ))}
+            </>
+          ) : null}
+
+          <SectionHeader title={s.plan.warningTitle} />
+          <Muted style={styles.hint}>{s.plan.warningHint}</Muted>
+          <Card>
+            {(plan.warningSigns || []).map((item, index) => (
+              <View key={`${index}-${item}`} style={styles.checkRow}>
+                <Icon name="alert-outline" size={20} color={REC.warm} />
+                <Text style={[styles.body, { flex: 1, color: colors.text.primary }]}>{item}</Text>
+                <Pressable accessibilityRole="button" accessibilityLabel={s.plan.remove} hitSlop={10} onPress={() => edit({ warningSigns: (plan.warningSigns || []).filter((_, position) => position !== index) })}>
+                  <Icon name="close" size={18} color={colors.text.tertiary} />
+                </Pressable>
+              </View>
+            ))}
+            {(plan.warningSigns || []).length < 8 ? (
+              <>
+                <Field label={s.plan.addWarning} value={newWarning} placeholder={s.plan.warningPlaceholder} onChangeText={setNewWarning} style={{ marginTop: 10 }} />
+                <Button
+                  label={s.plan.addWarning}
+                  icon="plus"
+                  variant="secondary"
+                  disabled={!newWarning.trim()}
+                  onPress={() => {
+                    edit({ warningSigns: [...(plan.warningSigns || []), newWarning.trim()] });
+                    setNewWarning('');
                   }}
                 />
               </>

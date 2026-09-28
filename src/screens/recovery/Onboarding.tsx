@@ -1,8 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
-import { Approach, ProfileInput, SubstanceKey, SupportContact, recoveryApi } from '../../services/recoveryApi';
-import { cleanPhone, daysSince, daysUntil, parseNumber, quitDateFor } from './helpers';
+import { Approach, BackgroundMultiField, BackgroundSingleField, ProfileInput, RecoveryBackground, SubstanceKey, SupportContact, recoveryApi } from '../../services/recoveryApi';
+import { cleanPhone, daysSince, daysUntil, parseNumber, quitDateFor, redFlagsIn, toggleExclusive } from './helpers';
 import { useRecoveryContent } from './hooks';
 import { useRecoveryI18n } from './i18n';
 import {
@@ -61,6 +61,7 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
   const [triggers, setTriggers] = useState<string[]>([]);
   const [quit, setQuit] = useState<Record<string, Quit>>({});
   const [contacts, setContacts] = useState<SupportContact[]>([{ name: '', phone: '', relation: '' }]);
+  const [background, setBackground] = useState<RecoveryBackground>({});
 
   const meta = (key: string) => content?.substances.find((item) => item.key === key);
   const safetyOf = (key: string) => {
@@ -109,6 +110,7 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
         setLetter(profile.letter || '');
         setTriggers(profile.triggers || []);
         if (profile.supportContacts?.length) setContacts(profile.supportContacts.map((contact) => ({ relation: '', ...contact })));
+        if (profile.background) setBackground(profile.background);
       })
       .catch((loadError) => setError(errorMessage(loadError, s.common.saveError)))
       .finally(() => setLoading(false));
@@ -121,7 +123,7 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
       const tool = meta(key)?.screener;
       return !!tool && !!content?.screeners?.[tool];
     });
-    return [...intro, 'substances', 'usage', ...screeners.map((key) => `screener:${key}`), 'readiness', 'reasons', 'triggers', 'quit', 'support', 'review'];
+    return [...intro, 'substances', 'usage', ...screeners.map((key) => `screener:${key}`), 'history', 'readiness', 'reasons', 'triggers', 'about', 'health', 'quit', 'support', 'review'];
   }, [mode, selected, content, editing, resuming]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const current = steps[Math.min(step, steps.length - 1)];
@@ -138,6 +140,8 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
 
   const setUsageField = (key: string, field: keyof Usage, value: string | number) => setUsage((old) => ({ ...old, [key]: { ...old[key], [field]: value } }));
   const setQuitField = (key: string, patch: Partial<Quit>) => setQuit((old) => ({ ...old, [key]: { ...old[key], ...patch, touched: true } }));
+  const setSingle = (field: BackgroundSingleField, value: string) => setBackground((old) => ({ ...old, [field]: old[field] === value ? undefined : value }));
+  const toggleMulti = (field: BackgroundMultiField, key: string) => setBackground((old) => ({ ...old, [field]: toggleExclusive(old[field] || [], key) }));
 
   const validate = (): string | null => {
     if (current === 'substances') {
@@ -211,6 +215,11 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
         reasons: reasons.trim(),
         letter: letter.trim(),
         triggers,
+        background: {
+          ...background,
+          whatHelped: background.whatHelped?.trim() || undefined,
+          notes: background.notes?.trim() || undefined,
+        },
         supportContacts: contacts.map((contact) => ({ ...contact, phone: cleanPhone(contact.phone) })).filter((contact) => contact.name.trim() || contact.phone.trim()),
         onboardingCompleted: true,
       });
@@ -422,6 +431,83 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
     </>
   );
 
+  const options = (field: BackgroundSingleField | BackgroundMultiField) => content.background?.[field] || [];
+  const single = (field: BackgroundSingleField, title: string) =>
+    options(field).length ? (
+      <Question title={title}>
+        <ChipGroup options={options(field).map((item) => ({ label: item.label, value: item.key }))} value={background[field] || ''} onChange={(value) => setSingle(field, value)} />
+      </Question>
+    ) : null;
+  const multi = (field: BackgroundMultiField, title: string, hint?: string, filter?: (key: string) => boolean) =>
+    options(field).length ? (
+      <Question title={title} hint={hint}>
+        <MultiChips options={options(field).filter((item) => !filter || filter(item.key))} values={background[field] || []} onToggle={(key) => toggleMulti(field, key)} />
+      </Question>
+    ) : null;
+  const safetyBanner = (key: string) =>
+    content.backgroundSafety?.[key] ? <Banner key={key} icon="shield-alert-outline" tone="warn" text={content.backgroundSafety[key]} /> : null;
+
+  const renderHistory = () => {
+    const flags = redFlagsIn(background.pastWithdrawal, options('pastWithdrawal'));
+    return (
+      <>
+        <Text style={[styles.heading, { color: colors.text.primary }]}>{s.onboarding.historyTitle}</Text>
+        <Muted style={styles.hint}>{`${s.onboarding.historyHint} ${s.onboarding.optionalNote}`}</Muted>
+        <Card>
+          {multi('functions', s.onboarding.functionsQ, s.onboarding.functionsHint)}
+          {multi('routes', s.onboarding.routesQ)}
+          {single('usePattern', s.onboarding.patternQ)}
+          <Question title={s.onboarding.attemptsQ}>
+            <Stepper value={background.quitAttempts || 0} min={0} max={100} onChange={(value) => setBackground((old) => ({ ...old, quitAttempts: value }))} />
+          </Question>
+          {single('longestQuit', s.onboarding.longestQ)}
+          {(background.quitAttempts || 0) > 0 || (background.longestQuit && background.longestQuit !== 'never') ? (
+            <>
+              {multi('relapseReasons', s.onboarding.returnedQ)}
+              <Field label={s.onboarding.helpedLabel} value={background.whatHelped || ''} onChangeText={(value) => setBackground((old) => ({ ...old, whatHelped: value }))} multiline />
+            </>
+          ) : null}
+          {multi('pastWithdrawal', s.onboarding.withdrawalQ)}
+        </Card>
+        {flags.includes('suicidal') ? safetyBanner('self_harm') : null}
+        {flags.some((key) => key !== 'suicidal') ? safetyBanner('seizure_history') : null}
+        {background.routes?.includes('inject') ? safetyBanner('inject') : null}
+      </>
+    );
+  };
+
+  const renderAbout = () => (
+    <>
+      <Text style={[styles.heading, { color: colors.text.primary }]}>{s.onboarding.aboutTitle}</Text>
+      <Muted style={styles.hint}>{`${s.onboarding.aboutHint} ${s.onboarding.optionalNote}`}</Muted>
+      <Card>
+        {single('ageGroup', s.onboarding.ageQ)}
+        {single('gender', s.onboarding.genderQ)}
+        {multi('living', s.onboarding.livingQ)}
+        {single('familyKnows', s.onboarding.familyKnowsQ)}
+        {single('occupation', s.onboarding.occupationQ)}
+        {single('access', s.onboarding.accessQ)}
+      </Card>
+      {background.ageGroup === 'under18' ? safetyBanner('under18') : null}
+    </>
+  );
+
+  const renderHealth = () => (
+    <>
+      <Text style={[styles.heading, { color: colors.text.primary }]}>{s.onboarding.healthTitle}</Text>
+      <Muted style={styles.hint}>{`${s.onboarding.healthHint} ${s.onboarding.optionalNote}`}</Muted>
+      <Card>
+        {multi('mentalHealth', s.onboarding.mentalQ)}
+        {multi('physicalHealth', s.onboarding.physicalQ, undefined, (key) => key !== 'pregnant' || background.gender !== 'male')}
+        {multi('treatment', s.onboarding.treatmentQ)}
+        {multi('interests', s.onboarding.interestsQ, s.onboarding.interestsHint)}
+        <Field label={s.onboarding.notesLabel} value={background.notes || ''} placeholder={s.onboarding.notesPlaceholder} onChangeText={(value) => setBackground((old) => ({ ...old, notes: value }))} multiline />
+      </Card>
+      {background.physicalHealth?.includes('pregnant') ? safetyBanner('pregnant') : null}
+      {background.mentalHealth?.includes('self_harm') ? safetyBanner('self_harm') : null}
+    </>
+  );
+
   const renderQuit = () => (
     <>
       <Text style={[styles.heading, { color: colors.text.primary }]}>{s.onboarding.quitTitle}</Text>
@@ -510,6 +596,9 @@ export const RecoveryOnboarding = ({ navigation, route }: Props) => {
     if (current === 'substances') return renderSubstances();
     if (current === 'usage') return renderUsage();
     if (current.startsWith('screener:')) return renderScreener(current.slice('screener:'.length));
+    if (current === 'history') return renderHistory();
+    if (current === 'about') return renderAbout();
+    if (current === 'health') return renderHealth();
     if (current === 'readiness') return renderReadiness();
     if (current === 'reasons') return renderReasons();
     if (current === 'triggers') return renderTriggers();

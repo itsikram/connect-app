@@ -16,6 +16,8 @@ import {
   quitDateFor,
   topTriggers,
   withIfThen,
+  redFlagsIn,
+  toggleExclusive,
 } from '../src/screens/recovery/helpers';
 
 // Local-time dates so the tests pass in any timezone.
@@ -111,5 +113,19 @@ describe('plan and input helpers', () => {
     expect(parseNumber('১৫০')).toBe(150);
     expect(parseNumber('12.5 tk')).toBe(12.5);
     expect(parseNumber('')).toBe(0);
+  });
+});
+
+describe('background chips', () => {
+  it('makes "none" exclusive', () => {
+    expect(toggleExclusive(['anxiety'], 'none')).toEqual(['none']);
+    expect(toggleExclusive(['none'], 'depression')).toEqual(['depression']);
+    expect(toggleExclusive(['anxiety', 'sleep'], 'sleep')).toEqual(['anxiety']);
+  });
+
+  it('finds red-flag answers', () => {
+    const options = [{ key: 'seizure', redFlag: 'medical' }, { key: 'headache' }];
+    expect(redFlagsIn(['headache', 'seizure'], options)).toEqual(['seizure']);
+    expect(redFlagsIn(undefined, options)).toEqual([]);
   });
 });

@@ -17,8 +17,17 @@ export type SubstanceKey =
   | 'alcohol'
   | 'sleeping_pills'
   | 'inhalant'
+  | 'tramadol'
+  | 'injection'
+  | 'cocaine'
+  | 'mdma'
+  | 'vape'
+  | 'pregabalin'
+  | 'ketamine'
+  | 'lsd'
+  | 'synthetic_cannabis'
   | 'other';
-export type SafetyClass = 'nicotine' | 'cannabis' | 'stimulant' | 'opioid' | 'medical_taper' | 'inhalant' | 'other';
+export type SafetyClass = 'nicotine' | 'cannabis' | 'stimulant' | 'opioid' | 'medical_taper' | 'inhalant' | 'hallucinogen' | 'other';
 export type Approach = 'now' | 'date' | 'taper' | 'doctor';
 export type RiskLevel = 'none' | 'elevated' | 'crisis';
 export type ToolKey = 'urge_surf' | 'breathing' | 'reasons' | 'tape_forward' | 'grounding' | 'four_ds' | 'distract' | 'call_support' | 'coach';
@@ -45,6 +54,33 @@ export type TrackedSubstance = {
 export type SupportContact = { name: string; phone: string; relation?: string };
 
 export type PlanIfThen = { trigger: string; action: string };
+export type PlanReplacement = { need: string; activity: string };
+
+/** Optional personal background; option keys come from RecoveryContent.background. */
+export type RecoveryBackground = {
+  ageGroup?: string;
+  gender?: string;
+  familyKnows?: string;
+  occupation?: string;
+  access?: string;
+  usePattern?: string;
+  longestQuit?: string;
+  living?: string[];
+  routes?: string[];
+  functions?: string[];
+  relapseReasons?: string[];
+  pastWithdrawal?: string[];
+  mentalHealth?: string[];
+  physicalHealth?: string[];
+  treatment?: string[];
+  interests?: string[];
+  quitAttempts?: number;
+  whatHelped?: string;
+  notes?: string;
+};
+export type BackgroundSingleField = 'ageGroup' | 'gender' | 'familyKnows' | 'occupation' | 'access' | 'usePattern' | 'longestQuit';
+export type BackgroundMultiField = 'living' | 'routes' | 'functions' | 'relapseReasons' | 'pastWithdrawal' | 'mentalHealth' | 'physicalHealth' | 'treatment' | 'interests';
+export type ProHelpReason = 'pregnancy' | 'withdrawal_history' | 'injecting' | 'severity' | 'medical' | 'crisis' | 'mental_health' | 'youth' | 'lapses';
 export type RecoveryPlan = {
   summary: string;
   safetyNote: string;
@@ -53,6 +89,8 @@ export type RecoveryPlan = {
   checklist: Array<{ text: string; done: boolean }>;
   weeklyGoals: Array<{ week: number; goal: string; expect?: string; done?: boolean }>;
   rewardIdea: string;
+  replacements?: PlanReplacement[];
+  warningSigns?: string[];
   rewardGoal?: { title: string; amount: number } | null;
   source: 'gemini' | 'curated';
 };
@@ -63,6 +101,7 @@ export type RecoveryProfile = {
   reasonKeys: string[];
   reasons: string;
   letter: string;
+  background: RecoveryBackground | null;
   triggers: string[];
   riskHours: number[];
   supportContacts: SupportContact[];
@@ -132,6 +171,7 @@ export type Checkin = {
   sleepHours: number | null;
   halt: string[];
   triggers: string[];
+  symptoms: string[];
   note: string;
   reflection: string;
   microGoal: string;
@@ -158,7 +198,7 @@ export type RecoveryDashboard = {
   daily?: { note: string; mission: string; source?: string } | null;
   recent?: { checkins: number; avgMood: number | null; avgCraving: number | null; cravingsLogged: number; cravingsResisted: number };
   toolOrder?: ToolKey[];
-  proHelp?: Array<'severity' | 'medical' | 'crisis' | 'lapses'>;
+  proHelp?: ProHelpReason[];
   stage?: string;
   points?: number;
   badges?: Badge[];
@@ -175,6 +215,9 @@ export type RecoveryContent = {
   triggers: Array<{ key: string; label: string }>;
   reasons: Array<{ key: string; label: string }>;
   halt: Array<{ key: string; label: string }>;
+  background: Record<BackgroundSingleField | BackgroundMultiField, Array<{ key: string; label: string; redFlag?: boolean }>>;
+  backgroundSafety: Record<string, string>;
+  symptoms: Array<{ key: string; label: string; redFlag?: 'medical' | 'psychosis' | 'suicide' }>;
   milestones: Array<{ days: number; label: string }>;
   badges: Record<string, { icon: string; label: string }>;
   timelines: Record<string, TimelineStep[]>;
@@ -204,6 +247,7 @@ export type CheckinInput = {
   sleepHours?: number;
   halt: string[];
   triggers: string[];
+  symptoms?: string[];
   note?: string;
 };
 

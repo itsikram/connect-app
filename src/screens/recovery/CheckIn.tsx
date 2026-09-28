@@ -4,6 +4,7 @@ import VoiceTextInput from '../../components/VoiceTextInput';
 import { useTheme } from '../../contexts/ThemeContext';
 import { Badge, Checkin, CrisisInfo, SubstanceKey, recoveryApi } from '../../services/recoveryApi';
 import { OFFLINE_TRIGGERS } from './content';
+import { redFlagsIn } from './helpers';
 import { useRecoveryContent, useRecoveryDashboard } from './hooks';
 import { useRecoveryI18n } from './i18n';
 import {
@@ -11,7 +12,9 @@ import {
   Button,
   Card,
   CrisisCard,
+  EmergencyStrip,
   Icon,
+  InfoCard,
   MoodScale,
   MultiChips,
   Muted,
@@ -58,6 +61,7 @@ export const RecoveryCheckIn = ({ navigation }: Props) => {
   const [sleep, setSleep] = useState(7);
   const [halt, setHalt] = useState<string[]>([]);
   const [triggers, setTriggers] = useState<string[]>([]);
+  const [symptoms, setSymptoms] = useState<string[]>([]);
   const [note, setNote] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<Result | null>(null);
@@ -73,6 +77,7 @@ export const RecoveryCheckIn = ({ navigation }: Props) => {
     if (existing.sleepHours !== null) setSleep(existing.sleepHours);
     setHalt(existing.halt || []);
     setTriggers(existing.triggers || []);
+    setSymptoms(existing.symptoms || []);
     setUsed(Object.fromEntries((existing.used || []).map((item) => [item.substance, item.amount])));
   }, [existing, prefilled]);
 
@@ -94,6 +99,7 @@ export const RecoveryCheckIn = ({ navigation }: Props) => {
           sleepHours: sleep,
           halt,
           triggers,
+          symptoms,
           note: note.trim() || undefined,
         },
         lang,
@@ -144,6 +150,8 @@ export const RecoveryCheckIn = ({ navigation }: Props) => {
 
   const haltOptions = content?.halt?.length ? content.halt : HALT_FALLBACK[lang];
   const triggerOptions = content?.triggers?.length ? content.triggers : OFFLINE_TRIGGERS[lang];
+  const symptomOptions = content?.symptoms || [];
+  const redFlags = redFlagsIn(symptoms, symptomOptions);
 
   return (
     <RecoveryPage title={s.checkin.title} navigation={navigation} footer={<Button label={s.checkin.submit} loadingLabel={s.common.saving} icon="check" onPress={submit} />}>
@@ -189,6 +197,17 @@ export const RecoveryCheckIn = ({ navigation }: Props) => {
         <Question title={s.checkin.triggersQ} hint={s.common.optional}>
           <MultiChips options={triggerOptions} values={triggers} onToggle={(key) => setTriggers((old) => toggleIn(old, key))} />
         </Question>
+        {symptomOptions.length ? (
+          <Question title={s.checkin.symptomsQ} hint={s.common.optional}>
+            <MultiChips options={symptomOptions} values={symptoms} onToggle={(key) => setSymptoms((old) => toggleIn(old, key))} />
+          </Question>
+        ) : null}
+        {redFlags.length ? (
+          <InfoCard icon="alarm-light-outline" title={s.checkin.redFlagTitle} tone={REC.sos}>
+            <Text style={{ color: colors.text.primary, fontSize: 14, lineHeight: 20, marginBottom: 10 }}>{s.checkin.redFlagBody}</Text>
+            <EmergencyStrip lang={lang} />
+          </InfoCard>
+        ) : null}
         <Question title={s.checkin.noteQ}>
           <View style={[styles.noteBox, { borderColor: colors.border.primary, backgroundColor: colors.surface.primary }]}>
             <VoiceTextInput value={note} onChangeText={setNote} multiline maxLength={1000} placeholderTextColor={colors.text.tertiary} style={[styles.noteInput, { color: colors.text.primary }]} />
