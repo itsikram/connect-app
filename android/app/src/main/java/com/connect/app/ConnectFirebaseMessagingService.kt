@@ -4,11 +4,20 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.Shader
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.RemoteMessage
 import expo.modules.notifications.service.ExpoFirebaseMessagingService
+import java.net.HttpURLConnection
+import java.net.URL
 
 class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
   companion object {
@@ -82,7 +91,7 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
       PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
     )
 
-    val notification = NotificationCompat.Builder(this, channelId)
+    val builder = NotificationCompat.Builder(this, channelId)
       .setSmallIcon(R.drawable.ic_notification)
       .setContentTitle(title)
       .setContentText(body)
@@ -90,8 +99,34 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setAutoCancel(true)
       .setContentIntent(pendingIntent)
-      .build()
+    loadAvatar(data["image"])?.let { builder.setLargeIcon(it) }
 
-    manager.notify(notificationId, notification)
+    manager.notify(notificationId, builder.build())
+  }
+
+  /** Sender profile picture, cropped to a circle. Runs on the FCM worker thread. */
+  private fun loadAvatar(url: String?): Bitmap? {
+    if (url.isNullOrBlank() || !url.startsWith("http")) return null
+    return try {
+      val connection = (URL(url).openConnection() as HttpURLConnection).apply {
+        connectTimeout = 5000
+        readTimeout = 5000
+      }
+      val source = connection.inputStream.use { BitmapFactory.decodeStream(it) } ?: return null
+      val size = minOf(source.width, source.height)
+      val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+      val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
+          setLocalMatrix(Matrix().apply {
+            setTranslate(-(source.width - size) / 2f, -(source.height - size) / 2f)
+          })
+        }
+      }
+      Canvas(output).drawCircle(size / 2f, size / 2f, size / 2f, paint)
+      output
+    } catch (e: Exception) {
+      Log.w(TAG, "Failed to load notification avatar", e)
+      null
+    }
   }
 }
