@@ -161,6 +161,8 @@ import * as FileSystem from 'expo-file-system';
 // Remote config removed for Expo compatibility
 import { getRemoteConfig, subscribeRemoteConfig } from './src/lib/remoteConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { initServerUrl } from './src/lib/serverUrl';
+import { usesLiveServer } from './src/lib/config';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -1764,6 +1766,14 @@ function AppContentInner({
 
 function App() {
   const isDarkMode = useColorScheme() === 'dark' || true;
+  // Live builds resolve the server URL from connect-bd.online before any API
+  // or socket traffic starts (bounded by a short timeout).
+  const [serverUrlReady, setServerUrlReady] = React.useState(!usesLiveServer);
+
+  React.useEffect(() => {
+    if (serverUrlReady) return;
+    initServerUrl().finally(() => setServerUrlReady(true));
+  }, [serverUrlReady]);
 
   // Ensure Firebase is initialized when App component mounts
   React.useEffect(() => {
@@ -1784,6 +1794,21 @@ function App() {
       void requestLocationPermission();
     }
   }, []);
+
+  if (!serverUrlReady) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          alignItems: 'center',
+          justifyContent: 'center',
+          backgroundColor: colors.background.dark,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
 
   return (
     <ErrorBoundary>
