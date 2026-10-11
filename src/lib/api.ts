@@ -6,6 +6,7 @@ import axios, {
 } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config, { API_ENDPOINTS } from './config';
+import { resolveApiBaseUrl } from './serverUrl';
 
 // Type definitions
 interface LoginData {
@@ -127,6 +128,8 @@ if (__DEV__) {
 // Request interceptor to add auth token (optimized with caching)
 api.interceptors.request.use(
   async (config: any) => {
+    // The server URL can change at runtime (see serverUrl.ts).
+    config.baseURL = await resolveApiBaseUrl();
     try {
       const token = await getCachedToken();
 

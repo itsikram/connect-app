@@ -149,6 +149,18 @@ const getEnvironment = (): Environment => {
 
 export const config: EnvironmentConfig = ENV[getEnvironment()];
 
+// Builds that talk to the live backend can have its URL replaced at runtime
+// (see serverUrl.ts) so a server move does not require a new app build.
+// Local development keeps using the LAN / EXPO_PUBLIC_API_URL server.
+export const usesLiveServer = getEnvironment() !== 'development';
+
+// Points API and socket traffic at a new server origin (no trailing slash).
+export const setServerUrl = (serverUrl: string): void => {
+  const origin = serverUrl.replace(/\/+$/, '');
+  config.API_BASE_URL = `${origin}/api/`;
+  config.SOCKET_BASE_URL = origin;
+};
+
 // API endpoints
 export const API_ENDPOINTS = {
   AUTH: {
