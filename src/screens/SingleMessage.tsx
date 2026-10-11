@@ -1103,7 +1103,9 @@ const SingleMessage = () => {
     lastProgressLogAt: 0,
   });
   const MAJORITY_WINDOW_MS = 1500;
-  const SERVER_REQUEST_TIMEOUT_MS = 30000; // FER may take longer on the first frame
+  // Models are warmed when the face service starts, so a reply normally takes
+  // well under a second; a lost reply must not pause detection for long.
+  const SERVER_REQUEST_TIMEOUT_MS = 8000;
   const PERMISSION_CHECK_COOLDOWN_MS = 10000; // Only check permission every 10 seconds
 
   const logDetectionProgress = (
@@ -2338,7 +2340,11 @@ const SingleMessage = () => {
           }
         });
         emotionServerSocketRef.current.onAny((event, data) => {
-          if (event !== 'expression_update' && event !== 'expression_error') {
+          if (
+            event !== 'expression_update' &&
+            event !== 'expression_error' &&
+            event !== 'expression_skipped'
+          ) {
             console.log('[SingleMessage] 📥 Python expression socket event:', {
               event,
               data,
@@ -2349,6 +2355,16 @@ const SingleMessage = () => {
           console.warn('[SingleMessage] ❌ Python expression_error:', data);
           serverRequestInFlightRef.current = false;
           logDetectionProgress('expression_error', { error: data });
+        });
+        // The server was still busy with the previous frame and dropped this
+        // one; capture the next frame right away instead of waiting for the
+        // request timeout.
+        emotionServerSocketRef.current.on('expression_skipped', () => {
+          if (serverRequestTimeoutRef.current) {
+            clearTimeout(serverRequestTimeoutRef.current);
+            serverRequestTimeoutRef.current = null;
+          }
+          serverRequestInFlightRef.current = false;
         });
       } catch (error) {
         console.error(
@@ -3360,6 +3376,7 @@ const SingleMessage = () => {
 
       if (emotionServerSocketRef.current) {
         emotionServerSocketRef.current.off('expression_update');
+        emotionServerSocketRef.current.off('expression_skipped');
         emotionServerSocketRef.current.offAny();
         emotionServerSocketRef.current.disconnect();
         emotionServerSocketRef.current = null;

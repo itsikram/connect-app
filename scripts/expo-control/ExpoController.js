@@ -802,11 +802,19 @@ class ExpoController extends EventEmitter {
 
   // ------------------------------------------------------------ port
 
-  async inspectPort() {
+  /**
+   * `reuseKnownPid` skips the netstat/tasklist lookup while the process we
+   * already reported is still alive. Only the idle poll uses it: spawning
+   * both tools every 10 s while another Metro holds the port costs CPU for no
+   * new information. Actions that kill the holder always look it up fresh.
+   */
+  async inspectPort({ reuseKnownPid = false } = {}) {
     if (!(await sys.isPortInUse(METRO_PORT))) {
       if (this.state.portBusy) this.setState({ portBusy: null });
       return null;
     }
+    const known = this.state.portBusy;
+    if (reuseKnownPid && known && known.pid && sys.isAlive(known.pid)) return known;
     const pid = await sys.findPidOnPort(METRO_PORT);
     const name = await sys.getProcessName(pid);
     const portBusy = { pid, name, port: METRO_PORT };
@@ -833,7 +841,9 @@ class ExpoController extends EventEmitter {
 
   startIdleWatch() {
     const tick = () => {
-      if (!this.child && ['stopped', 'error'].includes(this.state.status)) this.inspectPort().catch(() => {});
+      if (!this.child && ['stopped', 'error'].includes(this.state.status)) {
+        this.inspectPort({ reuseKnownPid: true }).catch(() => {});
+      }
     };
     tick();
     this.timers.idle = setInterval(tick, IDLE_PORT_CHECK_MS);
