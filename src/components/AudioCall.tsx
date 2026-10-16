@@ -60,8 +60,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const [callDuration, setCallDuration] = useState(0);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const isSpeakerOnRef = useRef(true);
+  const [isSpeakerOn, setIsSpeakerOn] = useState(false);
+  const isSpeakerOnRef = useRef(false);
   isSpeakerOnRef.current = isSpeakerOn;
   const [mediaActive, setMediaActive] = useState(false);
   const [engineWarm, setEngineWarm] = useState(false);
@@ -151,7 +151,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     setCallDuration(0);
     setIsMinimized(false);
     setIsMuted(false);
-    setIsSpeakerOn(true);
+    setIsSpeakerOn(false);
     setMediaConnected(false);
     setIsReconnecting(false);
     receivingCallRef.current = false;
@@ -193,7 +193,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       setMediaActive(true);
       setEngineWarm(true);
 
-      await configureInCallAudio(true);
+      await configureInCallAudio(isSpeakerOnRef.current);
       const creds = await prefetchAgoraJoin(channelName, numericUid);
       if (isTerminating.current) return;
       pendingJoinRef.current = creds;
@@ -431,7 +431,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
             cleanupAudioCall();
             return;
           }
-          await configureInCallAudio(true);
+          await configureInCallAudio(isSpeakerOnRef.current);
           engineRef.current?.preview(true);
         } catch (error) {
           console.warn('AudioCall: microphone warm-up failed', error);

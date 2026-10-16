@@ -1454,11 +1454,13 @@ function AppContentInner({
 
       const now = Date.now();
       if (now - lastShakeAt < 1500) return;
-      shakeHits = shakeHits.filter(timestamp => now - timestamp <= 700);
+      shakeHits = shakeHits.filter(timestamp => now - timestamp <= 1200);
       if (delta < 1.6) return;
+      // Ignore samples from the same jolt so each hit is a distinct shake.
+      if (shakeHits.length && now - shakeHits[shakeHits.length - 1] < 100) return;
 
       shakeHits.push(now);
-      if (shakeHits.length < 3) return;
+      if (shakeHits.length < 6) return;
 
       lastShakeAt = now;
       shakeHits = [];
