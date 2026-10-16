@@ -154,9 +154,8 @@
     "sdkVersion": "57.0.0",
     "extra": {
       "eas": {
-        "projectId": "69013cf2-5cb9-4936-b717-45b5d8856ae3"
+        "projectId": "6bebfb17-a1f5-475a-a8a1-d2849ecc35b8"
       }
-    },
-    "owner": "ikramulislamsbs"
+    }
   }
 }

@@ -60,7 +60,10 @@ const isTunnelSession =
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
-
+  
+return DEFAULT_LIVE_SERVER_URLS[
+  Math.floor(Math.random() * DEFAULT_LIVE_SERVER_URLS.length)
+];
   const host = expoHost;
 
   if (
