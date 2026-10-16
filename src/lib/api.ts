@@ -6,7 +6,12 @@ import axios, {
 } from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import config, { API_ENDPOINTS } from './config';
-import { resolveApiBaseUrl } from './serverUrl';
+import {
+  canFailover,
+  failoverFrom,
+  getServerList,
+  resolveApiBaseUrl,
+} from './serverUrl';
 
 // Type definitions
 interface LoginData {
@@ -50,7 +55,14 @@ export type AuthRequestConfig = AxiosRequestConfig & {
   skipAuthRefresh?: boolean;
   _retry?: boolean;
   _retryNotModified?: boolean;
+  _failoverCount?: number;
 };
+
+// With a backup server available, reads give up on a hung server sooner.
+const FAILOVER_GET_TIMEOUT_MS = 12000;
+
+const serverOriginOf = (baseURL?: string): string =>
+  String(baseURL || '').replace(/\/api\/?$/, '').replace(/\/+$/, '');
 
 interface DebugAuthResult {
   user: string | null;
@@ -106,10 +118,12 @@ export const clearTokenCache = () => {
   tokenCacheTime = 0;
 };
 
+const API_TIMEOUT = config.API_TIMEOUT;
+
 // Create axios instance with default configuration
 const api: AxiosInstance = axios.create({
   baseURL: config.API_BASE_URL,
-  timeout: config.API_TIMEOUT,
+  timeout: API_TIMEOUT,
   headers: {
     'User-Agent': 'MyCustomUserAgent',
     'Access-Control-Allow-Origin': '*',
@@ -130,6 +144,13 @@ api.interceptors.request.use(
   async (config: any) => {
     // The server URL can change at runtime (see serverUrl.ts).
     config.baseURL = await resolveApiBaseUrl();
+    if (
+      canFailover() &&
+      String(config.method || 'get').toLowerCase() === 'get' &&
+      config.timeout === API_TIMEOUT
+    ) {
+      config.timeout = FAILOVER_GET_TIMEOUT_MS;
+    }
     try {
       const token = await getCachedToken();
 
@@ -162,6 +183,33 @@ api.interceptors.response.use(
   },
   async (error: AxiosError) => {
     const originalRequest = error.config as AuthRequestConfig;
+
+    // Failover: when this server is down, retry at once on the next one.
+    // Unreachable (no response) is safe to retry for any request; other 5xx
+    // errors and timeouts only for GET, so a POST that may have run is never
+    // sent twice.
+    if (originalRequest && !axios.isCancel(error) && canFailover()) {
+      const status = error.response?.status;
+      const isGet =
+        String(originalRequest.method || 'get').toLowerCase() === 'get';
+      const isTimeout =
+        error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT';
+      const isUnreachable = !error.response && !isTimeout;
+      const isServerDown =
+        (status !== undefined && [502, 503, 504].includes(status)) ||
+        (status !== undefined && status >= 500 && isGet) ||
+        (isTimeout && isGet);
+      const tried = originalRequest._failoverCount || 0;
+
+      if ((isUnreachable || isServerDown) && tried < getServerList().length - 1) {
+        const failedServer = serverOriginOf(originalRequest.baseURL);
+        if (failedServer && failoverFrom(failedServer)) {
+          originalRequest._failoverCount = tried + 1;
+          // The request interceptor points the retry at the new server.
+          return api.request(originalRequest);
+        }
+      }
+    }
 
     // A 304 has no response body. The app has no HTTP response cache to read
     // from, so retry once without conditional-cache headers to get the data.

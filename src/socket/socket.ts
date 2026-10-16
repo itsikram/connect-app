@@ -1,9 +1,41 @@
 import { io, Socket } from "socket.io-client";
 import config from "../lib/config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { canFailover, failoverFrom, getServerList, onServerUrlChange } from "../lib/serverUrl";
 
 let socket: Socket | null = null;
 let socketProfileId: string | null = null;
+let stopFollowingServer: (() => void) | null = null;
+
+// With a backup server available, give up on an unresponsive one quickly.
+const FAILOVER_CONNECT_TIMEOUT_MS = 8000;
+
+// Point the existing socket at another server. Keeping the same instance keeps
+// every listener the app registered on it attached.
+const moveSocketTo = (s: Socket, serverUrl: string) => {
+    const manager: any = s.io;
+    if (!manager || manager.uri === serverUrl) return;
+    if (__DEV__) {
+        console.log('🔄 Socket switching to server:', serverUrl);
+    }
+    manager.uri = serverUrl;
+    manager.engine?.close();
+};
+
+const attachFailover = (s: Socket) => {
+    s.on('connect_error', () => {
+        // The first failed connect moves API and socket to the next server;
+        // onServerUrlChange below then repoints this socket.
+        const current = (s.io as any)?.uri || config.SOCKET_BASE_URL;
+        const next = canFailover() ? failoverFrom(current) : null;
+        if (next) moveSocketTo(s, next);
+    });
+    stopFollowingServer?.();
+    stopFollowingServer = onServerUrlChange((serverUrl) => {
+        // Follow API failovers too, but never drop a working connection.
+        if (!s.connected) moveSocketTo(s, serverUrl);
+    });
+};
 
 const getUserData = async () => {
     try {
@@ -36,10 +68,16 @@ const waitForConnect = (s: Socket): Promise<Socket> => {
             clearTimeout(timeoutId);
             resolve(s);
         };
+        // With several servers a failed connect is followed by a retry on the
+        // next one, so only give up once every server has failed.
+        let errorCount = 0;
+        const errorsBeforeReject = Math.max(1, getServerList().length);
         const onError = (err: any) => {
             if (__DEV__) {
                 console.error('❌ Socket connection error in waitForConnect:', err);
             }
+            errorCount += 1;
+            if (errorCount < errorsBeforeReject) return;
             s.off('connect', onConnect);
             s.off('connect_error', onError);
             clearTimeout(timeoutId);
@@ -96,7 +134,7 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
             transports: ['websocket', 'polling'],
             query: { profile: effectiveProfileId },
             auth: { profile: effectiveProfileId },
-            timeout: 20000,
+            timeout: canFailover() ? FAILOVER_CONNECT_TIMEOUT_MS : 20000,
             forceNew: true,
             reconnection: true,
             // Keep retrying indefinitely so a web client recovers after the
@@ -106,6 +144,7 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
             reconnectionDelayMax: 5000,
         });
         socketProfileId = String(effectiveProfileId);
+        attachFailover(socket);
 
         // Add connection event listeners
         socket.on('connect', () => {
@@ -181,6 +220,8 @@ export const getSocket = (): Socket | null => {
 }
 
 export const disconnectSocket = () => {
+    stopFollowingServer?.();
+    stopFollowingServer = null;
     if (socket) {
         socket.disconnect();
         socket = null;

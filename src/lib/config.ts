@@ -22,7 +22,25 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-const liveServerUrl = 'https://connect-server-hq4q.onrender.com';
+// Live backends (same as connect-web). Each install sticks to one of them and
+// fails over to the next when it is down (see serverUrl.ts). The list can be
+// replaced at runtime through connect-bd.online/app-config.json or at build
+// time with EXPO_PUBLIC_SERVER_URLS="https://a,https://b".
+const DEFAULT_LIVE_SERVER_URLS = [
+  'https://connect-server-nhaw.onrender.com',
+  'https://connect-server-u85b.onrender.com',
+  'https://connect-server-k1if.onrender.com',
+];
+
+export const builtInLiveServerUrls: string[] = (() => {
+  const fromEnv = String(process.env.EXPO_PUBLIC_SERVER_URLS || '')
+    .split(',')
+    .map((url) => url.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
+  return fromEnv.length ? fromEnv : DEFAULT_LIVE_SERVER_URLS;
+})();
+
+const liveServerUrl = builtInLiveServerUrls[0];
 
 const isExpoTunnelHost = (host: string): boolean =>
   host.endsWith('.exp.direct') ||
