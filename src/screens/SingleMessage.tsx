@@ -128,6 +128,14 @@ import {
   normalizeImageAsset,
 } from '../utils/imageUpload';
 import { setActiveChat, getActiveChat, dismissChatNotifications } from '../lib/activeChat';
+import {
+  SecureMessageBubble,
+  isSecureMessage,
+  SECURE_MESSAGE_TYPE,
+  SECURE_PLACEHOLDER,
+  SecureInfo,
+  SecureState,
+} from '../components/SecureMessage';
 // VideoCall and AudioCall components moved to App.tsx for global rendering
 
 interface Message {
@@ -142,7 +150,8 @@ interface Message {
   parent?: any | null;
   tempId?: string;
   reacts?: MessageReaction[];
-  messageType?: 'text' | 'call' | 'audio';
+  messageType?: 'text' | 'call' | 'audio' | 'secure';
+  secure?: SecureInfo;
   duration?: number;
   callType?: 'audio' | 'video';
   callEvent?: 'missed' | 'ended' | 'declined' | 'started';
@@ -1181,6 +1190,17 @@ const SingleMessage = () => {
   const skipNextEndReachedRef = useRef(true);
   const hasMoreMessagesRef = useRef(true);
   const messagesRef = useRef<Message[]>([]);
+  // The conversation on screen right now, for async work (older pages,
+  // storage writes) that must not land in another chat after a switch.
+  const activeConnectIdRef = useRef<string>('');
+  activeConnectIdRef.current = String(connect?._id || '');
+  // Secure mode: composer messages vanish after the receiver opens them.
+  const [secureMode, setSecureMode] = useState(false);
+  const secureModeRef = useRef(false);
+  secureModeRef.current = secureMode;
+  useEffect(() => {
+    setSecureMode(false);
+  }, [connect?._id]);
   const [lockVisibleOnPrepend, setLockVisibleOnPrepend] = useState(false);
   const [composerHeight, setComposerHeight] = useState(72);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
@@ -1255,9 +1275,16 @@ const SingleMessage = () => {
       )
         return;
 
-      // Serialize messages - convert Date objects to ISO strings
+      // Serialize messages - convert Date objects to ISO strings. Only this
+      // conversation's messages are stored, whatever the list held.
       const serializedMessages = messagesToSave
-        .filter(msg => msg && msg._id && !msg.isOptimistic)
+        .filter(
+          msg =>
+            msg &&
+            msg._id &&
+            !msg.isOptimistic &&
+            isConversationMessage(msg, profileId, connectId),
+        )
         .map(msg => ({
           ...msg,
           timestamp:
@@ -1298,13 +1325,17 @@ const SingleMessage = () => {
 
       const parsedMessages = JSON.parse(storedData);
 
-      // Deserialize messages - convert ISO strings back to Date objects
-      const deserializedMessages: Message[] = parsedMessages.map(
-        (msg: any) => ({
+      // Deserialize messages - convert ISO strings back to Date objects.
+      // Drops anything from another conversation (older app versions could
+      // save one chat's messages under another chat's key).
+      const deserializedMessages: Message[] = (
+        Array.isArray(parsedMessages) ? parsedMessages : []
+      )
+        .filter((msg: any) => isConversationMessage(msg, profileId, connectId))
+        .map((msg: any) => ({
           ...msg,
           timestamp: msg.timestamp ? new Date(msg.timestamp) : new Date(),
-        }),
-      );
+        }));
 
       console.log(
         `Loaded ${deserializedMessages.length} messages from storage for connect ${connectId}`,
@@ -1756,8 +1787,14 @@ const SingleMessage = () => {
       if (!isConversationMessage(updatedMessage, myProfile?._id, connect?._id))
         return;
 
-      pendingFollowLatestRef.current = true;
-      isNearBottomRef.current = true;
+      // Follow new messages only when the reader is at the bottom (or sent
+      // it); someone reading older messages is not yanked down.
+      if (
+        String(updatedMessage.senderId) === String(myProfile?._id) ||
+        isNearBottomRef.current
+      ) {
+        pendingFollowLatestRef.current = true;
+      }
 
       const newMessage: Message = {
         _id: updatedMessage._id || Date.now().toString(),
@@ -1771,6 +1808,7 @@ const SingleMessage = () => {
         attachment: updatedMessage.attachment,
         parent: updatedMessage.parent || null,
         messageType: updatedMessage.messageType,
+        secure: updatedMessage.secure,
         callType: updatedMessage.callType,
         callEvent: updatedMessage.callEvent,
         reacts: updatedMessage.reacts || [],
@@ -2008,6 +2046,27 @@ const SingleMessage = () => {
 
     on('deleteMessage', handleDeleteMessage);
 
+    const handleSecureOpened = (data: any) => {
+      if (!isConversationMessage(data, myProfile?._id, connect?._id)) return;
+      const openedId = String(data?.messageId || data?._id || '');
+      if (!openedId) return;
+      setMessages(prev =>
+        prev.map(msg =>
+          String(msg._id) === openedId
+            ? {
+                ...msg,
+                secure: {
+                  ...(msg.secure || {}),
+                  state: 'opened',
+                  openedAt: data?.openedAt || new Date().toISOString(),
+                },
+              }
+            : msg,
+        ),
+      );
+    };
+    on('secureMessageOpened', handleSecureOpened);
+
     const handleSpeakMessage = (payload: any) => {
       const targetProfileId = payload?.targetProfileId;
       if (
@@ -2037,6 +2096,7 @@ const SingleMessage = () => {
       off('emotion_change', handleEmotionChange);
       off('connect_location_update', handleConnectLocationUpdate);
       off('deleteMessage', handleDeleteMessage);
+      off('secureMessageOpened', handleSecureOpened);
       off('speak_message', handleSpeakMessage);
       off('speak-message', handleSpeakMessage);
       if (incomingTypingTimeoutRef.current) {
@@ -3791,6 +3851,9 @@ const SingleMessage = () => {
         ? overrides.attachment
         : pendingAttachment;
     const messageType = overrides?.messageType || 'text';
+    // Only composer sends (text / photo) can be secure; voice notes and the
+    // quick-reaction emoji always go out as normal messages.
+    const isSecure = !overrides && secureModeRef.current;
     if ((!messageContent && !attachment) || isUploading) return;
     if (isSendingRef.current) return;
     if (!connect?._id || !myProfile?._id) return;
@@ -3800,20 +3863,23 @@ const SingleMessage = () => {
     const roomId = room || [myProfile._id, connect._id].sort().join('_');
     isSendingRef.current = true;
     const tempId = `temp-${Date.now()}-${Math.random()}`;
+    // A secure message's content only travels in the socket payload; the
+    // list, Redux and AsyncStorage only ever hold the placeholder.
     const pendingMessage: Message = {
       _id: tempId,
-      message: messageContent,
+      message: isSecure ? SECURE_PLACEHOLDER : messageContent,
       receiverId: connect._id,
       senderId: myProfile._id,
       room: roomId,
-      attachment: attachment || undefined,
+      attachment: isSecure ? undefined : attachment || undefined,
       timestamp: new Date(),
       isSeen: false,
       tempId,
       parent: replyingTo || undefined,
       isOptimistic: true,
       sendFailed: false,
-      messageType,
+      messageType: isSecure ? SECURE_MESSAGE_TYPE : messageType,
+      ...(isSecure ? { secure: { state: 'sealed' as SecureState } } : {}),
       duration: overrides?.duration,
     };
 
@@ -3843,6 +3909,7 @@ const SingleMessage = () => {
       duration: overrides?.duration,
       tempId,
       timestamp: new Date().toISOString(),
+      ...(isSecure ? { secure: true } : {}),
     };
 
     const failTimer = setTimeout(() => {
@@ -3887,7 +3954,7 @@ const SingleMessage = () => {
       }
     });
 
-    triggerLoveRain(messageContent);
+    if (!isSecure) triggerLoveRain(messageContent);
     if (overrides?.attachment === undefined) {
       setPendingAttachment(null);
       setPendingAttachmentLocal(null);
@@ -3957,7 +4024,8 @@ const SingleMessage = () => {
         emit('typing', {
           room: roomId,
           isTyping: true,
-          type: value.trim(),
+          // Never stream the draft of a secure message as a live preview.
+          type: secureModeRef.current ? '' : value.trim(),
           receiverId: connect?._id,
           senderId: myProfile?._id,
         });
@@ -4029,7 +4097,7 @@ const SingleMessage = () => {
   const playSound = () => {
     const msg = selectedMessage;
     setContextMenuVisible(false);
-    if (!msg) return;
+    if (!msg || isSecureMessage(msg)) return;
 
     const msgId = msg._id;
     if (!msgId) {
@@ -4054,12 +4122,17 @@ const SingleMessage = () => {
   };
 
   // Add function to copy message
-  const copyMessage = () => {
-    if (selectedMessage) {
-      // You'll need to implement clipboard functionality
-      // For now, we'll just show an alert
-      Alert.alert('Copied!', 'Message copied to clipboard');
-      setContextMenuVisible(false);
+  const copyMessage = async () => {
+    const msg = selectedMessage;
+    setContextMenuVisible(false);
+    if (!msg || isSecureMessage(msg)) return;
+    const text = String(msg.message || msg.attachment || '').trim();
+    if (!text) return;
+    try {
+      await Clipboard.setStringAsync(text);
+    } catch (error) {
+      console.error('Copy failed:', error);
+      Alert.alert('Copy failed', 'Could not copy this message.');
     }
   };
 
@@ -4807,17 +4880,23 @@ const SingleMessage = () => {
     );
     if (!beforeTimestamp) return;
 
+    const requestConnect = String(connect._id);
+    const isStale = () => activeConnectIdRef.current !== requestConnect;
     loadingOlderRef.current = true;
     setIsLoadingOldMessages(true);
 
     try {
       const response = await fetchOldMessages(
         myProfile._id,
-        connect._id,
+        requestConnect,
         beforeTimestamp,
         MESSAGES_PER_PAGE,
       );
-      const older = response.messages || [];
+      // Another chat was opened meanwhile: these belong to the old one.
+      if (isStale()) return;
+      const older = (response.messages || []).filter(msg =>
+        isConversationMessage(msg, myProfile._id, requestConnect),
+      );
       if (older.length === 0) {
         setHasMoreMessages(false);
         hasMoreMessagesRef.current = false;
@@ -4850,8 +4929,10 @@ const SingleMessage = () => {
       loadingOlderRef.current = false;
       console.error('Error loading older messages:', error);
     } finally {
-      loadingOlderRef.current = false;
-      setIsLoadingOldMessages(false);
+      if (!isStale()) {
+        loadingOlderRef.current = false;
+        setIsLoadingOldMessages(false);
+      }
     }
   }, [connect?._id, myProfile?._id, fetchOldMessages]);
 
@@ -4995,6 +5076,27 @@ const SingleMessage = () => {
       </View>
     );
   };
+
+  // Only the state of a secure message is kept in the list, never its content.
+  const handleSecureStateChange = useCallback(
+    (messageId: string, state: SecureState, openedAt?: string | null) => {
+      setMessages(prev =>
+        prev.map(msg =>
+          String(msg._id) === String(messageId)
+            ? {
+                ...msg,
+                secure: {
+                  ...(msg.secure || {}),
+                  state,
+                  openedAt: openedAt || msg.secure?.openedAt || null,
+                },
+              }
+            : msg,
+        ),
+      );
+    },
+    [],
+  );
 
   const renderMessage = ({ item }: { item: Message }) => {
     const isMyMessage = item.senderId === myProfile?._id;
@@ -5144,8 +5246,26 @@ const SingleMessage = () => {
                   </TouchableOpacity>
                 ) : null}
 
-                {/* Call messages */}
-                {item.messageType === 'call' ? (
+                {/* Secure (vanishing) messages */}
+                {isSecureMessage(item) ? (
+                  <SecureMessageBubble
+                    msg={item}
+                    isMine={isMyMessage}
+                    senderName={connect?.fullName || ''}
+                    textColor={
+                      isMyMessage
+                        ? chatTheme.colors.sentText
+                        : chatTheme.colors.recvText
+                    }
+                    metaColor={
+                      isMyMessage
+                        ? 'rgba(255,255,255,0.72)'
+                        : chatTheme.colors.meta
+                    }
+                    accentColor={chatTheme.colors.accent}
+                    onStateChange={handleSecureStateChange}
+                  />
+                ) : item.messageType === 'call' ? (
                   <View
                     style={{
                       flexDirection: 'row',
@@ -5322,6 +5442,7 @@ const SingleMessage = () => {
 
                 {/* Images */}
                 {item.attachment &&
+                  !isSecureMessage(item) &&
                   isValidImageUrl(item.attachment) &&
                   item.messageType !== 'audio' && (
                     <MessageImage
@@ -5764,11 +5885,19 @@ const SingleMessage = () => {
                     {connectExpression && connectExpression !== 'none'
                       ? `  •  ${connectExpression}`
                       : ''}
-                    {formatHeaderLastSeen(connectLastSeenIso)
+                    {isConnectOnline
+                      ? '  |  Active now'
+                      : formatHeaderLastSeen(connectLastSeenIso)
                       ? `  |  Last Seen: ${formatHeaderLastSeen(
                           connectLastSeenIso,
                         )}`
                       : ''}
+                  </Text>
+                ) : isConnectOnline ? (
+                  <Text
+                    style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}
+                  >
+                    Active now
                   </Text>
                 ) : formatHeaderLastSeen(connectLastSeenIso) ? (
                   <Text
@@ -5776,12 +5905,6 @@ const SingleMessage = () => {
                     numberOfLines={1}
                   >
                     Last Seen: {formatHeaderLastSeen(connectLastSeenIso)}
-                  </Text>
-                ) : isConnectOnline ? (
-                  <Text
-                    style={{ fontSize: 12, color: 'rgba(255,255,255,0.82)' }}
-                  >
-                    Online
                   </Text>
                 ) : null}
               </View>
@@ -6392,6 +6515,7 @@ const SingleMessage = () => {
                 })}
               </View>
 
+              {!isSecureMessage(selectedMessage) && (
               <TouchableOpacity
                 style={{
                   flexDirection: 'row',
@@ -6416,6 +6540,7 @@ const SingleMessage = () => {
                   Speak
                 </Text>
               </TouchableOpacity>
+              )}
               <TouchableOpacity
                 style={{
                   flexDirection: 'row',
@@ -6440,6 +6565,7 @@ const SingleMessage = () => {
                   {isReactedByMe ? 'Unlike' : 'Like'}
                 </Text>
               </TouchableOpacity>
+              {!isSecureMessage(selectedMessage) && (
               <TouchableOpacity
                 style={{
                   flexDirection: 'row',
@@ -6464,6 +6590,7 @@ const SingleMessage = () => {
                   Copy
                 </Text>
               </TouchableOpacity>
+              )}
               {selectedMessage?.attachment &&
                 isValidImageUrl(selectedMessage.attachment) && (
                   <TouchableOpacity
@@ -6774,7 +6901,7 @@ const SingleMessage = () => {
                       marginTop: 2,
                     }}
                   >
-                    {connect?.isActive ? 'Online' : 'Away'}
+                    {isConnectOnline ? 'Online' : 'Away'}
                   </Text>
                 </View>
               </View>
@@ -8383,6 +8510,48 @@ const SingleMessage = () => {
                   ))}
                 </ScrollView>
               ) : null}
+              {secureMode ? (
+                <View
+                  accessibilityRole="text"
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: 8,
+                    paddingHorizontal: 12,
+                    paddingVertical: 8,
+                    borderRadius: 12,
+                    backgroundColor: 'rgba(0,212,255,0.1)',
+                    borderWidth: 1,
+                    borderColor: 'rgba(0,212,255,0.22)',
+                  }}
+                >
+                  <Icon name="lock" size={15} color="#67e8f9" />
+                  <Text
+                    style={{
+                      flex: 1,
+                      marginLeft: 8,
+                      color: '#cffafe',
+                      fontSize: 12.5,
+                      lineHeight: 17,
+                    }}
+                  >
+                    Secure mode: messages are encrypted, hidden from
+                    notifications and vanish after they're opened (or in 24h).
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => setSecureMode(false)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Turn off secure mode"
+                    style={{ paddingLeft: 8, paddingVertical: 2 }}
+                  >
+                    <Text
+                      style={{ color: '#67e8f9', fontWeight: '700', fontSize: 12 }}
+                    >
+                      Turn off
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              ) : null}
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <TouchableOpacity
                   onPress={toggleAttachTray}
@@ -8406,11 +8575,45 @@ const SingleMessage = () => {
                     paddingHorizontal: 10,
                     marginRight: 8,
                     borderWidth: 1,
-                    borderColor: emojiPanelOpen
-                      ? chatTheme.colors.accent
-                      : chatTheme.colors.recvBorder,
+                    borderColor:
+                      emojiPanelOpen || secureMode
+                        ? chatTheme.colors.accent
+                        : chatTheme.colors.recvBorder,
                   }}
                 >
+                  <TouchableOpacity
+                    onPress={() => {
+                      const next = !secureModeRef.current;
+                      secureModeRef.current = next;
+                      setSecureMode(next);
+                      // Drop any live-typing preview the other side has.
+                      if (next) stopTyping();
+                    }}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: secureMode }}
+                    accessibilityLabel={
+                      secureMode
+                        ? 'Turn off secure mode'
+                        : 'Send a secure, vanishing message'
+                    }
+                    style={{
+                      width: 30,
+                      height: 30,
+                      borderRadius: 15,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      marginRight: 2,
+                      backgroundColor: secureMode
+                        ? 'rgba(0,212,255,0.18)'
+                        : 'transparent',
+                    }}
+                  >
+                    <Icon
+                      name={secureMode ? 'lock' : 'lock-open'}
+                      size={18}
+                      color={secureMode ? '#67e8f9' : chatTheme.colors.meta}
+                    />
+                  </TouchableOpacity>
                   <TextInput
                     ref={inputRef}
                     value={inputText}
@@ -8426,6 +8629,8 @@ const SingleMessage = () => {
                         ? String(transcribeLang).startsWith('bn')
                           ? 'Listening in Bangla…'
                           : 'Listening in English…'
+                        : secureMode
+                        ? 'Secure message'
                         : 'Message'
                     }
                     placeholderTextColor={chatTheme.colors.meta}
@@ -8464,26 +8669,36 @@ const SingleMessage = () => {
                   </TouchableOpacity>
                 </View>
 
-                {inputText.trim() || pendingAttachment ? (
+                {inputText.trim() || pendingAttachment || secureMode ? (
                   <TouchableOpacity
                     onPress={() => sendMessage()}
-                    disabled={isUploading}
+                    disabled={
+                      isUploading || !(inputText.trim() || pendingAttachment)
+                    }
+                    accessibilityLabel={
+                      secureMode ? 'Send secure message' : 'Send message'
+                    }
                     style={{
                       width: 38,
                       height: 38,
                       borderRadius: 19,
-                      backgroundColor: isUploading
-                        ? chatTheme.colors.recvBg
-                        : chatTheme.colors.accent,
+                      backgroundColor:
+                        isUploading || !(inputText.trim() || pendingAttachment)
+                          ? chatTheme.colors.recvBg
+                          : chatTheme.colors.accent,
                       alignItems: 'center',
                       justifyContent: 'center',
                     }}
                   >
                     <Icon
-                      name="send"
-                      style={{ marginRight: -2 }}
+                      name={secureMode ? 'lock' : 'send'}
+                      style={{ marginRight: secureMode ? 0 : -2 }}
                       size={18}
-                      color={isUploading ? chatTheme.colors.meta : '#041018'}
+                      color={
+                        isUploading || !(inputText.trim() || pendingAttachment)
+                          ? chatTheme.colors.meta
+                          : '#041018'
+                      }
                     />
                   </TouchableOpacity>
                 ) : (

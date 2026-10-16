@@ -1,9 +1,10 @@
 /**
  * Online Ludo harness (Expo ↔ Expo): renders the real LudoGameSVG screen for
  * every player, each connected through a real socket.io client to an
- * in-process server running the production server/sockets/ludoSocket.js.
- * Every client is driven by a bot that taps the dice or a playable token
- * whenever the UI allows it; a test fails if the game stops progressing.
+ * in-process server running the production server/sockets/ludoSocket.js,
+ * which hosts the game. Every client is driven by a bot that taps the dice or
+ * a playable token whenever the UI allows it; a test fails if the game stops
+ * progressing.
  *
  * Mixed web/Expo games use the same agent through ludoOnlineRole.test.tsx and
  * tests/ludo-e2e/run.js at the repository root.
@@ -22,7 +23,6 @@ const {
   hasGameEnded,
   findAllText,
 } = require('./ludo/expoAgent');
-const LudoGameSVG = require('../src/screens/LudoGameSVG').default;
 
 jest.setTimeout(10 * 60 * 1000);
 
@@ -55,7 +55,7 @@ describe('online Ludo (Expo clients)', () => {
     );
     clients.push(client);
     await waitFor(() => client.socket.connected, { label: `${name} socket` });
-    await mount(client, LudoGameSVG);
+    await mount(client);
     return client;
   };
 
@@ -65,7 +65,9 @@ describe('online Ludo (Expo clients)', () => {
   };
 
   const guestSeesStartedBoard = (guest: any) =>
-    !findAllText(guest).some((text: string) => /Waiting for players/i.test(text));
+    Boolean(guest.route?.gameId) &&
+    guest.renderer.root.findAll((n: any) => typeof n.props?.testID === 'string' && n.props.testID.startsWith('ludo-token-')).length > 0 &&
+    !findAllText(guest).some((text: string) => /Waiting for/i.test(text));
 
   it('2 players, invite modal accept: game starts at once and plays to the end', async () => {
     const guestId = 'b'.repeat(24);
@@ -102,32 +104,24 @@ describe('online Ludo (Expo clients)', () => {
     expect(Array.from(sawFx).sort()).toEqual(['Guest', 'Host']);
   });
 
-  it('3 players, accept from the app header: uninvited seat is a computer, starts at once', async () => {
+  it('3 players, accept from the app header (game route): uninvited seat is a computer, starts at once', async () => {
     const guestId = 'd'.repeat(24);
     const host = await newClient('c'.repeat(24), 'Host3', {
       playerCount: 3,
       inviteTargets: [{ _id: guestId, fullName: 'Guest3' }],
     });
-    const guest = await newClient(guestId, 'Guest3', { ludoActive: false });
+    const guest = await newClient(guestId, 'Guest3');
 
     await hostOnlineLobby(host);
-    // The header listens for ludo:invite app-wide and hands it to the screen.
+    // The app header lists invites app-wide; accepting opens the game's own
+    // Ludo screen (route param gameId) with acceptInvite.
     const invite = await waitFor(
       () => guest.events.find((e: any) => e.event === 'ludo:invite')?.payload,
       { label: 'invite event' },
     );
     const acceptedAt = Date.now();
     await act(async () => {
-      guest.pendingLudoInvite = {
-        id: invite.by,
-        name: invite.name,
-        gameId: invite.gameId,
-        by: invite.by,
-        playerCount: invite.playerCount,
-        slotIndex: invite.slotIndex,
-      };
-      guest.ludoActive = true;
-      guest.notify();
+      guest.openGame(invite.gameId, { acceptInvite: { slotIndex: invite.slotIndex } });
     });
 
     await waitFor(() => diceEnabled(host) && guestSeesStartedBoard(guest), {

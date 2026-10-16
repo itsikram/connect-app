@@ -1,8 +1,13 @@
 package com.connect.app;
 
 import android.app.Activity;
+import android.app.NotificationManager;
+import android.content.Context;
 import android.content.Intent;
+import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.util.Log;
 
 import com.facebook.react.bridge.Arguments;
@@ -26,7 +31,10 @@ public class CallNotificationModule extends ReactContextBaseJavaModule implement
         super(reactContext);
         this.reactContext = reactContext;
         staticContext = reactContext;
-        IncomingCallStore.INSTANCE.setReactRunning(true);
+        // Only an app with its activity up shows calls from JS. A headless JS
+        // run (background task) has no call screen, so incoming-call pushes
+        // must keep using the native ring + full-screen path.
+        IncomingCallStore.INSTANCE.setReactRunning(reactContext.hasCurrentActivity());
         reactContext.addLifecycleEventListener(this);
     }
 
@@ -63,6 +71,136 @@ public class CallNotificationModule extends ReactContextBaseJavaModule implement
             promise.resolve(jsonToMap(json));
         } catch (Exception e) {
             promise.reject("ERROR", e.getMessage());
+        }
+    }
+
+    /** The JS call screen took over (or the call ended): stop the native ring and its notification. */
+    @ReactMethod
+    public void cancelNativeIncomingCall(Promise promise) {
+        try {
+            if (IncomingCallNotifier.INSTANCE.hasActiveCall()) {
+                IncomingCallNotifier.INSTANCE.cancel(getReactApplicationContext(), null);
+            }
+            promise.resolve(true);
+        } catch (Exception e) {
+            promise.resolve(false);
+        }
+    }
+
+    /** A call screen is up (ringing or in a call, not minimized): keep it above the lock screen. */
+    @ReactMethod
+    public void setCallScreenActive(boolean active, Promise promise) {
+        LockScreenCallMode.INSTANCE.setJsCallActive(active);
+        promise.resolve(true);
+    }
+
+    /** The incoming call started / stopped ringing: keep the screen on while it rings. */
+    @ReactMethod
+    public void setIncomingCallRinging(boolean ringing, Promise promise) {
+        LockScreenCallMode.INSTANCE.setRinging(ringing);
+        promise.resolve(true);
+    }
+
+    /**
+     * What Android lets an incoming call do while the app is closed:
+     * fullScreenIntent - call screen over the lock screen (user-controlled on Android 14+),
+     * overlay - call screen over other apps while the phone is in use ("Display over other apps").
+     */
+    @ReactMethod
+    public void getIncomingCallScreenStatus(Promise promise) {
+        Context context = getReactApplicationContext();
+        boolean fullScreen = true;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            NotificationManager manager = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            fullScreen = manager != null && manager.canUseFullScreenIntent();
+        }
+        boolean overlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(context);
+        WritableMap map = Arguments.createMap();
+        map.putBoolean("fullScreenIntent", fullScreen);
+        map.putBoolean("overlay", overlay);
+        map.putInt("sdk", Build.VERSION.SDK_INT);
+        map.putBoolean("xiaomi", isXiaomi());
+        promise.resolve(map);
+    }
+
+    /** Xiaomi / Redmi / POCO (MIUI, HyperOS) block lock-screen and background pop-ups per app. */
+    private static boolean isXiaomi() {
+        String manufacturer = String.valueOf(Build.MANUFACTURER).toLowerCase(java.util.Locale.ROOT);
+        String brand = String.valueOf(Build.BRAND).toLowerCase(java.util.Locale.ROOT);
+        return manufacturer.contains("xiaomi") || brand.contains("xiaomi")
+            || brand.contains("redmi") || brand.contains("poco");
+    }
+
+    /**
+     * MIUI / HyperOS "Other permissions" page, where "Show on Lock screen" and
+     * "Display pop-up windows while running in the background" live. Falls
+     * back to the app's settings page.
+     */
+    @ReactMethod
+    public void openOemCallPermissions(Promise promise) {
+        Context context = getReactApplicationContext();
+        String pkg = context.getPackageName();
+        if (isXiaomi()) {
+            String[] editors = {
+                "com.miui.permcenter.permissions.PermissionsEditorActivity",
+                "com.miui.permcenter.permissions.AppPermissionsEditorActivity",
+            };
+            for (String editor : editors) {
+                try {
+                    Intent intent = new Intent("miui.intent.action.APP_PERM_EDITOR");
+                    intent.setClassName("com.miui.securitycenter", editor);
+                    intent.putExtra("extra_pkgname", pkg);
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(intent);
+                    promise.resolve(true);
+                    return;
+                } catch (Exception ignored) {
+                }
+            }
+        }
+        promise.resolve(openSettings(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:" + pkg))));
+    }
+
+    @ReactMethod
+    public void openFullScreenIntentSettings(Promise promise) {
+        Context context = getReactApplicationContext();
+        Intent intent;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            intent = new Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT,
+                Uri.parse("package:" + context.getPackageName()));
+        } else {
+            intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                .putExtra(Settings.EXTRA_APP_PACKAGE, context.getPackageName());
+        }
+        promise.resolve(openSettings(intent));
+    }
+
+    @ReactMethod
+    public void openOverlaySettings(Promise promise) {
+        Context context = getReactApplicationContext();
+        promise.resolve(openSettings(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+            Uri.parse("package:" + context.getPackageName()))));
+    }
+
+    private boolean openSettings(Intent intent) {
+        Context context = getReactApplicationContext();
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        try {
+            context.startActivity(intent);
+            return true;
+        } catch (Exception e) {
+            Log.w(TAG, "Settings screen unavailable, opening app details", e);
+        }
+        try {
+            Intent details = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                Uri.parse("package:" + context.getPackageName()));
+            details.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            context.startActivity(details);
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "Could not open settings", e);
+            return false;
         }
     }
 

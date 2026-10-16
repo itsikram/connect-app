@@ -569,7 +569,7 @@ const AIAgentModal: React.FC<Props> = ({
     }),
     [profile, user?.profile],
   );
-  const { setLudoGameActive, requestLudoInvite } = useLudoGame();
+  const { requestLudoInvite } = useLudoGame();
   const { setChessGameActive } = useChessGame();
   const {
     sendMessage: socketSendMessage,
@@ -623,14 +623,14 @@ const AIAgentModal: React.FC<Props> = ({
   const [voiceRefining, setVoiceRefining] = React.useState(false);
   const [minimized, setMinimized] = React.useState(false);
   const openLudo = React.useCallback(() => {
-    navigateWithQueue('Menu');
-    setLudoGameActive(true);
-  }, [setLudoGameActive]);
+    navigateWithQueue('Menu', { screen: 'LudoGame', params: { gameId: null } });
+  }, []);
   const inviteLudoPlayer = React.useCallback(
     (userId: string, userName?: string) => {
       if (!userId) throw new Error('I could not resolve the Ludo player.');
-      navigateWithQueue('Menu');
+      // The Ludo menu creates the game and sends the invite.
       requestLudoInvite({ id: userId, name: userName });
+      navigateWithQueue('Menu', { screen: 'LudoGame', params: { gameId: null } });
     },
     [requestLudoInvite],
   );

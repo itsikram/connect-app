@@ -1,6 +1,6 @@
-// Test-only helpers: a real Ludo socket server and a client wrapper that
-// connects a rendered LudoGameSVG to it, plus an autonomous "player" that taps
-// the dice / a playable token whenever the UI allows it.
+// Test-only helpers: a real Ludo socket server (it hosts the games) and a
+// client wrapper that connects a rendered LudoGameSVG to it, plus a stand-in
+// for React Navigation's Ludo route (its gameId param).
 const path = require('path');
 const React = require('react');
 const { io: ioClient } = require('socket.io-client');
@@ -8,7 +8,20 @@ const { ClientContext } = require('./clientContext');
 
 const SERVER_DIR = path.resolve(__dirname, '../../../server');
 
+// Short board paths (the last 8 cells) and quicker pacing keep a whole match
+// to a minute or two; rules and turn handling are the production ones.
+const TEST_TIMINGS = {
+  stepMs: 60,
+  moveSettleMs: 150,
+  passMs: 500,
+  autoMoveMs: 400,
+  botRollMs: 300,
+  botMoveMs: 400,
+};
+
 const startLudoServer = (port) => {
+  process.env.LUDO_PATH_LENGTH = '8';
+  process.env.LUDO_TIMINGS = JSON.stringify(TEST_TIMINGS);
   const { Server } = require(path.join(SERVER_DIR, 'node_modules/socket.io'));
   const { debugLogger } = require(path.join(SERVER_DIR, 'utils/debugLogger'));
   Object.keys(debugLogger || {}).forEach((key) => {
@@ -89,6 +102,28 @@ const ClientProvider = ({ client, children }) => {
   return React.createElement(ClientContext.Provider, { value }, children);
 };
 
+// Plays the part of the LudoGame stack screen: keeps the route params
+// (gameId, acceptInvite) and exposes them on the client for the tests.
+const TestLudoNavigator = () => {
+  const { client } = React.useContext(ClientContext);
+  const [route, setRoute] = React.useState({ gameId: null, acceptInvite: null });
+  client.route = route;
+  client.openGame = (gameId, options = {}) => setRoute({ gameId, acceptInvite: options.acceptInvite || null });
+  client.showMenu = () => setRoute({ gameId: null, acceptInvite: null });
+  // Required here so the module mocks are in place first.
+  const LudoGameSVG = require('../../src/screens/LudoGameSVG').default;
+  return React.createElement(LudoGameSVG, {
+    gameId: route.gameId,
+    acceptInvite: route.acceptInvite,
+    onOpenGame: (gameId, options) => client.openGame(gameId, options),
+    onShowMenu: () => client.showMenu(),
+    onExit: () => {
+      client.exited = true;
+      client.showMenu();
+    },
+  });
+};
+
 const waitFor = async (predicate, { timeout = 10000, interval = 50, label = 'condition' } = {}) => {
   const started = Date.now();
   for (;;) {
@@ -100,6 +135,8 @@ const waitFor = async (predicate, { timeout = 10000, interval = 50, label = 'con
 };
 
 module.exports = {
+  TEST_TIMINGS,
+  TestLudoNavigator,
   startLudoServer,
   makeProfile,
   createClient,

@@ -57,6 +57,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import Home from './src/screens/Home';
 import Message from './src/screens/Message';
 import Menu from './src/screens/Menu';
+import LudoGameScreen from './src/screens/LudoGameScreen';
 import YouTubeScreen from './src/screens/YouTubeScreen';
 import FitnessOnboarding from './src/screens/FitnessOnboarding';
 import FitnessDashboard from './src/screens/FitnessDashboard';
@@ -90,6 +91,7 @@ import { Provider, useSelector, useDispatch } from 'react-redux';
 import store, { RootState } from './src/store';
 // Profile data hook
 import { useProfileData } from './src/hooks/useProfileData';
+import usePresenceSync from './src/hooks/usePresenceSync';
 import SingleMessage from './src/screens/SingleMessage';
 import ConnectProfile from './src/screens/ConnectProfile';
 import Videos from './src/screens/Videos';
@@ -357,6 +359,7 @@ function MenuStack() {
   return (
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="MenuHome" component={Menu} />
+      <Stack.Screen name="LudoGame" component={LudoGameScreen} />
       <Stack.Screen name="MyProfile" component={MyProfile} />
       <Stack.Screen name="SinglePost" component={SinglePost} />
       <Stack.Screen name="EditPost" component={EditPost} />
@@ -575,6 +578,7 @@ function TabBarWithLudoCheck(props: any) {
   // Hide tab bar for specific screens
   if (
     chatScreenActive ||
+    routeName === 'LudoGame' ||
     routeName === 'SingleMessage' ||
     routeName === 'SinglePost' ||
     routeName === 'SingleVideo' ||
@@ -848,6 +852,8 @@ function AppContent() {
   // After a call ends or is accepted, ignore any incoming-call events briefly to avoid ghost navigations
   const ignoreIncomingCallsUntilRef = React.useRef<number>(0);
   const dispatch = useDispatch();
+  // Realtime online/offline status of connects + this device's foreground state.
+  usePresenceSync(myProfile?._id, isConnected);
   const [updateModalVisible, setUpdateModalVisible] =
     React.useState<boolean>(false);
   const [serverVersion, setServerVersion] = React.useState<string>('');

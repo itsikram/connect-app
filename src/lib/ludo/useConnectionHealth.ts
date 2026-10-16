@@ -9,12 +9,14 @@ const OFFLINE_GRACE_MS = 800;
 /**
  * Tracks whether the online Ludo connection is usable. "offline" once the
  * socket has been down for a moment, "slow" when a ludo:ping round trip takes
- * longer than SLOW_AFTER_MS, otherwise "ok".
+ * longer than SLOW_AFTER_MS, otherwise "ok". With a gameId the ping is also
+ * the heartbeat that keeps this player's seat marked as present on the server.
  */
 export const useConnectionHealth = (
   active: boolean,
   isConnected: boolean,
   emit: (event: string, data: any, ack?: (...args: any[]) => void) => void,
+  gameId: string | null = null,
 ): ConnectionHealth => {
   const [health, setHealth] = useState<ConnectionHealth>('ok');
   const pendingSinceRef = useRef<number | null>(null);
@@ -38,7 +40,7 @@ export const useConnectionHealth = (
       if (pendingSinceRef.current != null) return;
       const sentAt = Date.now();
       pendingSinceRef.current = sentAt;
-      emit('ludo:ping', {}, () => {
+      emit('ludo:ping', gameId ? { gameId } : {}, () => {
         serverAnswersPingRef.current = true;
         if (disposed || pendingSinceRef.current !== sentAt) return;
         pendingSinceRef.current = null;
@@ -60,7 +62,7 @@ export const useConnectionHealth = (
       clearInterval(watch);
       clearInterval(pinger);
     };
-  }, [active, isConnected, emit]);
+  }, [active, isConnected, emit, gameId]);
 
   return health;
 };

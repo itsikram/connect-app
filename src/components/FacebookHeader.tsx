@@ -19,7 +19,6 @@ import { useSelector } from 'react-redux';
 import { RootState } from '../store';
 import { useSocket } from '../contexts/SocketContext';
 import { useHeaderVisibility } from '../contexts/HeaderVisibilityContext';
-import { useLudoGame } from '../contexts/LudoGameContext';
 import SearchModal from './SearchModal';
 import moment from 'moment';
 import api from '../lib/api';
@@ -42,7 +41,6 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
   const navigation = useNavigation();
   const myProfile = useSelector((state: RootState) => state.profile);
   const { isConnected, emit, on, off } = useSocket();
-  const { requestLudoInvite } = useLudoGame();
   const [notifications, setNotifications] = React.useState<any[]>([]);
   const [ludoInvites, setLudoInvites] = React.useState<LudoInvite[]>([]);
   const [notifOpen, setNotifOpen] = React.useState(false);
@@ -167,30 +165,18 @@ const FacebookHeader: React.FC<FacebookHeaderProps> = ({
 
   const acceptLudoInvite = React.useCallback(
     (invite: LudoInvite) => {
-      if (!invite.gameId || !invite.from && !invite.by) return;
-      const inviterId = String(invite.from || invite.by);
-      const acceptedInvite = {
-        ...invite,
-        from: inviterId,
-        by: invite.by || inviterId,
-      };
+      if (!invite.gameId) return;
       setLudoInvites((prev) =>
         prev.filter((item) => item.inviteId !== invite.inviteId && item.gameId !== invite.gameId),
       );
-      requestLudoInvite({
-        id: inviterId,
-        name: invite.name,
-        profilePic: invite.avatar,
-        gameId: invite.gameId,
-        by: acceptedInvite.by,
-        playerCount: invite.playerCount,
-        slotIndex: invite.slotIndex,
-        inviteId: invite.inviteId,
+      // Each game has its own Ludo screen; it takes the seat on arrival.
+      (navigation as any).navigate('Menu', {
+        screen: 'LudoGame',
+        params: { gameId: invite.gameId, acceptInvite: { slotIndex: invite.slotIndex } },
       });
-      (navigation as any).navigate('Menu', { screen: 'MenuHome' });
       void resolveLudoInviteNotification(invite);
     },
-    [emit, myProfile?._id, myProfile?.fullName, myProfile?.profilePic, myProfile?.coverPic, navigation, requestLudoInvite, resolveLudoInviteNotification],
+    [navigation, resolveLudoInviteNotification],
   );
 
   const rejectLudoInvite = React.useCallback(

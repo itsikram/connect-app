@@ -1,7 +1,7 @@
 /* eslint-env jest */
 // Module mocks shared by the online Ludo tests. Require this file before
 // requiring LudoGameSVG. Everything network-, native- or render-heavy is
-// replaced; the game screen, rules and socket sync code are the real ones.
+// replaced; the game screen, its socket code and the game server are real.
 const mockReact = require('react');
 const { ClientContext: mockClientContext } = require('./clientContext');
 
@@ -72,18 +72,6 @@ jest.mock('../../src/lib/ludo/PlayerEditorModal', () => ({ PlayerEditorModal: ()
 jest.mock('../../src/lib/ludo/useLudoAudio', () => ({
   useLudoAudio: () => ({ soundsEnabled: false, playSound: () => {}, toggleSounds: () => {} }),
 }));
-
-// Shorter paths (last 8 cells: 2 track cells + the 6-cell home column) and a
-// quicker result display so a whole game fits in a test run. The web harness
-// shortens its paths the same way so mixed games agree on the board.
-jest.mock('../../src/lib/ludo/constants', () => {
-  const actual = jest.requireActual('../../src/lib/ludo/constants');
-  const PATHS = {};
-  Object.keys(actual.PATHS).forEach((key) => {
-    PATHS[Number(key)] = actual.PATHS[key].slice(-8);
-  });
-  return { ...actual, PATHS, DICE_ROLL_ANIMATION_MS: 300, DICE_RESULT_DISPLAY_MS: 400 };
-});
 
 jest.mock('../../src/lib/ludo/GameOverlays', () => {
   const { Text, TouchableOpacity, View } = require('react-native');

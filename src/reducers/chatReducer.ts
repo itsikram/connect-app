@@ -37,7 +37,8 @@ interface ChatMessage {
   isSeen: boolean;
   timestamp: string;
   __v: number;
-  messageType?: 'text' | 'call' | 'audio';
+  // 'secure' rows only hold a placeholder; the content is never stored.
+  messageType?: 'text' | 'call' | 'audio' | 'secure';
   duration?: number;
   callType?: 'audio' | 'video';
   callEvent?: 'missed' | 'ended' | 'declined' | 'started';

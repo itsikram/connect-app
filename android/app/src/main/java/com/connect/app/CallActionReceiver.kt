@@ -16,6 +16,7 @@ class CallActionReceiver : BroadcastReceiver() {
     IncomingCallStore.savePendingFromIntent(context, intent)
     val channelName = intent.getStringExtra("channelName")
     IncomingCallNotifier.cancel(context, channelName)
+    LockScreenCallMode.releaseIfNoCall()
 
     val callerId = intent.getStringExtra("callerId") ?: return
     val channel = intent.getStringExtra("channelName") ?: return

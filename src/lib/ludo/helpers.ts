@@ -106,3 +106,23 @@ export const getTokenOffset = (
 
 export const getPathForPlayer = (playerIndex: number, playerCount: number) =>
   PATHS[getBoardSeatIndex(playerIndex, playerCount)] || PATHS[0];
+
+// The server tells clients how long the paths are (tests shorten them; the
+// end of each path, including the home column, is always the same).
+export const cellFor = (
+  playerIndex: number,
+  steps: number,
+  playerCount: number,
+  pathLength?: number,
+): Position => {
+  const full = getPathForPlayer(playerIndex, playerCount);
+  const length = Number(pathLength) || full.length;
+  const path = length < full.length ? full.slice(-length) : full;
+  if (steps <= 0 || steps > path.length) return { x: 7, y: 7 };
+  return path[steps - 1];
+};
+
+// Photo shown in a player's starting yard: their cover photo, otherwise their
+// profile picture (or the invited player's while they are invited).
+export const yardImageFor = (player: any): string | null =>
+  player?.cover || player?.coverPic || player?.avatar || player?.invited?.avatar || null;

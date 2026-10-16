@@ -1,6 +1,5 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { THEME } from './constants';
 
 interface GameHeaderProps {
@@ -8,11 +7,12 @@ interface GameHeaderProps {
   playWithComputer: boolean;
   gameId: string | null;
   onStartGame: () => void;
-  onResetGame: () => void;
+  onResetGame?: () => void;
   onExitGame: () => void;
   canPause?: boolean;
   pauseDisabled?: boolean;
   onPauseGame?: () => void;
+  subtitle?: string;
 }
 
 export const GameHeader: React.FC<GameHeaderProps> = ({
@@ -25,16 +25,16 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
   canPause,
   pauseDisabled,
   onPauseGame,
+  subtitle: subtitleOverride,
 }) => {
-  const insets = useSafeAreaInsets();
   const showExit = Boolean(gameId) || gameStarted;
-  const subtitle = gameStarted
+  const subtitle = subtitleOverride || (gameStarted
     ? gameId
       ? 'Online match'
       : playWithComputer
       ? 'Vs computer'
       : 'Local match'
-    : 'Ready to play';
+    : 'Ready to play');
 
   return (
     <View style={[styles.header, { paddingTop: 10 }]}>
@@ -59,6 +59,7 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
           <TouchableOpacity
             style={[styles.btn, styles.btnPrimary]}
             onPress={onStartGame}
+            testID="ludo-header-start"
           >
             <Text style={styles.btnPrimaryText}>Start</Text>
           </TouchableOpacity>
@@ -75,18 +76,22 @@ export const GameHeader: React.FC<GameHeaderProps> = ({
                 <Text style={styles.btnGhostText}>⏸ Pause</Text>
               </TouchableOpacity>
             ) : null}
-            <TouchableOpacity
-              style={[styles.btn, styles.btnDanger]}
-              onPress={onResetGame}
-            >
-              <Text style={styles.btnDangerText}>Restart</Text>
-            </TouchableOpacity>
+            {onResetGame ? (
+              <TouchableOpacity
+                style={[styles.btn, styles.btnDanger]}
+                onPress={onResetGame}
+                testID="ludo-restart"
+              >
+                <Text style={styles.btnDangerText}>Restart</Text>
+              </TouchableOpacity>
+            ) : null}
           </>
         )}
         {showExit && (
           <TouchableOpacity
             style={[styles.btn, styles.btnGhost]}
             onPress={onExitGame}
+            testID="ludo-leave"
           >
             <Text style={styles.btnGhostText}>Leave</Text>
           </TouchableOpacity>

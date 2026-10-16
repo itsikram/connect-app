@@ -2,7 +2,6 @@ import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../contexts/ThemeContext';
 import { useChessGame } from '../../contexts/ChessGameContext';
-import { useLudoGame } from '../../contexts/LudoGameContext';
 import { CravingResult, SubstanceKey, ToolKey, newClientId, recoveryApi } from '../../services/recoveryApi';
 import { OFFLINE_HELPLINES, OFFLINE_TRIGGERS, TOOL_ICONS } from './content';
 import { hasPersonalOrder, orderTools } from './helpers';
@@ -37,7 +36,6 @@ export const RecoverySos = ({ navigation, route }: Props) => {
   const { lang, s, f, num, money } = useRecoveryI18n();
   const { content } = useRecoveryContent(lang);
   const dashboard = useCachedDashboard();
-  const { setLudoGameActive } = useLudoGame();
   const { setChessGameActive } = useChessGame();
   const initialTool: ToolKey | undefined = route?.params?.tool;
 
@@ -118,7 +116,7 @@ export const RecoverySos = ({ navigation, route }: Props) => {
     toolsUsed.current.add('distract');
     await log('unsure');
     navigation.popToTop();
-    if (game === 'ludo') setLudoGameActive(true);
+    if (game === 'ludo') navigation.navigate('LudoGame', { gameId: null });
     else setChessGameActive(true);
   };
 

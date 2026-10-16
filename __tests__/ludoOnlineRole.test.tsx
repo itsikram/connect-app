@@ -20,7 +20,6 @@ const {
   traceOf,
   dropConnection,
 } = require('./ludo/expoAgent');
-const LudoGameSVG = require('../src/screens/LudoGameSVG').default;
 
 const url = process.env.LUDO_E2E_URL;
 const role = process.env.LUDO_E2E_ROLE;
@@ -40,7 +39,7 @@ run(`Expo ${role} plays a full online match`, async () => {
     inviteTargets: [{ _id: peer, fullName: 'Peer' }],
   });
   await waitFor(() => client.socket.connected, { label: 'socket' });
-  await mount(client, LudoGameSVG);
+  await mount(client);
 
   const dumpOnFailure = async (fn: () => Promise<void>) => {
     try {
@@ -63,7 +62,10 @@ run(`Expo ${role} plays a full online match`, async () => {
     const acceptedAt = Date.now();
     await press(accept);
     await waitFor(
-      () => !findAllText(client).some((t: string) => /Joining the match|Waiting for players/i.test(t)),
+      () =>
+        Boolean(client.route?.gameId) &&
+        client.renderer.root.findAll((n: any) => typeof n.props?.testID === 'string' && n.props.testID.startsWith('ludo-token-')).length > 0 &&
+        !findAllText(client).some((t: string) => /Waiting for/i.test(t)),
       { timeout: 3000, label: 'match started after accept' },
     );
     process.stdout.write(`[expo guest] match started ${Date.now() - acceptedAt}ms after accept\n`);

@@ -61,6 +61,18 @@ object IncomingCallStore {
 
   fun peekPendingJson(context: Context): String? = prefs(context).getString(KEY_PENDING, null)
 
+  /** Drop a not-yet-handled "show this call" for a caller who already hung up. */
+  fun discardPendingOpenFor(context: Context, callerId: String) {
+    val json = peekPendingJson(context) ?: return
+    try {
+      val pending = JSONObject(json)
+      if (pending.optString("action") == "open" && pending.optString("callerId") == callerId) {
+        prefs(context).edit().remove(KEY_PENDING).apply()
+      }
+    } catch (_: Exception) {
+    }
+  }
+
   fun consumePendingJson(context: Context): String? {
     val value = prefs(context).getString(KEY_PENDING, null)
     if (value != null) {

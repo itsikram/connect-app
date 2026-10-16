@@ -11,13 +11,13 @@ import {
   BOARD_OUTER_STROKE,
   COLORS,
 } from './constants';
-import { getPlayerIndexForBoardSeat } from './helpers';
-import type { Player } from './types';
+import { getPlayerIndexForBoardSeat, yardImageFor } from './helpers';
+import type { Player, ServerPlayer } from './types';
 
 interface GameBoardProps {
   boardSize: number;
   cellSize: number;
-  players: Player[];
+  players: (Player | ServerPlayer)[];
   selectedPlayerCount: number;
 }
 
@@ -95,8 +95,8 @@ export const GameBoard: React.FC<GameBoardProps> = ({
     const innerH = cellSize * 4;
     const playerIndex = getPlayerIndexForBoardSeat(idx, selectedPlayerCount);
     const homePlayer = playerIndex === null ? null : players[playerIndex];
-    const coverUrl =
-      homePlayer?.cover || (homePlayer as any)?.coverPic || (homePlayer as any)?.profileCover;
+    // Every seat's yard shows that player's photo: host and remote players.
+    const coverUrl = yardImageFor(homePlayer);
 
     if (coverUrl && playerIndex !== null) {
       elems.push(

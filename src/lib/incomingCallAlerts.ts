@@ -1,4 +1,4 @@
-import { AppState, AppStateStatus, Platform } from 'react-native';
+import { AppState, AppStateStatus, NativeModules, Platform } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { ANDROID_INCOMING_CALL_CHANNEL_ID } from './notificationChannelIds';
 import {
@@ -14,6 +14,7 @@ import {
   normalizeRingtoneId,
 } from './ringtoneAssets';
 import { getIncomingCallOsSound } from './expoGo';
+import { setLockScreenCallRinging } from './lockScreenCall';
 
 export const INCOMING_CALL_CATEGORY = 'incoming_call';
 const LEGACY_CALL_CHANNELS = ['incoming_calls', 'incoming_calls_v3', ANDROID_INCOMING_CALL_CHANNEL_ID];
@@ -86,6 +87,18 @@ async function displayAndroidCallForegroundNotification(payload: RingingPayload)
   }
 }
 
+/**
+ * A call that arrived while the app was closed rings natively
+ * (IncomingCallRingService) and keeps ringing while the app starts. Stop it
+ * once the JS call screen rings, or when the call is answered / ends.
+ */
+async function stopNativeIncomingCallRing(): Promise<void> {
+  if (Platform.OS !== 'android') return;
+  try {
+    await NativeModules.CallNotificationModule?.cancelNativeIncomingCall?.();
+  } catch (_) {}
+}
+
 async function cancelAndroidCallForegroundNotification(): Promise<void> {
   if (Platform.OS !== 'android') return;
   try {
@@ -102,6 +115,7 @@ function ensureAppStateWatch() {
       if (!ringingPayload) return;
       if (state === 'active') {
         cancelAndroidCallForegroundNotification().catch(() => {});
+        stopNativeIncomingCallRing().catch(() => {});
         playIncomingRingtone(ringingPayload.ringtoneId).catch(stopAfterRingtoneError);
         return;
       }
@@ -249,6 +263,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 
   if (sameCall(ringingPayload, next)) {
     if (!isIncomingRingtonePlaying() && (inForeground || Platform.OS === 'ios')) {
+      if (inForeground) stopNativeIncomingCallRing().catch(() => {});
       playIncomingRingtone(ringtoneId).catch(stopAfterRingtoneError);
     }
     return;
@@ -256,6 +271,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 
   ringingPayload = next;
   ensureAppStateWatch();
+  setLockScreenCallRinging(true);
 
   if (Platform.OS === 'ios') {
     await playIncomingRingtone(ringtoneId);
@@ -269,6 +285,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
   if (token !== alertToken || !ringingPayload || !sameCall(ringingPayload, next)) return;
 
   if (inForeground) {
+    stopNativeIncomingCallRing().catch(() => {});
     playIncomingRingtone(ringtoneId).catch(stopAfterRingtoneError);
     return;
   }
@@ -282,11 +299,13 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 export async function stopIncomingCallAlert(channelName?: string): Promise<void> {
   alertToken += 1;
   ringingPayload = null;
+  setLockScreenCallRinging(false);
   if (appStateTimer) {
     clearTimeout(appStateTimer);
     appStateTimer = null;
   }
   await stopIncomingRingtone();
+  await stopNativeIncomingCallRing();
   await cancelAndroidCallForegroundNotification();
   await cancelIncomingCallNotifications(channelName);
 }

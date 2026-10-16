@@ -28,23 +28,44 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     setTheme(R.style.AppTheme)
     super.onCreate(null)
+    LockScreenCallMode.attach(this)
     handleIncomingCallIntent(intent)
   }
 
-  private fun handleIncomingCallIntent(intent: Intent?) {
-    if (intent == null) return
+  override fun onDestroy() {
+    LockScreenCallMode.detach(this)
+    super.onDestroy()
+  }
 
-    val callType = intent.getStringExtra("type")
-    val callAction = intent.getStringExtra("callAction") ?: intent.getStringExtra("action")
+  private fun handleIncomingCallIntent(intent: Intent?) {
+    val callType = intent?.getStringExtra("type")
+    val callAction = intent?.getStringExtra("callAction") ?: intent?.getStringExtra("action")
     val isCall = callType == "incoming_call" ||
         callAction == "incoming_call" ||
         callAction == "accept_call" ||
         callAction == "decline_call"
-    if (!isCall) return
+    if (intent == null || !isCall) {
+      // Not a call: keep the app behind the lock screen (asks to unlock if locked).
+      LockScreenCallMode.onNonCallIntent(this)
+      return
+    }
 
     Log.d("MainActivity", "Incoming call intent action=$callAction")
+    // Show over the lock screen and wake the display before the first frame.
+    if (callAction == "decline_call") {
+      LockScreenCallMode.releaseIfNoCall()
+    } else {
+      LockScreenCallMode.onCallIntent(ringing = callAction != "accept_call")
+    }
     IncomingCallStore.savePendingFromIntent(this, intent)
-    IncomingCallNotifier.cancel(this, intent.getStringExtra("channelName"))
+    // Accept / decline end the native ringing here. When the call screen is
+    // only being shown, keep ringing (and keep the Accept/Decline
+    // notification) until the JS call screen takes over and calls
+    // CallNotificationModule.cancelNativeIncomingCall, so a cold start does
+    // not go silent while React Native loads.
+    if (callAction == "accept_call" || callAction == "decline_call") {
+      IncomingCallNotifier.cancel(this, intent.getStringExtra("channelName"))
+    }
 
     val pendingJson = IncomingCallStore.peekPendingJson(this)
     val payload = CallNotificationModule.jsonToMap(pendingJson)

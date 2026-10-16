@@ -40,6 +40,13 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
       return
     }
 
+    // The caller hung up or the call timed out (the server sends missed_call
+    // in both cases): stop a native ring still going for that caller, then
+    // show the missed-call notification below as usual.
+    if (data["type"] == "missed_call") {
+      IncomingCallNotifier.cancelIfRingingFor(applicationContext, data["callerId"] ?: data["senderId"])
+    }
+
     // Notifications from a person arrive data-only with their avatar in
     // `image` (see avatarMulticastPayload on the server), so the OS never
     // draws them with the app logo. Hand them to Expo as a notification

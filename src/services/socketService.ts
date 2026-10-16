@@ -216,8 +216,31 @@ class SocketService {
     this.emit('update-last-login', { userId });
   }
 
+  // The server answers with 'is_active' (isActive, lastSeen, profileId).
   checkUserActive(profileId: string, myId: string): void {
-    this.emit('check-user-active', { profileId, myId });
+    this.emit('is_active', { profileId, myId });
+  }
+
+  // Send only on a live connection (never queued): used for presence, where a
+  // stale "away"/"active" replayed on reconnect would be wrong.
+  emitIfConnected(event: string, data?: any, ack?: (...args: any[]) => void): boolean {
+    if (!this.socket || !this.socket.connected) return false;
+    if (typeof ack === 'function') this.socket.emit(event, data, ack);
+    else this.socket.emit(event, data);
+    return true;
+  }
+
+  // Reconnect now (e.g. app came to the foreground) instead of waiting for
+  // socket.io's backoff.
+  reconnectNow(): void {
+    const s = this.socket || getSocket();
+    if (s && !s.connected) {
+      try {
+        s.connect();
+      } catch (e) {
+        console.warn('Socket reconnect failed', e);
+      }
+    }
   }
 
   // Video call methods

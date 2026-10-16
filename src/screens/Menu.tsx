@@ -14,7 +14,6 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AuthContext } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { useLudoGame } from '../contexts/LudoGameContext';
 import { useChessGame } from '../contexts/ChessGameContext';
 import { useFeatureFlag } from '../contexts/FeatureFlagContext';
 import { useSelector } from 'react-redux';
@@ -30,7 +29,6 @@ import { type AgentSpeechLanguage } from '../services/agentSpeechService';
 import { sampleApps, AppItem } from '../data/appData';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { userAPI } from '../lib/api';
-import LudoGameSVG from './LudoGameSVG';
 
 const WORKING_APP_IDS = new Set([
   'Ludu',
@@ -190,7 +188,6 @@ const Menu = () => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const walletEnabled = useFeatureFlag('walletEnabled');
   const recoveryEnabled = useFeatureFlag('recoveryEnabled');
-  const { isLudoGameActive, setLudoGameActive } = useLudoGame();
   const { isChessGameActive, setChessGameActive } = useChessGame();
   const [query, setQuery] = useState('');
   const [showComingSoon, setShowComingSoon] = useState(false);
@@ -240,7 +237,7 @@ const Menu = () => {
 
   const handleAppPress = useCallback((app: AppItem) => {
     if (app.id === 'Ludu') {
-      setLudoGameActive(true);
+      (navigation as any).navigate('LudoGame', { gameId: null });
       return;
     }
     if (app.id === 'Chess') {
@@ -308,7 +305,7 @@ const Menu = () => {
       return;
     }
     Alert.alert('Coming soon', `${app.name} is not available in Connect yet.`);
-  }, [navigation, setLudoGameActive, setChessGameActive]);
+  }, [navigation, setChessGameActive]);
 
   const appsWithActions = useMemo(
     () =>
@@ -454,10 +451,6 @@ const Menu = () => {
   }, [appOrder, orderedShortcuts, persistMenuOrder, shortcuts]);
 
   const showComingSoonSection = comingSoonApps.length > 0 && (showComingSoon || Boolean(normalizedQuery));
-
-  if (isLudoGameActive) {
-    return <LudoGameSVG />;
-  }
 
   if (isChessGameActive) {
     const ChessGame = require('./ChessGame').default;

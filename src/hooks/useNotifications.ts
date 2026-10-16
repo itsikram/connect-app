@@ -87,13 +87,27 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
       if (isInitializedRef.current) return;
 
       try {
+        // A call that opened the app from a killed state is waiting natively.
+        // Hand it to the call overlays first: the setup below includes network
+        // round trips, and a failure there must not drop the call.
+        try {
+          const pendingCall = await consumePendingIncomingCall();
+          if (pendingCall) {
+            dispatchPendingIncomingCall(pendingCall);
+          }
+        } catch (_) {}
+
         await initializeNotifications();
         await configureNotificationsChannel();
         await configureIncomingCallChannels();
 
-        const tokenResult = await getNotificationToken();
-        if (tokenResult?.token) {
-          await saveNotificationToken(tokenResult.token, tokenResult.previousToken);
+        try {
+          const tokenResult = await getNotificationToken();
+          if (tokenResult?.token) {
+            await saveNotificationToken(tokenResult.token, tokenResult.previousToken);
+          }
+        } catch (tokenError) {
+          console.warn('Push token registration failed', tokenError);
         }
 
         const responseSub = Notifications.addNotificationResponseReceivedListener((response) => {

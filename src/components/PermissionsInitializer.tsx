@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Platform } from 'react-native';
 import { requestAllPermissionsWithAlerts, PermissionStatus } from '../lib/permissions';
 import { requestBatteryOptimizationExemption } from '../lib/push';
+import { ensureIncomingCallScreenPermissions } from '../lib/incomingCallScreenPermissions';
 
 interface PermissionsInitializerProps {
   /**
@@ -46,6 +47,9 @@ const PermissionsInitializer: React.FC<PermissionsInitializerProps> = ({
         const status = await requestAllPermissionsWithAlerts();
 
         if (Platform.OS === 'android') {
+          // Lets the call screen pop up when Connect is closed (lock screen +
+          // over other apps). Awaited so its dialogs don't stack with the next one.
+          await ensureIncomingCallScreenPermissions();
           console.log('🔋 Requesting battery optimization exemption for reliable calls...');
           await requestBatteryOptimizationExemption();
         }

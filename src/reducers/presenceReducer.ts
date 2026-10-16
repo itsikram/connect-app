@@ -37,6 +37,25 @@ const presenceSlice = createSlice({
         state.lastSeen = { ...state.lastSeen, ...lastSeen };
       }
     },
+    // Merge { [profileId]: { isActive, lastSeen } } from the server's
+    // presence_snapshot / presence_update.
+    applyPresenceStatuses: (
+      state,
+      action: PayloadAction<Record<string, { isActive?: boolean; lastSeen?: string | number | null }>>,
+    ) => {
+      const statuses = action.payload || {};
+      const online = new Set(state.activeConnects);
+      Object.keys(statuses).forEach((id) => {
+        const status = statuses[id] || {};
+        if (status.isActive) online.add(id);
+        else online.delete(id);
+        if (status.lastSeen) {
+          const date = new Date(status.lastSeen as any);
+          if (!Number.isNaN(date.getTime())) state.lastSeen[id] = date.toISOString();
+        }
+      });
+      state.activeConnects = Array.from(online);
+    },
     clearPresence: (state) => {
       state.activeConnects = [];
       state.lastSeen = {};
@@ -44,6 +63,6 @@ const presenceSlice = createSlice({
   },
 });
 
-export const { setConnectOnline, setConnectOffline, setConnectLastSeen, setPresenceBulk, clearPresence } = presenceSlice.actions;
+export const { setConnectOnline, setConnectOffline, setConnectLastSeen, setPresenceBulk, applyPresenceStatuses, clearPresence } = presenceSlice.actions;
 export default presenceSlice.reducer;
 

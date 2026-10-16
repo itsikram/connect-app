@@ -1,6 +1,7 @@
 import { io, Socket } from "socket.io-client";
 import config from "../lib/config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { AppState, Platform } from "react-native";
 import {
     applyAdminServerConfig,
     canFailover,
@@ -28,11 +29,28 @@ const moveSocketTo = (s: Socket, serverUrl: string) => {
     manager.engine?.close();
 };
 
+// The access token the REST API uses; the server takes the socket's identity
+// from it. Read on every (re)connect so a refreshed token is used.
+const socketAuth = (profileId: string) => (cb: (data: object) => void) => {
+    AsyncStorage.getItem('authToken')
+        .catch(() => null)
+        .then((token) => cb({ profile: profileId, token: token || undefined }));
+};
+
+// socket.io doesn't retry a connection the server refused; API calls refresh
+// the token meanwhile.
+const AUTH_RETRY_MS = 5000;
+
 const attachFailover = (s: Socket) => {
     s.on('connect_error', (err: any) => {
         // A server that answered and refused the connection (auth middleware)
         // is up, so only network errors and timeouts count as "down".
-        if (err && 'data' in err && err.type !== 'TransportError') return;
+        if (err && 'data' in err && err.type !== 'TransportError') {
+            setTimeout(() => {
+                if (socket === s && !s.connected) s.connect();
+            }, AUTH_RETRY_MS);
+            return;
+        }
         // The first failed connect moves API and socket to the next server;
         // onServerUrlChange below then repoints this socket.
         const current = (s.io as any)?.uri || config.SOCKET_BASE_URL;
@@ -151,8 +169,13 @@ export const initializeSocket = async (profileId: string): Promise<Socket> => {
         
         socket = io(config.SOCKET_BASE_URL, {
             transports: ['websocket', 'polling'],
-            query: { profile: effectiveProfileId },
-            auth: { profile: effectiveProfileId },
+            query: {
+                profile: effectiveProfileId,
+                // A socket opened while the app is backgrounded (e.g. woken
+                // by a push) must not show the user as online.
+                presence: Platform.OS !== 'web' && AppState.currentState === 'background' ? 'away' : 'active',
+            },
+            auth: socketAuth(String(effectiveProfileId)),
             timeout: canFailover() ? FAILOVER_CONNECT_TIMEOUT_MS : 20000,
             forceNew: true,
             reconnection: true,

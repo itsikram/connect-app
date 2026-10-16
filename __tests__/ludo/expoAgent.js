@@ -3,7 +3,7 @@
 // of the socket events each client received.
 const React = require('react');
 const TestRenderer = require('react-test-renderer');
-const { ClientProvider } = require('./harness');
+const { ClientProvider, TestLudoNavigator } = require('./harness');
 
 const { act } = TestRenderer;
 
@@ -76,16 +76,17 @@ const traceOf = (client, count = 16) =>
         typeof p.currentPlayer === 'number' ? `cp=${p.currentPlayer}` : '',
         typeof p.diceValue === 'number' ? `dice=${p.diceValue}` : '',
         typeof p.value === 'number' ? `value=${p.value}` : '',
-        typeof p.toSteps === 'number' ? `piece=${p.playerIndex}.${p.pieceIndex}->${p.toSteps}` : '',
-        typeof p.gameStarted === 'boolean' ? `started=${p.gameStarted}` : '',
-        p.playersSeq ? `seq=${p.playersSeq}` : '',
+        p.lastAction ? `act=${p.lastAction.type}${p.lastAction.type === 'move' ? `:${p.lastAction.seat}.${p.lastAction.piece}->${p.lastAction.to}` : ''}` : '',
+        typeof p.phase === 'string' ? `phase=${p.phase}` : '',
+        typeof p.status === 'string' ? `status=${p.status}` : '',
+        p.version ? `v=${p.version}` : '',
         p.by ? `by=${String(p.by).slice(-4)}` : '',
       ].filter(Boolean);
       return `    ${at % 100000} ${event} ${bits.join(' ')}`;
     })
     .join('\n');
 
-const mount = async (client, Component) => {
+const mount = async (client, Component = TestLudoNavigator) => {
   await act(async () => {
     client.renderer = TestRenderer.create(
       React.createElement(ClientProvider, { client }, React.createElement(Component)),
@@ -171,7 +172,16 @@ const dropConnection = async (client, outageMs = 3000) => {
   }
 };
 
+// Opens the new-game dialog (it opens by itself on a first visit) and
+// creates an online game inviting the client's inviteTargets.
 const hostOnlineLobby = async (host) => {
+  const started = Date.now();
+  while (!findPressable(host, 'lobby-count')) {
+    const start = findPressable(host, 'ludo-start-new');
+    if (start) await press(start);
+    if (Date.now() - started > 15000) throw new Error('new-game dialog did not open');
+    await pause(100);
+  }
   await press(findPressable(host, 'lobby-count'));
   await press(findPressable(host, 'lobby-online'));
   await press(findPressable(host, 'lobby-invite'));

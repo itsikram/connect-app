@@ -1,14 +1,12 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { THEME } from './constants';
-import type { LocalSave } from './savedGames';
-import { getSaveProgress } from './savedGames';
+import type { GameSummary, LudoInvite } from './types';
 
 export interface PauseInfo {
   profileId?: string;
   name?: string;
   at?: number;
-  local?: boolean;
   pending?: boolean;
 }
 
@@ -17,22 +15,20 @@ interface PausedOverlayProps {
   isMine: boolean;
   canResume: boolean;
   onlineMode: boolean;
-  resumeDenied: boolean;
   onResume: () => void;
   onSaveAndExit: () => void;
 }
 
 /**
- * Shown over the board while a match is paused. Online, only the host can
- * resume (their device runs the turn logic); everyone can save and exit and
- * pick the game up later from "Saved games".
+ * Shown over the board while a match is paused. The server keeps the game
+ * (and every seat) saved; any player in it can resume, and everyone can save
+ * and exit and pick the game up later from "Your games".
  */
 export const PausedOverlay: React.FC<PausedOverlayProps> = ({
   pause,
   isMine,
   canResume,
   onlineMode,
-  resumeDenied,
   onResume,
   onSaveAndExit,
 }) => {
@@ -41,8 +37,8 @@ export const PausedOverlay: React.FC<PausedOverlayProps> = ({
   const subtitle = onlineMode
     ? canResume
       ? "Everyone's progress is saved. Resume when you're all ready."
-      : 'Progress is saved. The host resumes the match.'
-    : 'Your progress is saved on this device.';
+      : 'Progress is saved. A player resumes the match.'
+    : 'Your progress is saved. Resume any time.';
   return (
     <View style={styles.overlay} testID="ludo-paused">
       <View style={styles.card}>
@@ -50,7 +46,6 @@ export const PausedOverlay: React.FC<PausedOverlayProps> = ({
         <Text style={styles.title}>Game paused</Text>
         <Text style={styles.by}>{pause.pending ? 'Pausing…' : `${who} paused the game`}</Text>
         <Text style={styles.copy}>{subtitle}</Text>
-        {resumeDenied ? <Text style={styles.note}>Only the host can resume.</Text> : null}
         <View style={styles.actions}>
           {canResume ? (
             <TouchableOpacity
@@ -62,7 +57,7 @@ export const PausedOverlay: React.FC<PausedOverlayProps> = ({
               <Text style={styles.btnPrimaryText}>▶ Resume</Text>
             </TouchableOpacity>
           ) : (
-            <Text style={styles.copy}>Waiting for the host…</Text>
+            <Text style={styles.copy}>Waiting for a player to resume…</Text>
           )}
           <TouchableOpacity style={[styles.btn, styles.btnGhost]} onPress={onSaveAndExit} testID="ludo-save-exit">
             <Text style={styles.btnGhostText}>Save & exit</Text>
@@ -73,44 +68,52 @@ export const PausedOverlay: React.FC<PausedOverlayProps> = ({
   );
 };
 
-export interface SavedOnlineGame {
-  gameId: string;
-  paused?: boolean;
-  isOnline?: boolean;
-  playerCount?: number;
-  lastPlayers?: any;
-}
-
-interface SavedGamesPanelProps {
-  localSaves: LocalSave[];
-  onlineGames: SavedOnlineGame[];
-  maxSteps: number;
+interface GamesPanelProps {
+  games: GameSummary[];
+  invites: LudoInvite[];
+  connected: boolean;
   onStartNew: () => void;
-  onResumeLocal: (save: LocalSave) => void;
-  onDeleteLocal: (save: LocalSave) => void;
-  onResumeOnline: (game: SavedOnlineGame) => void;
+  onResume: (game: GameSummary) => void;
+  onRemove: (game: GameSummary) => void;
   onRefresh: () => void;
+  onAcceptInvite: (invite: LudoInvite) => void;
+  onDeclineInvite: (invite: LudoInvite) => void;
 }
 
-const onlineStatus = (game: SavedOnlineGame) => {
-  if (game.paused || game.lastPlayers?.paused) return 'Paused';
-  return game.lastPlayers?.gameStarted ? 'In progress' : 'Waiting';
+const statusOf = (game: GameSummary) => {
+  if (game.paused) return 'Paused';
+  if (game.status === 'lobby') return 'Waiting';
+  return 'In progress';
 };
 
-/** Menu shown when no board is open: start a game or resume a saved one. */
-export const SavedGamesPanel: React.FC<SavedGamesPanelProps> = ({
-  localSaves,
-  onlineGames,
-  maxSteps,
+const labelOf = (game: GameSummary) => {
+  if (game.mode === 'computer') return 'Vs computer';
+  if (game.mode === 'local') return 'Pass & play';
+  const others = (game.players || [])
+    .filter((p) => p.seat !== game.mySeat && p.kind === 'human')
+    .map((p) => p.name)
+    .filter(Boolean);
+  return others.join(', ') || 'Online match';
+};
+
+/** Menu shown when no board is open: start a game, resume one, answer invites. */
+export const GamesPanel: React.FC<GamesPanelProps> = ({
+  games,
+  invites,
+  connected,
   onStartNew,
-  onResumeLocal,
-  onDeleteLocal,
-  onResumeOnline,
+  onResume,
+  onRemove,
   onRefresh,
+  onAcceptInvite,
+  onDeclineInvite,
 }) => (
-  <View style={styles.panel} testID="ludo-saved-games">
+  <View style={styles.panel} testID="ludo-your-games">
     <Text style={styles.panelTitle}>Ludo Classic</Text>
-    <Text style={styles.copy}>Start a new match or pick up a saved one.</Text>
+    <Text style={styles.copy}>
+      Play the computer, pass and play, or invite connects online. Every game is saved — pause any time and pick it
+      up later on any device.
+    </Text>
     <View style={styles.panelActions}>
       <TouchableOpacity style={[styles.btn, styles.btnPrimary]} onPress={onStartNew} testID="ludo-start-new">
         <Text style={styles.btnPrimaryText}>Start new game</Text>
@@ -119,68 +122,73 @@ export const SavedGamesPanel: React.FC<SavedGamesPanelProps> = ({
         <Text style={styles.btnGhostText}>Refresh</Text>
       </TouchableOpacity>
     </View>
+    {!connected && <Text style={styles.copy}>Connecting to the game server…</Text>}
 
-    {localSaves.length > 0 && (
+    {invites.length > 0 && (
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Saved games</Text>
-        {localSaves.map((save) => {
-          const turnName = save.players?.[save.currentPlayer]?.name || 'Player';
-          const savedAt = new Date(save.savedAt || Date.now());
+        <Text style={styles.sectionTitle}>Invitations</Text>
+        {invites.map((invite) => (
+          <View key={`${invite.gameId}-${invite.inviteId || ''}`} style={[styles.row, styles.rowMain]}>
+            <Text style={styles.rowIcon}>🎲</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.rowTitle} numberOfLines={1}>
+                {invite.name || 'A connect'} invited you
+              </Text>
+              <Text style={styles.rowSub} numberOfLines={1}>
+                {invite.playerCount || 2} players{invite.reinvite ? ' · come back to your seat' : ''}
+              </Text>
+            </View>
+            <TouchableOpacity onPress={() => onDeclineInvite(invite)} style={styles.smallBtn}>
+              <Text style={styles.btnGhostText}>Dismiss</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => onAcceptInvite(invite)}
+              style={[styles.smallBtn, styles.btnPrimary]}
+              testID={`ludo-invite-accept-${invite.gameId}`}
+            >
+              <Text style={styles.btnPrimaryText}>Join</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+    )}
+
+    {games.length > 0 && (
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Your games</Text>
+        {games.map((game) => {
+          const turn = game.players?.[game.currentPlayer];
           return (
-            <View key={save.id} style={styles.row}>
+            <View key={game.gameId} style={styles.row}>
               <TouchableOpacity
                 style={styles.rowMain}
-                onPress={() => onResumeLocal(save)}
-                testID={`ludo-saved-${save.id}`}
+                onPress={() => onResume(game)}
+                testID={`ludo-game-${game.gameId}`}
               >
-                <Text style={styles.rowIcon}>{save.playWithComputer ? '🤖' : '🎲'}</Text>
+                <Text style={styles.rowIcon}>{game.mode === 'computer' ? '🤖' : game.mode === 'local' ? '🎲' : '🌐'}</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.rowTitle} numberOfLines={1}>
-                    {save.playWithComputer ? 'Vs computer' : 'Local match'} ·{' '}
-                    {save.selectedPlayerCount || save.players.length} players
+                    {labelOf(game)} · {game.playerCount} players
                   </Text>
                   <Text style={styles.rowSub} numberOfLines={1}>
-                    {getSaveProgress(save, maxSteps)}% done · {turnName}'s turn ·{' '}
-                    {savedAt.toLocaleDateString()}
+                    {game.progress || 0}% done
+                    {turn && game.status === 'playing' ? ` · ${turn.name}'s turn` : ''}
+                    {game.updatedAt ? ` · ${new Date(game.updatedAt).toLocaleDateString()}` : ''}
                   </Text>
                 </View>
-                <Text style={styles.cta}>{save.paused ? 'Paused · Resume' : 'Resume'}</Text>
+                <Text style={styles.cta}>{statusOf(game)} · Resume</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.delete}
-                onPress={() => onDeleteLocal(save)}
-                accessibilityLabel="Delete saved game"
+                onPress={() => onRemove(game)}
+                accessibilityLabel={game.isHost ? 'Delete game' : 'Leave game'}
+                testID={`ludo-game-remove-${game.gameId}`}
               >
                 <Text style={styles.deleteText}>✕</Text>
               </TouchableOpacity>
             </View>
           );
         })}
-      </View>
-    )}
-
-    {onlineGames.length > 0 && (
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Online games</Text>
-        {onlineGames.map((game) => (
-          <TouchableOpacity
-            key={game.gameId}
-            style={[styles.row, styles.rowMain]}
-            onPress={() => onResumeOnline(game)}
-            testID={`ludo-online-${game.gameId}`}
-          >
-            <Text style={styles.rowIcon}>🌐</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.rowTitle} numberOfLines={1}>
-                Game #{String(game.gameId).slice(-6)}
-              </Text>
-              <Text style={styles.rowSub} numberOfLines={1}>
-                {game.playerCount || game.lastPlayers?.players?.length || 2} players · {onlineStatus(game)}
-              </Text>
-            </View>
-            <Text style={styles.cta}>Resume</Text>
-          </TouchableOpacity>
-        ))}
       </View>
     )}
   </View>
@@ -214,12 +222,20 @@ const styles = StyleSheet.create({
   title: { fontSize: 20, fontWeight: '800', color: THEME.text },
   by: { marginTop: 4, fontWeight: '600', color: THEME.accent },
   copy: { marginTop: 6, fontSize: 13, color: THEME.muted, textAlign: 'center' },
-  note: { marginTop: 8, fontSize: 13, color: THEME.warn },
   actions: { marginTop: 14, alignSelf: 'stretch', gap: 8 },
   btn: {
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
     alignItems: 'center',
     justifyContent: 'center',
   },

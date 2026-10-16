@@ -30,9 +30,10 @@ export const LudoGameProvider: React.FC<{ children: ReactNode }> = ({ children }
     setIsLudoGameActive(active);
   };
 
+  // "Invite this person to Ludo" from elsewhere in the app; the Ludo menu
+  // creates the game and sends the invite.
   const requestLudoInvite = (invite: LudoInviteRequest) => {
     setPendingLudoInvite(invite);
-    setIsLudoGameActive(true);
   };
 
   const consumeLudoInvite = () => {

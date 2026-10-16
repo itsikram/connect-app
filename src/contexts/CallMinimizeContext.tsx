@@ -1,4 +1,5 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState, ReactNode } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
+import { setLockScreenCallMinimized } from '../lib/lockScreenCall';
 
 export interface MinimizedCall {
   id: string;
@@ -45,6 +46,12 @@ export const CallMinimizeProvider: React.FC<CallMinimizeProviderProps> = ({ chil
   const [minimizedCalls, setMinimizedCalls] = useState<MinimizedCall[]>([]);
   const minimizedCallsRef = useRef(minimizedCalls);
   minimizedCallsRef.current = minimizedCalls;
+
+  // A minimized call no longer counts as a call screen (see lockScreenCall.ts).
+  const hasMinimizedCall = minimizedCalls.length > 0;
+  useEffect(() => {
+    setLockScreenCallMinimized(hasMinimizedCall);
+  }, [hasMinimizedCall]);
 
   const minimizeCall = useCallback((call: MinimizedCall) => {
     setMinimizedCalls(prev => {

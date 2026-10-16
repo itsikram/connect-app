@@ -76,6 +76,11 @@ function getLastMessagePreview(lastMessage: any): {
     return { text: 'Start a conversation', kind: 'text' };
   }
 
+  // The content of a secure message never appears in the chat list.
+  if (lastMessage.messageType === 'secure') {
+    return { text: '🔒 Secure message', kind: 'text' };
+  }
+
   if (lastMessage.messageType === 'call') {
     const isVideo = lastMessage.callType === 'video';
     const isMissed = lastMessage.callEvent === 'missed';
