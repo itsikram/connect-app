@@ -23,7 +23,10 @@ const moveSocketTo = (s: Socket, serverUrl: string) => {
 };
 
 const attachFailover = (s: Socket) => {
-    s.on('connect_error', () => {
+    s.on('connect_error', (err: any) => {
+        // A server that answered and refused the connection (auth middleware)
+        // is up, so only network errors and timeouts count as "down".
+        if (err && 'data' in err && err.type !== 'TransportError') return;
         // The first failed connect moves API and socket to the next server;
         // onServerUrlChange below then repoints this socket.
         const current = (s.io as any)?.uri || config.SOCKET_BASE_URL;
@@ -85,15 +88,19 @@ const waitForConnect = (s: Socket): Promise<Socket> => {
         };
         s.on('connect', onConnect);
         s.on('connect_error', onError);
-        
+
+        // Leave time to try every server (connect timeout plus reconnect delay each).
+        const waitMs = canFailover()
+            ? getServerList().length * (FAILOVER_CONNECT_TIMEOUT_MS + 2000)
+            : 20000;
         const timeoutId = setTimeout(() => {
             if (__DEV__) {
-                console.error('❌ Socket connect timeout after 20 seconds');
+                console.error(`❌ Socket connect timeout after ${waitMs / 1000} seconds`);
             }
             s.off('connect', onConnect);
             s.off('connect_error', onError);
             reject(new Error(`Socket connect timeout. Server URL: ${config.SOCKET_BASE_URL}`));
-        }, 20000);
+        }, waitMs);
     });
 }
 

@@ -188,7 +188,9 @@ api.interceptors.response.use(
     // Unreachable (no response) is safe to retry for any request; other 5xx
     // errors and timeouts only for GET, so a POST that may have run is never
     // sent twice.
-    if (originalRequest && !axios.isCancel(error) && canFailover()) {
+    // isCancel is a type guard that would narrow `error` to never below.
+    const cancelled = axios.isCancel(error as unknown);
+    if (originalRequest && !cancelled && canFailover()) {
       const status = error.response?.status;
       const isGet =
         String(originalRequest.method || 'get').toLowerCase() === 'get';
