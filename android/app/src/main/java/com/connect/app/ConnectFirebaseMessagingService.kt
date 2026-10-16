@@ -4,20 +4,12 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.BitmapShader
-import android.graphics.Canvas
-import android.graphics.Matrix
-import android.graphics.Paint
-import android.graphics.Shader
 import android.os.Build
+import android.os.Bundle
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.RemoteMessage
 import expo.modules.notifications.service.ExpoFirebaseMessagingService
-import java.net.HttpURLConnection
-import java.net.URL
 
 class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
   companion object {
@@ -48,6 +40,16 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
       return
     }
 
+    // Notifications from a person arrive data-only with their avatar in
+    // `image` (see avatarMulticastPayload on the server), so the OS never
+    // draws them with the app logo. Hand them to Expo as a notification
+    // message: it shows the image as the large icon and keeps the JS
+    // foreground handler and tap navigation working.
+    if (remoteMessage.notification == null && !data["image"].isNullOrBlank() && !data["title"].isNullOrBlank()) {
+      super.onMessageReceived(withAvatarNotification(remoteMessage))
+      return
+    }
+
     // A data-only FCM message cannot be rendered by Android automatically.
     // Render it here because this service is also invoked after the app is
     // swiped away and the React Native runtime is unavailable.
@@ -57,6 +59,19 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
     }
 
     super.onMessageReceived(remoteMessage)
+  }
+
+  /** Same message plus FCM notification fields (`gcm.n.*`) built from its data. */
+  private fun withAvatarNotification(remoteMessage: RemoteMessage): RemoteMessage {
+    val data = remoteMessage.data
+    val bundle = Bundle(remoteMessage.toIntent().extras ?: Bundle())
+    bundle.putString("gcm.n.e", "1")
+    bundle.putString("gcm.n.title", data["title"])
+    bundle.putString("gcm.n.body", data["body"] ?: data["message"] ?: "")
+    bundle.putString("gcm.n.image", data["image"])
+    bundle.putString("gcm.n.android_channel_id", data["channelId"] ?: "messages_chat_peek_v3")
+    bundle.putString("gcm.n.sound2", "default")
+    return RemoteMessage(bundle)
   }
 
   private fun showDataNotification(data: Map<String, String>) {
@@ -99,34 +114,8 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
       .setPriority(NotificationCompat.PRIORITY_HIGH)
       .setAutoCancel(true)
       .setContentIntent(pendingIntent)
-    loadAvatar(data["image"])?.let { builder.setLargeIcon(it) }
+    NotificationAvatar.load(data["image"])?.let { builder.setLargeIcon(it) }
 
     manager.notify(notificationId, builder.build())
-  }
-
-  /** Sender profile picture, cropped to a circle. Runs on the FCM worker thread. */
-  private fun loadAvatar(url: String?): Bitmap? {
-    if (url.isNullOrBlank() || !url.startsWith("http")) return null
-    return try {
-      val connection = (URL(url).openConnection() as HttpURLConnection).apply {
-        connectTimeout = 5000
-        readTimeout = 5000
-      }
-      val source = connection.inputStream.use { BitmapFactory.decodeStream(it) } ?: return null
-      val size = minOf(source.width, source.height)
-      val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
-      val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader = BitmapShader(source, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP).apply {
-          setLocalMatrix(Matrix().apply {
-            setTranslate(-(source.width - size) / 2f, -(source.height - size) / 2f)
-          })
-        }
-      }
-      Canvas(output).drawCircle(size / 2f, size / 2f, size / 2f, paint)
-      output
-    } catch (e: Exception) {
-      Log.w(TAG, "Failed to load notification avatar", e)
-      null
-    }
   }
 }

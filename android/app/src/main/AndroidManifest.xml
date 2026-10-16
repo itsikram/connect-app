@@ -134,6 +134,28 @@
         android:name="expo.modules.notifications.service.ExpoFirebaseMessagingService"
         tools:node="remove" />
 
+      <!-- Expo's NotificationsService, but chat pushes are drawn as conversations
+           with the sender's photo instead of the app logo. Expo sends its events
+           to the one receiver that handles NOTIFICATION_EVENT. -->
+      <receiver
+        android:name="com.connect.app.ConnectNotificationsService"
+        android:enabled="true"
+        android:exported="false">
+        <intent-filter>
+          <action android:name="expo.modules.notifications.NOTIFICATION_EVENT" />
+
+          <action android:name="android.intent.action.BOOT_COMPLETED" />
+          <action android:name="android.intent.action.REBOOT" />
+          <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+          <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+
+          <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+        </intent-filter>
+      </receiver>
+      <receiver
+        android:name="expo.modules.notifications.service.NotificationsService"
+        tools:node="remove" />
+
       <service
         android:name="com.connect.app.IncomingCallRingService"
         android:exported="false"
