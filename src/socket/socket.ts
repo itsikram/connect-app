@@ -1,7 +1,13 @@
 import { io, Socket } from "socket.io-client";
 import config from "../lib/config";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { canFailover, failoverFrom, getServerList, onServerUrlChange } from "../lib/serverUrl";
+import {
+    applyAdminServerConfig,
+    canFailover,
+    failoverFrom,
+    getServerList,
+    onServerUrlChange,
+} from "../lib/serverUrl";
 
 let socket: Socket | null = null;
 let socketProfileId: string | null = null;
@@ -33,10 +39,16 @@ const attachFailover = (s: Socket) => {
         const next = canFailover() ? failoverFrom(current) : null;
         if (next) moveSocketTo(s, next);
     });
+    // An admin saved new server settings (admin panel → Settings → Servers).
+    s.on('server-config-changed', (serverConfig: any) => {
+        applyAdminServerConfig(serverConfig);
+    });
     stopFollowingServer?.();
     stopFollowingServer = onServerUrlChange((serverUrl) => {
-        // Follow API failovers too, but never drop a working connection.
-        if (!s.connected) moveSocketTo(s, serverUrl);
+        // Follow API failovers too, but never drop a working connection
+        // unless its server was removed from the list.
+        const current = (s.io as any)?.uri;
+        if (!s.connected || !getServerList().includes(current)) moveSocketTo(s, serverUrl);
     });
 };
 
