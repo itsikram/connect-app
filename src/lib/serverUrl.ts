@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { NativeModules, Platform } from 'react-native';
 import config, {
   builtInLiveServerUrls,
   setServerUrl,
@@ -70,9 +71,27 @@ const pickRandomServer = (list: string[]): string => {
   return pool[Math.floor(Math.random() * pool.length)];
 };
 
+// Answer/decline from the Android call notification runs in native code with
+// the API URL saved by push registration. Re-save it on every switch so those
+// actions follow the admin's single/multi server settings too.
+const syncNativeCallApiUrl = (): void => {
+  if (Platform.OS !== 'android') return;
+  AsyncStorage.getItem('authToken')
+    .then((authToken) => {
+      // Signed out: there is nothing for native code to call.
+      if (!authToken) return;
+      NativeModules.CallNotificationModule?.savePushConfig?.(
+        config.API_BASE_URL,
+        authToken,
+      );
+    })
+    .catch(() => {});
+};
+
 const applyServerUrl = (serverUrl: string): void => {
   if (serverUrl === config.SOCKET_BASE_URL) return;
   setServerUrl(serverUrl);
+  syncNativeCallApiUrl();
   if (__DEV__) {
     console.log('🌐 Server URL set to:', serverUrl);
   }

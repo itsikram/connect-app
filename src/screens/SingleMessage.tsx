@@ -8173,6 +8173,9 @@ const SingleMessage = () => {
           style={{
             width: '100%',
             marginBottom: composerBottomOffset,
+            // Keep the composer above the system navigation bar (3-button or
+            // gesture). When the keyboard is open it already covers the nav bar.
+            paddingBottom: keyboardHeight > 0 ? 0 : insets.bottom,
             zIndex: 60,
             backgroundColor: chatTheme.colors.footerBg,
           }}
@@ -8197,7 +8200,7 @@ const SingleMessage = () => {
                 borderTopColor: chatTheme.colors.sentBorder,
                 paddingHorizontal: 12,
                 paddingTop: 8,
-                paddingBottom: 30,
+                paddingBottom: 10,
               }}
             >
               {replyingTo ? (

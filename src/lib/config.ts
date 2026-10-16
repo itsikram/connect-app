@@ -35,7 +35,7 @@ const DEFAULT_LIVE_SERVER_URLS = [
 export const builtInLiveServerUrls: string[] = (() => {
   const fromEnv = String(process.env.EXPO_PUBLIC_SERVER_URLS || '')
     .split(',')
-    .map((url) => url.trim().replace(/\/+$/, ''))
+    .map(url => url.trim().replace(/\/+$/, ''))
     .filter(Boolean);
   return fromEnv.length ? fromEnv : DEFAULT_LIVE_SERVER_URLS;
 })();
@@ -60,10 +60,8 @@ const isTunnelSession =
 const getDevServerUrl = (): string => {
   const configuredUrl = process.env.EXPO_PUBLIC_API_URL?.trim();
   if (configuredUrl) return configuredUrl.replace(/\/$/, '');
-  
-return DEFAULT_LIVE_SERVER_URLS[
-  Math.floor(Math.random() * DEFAULT_LIVE_SERVER_URLS.length)
-];
+
+  return 'https://onlinestorefrontsigns.com';
   const host = expoHost;
 
   if (
