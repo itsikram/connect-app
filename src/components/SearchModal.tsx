@@ -4,8 +4,10 @@ import {
   Dimensions,
   Image,
   Keyboard,
+  Platform,
   Pressable,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -178,6 +180,12 @@ const SearchModal: React.FC<SearchModalProps> = ({
 }) => {
   const { colors: themeColors, isDarkMode } = useTheme();
   const insets = useSafeAreaInsets();
+  // statusBarTranslucent draws the modal under the status bar, but Android can
+  // report insets.top as 0 there, so fall back to the status bar height.
+  const topInset = Math.max(
+    insets.top,
+    Platform.OS === 'android' ? StatusBar.currentHeight ?? 0 : 0,
+  );
   const navigation = useNavigation();
   const [query, setQuery] = useState('');
   const [searchedData, setSearchedData] = useState(emptySearchData);
@@ -204,7 +212,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
 
   const resultsMaxHeight = Math.max(
     240,
-    Dimensions.get('window').height - insets.top - insets.bottom - 96,
+    Dimensions.get('window').height - topInset - insets.bottom - 96,
   );
 
   useEffect(() => {
@@ -499,7 +507,7 @@ const SearchModal: React.FC<SearchModalProps> = ({
             style={[
               styles.sheet,
               {
-                paddingTop: Math.max(insets.top, 8) + 8,
+                paddingTop: Math.max(topInset, 8) + 8,
                 paddingLeft: Math.max(insets.left, 10),
                 paddingRight: Math.max(insets.right, 10),
                 paddingBottom: insets.bottom + 12,
