@@ -32,6 +32,11 @@ const DEFAULT_LIVE_SERVER_URLS = [
   'https://connect-server-k1if.onrender.com',
 ];
 
+// Last-resort server: always kept at the end of the live server list, so when
+// every admin-configured server is down the app moves here. Never picked
+// while another server is healthy (see serverUrl.ts).
+export const FALLBACK_SERVER_URL = 'https://onlinestorefrontsigns.com';
+
 export const builtInLiveServerUrls: string[] = (() => {
   const fromEnv = String(process.env.EXPO_PUBLIC_SERVER_URLS || '')
     .split(',')

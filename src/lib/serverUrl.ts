@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NativeModules, Platform } from 'react-native';
 import config, {
+  FALLBACK_SERVER_URL,
   builtInLiveServerUrls,
   setServerUrl,
   usesLiveServer,
@@ -50,9 +51,19 @@ const normalizeServerList = (value: unknown): string[] | null => {
   return list.length ? list : null;
 };
 
-let serverList: string[] = builtInLiveServerUrls
-  .map(normalizeServerUrl)
-  .filter((url): url is string => !!url);
+// Every live list ends with the fallback server.
+const withFallbackServer = (list: string[]): string[] =>
+  list.includes(FALLBACK_SERVER_URL) ? list : [...list, FALLBACK_SERVER_URL];
+
+// True for the fallback server while other servers are listed.
+const isFallbackOnly = (url: string | null | undefined, list: string[]): boolean =>
+  url === FALLBACK_SERVER_URL && list.some((other) => other !== FALLBACK_SERVER_URL);
+
+let serverList: string[] = withFallbackServer(
+  builtInLiveServerUrls
+    .map(normalizeServerUrl)
+    .filter((url): url is string => !!url),
+);
 const downUntil = new Map<string, number>();
 const listeners = new Set<(serverUrl: string) => void>();
 
@@ -65,8 +76,9 @@ const isServerDown = (url: string): boolean => {
 };
 
 const pickRandomServer = (list: string[]): string => {
-  const healthy = list.filter((url) => !isServerDown(url));
-  const pool = healthy.length ? healthy : list;
+  const primaries = list.filter((url) => !isFallbackOnly(url, list));
+  const healthy = primaries.filter((url) => !isServerDown(url));
+  const pool = healthy.length ? healthy : primaries.length ? primaries : list;
   // Spread new installs across the servers.
   return pool[Math.floor(Math.random() * pool.length)];
 };
@@ -109,7 +121,8 @@ const persistServerUrl = (serverUrl: string): void => {
 };
 
 // Keep the current server when it is still in the list; otherwise pick one.
-const applyServerList = (list: string[], preferred?: string | null): void => {
+const applyServerList = (configured: string[], preferred?: string | null): void => {
+  const list = withFallbackServer(configured);
   serverList = list;
   const firstHealthy = list.find((url) => !isServerDown(url)) || list[0];
   const current =
@@ -146,7 +159,10 @@ const loadCachedServerUrl = (): Promise<void> => {
         } catch (_) {
           cachedList = null;
         }
-        applyServerList(cachedList || serverList, normalizeServerUrl(storedUrl));
+        const list = withFallbackServer(cachedList || serverList);
+        const stored = normalizeServerUrl(storedUrl);
+        // An app start after a failover to the fallback tries the main servers again.
+        applyServerList(list, isFallbackOnly(stored, list) ? null : stored);
       })
       .catch(() => {
         if (serverList.length) applyServerList(serverList);
