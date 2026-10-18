@@ -32,6 +32,7 @@ import {
 import { startRingback, stopRingback } from '../lib/callRingback';
 import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
+import { startOngoingCallService } from '../lib/ongoingCall';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
@@ -192,7 +193,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setEngineWarm(true);
 
       configureInCallAudio(true).catch(() => {});
-      Audio.requestPermissionsAsync().catch(() => {});
+      // Keeps the call audio going if the screen is turned off mid-call.
+      Audio.requestPermissionsAsync()
+        .then(() => startOngoingCallService({ isVideo: true }))
+        .catch(() => {});
       Camera.requestCameraPermissionsAsync().catch(() => {});
       const creds = await prefetchAgoraJoin(channelName, numericUid);
       if (isTerminating.current) return;
@@ -418,7 +422,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       setOutgoingCallStatus('Calling...');
       setEngineWarm(true);
       prefetchAgoraJoin(detail.channelName, numericUid).catch(() => {});
-      Audio.requestPermissionsAsync().catch(() => {});
+      // Started now, while on screen: the caller may lock the phone before
+      // the other side answers.
+      Audio.requestPermissionsAsync()
+        .then(() => startOngoingCallService({
+          isVideo: true,
+          peerName: detail.calleeName || detail.callerName,
+        }))
+        .catch(() => {});
       setMediaActive(true);
       Camera.requestCameraPermissionsAsync().then(() => {
         engineRef.current?.preview(false);

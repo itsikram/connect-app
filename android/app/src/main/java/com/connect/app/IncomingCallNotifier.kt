@@ -42,16 +42,31 @@ object IncomingCallNotifier {
 
   fun hasActiveCall(): Boolean = activeCallerId != null || activeChannelName != null
 
-  fun show(context: Context, data: Map<String, String>) {
+  /**
+   * Ring for an incoming call. Called for pushes while the app is not on
+   * screen, and from JS when it learns of a call while backgrounded.
+   *
+   * @param fullScreen false rings with a heads-up notification only, without
+   * opening the call screen: the user has just left it while it was ringing.
+   */
+  fun show(context: Context, data: Map<String, String>, fullScreen: Boolean = true) {
+    val channelName = data["channelName"].orEmpty()
+    // Push and socket both report the same call: ring once.
+    if (channelName.isNotEmpty() && channelName == activeChannelName) return
+    val callData = if (fullScreen) data else data + (FULL_SCREEN_KEY to "false")
     activeCallerId = (data["callerId"] ?: data["from"]).orEmpty()
-    activeChannelName = data["channelName"].orEmpty()
-    if (!IncomingCallRingService.start(context, data)) {
+    activeChannelName = channelName
+    if (!IncomingCallRingService.start(context, callData)) {
       // Background start limits refused the foreground service: let the
       // notification ring by itself.
-      postWithoutService(context, data)
-      launchCallScreen(context, data)
+      postWithoutService(context, callData)
+      launchCallScreen(context, callData)
     }
   }
+
+  const val FULL_SCREEN_KEY = "fullScreen"
+
+  internal fun wantsFullScreen(data: Map<String, String>): Boolean = data[FULL_SCREEN_KEY] != "false"
 
   fun cancel(context: Context, channelName: String? = null) {
     val ringingChannel = activeChannelName
@@ -86,6 +101,7 @@ object IncomingCallNotifier {
    * (and always before Android 10).
    */
   fun launchCallScreen(context: Context, data: Map<String, String>) {
+    if (!wantsFullScreen(data)) return
     val allowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || Settings.canDrawOverlays(context)
     if (!allowed) return
     try {
@@ -156,9 +172,9 @@ object IncomingCallNotifier {
         .setOngoing(true)
         .setAutoCancel(false)
         .setContentIntent(openPi)
-        .setFullScreenIntent(openPi, true)
         .setColor(0xFFE53935.toInt())
         .setVibrate(VIBRATION)
+      if (wantsFullScreen(data)) builder.setFullScreenIntent(openPi, true)
       if (ringing) {
         builder.setSound(ringtoneUri(context, ringtoneId))
         builder.setTimeoutAfter(IncomingCallRingService.CALL_RING_DURATION_MS)

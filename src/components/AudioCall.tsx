@@ -34,6 +34,7 @@ import {
 import { startRingback, stopRingback } from '../lib/callRingback';
 import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
 import { isCallBusy, setActiveCallKind } from '../lib/callSession';
+import { startOngoingCallService } from '../lib/ongoingCall';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
@@ -183,6 +184,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       if (!permission.granted) {
         throw new Error('Microphone permission is required for audio calls.');
       }
+      // Keeps the microphone live if the screen is turned off mid-call.
+      startOngoingCallService({ isVideo: false });
       stopRingback().catch(() => {});
       setCallAccepted(true);
       setCurrentChannel(channelName);
@@ -431,6 +434,12 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
             cleanupAudioCall();
             return;
           }
+          // Started now, while on screen: the caller may lock the phone
+          // before the other side answers.
+          startOngoingCallService({
+            isVideo: false,
+            peerName: detail.calleeName || detail.callerName,
+          });
           await configureInCallAudio(isSpeakerOnRef.current);
           engineRef.current?.preview(true);
         } catch (error) {

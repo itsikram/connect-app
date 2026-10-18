@@ -66,6 +66,68 @@ function stopAfterRingtoneError(error: unknown): void {
   });
 }
 
+/**
+ * Android: the in-app ringtone could not play. Ring natively instead of
+ * stopping the whole alert, which used to leave the call ringing silently.
+ */
+function onAndroidRingtoneError(error: unknown, payload: RingingPayload): void {
+  console.error('Incoming call ringtone failed, ringing natively:', error);
+  if (!ringingPayload || !sameCall(ringingPayload, payload)) return;
+  showNativeIncomingCall(payload, false).then((shown) => {
+    if (!shown) stopAfterRingtoneError(error);
+  });
+}
+
+/**
+ * App on screen: play the in-app ringtone. A native ring still going for this
+ * call (it arrived while the app was closed or in the background) stops only
+ * once the in-app one has started, so there is no silent gap.
+ */
+function playInAppRingtone(payload: RingingPayload): void {
+  if (Platform.OS !== 'android') {
+    playIncomingRingtone(payload.ringtoneId).catch(stopAfterRingtoneError);
+    return;
+  }
+  playIncomingRingtone(payload.ringtoneId)
+    .then(() => {
+      if (ringingPayload && sameCall(ringingPayload, payload)) {
+        return stopNativeIncomingCallRing();
+      }
+      return undefined;
+    })
+    .catch((error) => onAndroidRingtoneError(error, payload));
+}
+
+/**
+ * Ring with IncomingCallRingService (MediaPlayer in a foreground service,
+ * call-style notification, full-screen call screen). Unlike the in-app
+ * ringtone or a Notifee foreground service it keeps ringing in the background
+ * and on the lock screen, and falls back to a self-ringing notification when
+ * Android will not start a foreground service from the background.
+ */
+async function showNativeIncomingCall(payload: RingingPayload, fullScreen: boolean): Promise<boolean> {
+  if (Platform.OS !== 'android') return false;
+  const native = NativeModules.CallNotificationModule;
+  if (!native?.showNativeIncomingCall) return false;
+  try {
+    const shown = await native.showNativeIncomingCall(
+      {
+        callerId: payload.callerId,
+        callerName: payload.callerName || 'Someone',
+        callerProfilePic: payload.callerProfilePic || '',
+        channelName: payload.channelName,
+        isAudio: payload.isAudio,
+        ringtoneId: payload.ringtoneId || '1',
+      },
+      fullScreen,
+    );
+    return shown !== false;
+  } catch (error) {
+    console.warn('Native incoming call ring failed', error);
+    return false;
+  }
+}
+
 async function displayAndroidCallForegroundNotification(payload: RingingPayload): Promise<boolean> {
   if (Platform.OS !== 'android') return false;
   try {
@@ -112,20 +174,25 @@ function ensureAppStateWatch() {
   appStateSub = AppState.addEventListener('change', (state: AppStateStatus) => {
     if (appStateTimer) clearTimeout(appStateTimer);
     appStateTimer = setTimeout(() => {
-      if (!ringingPayload) return;
+      const payload = ringingPayload;
+      if (!payload) return;
       if (state === 'active') {
         cancelAndroidCallForegroundNotification().catch(() => {});
-        stopNativeIncomingCallRing().catch(() => {});
-        playIncomingRingtone(ringingPayload.ringtoneId).catch(stopAfterRingtoneError);
+        playInAppRingtone(payload);
         return;
       }
       if (Platform.OS === 'ios') {
-        playIncomingRingtone(ringingPayload.ringtoneId).catch(stopAfterRingtoneError);
-        presentIncomingCallNotification(ringingPayload).catch(() => {});
+        playIncomingRingtone(payload.ringtoneId).catch(stopAfterRingtoneError);
+        presentIncomingCallNotification(payload).catch(() => {});
         return;
       }
+      // Left the ringing call screen (home button, screen locked): the in-app
+      // ringtone stops in the background, so keep ringing natively. No
+      // full-screen pop-up: that would turn the screen straight back on.
       stopIncomingRingtone().catch(() => {});
-      displayAndroidCallForegroundNotification(ringingPayload).catch(() => {});
+      showNativeIncomingCall(payload, false).then((shown) => {
+        if (!shown) displayAndroidCallForegroundNotification(payload).catch(() => {});
+      });
     }, 250);
   });
 }
@@ -252,7 +319,8 @@ export async function cancelIncomingCallNotifications(channelName?: string): Pro
  * Ring for an incoming call:
  * - Foreground: one looping in-app ringtone (no OS notification sound).
  * - iOS / Expo Go background: keep the audio player looping + banner.
- * - Android background: high-priority OS / Notifee call notification with channel ringtone.
+ * - Android background / locked: native ring (IncomingCallRingService), with
+ *   Notifee and then a plain notification as fallbacks.
  */
 export async function startIncomingCallAlert(payload: RingingPayload): Promise<void> {
   const token = ++alertToken;
@@ -263,8 +331,7 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
 
   if (sameCall(ringingPayload, next)) {
     if (!isIncomingRingtonePlaying() && (inForeground || Platform.OS === 'ios')) {
-      if (inForeground) stopNativeIncomingCallRing().catch(() => {});
-      playIncomingRingtone(ringtoneId).catch(stopAfterRingtoneError);
+      playInAppRingtone(next);
     }
     return;
   }
@@ -285,11 +352,15 @@ export async function startIncomingCallAlert(payload: RingingPayload): Promise<v
   if (token !== alertToken || !ringingPayload || !sameCall(ringingPayload, next)) return;
 
   if (inForeground) {
-    stopNativeIncomingCallRing().catch(() => {});
-    playIncomingRingtone(ringtoneId).catch(stopAfterRingtoneError);
+    playInAppRingtone(next);
     return;
   }
 
+  // A Notifee foreground service cannot start from the background (Android
+  // 12+) without a push in flight, so a call that reached JS over the socket
+  // while the app was backgrounded or the screen locked never rang.
+  if (await showNativeIncomingCall(next, true)) return;
+  if (token !== alertToken || !ringingPayload || !sameCall(ringingPayload, next)) return;
   const usedAndroidForeground = await displayAndroidCallForegroundNotification(next);
   if (!usedAndroidForeground) {
     await presentIncomingCallNotification(next);

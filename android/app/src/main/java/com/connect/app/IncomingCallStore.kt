@@ -11,6 +11,9 @@ object IncomingCallStore {
   private const val KEY_AUTH = "auth_token"
   private const val KEY_PENDING = "pending_action"
   @Volatile var reactRunning: Boolean = false
+  // MainActivity is resumed (on screen). Only then can the JS call screen ring
+  // in-app; otherwise incoming calls ring natively.
+  @Volatile var appInForeground: Boolean = false
 
   private fun prefs(context: Context): SharedPreferences {
     return context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

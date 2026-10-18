@@ -161,6 +161,13 @@
         android:exported="false"
         android:foregroundServiceType="mediaPlayback" />
 
+      <!-- Keeps the call microphone / audio alive while the screen is off or
+           the app is in the background (see OngoingCallService.kt). -->
+      <service
+        android:name="com.connect.app.OngoingCallService"
+        android:exported="false"
+        android:foregroundServiceType="microphone|mediaPlayback" />
+
       <receiver
         android:name="com.connect.app.CallActionReceiver"
         android:exported="false">

@@ -6,16 +6,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.Handler
 import android.os.Looper
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.util.Log
 
 class IncomingCallRingService : Service() {
   private var player: MediaPlayer? = null
+  private var vibrator: Vibrator? = null
   private var currentNotificationId = DEFAULT_NOTIFICATION_ID
   private val ringStopHandler = Handler(Looper.getMainLooper())
   private val ringStopRunnable = Runnable {
@@ -51,6 +56,7 @@ class IncomingCallRingService : Service() {
     }
 
     startRingtone(data["ringtoneId"] ?: "1")
+    startVibration()
     ringStopHandler.removeCallbacks(ringStopRunnable)
     ringStopHandler.postDelayed(ringStopRunnable, CALL_RING_DURATION_MS)
     IncomingCallNotifier.launchCallScreen(this, data)
@@ -143,6 +149,36 @@ class IncomingCallRingService : Service() {
     }
   }
 
+  /** Repeat the vibration while it rings, like the phone app. Skipped in silent mode. */
+  private fun startVibration() {
+    try {
+      val audio = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+      if (audio.ringerMode == AudioManager.RINGER_MODE_SILENT) return
+      val device = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        (getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager).defaultVibrator
+      } else {
+        @Suppress("DEPRECATION")
+        getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+      }
+      if (!device.hasVibrator()) return
+      val pattern = longArrayOf(0, 800, 800)
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        val attributes = AudioAttributes.Builder()
+          .setUsage(AudioAttributes.USAGE_NOTIFICATION_RINGTONE)
+          .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+          .build()
+        @Suppress("DEPRECATION")
+        device.vibrate(VibrationEffect.createWaveform(pattern, 0), attributes)
+      } else {
+        @Suppress("DEPRECATION")
+        device.vibrate(pattern, 0)
+      }
+      vibrator = device
+    } catch (error: Exception) {
+      Log.w(TAG, "Could not start ring vibration", error)
+    }
+  }
+
   private fun stopRinging() {
     stopRingingInternal()
     try {
@@ -154,6 +190,11 @@ class IncomingCallRingService : Service() {
 
   private fun stopRingingInternal() {
     ringStopHandler.removeCallbacks(ringStopRunnable)
+    try {
+      vibrator?.cancel()
+    } catch (_: Exception) {
+    }
+    vibrator = null
     try {
       player?.stop()
     } catch (_: Exception) {
@@ -185,6 +226,10 @@ class IncomingCallRingService : Service() {
     fun start(context: Context, data: Map<String, String>): Boolean {
       val intent = Intent(context, IncomingCallRingService::class.java)
       IncomingCallStore.putCallExtras(intent, data, "incoming_call", false)
+      intent.putExtra(
+        IncomingCallNotifier.FULL_SCREEN_KEY,
+        if (IncomingCallNotifier.wantsFullScreen(data)) "true" else "false"
+      )
       return try {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
           context.startForegroundService(intent)

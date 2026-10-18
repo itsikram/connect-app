@@ -7,7 +7,9 @@ import {
   saveNotificationToken,
   configureNotificationsChannel,
 } from '../lib/pushExpo';
-import { configureIncomingCallChannels } from '../lib/incomingCallAlerts';
+import { configureIncomingCallChannels, parseIncomingCallNotificationData } from '../lib/incomingCallAlerts';
+import { emitIncomingCallFromPush } from '../lib/callEvents';
+import { notifyCallerRinging } from '../lib/callStatus';
 import { handleIncomingCallNotificationAction, expoActionId, notifeeActionId } from '../lib/callNotificationActions';
 import { consumePendingIncomingCall, dispatchPendingIncomingCall } from '../lib/pendingIncomingCall';
 import { isAndroidExpoGo, isExpoGo } from '../lib/expoGo';
@@ -135,10 +137,20 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
           handleIncomingCallNotificationAction(raw, actionId).catch(() => {});
         });
 
+        // An incoming-call push rang natively while the app was in the
+        // background: prepare the call screen and tell the caller it rings.
+        const nativeRingingSub = DeviceEventEmitter.addListener('nativeIncomingCallRinging', (raw: any) => {
+          const parsed = parseIncomingCallNotificationData({ ...raw, type: 'incoming_call' });
+          if (!parsed?.from || !parsed.channelName) return;
+          notifyCallerRinging(parsed.from);
+          emitIncomingCallFromPush({ ...parsed, isAudio: raw?.isAudio !== false });
+        });
+
         unsubscribeRefs.current = [
           () => responseSub.remove(),
           () => receivedSub.remove(),
           () => nativeSub.remove(),
+          () => nativeRingingSub.remove(),
         ];
 
         if (!isExpoGo()) {

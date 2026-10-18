@@ -32,10 +32,19 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
     val data = remoteMessage.data
     if (data["type"] == "incoming_call") {
-      if (IncomingCallStore.reactRunning) {
+      if (IncomingCallStore.reactRunning && IncomingCallStore.appInForeground) {
+        // On screen: the JS call screen rings in-app.
         super.onMessageReceived(remoteMessage)
       } else {
+        // Backgrounded, locked or killed: ring natively. Handing it to Expo
+        // here only posted a plain notification on a channel the app never
+        // creates, and the JS fallback (a Notifee foreground service) is not
+        // allowed to start from the background, so nothing rang.
         IncomingCallNotifier.show(applicationContext, data)
+        if (IncomingCallStore.reactRunning) {
+          // Let the running JS app know so the call screen is ready when it is opened.
+          CallNotificationModule.emitIncomingCallRinging(data)
+        }
       }
       return
     }

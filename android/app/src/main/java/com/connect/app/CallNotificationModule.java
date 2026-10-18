@@ -283,18 +283,97 @@ public class CallNotificationModule extends ReactContextBaseJavaModule implement
         }
     }
 
+    /**
+     * JS learned of an incoming call while the app is not on screen (socket
+     * event, or the user left a ringing call screen): ring natively, which
+     * works from the background and on the lock screen.
+     *
+     * @param fullScreen false when the user just left the call screen: ring
+     *                   with a heads-up only instead of reopening the screen.
+     */
+    @ReactMethod
+    public void showNativeIncomingCall(ReadableMap payload, boolean fullScreen, Promise promise) {
+        try {
+            java.util.HashMap<String, String> data = new java.util.HashMap<>();
+            data.put("type", "incoming_call");
+            putString(data, payload, "callerId");
+            putString(data, payload, "callerName");
+            putString(data, payload, "callerProfilePic");
+            putString(data, payload, "channelName");
+            putString(data, payload, "ringtoneId");
+            boolean isAudio = !payload.hasKey("isAudio") || payload.isNull("isAudio") || payload.getBoolean("isAudio");
+            data.put("isAudio", isAudio ? "true" : "false");
+            IncomingCallNotifier.INSTANCE.show(getReactApplicationContext(), data, fullScreen);
+            promise.resolve(true);
+        } catch (Exception e) {
+            Log.e(TAG, "Native incoming call failed", e);
+            promise.resolve(false);
+        }
+    }
+
+    private static void putString(java.util.Map<String, String> data, ReadableMap payload, String key) {
+        if (payload.hasKey(key) && !payload.isNull(key)) {
+            String value = payload.getString(key);
+            if (value != null) data.put(key, value);
+        }
+    }
+
+    /** An incoming-call push rang natively while JS is running in the background. */
+    public static void emitIncomingCallRinging(java.util.Map<String, String> data) {
+        try {
+            if (staticContext == null || !staticContext.hasActiveReactInstance()) return;
+            WritableMap map = Arguments.createMap();
+            String callerId = data.get("callerId") != null ? data.get("callerId") : data.get("from");
+            map.putString("from", callerId != null ? callerId : "");
+            map.putString("callerId", callerId != null ? callerId : "");
+            map.putString("callerName", data.get("callerName"));
+            map.putString("callerProfilePic", data.get("callerProfilePic"));
+            map.putString("channelName", data.get("channelName"));
+            map.putString("ringtoneId", data.get("ringtoneId"));
+            map.putBoolean("isAudio", !"false".equals(data.get("isAudio")));
+            staticContext
+                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter.class)
+                .emit("nativeIncomingCallRinging", map);
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to emit incoming call", e);
+        }
+    }
+
+    /**
+     * Keep the call's microphone and audio running while the screen is off or
+     * the app is in the background. Android 11+ silences the microphone for an
+     * app that is not visible unless a microphone foreground service runs, so
+     * the other side heard nothing once the phone was locked. Must be started
+     * while the app is on screen (placing or answering the call).
+     */
+    @ReactMethod
+    public void startOngoingCall(ReadableMap params, Promise promise) {
+        boolean isVideo = params.hasKey("isVideo") && !params.isNull("isVideo") && params.getBoolean("isVideo");
+        String peerName = params.hasKey("peerName") && !params.isNull("peerName") ? params.getString("peerName") : null;
+        promise.resolve(OngoingCallService.Companion.start(getReactApplicationContext(), peerName, isVideo));
+    }
+
+    @ReactMethod
+    public void stopOngoingCall(Promise promise) {
+        OngoingCallService.Companion.stop(getReactApplicationContext());
+        promise.resolve(true);
+    }
+
     @Override
     public void onHostResume() {
         IncomingCallStore.INSTANCE.setReactRunning(true);
+        IncomingCallStore.INSTANCE.setAppInForeground(true);
     }
 
     @Override
     public void onHostPause() {
         IncomingCallStore.INSTANCE.setReactRunning(true);
+        IncomingCallStore.INSTANCE.setAppInForeground(false);
     }
 
     @Override
     public void onHostDestroy() {
         IncomingCallStore.INSTANCE.setReactRunning(false);
+        IncomingCallStore.INSTANCE.setAppInForeground(false);
     }
 }
