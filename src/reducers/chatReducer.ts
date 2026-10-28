@@ -42,6 +42,8 @@ interface ChatMessage {
   duration?: number;
   callType?: 'audio' | 'video';
   callEvent?: 'missed' | 'ended' | 'declined' | 'started';
+  isEdited?: boolean;
+  editedAt?: string | null;
 }
 
 interface Chat {
@@ -141,6 +143,23 @@ const chatSlice = createSlice({
         state.unreadMessageCount += 1;
       }
     },
+    // A `messageEdited` socket event: new text wherever the chat list holds
+    // that message. Never reorders conversations.
+    editChatMessage: (
+      state,
+      action: PayloadAction<{ messageId: string; message: string; isEdited?: boolean; editedAt?: string | null }>,
+    ) => {
+      const { messageId, message, isEdited = true, editedAt } = action.payload || ({} as any);
+      if (!messageId || typeof message !== 'string') return;
+      state.chats.forEach(chat => {
+        (Array.isArray(chat.messages) ? chat.messages : []).forEach(chatMessage => {
+          if (String(chatMessage?._id) !== String(messageId)) return;
+          chatMessage.message = message;
+          chatMessage.isEdited = isEdited;
+          if (editedAt !== undefined) chatMessage.editedAt = editedAt;
+        });
+      });
+    },
     removeConversation: (state, action: PayloadAction<{ connectId: string; currentUserId: string }>) => {
       const { connectId, currentUserId } = action.payload;
       state.chats = state.chats.filter(chat => String(chat.person._id) !== String(connectId));
@@ -176,6 +195,7 @@ export const {
   updateUnreadMessageCount, 
   markMessagesAsRead, 
   addNewMessage,
+  editChatMessage,
   removeConversation,
 } = chatSlice.actions;
 export default chatSlice.reducer; 

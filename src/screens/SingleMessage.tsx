@@ -109,7 +109,10 @@ import {
   upsertConfirmedMessage,
   mergeHistoryWithLive,
   isConversationMessage,
+  applyMessageEdit,
+  canEditMessage,
 } from '../utils/optimisticMessage';
+import KeyboardSafeView from '../components/KeyboardSafeView';
 import {
   playSpeakPayload,
   stopSpokenPlayback,
@@ -157,6 +160,8 @@ interface Message {
   callEvent?: 'missed' | 'ended' | 'declined' | 'started';
   isOptimistic?: boolean;
   sendFailed?: boolean;
+  isEdited?: boolean;
+  editedAt?: string | Date | null;
 }
 
 interface MessageReaction {
@@ -189,6 +194,8 @@ const reactionProfileId = (reaction: MessageReaction) =>
   );
 
 const MESSAGES_PER_PAGE = 20;
+// Keep in step with the server limit (utils/messageEdit.js in connect-server).
+const MAX_EDIT_LENGTH = 10000;
 const NEAR_BOTTOM_PX = 100;
 const LOAD_OLDER_SCROLL_PERCENT = 30;
 
@@ -595,6 +602,12 @@ const SingleMessage = () => {
   const [contextMenuUseBottom, setContextMenuUseBottom] = useState(false);
   const [contextMenuBottom, setContextMenuBottom] = useState(20);
   const [isReactedByMe, setIsReactedByMe] = useState<boolean>(false);
+
+  // Editing one of my messages (opened from the long-press menu).
+  const [editingMessage, setEditingMessage] = useState<Message | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const editInputRef = useRef<TextInput | null>(null);
 
   // Add state for image modal
   const [imageModalVisible, setImageModalVisible] = useState(false);
@@ -1812,6 +1825,8 @@ const SingleMessage = () => {
         callType: updatedMessage.callType,
         callEvent: updatedMessage.callEvent,
         reacts: updatedMessage.reacts || [],
+        isEdited: updatedMessage.isEdited,
+        editedAt: updatedMessage.editedAt,
       };
 
       // Create a serializable version for Redux
@@ -2046,6 +2061,13 @@ const SingleMessage = () => {
 
     on('deleteMessage', handleDeleteMessage);
 
+    // Either participant edited a message (on any device).
+    const handleMessageEdited = (payload: any) => {
+      if (!isConversationMessage(payload, myProfile?._id, connect?._id)) return;
+      setMessages(prev => applyMessageEdit(prev, payload));
+    };
+    on('messageEdited', handleMessageEdited);
+
     const handleSecureOpened = (data: any) => {
       if (!isConversationMessage(data, myProfile?._id, connect?._id)) return;
       const openedId = String(data?.messageId || data?._id || '');
@@ -2096,6 +2118,7 @@ const SingleMessage = () => {
       off('emotion_change', handleEmotionChange);
       off('connect_location_update', handleConnectLocationUpdate);
       off('deleteMessage', handleDeleteMessage);
+      off('messageEdited', handleMessageEdited);
       off('secureMessageOpened', handleSecureOpened);
       off('speak_message', handleSpeakMessage);
       off('speak-message', handleSpeakMessage);
@@ -4077,7 +4100,7 @@ const SingleMessage = () => {
 
     const { pageY } = event.nativeEvent;
     const screenHeight = Dimensions.get('window').height;
-    const CONTEXT_MENU_HEIGHT = 360; // approximate menu height (safer)
+    const CONTEXT_MENU_HEIGHT = 420; // approximate tallest menu (own photo with caption)
     const TOP_MARGIN = 20;
     // If opening near bottom, anchor using bottom so it stays fully visible
     if (pageY + 20 + CONTEXT_MENU_HEIGHT > screenHeight) {
@@ -4168,6 +4191,84 @@ const SingleMessage = () => {
           },
         ],
       );
+    }
+  };
+
+  const startEditMessage = () => {
+    const msg = selectedMessage;
+    setContextMenuVisible(false);
+    if (!msg || !canEditMessage(msg, myProfile?._id)) return;
+    setEditDraft(String(msg.message || ''));
+    setEditingMessage(msg);
+  };
+
+  const closeEditModal = () => {
+    setEditingMessage(null);
+    setEditDraft('');
+  };
+
+  const saveEditedMessage = async () => {
+    const msg = editingMessage;
+    const nextText = editDraft.trim();
+    if (!msg?._id || !nextText || isSavingEdit) return;
+
+    const messageId = String(msg._id);
+    // The message as it is now (another device may have edited it meanwhile).
+    const current =
+      messagesRef.current.find(m => String(m._id) === messageId) || msg;
+    if (nextText === String(current.message || '').trim()) {
+      closeEditModal();
+      return;
+    }
+    const previous = {
+      messageId,
+      message: current.message,
+      isEdited: Boolean(current.isEdited),
+      editedAt: current.editedAt ?? null,
+    };
+    setIsSavingEdit(true);
+    closeEditModal();
+    // Show the new text right away; the server copy follows.
+    setMessages(prev =>
+      applyMessageEdit(prev, {
+        messageId,
+        message: nextText,
+        isEdited: true,
+        editedAt: new Date().toISOString(),
+      }),
+    );
+
+    try {
+      const response = await api.post('/message/edit', {
+        messageId,
+        message: nextText,
+      });
+      const saved = response?.data?.data;
+      if (saved?._id) {
+        setMessages(prev =>
+          applyMessageEdit(prev, {
+            messageId: String(saved._id),
+            message: saved.message,
+            isEdited: Boolean(saved.isEdited),
+            editedAt: saved.editedAt ?? null,
+          }),
+        );
+      }
+    } catch (error: any) {
+      setMessages(prev => applyMessageEdit(prev, previous));
+      const status = error?.response?.status;
+      if (!status || status >= 500) {
+        // Network or server trouble: reopen the editor instead of losing the text.
+        setEditDraft(nextText);
+        setEditingMessage(current);
+      }
+      Alert.alert(
+        'Message not edited',
+        error?.response?.data?.message ||
+          'Could not edit this message. Please try again.',
+      );
+    } finally {
+      setIsSavingEdit(false);
     }
   };
 
@@ -5470,6 +5571,20 @@ const SingleMessage = () => {
                   >
                     {getMessageTime(item.timestamp)}
                   </Text>
+                  {item.isEdited && !isSecureMessage(item) ? (
+                    <Text
+                      accessibilityLabel="Edited"
+                      style={{
+                        color: isMyMessage
+                          ? 'rgba(255,255,255,0.78)'
+                          : chatTheme.colors.meta,
+                        fontSize: 10,
+                        fontStyle: 'italic',
+                      }}
+                    >
+                      edited
+                    </Text>
+                  ) : null}
                   {isMyMessage && item.sendFailed ? (
                     <TouchableOpacity
                       onPress={() => {
@@ -6665,6 +6780,35 @@ const SingleMessage = () => {
                 </Text>
               </TouchableOpacity>
 
+              {canEditMessage(selectedMessage, myProfile?._id) && (
+                <TouchableOpacity
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                  }}
+                  onPress={startEditMessage}
+                  accessibilityRole="button"
+                  accessibilityLabel="Edit message"
+                >
+                  <Icon
+                    name="edit"
+                    size={20}
+                    color={themeColors.text.primary}
+                  />
+                  <Text
+                    style={{
+                      marginLeft: 12,
+                      fontSize: 16,
+                      color: themeColors.text.primary,
+                    }}
+                  >
+                    Edit
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               {selectedMessage?.senderId === myProfile?._id && (
                 <TouchableOpacity
                   style={{
@@ -6695,6 +6839,129 @@ const SingleMessage = () => {
               )}
             </View>
           </Pressable>
+        </Modal>
+
+        <Modal
+          visible={Boolean(editingMessage)}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={closeEditModal}
+          onShow={() => setTimeout(() => editInputRef.current?.focus(), 50)}
+        >
+          <KeyboardSafeView force>
+            <Pressable
+              style={{
+                flex: 1,
+                justifyContent: 'center',
+                paddingHorizontal: 20,
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              }}
+              onPress={closeEditModal}
+            >
+              <Pressable
+                onPress={() => {}}
+                style={{
+                  backgroundColor: themeColors.surface.primary,
+                  borderRadius: 16,
+                  padding: 16,
+                  borderWidth: 1,
+                  borderColor: themeColors.border.primary,
+                }}
+              >
+                <Text
+                  style={{
+                    color: themeColors.text.primary,
+                    fontSize: 17,
+                    fontWeight: '700',
+                    marginBottom: 12,
+                  }}
+                >
+                  Edit message
+                </Text>
+                <TextInput
+                  ref={editInputRef}
+                  value={editDraft}
+                  onChangeText={setEditDraft}
+                  multiline
+                  autoFocus
+                  maxLength={MAX_EDIT_LENGTH}
+                  placeholder="Message"
+                  placeholderTextColor={themeColors.text.secondary}
+                  accessibilityLabel="Edit message"
+                  textAlignVertical="top"
+                  style={{
+                    minHeight: 44,
+                    maxHeight: 160,
+                    paddingHorizontal: 12,
+                    paddingTop: 10,
+                    paddingBottom: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: chatTheme.colors.accent,
+                    backgroundColor: themeColors.surface.secondary,
+                    color: themeColors.text.primary,
+                    fontSize: 16,
+                    lineHeight: 21,
+                  }}
+                />
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    justifyContent: 'flex-end',
+                    marginTop: 14,
+                  }}
+                >
+                  <TouchableOpacity
+                    onPress={closeEditModal}
+                    accessibilityRole="button"
+                    style={{
+                      paddingVertical: 9,
+                      paddingHorizontal: 18,
+                      borderRadius: 18,
+                      marginRight: 10,
+                      backgroundColor: themeColors.surface.secondary,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: themeColors.text.primary,
+                        fontSize: 15,
+                        fontWeight: '600',
+                      }}
+                    >
+                      Cancel
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={saveEditedMessage}
+                    disabled={!editDraft.trim() || isSavingEdit}
+                    accessibilityRole="button"
+                    accessibilityLabel="Save edited message"
+                    style={{
+                      paddingVertical: 9,
+                      paddingHorizontal: 18,
+                      borderRadius: 18,
+                      backgroundColor: editDraft.trim()
+                        ? chatTheme.colors.accent
+                        : themeColors.surface.secondary,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: editDraft.trim()
+                          ? '#041018'
+                          : themeColors.text.secondary,
+                        fontSize: 15,
+                        fontWeight: '700',
+                      }}
+                    >
+                      Save
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </Pressable>
+            </Pressable>
+          </KeyboardSafeView>
         </Modal>
 
         <Modal

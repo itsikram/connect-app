@@ -47,6 +47,78 @@ export function upsertConfirmedMessage<T extends {
   return sortMessages([...withoutDupes, { ...confirmed, isOptimistic: false }]);
 }
 
+type EditableMessage = {
+  _id?: any;
+  senderId?: any;
+  message?: string;
+  messageType?: string;
+  isOptimistic?: boolean;
+  sendFailed?: boolean;
+  isEdited?: boolean;
+  editedAt?: string | Date | null;
+  parent?: any;
+};
+
+/** `messageEdited` socket payload, or an edited message from POST /message/edit. */
+export interface MessageEditPayload {
+  messageId?: string;
+  _id?: string;
+  message?: string;
+  isEdited?: boolean;
+  editedAt?: string | Date | null;
+}
+
+// The edited message gets the new text and "edited" flag, and replies that
+// quote it show the new text. Returns the same array when nothing changed.
+export function applyMessageEdit<T extends EditableMessage>(
+  messages: T[],
+  edit: MessageEditPayload | null | undefined,
+): T[] {
+  const list = Array.isArray(messages) ? messages : [];
+  const editedId = idOf(edit?.messageId || edit?._id);
+  if (!edit || !editedId || typeof edit.message !== 'string') return list;
+  const isEdited = edit.isEdited === undefined ? true : Boolean(edit.isEdited);
+  const hasEditedAt = Object.prototype.hasOwnProperty.call(edit, 'editedAt');
+  let changed = false;
+  const next = list.map((msg) => {
+    if (!msg) return msg;
+    if (idOf(msg._id) === editedId) {
+      const editedAt = hasEditedAt ? edit.editedAt ?? null : msg.editedAt ?? null;
+      if (
+        msg.message === edit.message &&
+        Boolean(msg.isEdited) === isEdited &&
+        String(msg.editedAt ?? '') === String(editedAt ?? '')
+      ) {
+        return msg;
+      }
+      changed = true;
+      return { ...msg, message: edit.message, isEdited, editedAt };
+    }
+    const parent = msg.parent;
+    if (
+      parent &&
+      typeof parent === 'object' &&
+      idOf(parent._id) === editedId &&
+      parent.message !== edit.message
+    ) {
+      changed = true;
+      return { ...msg, parent: { ...parent, message: edit.message } };
+    }
+    return msg;
+  });
+  return changed ? next : list;
+}
+
+// Same rules as the server: my own, confirmed, plain text messages with text.
+export function canEditMessage(msg: EditableMessage | null | undefined, myId: any): boolean {
+  if (!msg || msg.isOptimistic || msg.sendFailed) return false;
+  const id = idOf(msg._id);
+  if (!id || id.startsWith('temp-')) return false;
+  if (!idOf(myId) || idOf(msg.senderId) !== idOf(myId)) return false;
+  if ((msg.messageType || 'text') !== 'text') return false;
+  return typeof msg.message === 'string' && msg.message.trim().length > 0;
+}
+
 export function isConversationMessage(msg: any, userId: any, connectId: any): boolean {
   if (!msg) return false;
   const sender = idOf(msg.senderId);

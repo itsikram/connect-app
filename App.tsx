@@ -145,7 +145,7 @@ import { isAndroidExpoGo } from './src/lib/expoGo';
 import * as Speech from 'expo-speech';
 import { ensureSpeakMessageListener } from './src/lib/speakMessagePlayback';
 import { addNotifications } from './src/reducers/notificationReducer';
-import { addNewMessage } from './src/reducers/chatReducer';
+import { addNewMessage, editChatMessage } from './src/reducers/chatReducer';
 import {
   setConnectOnline,
   setConnectOffline,
@@ -1321,6 +1321,21 @@ function AppContent() {
     on('newMessage', handleRoomMessage);
     on('newMessageToUser', handleUserMessage);
 
+    // Edited messages update their chat-list preview (no toast, no reorder).
+    const handleMessageEdited = (data: any) => {
+      const messageId = String(data?.messageId || data?._id || '');
+      if (!messageId || typeof data?.message !== 'string') return;
+      dispatch(
+        editChatMessage({
+          messageId,
+          message: data.message,
+          isEdited: data.isEdited !== false,
+          editedAt: data.editedAt ? String(data.editedAt) : null,
+        }),
+      );
+    };
+    on('messageEdited', handleMessageEdited);
+
     // Show toast on new notification
     let handleNewNotification = (notification: any) => {
       // Notifications are general; always show via notification-themed toast
@@ -1358,6 +1373,7 @@ function AppContent() {
       off('bumpUser', handleBumpUser);
       off('newMessage', handleRoomMessage);
       off('newMessageToUser', handleUserMessage);
+      off('messageEdited', handleMessageEdited);
       off('newNotification', handleNewNotification);
       off('friend_online', handleConnectOnline);
       off('friend_offline', handleConnectOffline);
