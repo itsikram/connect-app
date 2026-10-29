@@ -9,6 +9,15 @@ fi
 echo "Reinstalling JavaScript dependencies from package-lock.json..."
 npm ci --legacy-peer-deps --ignore-scripts
 
+# --ignore-scripts skips react-native-skia's postinstall, which copies its
+# prebuilt libskia.a into libs/android; without it the CMake step fails with
+# "Skia prebuilt binaries not found".
+skia_install="node_modules/@shopify/react-native-skia/scripts/install-libs.js"
+if [[ -f "$skia_install" ]]; then
+  echo "Installing Skia prebuilt binaries..."
+  node "$skia_install"
+fi
+
 hermesc_root="node_modules/react-native/sdks/hermesc"
 hermesc_package="node_modules/hermes-compiler/hermesc"
 hermesc="$hermesc_root/linux64-bin/hermesc"
