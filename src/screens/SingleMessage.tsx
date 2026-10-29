@@ -196,6 +196,13 @@ const reactionProfileId = (reaction: MessageReaction) =>
 const MESSAGES_PER_PAGE = 20;
 // Keep in step with the server limit (utils/messageEdit.js in connect-server).
 const MAX_EDIT_LENGTH = 10000;
+
+// Message box: one line by default, grows up to 5 lines, then scrolls.
+const COMPOSER_LINE_HEIGHT = 22;
+const COMPOSER_PADDING_VERTICAL = 8;
+const COMPOSER_MAX_LINES = 5;
+const COMPOSER_MAX_HEIGHT =
+  COMPOSER_LINE_HEIGHT * COMPOSER_MAX_LINES + COMPOSER_PADDING_VERTICAL * 2;
 const NEAR_BOTTOM_PX = 100;
 const LOAD_OLDER_SCROLL_PERCENT = 30;
 
@@ -1175,6 +1182,11 @@ const SingleMessage = () => {
   // Message-related state - MUST be before early returns to follow React hooks rules
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  // The message box grows with its text up to COMPOSER_MAX_LINES lines, then
+  // scrolls. Once the text wraps, the buttons move to the bottom line.
+  const [isComposerMultiline, setIsComposerMultiline] = useState(false);
+  const composerSingleLineHeightRef = useRef<number | null>(null);
+  const composerMultiline = isComposerMultiline && inputText.length > 0;
   const [isTyping, setIsTyping] = useState(false);
   const [typingMessage, setTypingMessage] = useState('');
   const [pendingMessages, setPendingMessages] = useState<Message[]>([]);
@@ -4024,6 +4036,20 @@ const SingleMessage = () => {
       });
       isTypingOutgoingRef.current = false;
     }
+  };
+
+  // Notices when the message box text wraps past one line. The smallest
+  // height seen is one line (works whether or not the platform includes the
+  // padding in contentSize).
+  const handleComposerContentSizeChange = (e: any) => {
+    const height = Number(e?.nativeEvent?.contentSize?.height);
+    if (!Number.isFinite(height) || height <= 0) return;
+    const base = composerSingleLineHeightRef.current;
+    if (base == null || height < base) {
+      composerSingleLineHeightRef.current = height;
+    }
+    const oneLine = composerSingleLineHeightRef.current as number;
+    setIsComposerMultiline(height > oneLine + COMPOSER_LINE_HEIGHT * 0.5);
   };
 
   const handleInputChange = (value: string) => {
@@ -8822,11 +8848,19 @@ const SingleMessage = () => {
                   </TouchableOpacity>
                 </View>
               ) : null}
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: composerMultiline ? 'flex-end' : 'center',
+                }}
+              >
                 <TouchableOpacity
                   onPress={toggleAttachTray}
                   disabled={isUploading}
-                  style={[composerIconBtn(showAttachTray), { marginRight: 8 }]}
+                  style={[
+                    composerIconBtn(showAttachTray),
+                    { marginRight: 8, marginBottom: composerMultiline ? 2 : 0 },
+                  ]}
                 >
                   <Icon
                     name={showAttachTray ? 'close' : 'add'}
@@ -8839,7 +8873,7 @@ const SingleMessage = () => {
                   style={{
                     flex: 1,
                     flexDirection: 'row',
-                    alignItems: 'center',
+                    alignItems: composerMultiline ? 'flex-end' : 'center',
                     backgroundColor: chatTheme.colors.recvBg,
                     borderRadius: 20,
                     paddingHorizontal: 10,
@@ -8873,6 +8907,7 @@ const SingleMessage = () => {
                       alignItems: 'center',
                       justifyContent: 'center',
                       marginRight: 2,
+                      marginBottom: composerMultiline ? 5 : 0,
                       backgroundColor: secureMode
                         ? 'rgba(0,212,255,0.18)'
                         : 'transparent',
@@ -8905,14 +8940,18 @@ const SingleMessage = () => {
                     }
                     placeholderTextColor={chatTheme.colors.meta}
                     underlineColorAndroid="transparent"
+                    onContentSizeChange={handleComposerContentSizeChange}
                     style={{
                       flex: 1,
                       fontSize: 16,
+                      lineHeight: COMPOSER_LINE_HEIGHT,
                       color: '#FFFFFF',
-                      maxHeight: 80,
+                      maxHeight: COMPOSER_MAX_HEIGHT,
                       minHeight: 40,
-                      paddingVertical: 8,
+                      paddingTop: COMPOSER_PADDING_VERTICAL,
+                      paddingBottom: COMPOSER_PADDING_VERTICAL,
                     }}
+                    scrollEnabled
                     multiline
                     blurOnSubmit={false}
                     editable={!isRecording && !isUploadingAudio}
@@ -8925,7 +8964,11 @@ const SingleMessage = () => {
                       setEmojiPanelOpen(open => !open);
                     }}
                     accessibilityLabel="Emoji"
-                    style={{ paddingLeft: 4, paddingVertical: 6 }}
+                    style={{
+                      paddingLeft: 4,
+                      paddingVertical: 6,
+                      marginBottom: composerMultiline ? 2 : 0,
+                    }}
                   >
                     <Icon
                       name={emojiPanelOpen ? 'keyboard' : 'emoji-emotions'}
@@ -8952,6 +8995,7 @@ const SingleMessage = () => {
                       width: 38,
                       height: 38,
                       borderRadius: 19,
+                      marginBottom: composerMultiline ? 2 : 0,
                       backgroundColor:
                         isUploading || !(inputText.trim() || pendingAttachment)
                           ? chatTheme.colors.recvBg
@@ -8972,7 +9016,13 @@ const SingleMessage = () => {
                     />
                   </TouchableOpacity>
                 ) : (
-                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      alignItems: 'center',
+                      marginBottom: composerMultiline ? 2 : 0,
+                    }}
+                  >
                     <View>
                       <TouchableOpacity
                         onPress={handleMicButtonClick}
