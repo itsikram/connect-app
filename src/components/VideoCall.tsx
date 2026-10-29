@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   View,
+  PanResponder,
   Text,
   TouchableOpacity,
   Alert,
@@ -36,6 +37,7 @@ import { startOngoingCallService } from '../lib/ongoingCall';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
+import { PEER_RECONNECT_GRACE_MS, peerLeftOnPurpose } from '../lib/callReconnect';
 import AgoraWebEngine, { AgoraWebEngineHandle } from './AgoraWebEngine';
 import CallTranscript from './CallTranscript';
 
@@ -66,6 +68,11 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const [mediaConnected, setMediaConnected] = useState(false);
   const [remoteVideoOn, setRemoteVideoOn] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  // The other side's connection dropped; waiting for them to rejoin.
+  const [peerReconnecting, setPeerReconnecting] = useState(false);
+  const peerGoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Where the engine draws my small camera view (for the drag handle).
+  const [localRect, setLocalRect] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   // Outcome shown briefly after the call closes ("Call ended", "Declined"…).
   const [endedInfo, setEndedInfo] = useState<{ label: string; name: string; pic: string } | null>(null);
   const endedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -123,8 +130,15 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
   }, []);
 
+  const clearPeerGone = useCallback(() => {
+    if (peerGoneTimerRef.current) clearTimeout(peerGoneTimerRef.current);
+    peerGoneTimerRef.current = null;
+    setPeerReconnecting(false);
+  }, []);
+
   const cleanupVideoCall = useCallback(async () => {
     isTerminating.current = true;
+    clearPeerGone();
     stopRingback().catch(() => {});
     DeviceEventEmitter.emit('video-call-active', false);
     await stopIncomingCallAlert();
@@ -163,7 +177,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     callIgnoredStatusSentRef.current = false;
     pendingAutoAcceptRef.current = false;
     setTimeout(() => { isTerminating.current = false; }, 400);
-  }, [endMinimizedCall]);
+  }, [clearPeerGone, endMinimizedCall]);
 
   // Join failed or the peer dropped out of the media channel: close the call
   // on the server too, so the other side (web or app) and all their devices
@@ -622,6 +636,21 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (event.type === 'user-joined' || event.type === 'user-published') {
       setMediaConnected(true);
     }
+    if (event.type === 'user-joined') {
+      // The other side came back after a dropped connection.
+      clearPeerGone();
+    }
+    if (event.type === 'local-rect') {
+      setLocalRect(event.shown ? { x: event.x, y: event.y, width: event.width, height: event.height } : null);
+    }
+    if (event.type === 'engine-reset') {
+      setLocalRect(null);
+      // The engine page was reloaded mid-call; it rejoins on "ready".
+      if (isJoiningOrJoined.current) setIsReconnecting(true);
+    }
+    if (event.type === 'joined') {
+      setIsReconnecting(false);
+    }
     if (event.type === 'user-published' && event.mediaType === 'video') {
       setRemoteVideoOn(true);
     }
@@ -637,9 +666,23 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
         .catch(() => {});
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
-      endCallForPeer();
-      showEnded('Call ended');
-      cleanupVideoCall();
+      // The peer is gone for good: close the call everywhere.
+      const endForPeer = () => {
+        peerGoneTimerRef.current = null;
+        if (!callAcceptedRef.current) return;
+        endCallForPeer();
+        showEnded('Call ended');
+        cleanupVideoCall();
+      };
+      if (peerLeftOnPurpose(event.reason)) {
+        endForPeer();
+      } else {
+        // Their connection dropped: give them time to rejoin.
+        setPeerReconnecting(true);
+        setRemoteVideoOn(false);
+        if (peerGoneTimerRef.current) clearTimeout(peerGoneTimerRef.current);
+        peerGoneTimerRef.current = setTimeout(endForPeer, PEER_RECONNECT_GRACE_MS);
+      }
     }
     // A failed join used to only log a warning, leaving both sides stuck on
     // "connecting". End the call cleanly instead.
@@ -658,7 +701,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (__DEV__ && event.type === 'log') {
       console.log('[VideoCall]', event.message);
     }
-  }, [cleanupVideoCall, endCallForPeer, numericUid, showEnded]);
+  }, [cleanupVideoCall, clearPeerGone, endCallForPeer, numericUid, showEnded]);
+
+  // The engine sits under the call screen, so the screen carries a drag
+  // handle over my small camera view and moves it in the engine.
+  const localDrag = useMemo(() => PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: () => true,
+    onPanResponderGrant: () => engineRef.current?.dragLocal('start'),
+    onPanResponderMove: (_e, g) => engineRef.current?.dragLocal('move', g.dx, g.dy),
+    onPanResponderRelease: () => engineRef.current?.dragLocal('end'),
+    onPanResponderTerminate: () => engineRef.current?.dragLocal('end'),
+  }), []);
 
   let phase: 'incoming' | 'outgoing' | 'connecting' | 'connected' = 'outgoing';
   if (callAccepted) phase = mediaConnected ? 'connected' : 'connecting';
@@ -671,10 +725,6 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   const showEndedScreen = !!endedInfo && !isVideoCall;
 
-  if (!isVideoCall && !mediaActive && !engineWarm && !showEndedScreen) {
-    return null;
-  }
-
   const showUi = isVideoCall && !isMinimized;
   // Before the other side's picture arrives my own camera fills the screen
   // (rendered by the engine); once connected their video is full screen.
@@ -682,21 +732,32 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   return (
     <>
+      {/*
+        The engine (camera + the other person's video) is rendered OUTSIDE
+        the modal. A modal unmounts its content when hidden, so minimizing the
+        call used to destroy the engine and cut the call's audio and video.
+        The modal is transparent, so the video shows through behind the
+        controls. It also stays mounted (and pre-warmed) between calls so
+        calls connect fast.
+      */}
+      <AgoraWebEngine
+        ref={engineRef}
+        visible={Boolean(isVideoCall || mediaActive || engineWarm)}
+        isAudio={false}
+        prewarm
+        foreground={showUi}
+        onEvent={handleEngineEvent}
+        style={showUi ? styles.engineOnTop : styles.engineFill}
+      />
       <Modal
         visible={showUi || showEndedScreen}
         animationType="fade"
-        presentationStyle="fullScreen"
+        transparent
+        presentationStyle="overFullScreen"
         statusBarTranslucent
         onRequestClose={showEndedScreen ? clearEnded : endCall}
       >
         <View style={styles.videoScreen}>
-          <AgoraWebEngine
-            ref={engineRef}
-            visible={Boolean(isVideoCall || mediaActive || engineWarm)}
-            isAudio={false}
-            onEvent={handleEngineEvent}
-            style={styles.engineFill}
-          />
           {showEndedScreen ? (
             <View style={styles.endedScreen}>
               <CallBackdrop uri={endedInfo?.pic} />
@@ -711,6 +772,18 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
           {showUi ? (
             <View style={styles.overlay} pointerEvents="box-none">
               <StatusBar barStyle="light-content" translucent backgroundColor="transparent" />
+              {localRect ? (
+                <View
+                  accessibilityLabel="Move your camera view"
+                  style={[styles.localDragHandle, {
+                    left: localRect.x,
+                    top: localRect.y,
+                    width: localRect.width,
+                    height: localRect.height,
+                  }]}
+                  {...localDrag.panHandlers}
+                />
+              ) : null}
               <View style={[styles.topShade, remoteVisible && styles.topShadeCompact]} pointerEvents="none" />
               <View style={styles.bottomShade} pointerEvents="none" />
               <View style={styles.topRow} pointerEvents="box-none">
@@ -730,7 +803,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
                 compact={remoteVisible}
                 name={callerName}
                 status={statusText}
-                reconnecting={isReconnecting}
+                reconnecting={isReconnecting || peerReconnecting}
               />
               {!remoteVisible && phase !== 'outgoing' && phase !== 'incoming' ? (
                 // Connected with the other camera off (or still connecting):
@@ -785,7 +858,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 };
 
 const styles = StyleSheet.create({
-  videoScreen: { flex: 1, backgroundColor: '#0b141a' },
+  // Transparent: the engine's video, rendered behind the modal, shows through.
+  videoScreen: { flex: 1, backgroundColor: 'transparent' },
   overlay: {
     ...StyleSheet.absoluteFill,
     zIndex: 9999,
@@ -794,6 +868,9 @@ const styles = StyleSheet.create({
     paddingTop: 44,
   },
   engineFill: { ...StyleSheet.absoluteFill, backgroundColor: '#0b141a' },
+  // On screen: above the app, below the (transparent) call screen.
+  engineOnTop: { ...StyleSheet.absoluteFill, backgroundColor: '#0b141a', zIndex: 1000, elevation: 1000 },
+  localDragHandle: { position: 'absolute', backgroundColor: 'transparent' },
   topShade: {
     position: 'absolute',
     top: 0,

@@ -38,6 +38,7 @@ import { startOngoingCallService } from '../lib/ongoingCall';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
 import { isAppFocused, notifyCallerRinging, sameProfileId } from '../lib/callStatus';
+import { PEER_RECONNECT_GRACE_MS, peerLeftOnPurpose } from '../lib/callReconnect';
 import AgoraWebEngine, { AgoraWebEngineHandle } from './AgoraWebEngine';
 import CallTranscript from './CallTranscript';
 
@@ -69,6 +70,9 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   // The other person is in the media channel; the timer starts here.
   const [mediaConnected, setMediaConnected] = useState(false);
   const [isReconnecting, setIsReconnecting] = useState(false);
+  // The other side's connection dropped; waiting for them to rejoin.
+  const [peerReconnecting, setPeerReconnecting] = useState(false);
+  const peerGoneTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Outcome shown briefly after the call closes ("Call ended", "Declined"…).
   const [endedInfo, setEndedInfo] = useState<{ label: string; name: string; pic: string } | null>(null);
   const endedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -125,8 +129,15 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (endedTimerRef.current) clearTimeout(endedTimerRef.current);
   }, []);
 
+  const clearPeerGone = useCallback(() => {
+    if (peerGoneTimerRef.current) clearTimeout(peerGoneTimerRef.current);
+    peerGoneTimerRef.current = null;
+    setPeerReconnecting(false);
+  }, []);
+
   const cleanupAudioCall = useCallback(async () => {
     isTerminating.current = true;
+    clearPeerGone();
     stopRingback().catch(() => {});
     await stopIncomingCallAlert();
     try { engineRef.current?.leave(); } catch (_) {}
@@ -164,7 +175,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     callIgnoredStatusSentRef.current = false;
     pendingAutoAcceptRef.current = false;
     setTimeout(() => { isTerminating.current = false; }, 400);
-  }, [endMinimizedCall]);
+  }, [clearPeerGone, endMinimizedCall]);
 
   // Join failed or the peer dropped out of the media channel: close the call
   // on the server too, so the other side (web or app) and all their devices
@@ -604,8 +615,20 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (event.type === 'user-joined' || event.type === 'user-published') {
       setMediaConnected(true);
     }
+    if (event.type === 'user-joined') {
+      // The other side came back after a dropped connection.
+      clearPeerGone();
+    }
     if (event.type === 'connection-state') {
       setIsReconnecting(event.state === 'RECONNECTING');
+    }
+    if (event.type === 'engine-reset' && isJoiningOrJoined.current) {
+      // The engine page was reloaded mid-call; it rejoins on "ready".
+      microphonePublishedRef.current = false;
+      setIsReconnecting(true);
+    }
+    if (event.type === 'joined') {
+      setIsReconnecting(false);
     }
     if (event.type === 'token-will-expire' && currentChannelRef.current) {
       fetchAgoraToken(currentChannelRef.current, numericUid)
@@ -613,9 +636,22 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
         .catch(() => {});
     }
     if (event.type === 'user-left' && callAcceptedRef.current) {
-      endCallForPeer();
-      showEnded('Call ended');
-      cleanupAudioCall();
+      // The peer is gone for good: close the call everywhere.
+      const endForPeer = () => {
+        peerGoneTimerRef.current = null;
+        if (!callAcceptedRef.current) return;
+        endCallForPeer();
+        showEnded('Call ended');
+        cleanupAudioCall();
+      };
+      if (peerLeftOnPurpose(event.reason)) {
+        endForPeer();
+      } else {
+        // Their connection dropped: give them time to rejoin.
+        setPeerReconnecting(true);
+        if (peerGoneTimerRef.current) clearTimeout(peerGoneTimerRef.current);
+        peerGoneTimerRef.current = setTimeout(endForPeer, PEER_RECONNECT_GRACE_MS);
+      }
     }
     // A failed join used to only log a warning, leaving both sides stuck on
     // "connecting". End the call cleanly instead.
@@ -650,7 +686,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     if (__DEV__ && event.type === 'log') {
       console.log('[AudioCall]', event.message);
     }
-  }, [cleanupAudioCall, endCallForPeer, numericUid, showEnded]);
+  }, [cleanupAudioCall, clearPeerGone, endCallForPeer, numericUid, showEnded]);
 
   let phase: 'incoming' | 'outgoing' | 'connecting' | 'connected' = 'outgoing';
   if (callAccepted) phase = mediaConnected ? 'connected' : 'connecting';
@@ -663,16 +699,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
 
   const showEndedScreen = !!endedInfo && !isAudioCall;
 
-  if (!isAudioCall && !mediaActive && !engineWarm && !showEndedScreen) {
-    return null;
-  }
-
   return (
     <>
+      {/* Stays mounted (and pre-warmed) between calls so calls connect fast. */}
       <AgoraWebEngine
         ref={engineRef}
         visible={Boolean(isAudioCall || mediaActive || engineWarm)}
         isAudio
+        prewarm
         foreground={isAudioCall && !isMinimized}
         onEvent={handleEngineEvent}
       />
@@ -713,7 +747,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
             <CallHeader
               name={showEndedScreen ? endedInfo?.name || '' : callerName}
               status={showEndedScreen ? endedInfo?.label || '' : statusText}
-              reconnecting={!showEndedScreen && isReconnecting}
+              reconnecting={!showEndedScreen && (isReconnecting || peerReconnecting)}
             />
             <View style={styles.center}>
               <CallAvatar

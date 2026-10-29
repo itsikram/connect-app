@@ -36,7 +36,38 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
     #audio-host { position: absolute; width: 1px; height: 1px; opacity: 0.01; overflow: hidden; pointer-events: none; }
     video { object-fit: cover; width: 100%; height: 100%; }
   </style>
-  <script src="https://download.agora.io/sdk/release/AgoraRTC_N-4.24.0.js"></script>
+  <script>
+    /*
+     * Load the Agora SDK with retries and a second CDN. A single failed
+     * download used to leave the engine without an SDK for good, so every
+     * call stayed on "Connecting…" until the app was restarted.
+     */
+    (function () {
+      var sources = [
+        'https://download.agora.io/sdk/release/AgoraRTC_N-4.24.0.js',
+        'https://cdn.jsdelivr.net/npm/agora-rtc-sdk-ng@4.24.0/AgoraRTC_N-production.js'
+      ];
+      var attempt = 0;
+      function load() {
+        if (window.AgoraRTC) return;
+        var script = document.createElement('script');
+        script.src = sources[attempt % sources.length];
+        script.async = true;
+        script.onerror = function () {
+          try { script.parentNode && script.parentNode.removeChild(script); } catch (e) {}
+          attempt += 1;
+          try {
+            window.ReactNativeWebView && window.ReactNativeWebView.postMessage(JSON.stringify({
+              type: 'log', message: 'Agora SDK load failed (attempt ' + attempt + ')'
+            }));
+          } catch (e) {}
+          setTimeout(load, Math.min(8000, 500 * attempt));
+        };
+        document.head.appendChild(script);
+      }
+      load();
+    })();
+  </script>
 </head>
 <body>
   <div id="remote"></div>
@@ -63,6 +94,18 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       var wantAudio = false;
       var videoEnsuring = false;
       var healthTimer = null;
+      // Bumped by leave() so microphone/camera work started for a call that
+      // has since ended never leaves a device open.
+      var session = 0;
+      var micOpening = null;
+      // Echo cancellation, noise suppression and gain control: the same
+      // voice processing the web app uses, so both ends sound alike.
+      var MIC_CONFIG = { AEC: true, ANS: true, AGC: true };
+      // "motion" keeps video smooth on a weak network (drops resolution
+      // before frame rate), the way WhatsApp video behaves.
+      function cameraConfig() {
+        return { facingMode: facingMode, encoderConfig: '480p_1', optimizationMode: 'motion' };
+      }
 
       function sleep(ms) {
         return new Promise(function (resolve) { setTimeout(resolve, ms); });
@@ -145,6 +188,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         if (!local) return;
         if (full) local.classList.add('full');
         else local.classList.remove('full');
+        postLocalRect();
       }
 
       function setAudioOnlyUi(isAudio) {
@@ -157,6 +201,44 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           remote.classList.remove('audio-only');
           local.classList.remove('hidden');
         }
+        postLocalRect();
+      }
+
+      /*
+       * The call screen sits on top of this page, so it cannot be touched
+       * directly. Tell the app where my small camera view is, so it can put a
+       * drag handle over it (see dragLocal), and only while it is the small
+       * floating view (not full screen, not an audio call).
+       */
+      var lastRect = '';
+      function postLocalRect() {
+        var el = document.getElementById('local');
+        if (!el) return;
+        var shown = !el.classList.contains('hidden') && !el.classList.contains('full');
+        var r = el.getBoundingClientRect();
+        var rect = {
+          type: 'local-rect',
+          shown: shown && r.width > 0 && r.height > 0,
+          x: Math.round(r.left),
+          y: Math.round(r.top),
+          width: Math.round(r.width),
+          height: Math.round(r.height),
+        };
+        var key = JSON.stringify(rect);
+        if (key === lastRect) return;
+        lastRect = key;
+        post(rect);
+      }
+
+      function resetLocalPosition() {
+        var el = document.getElementById('local');
+        if (!el) return;
+        el.style.left = '';
+        el.style.top = '';
+        el.style.right = '';
+        el.style.bottom = '';
+        el.style.transform = '';
+        el.style.transition = '';
       }
 
       async function stopTracks() {
@@ -168,10 +250,13 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       async function leave() {
+        session += 1;
         joining = false;
         stopHealthCheck();
         wantAudio = false;
         micMuted = false;
+        videoMuted = false;
+        facingMode = 'user';
         micSilentChecks = 0;
         try {
           if (client) {
@@ -183,6 +268,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         joinedChannel = '';
         joinedUid = null;
         setLocalFull(false);
+        resetLocalPosition();
         var remote = document.getElementById('remote');
         if (remote) remote.innerHTML = '';
         post({ type: 'left' });
@@ -194,23 +280,67 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         if (isAudio && hasAudio) return;
         if (!isAudio && hasAudio && hasVideo) return;
         await stopTracks();
+        var mySession = session;
+        var created;
         if (isAudio) {
-          localTracks = [await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true })];
+          created = [await AgoraRTC.createMicrophoneAudioTrack(MIC_CONFIG)];
+        } else {
+          try {
+            created = await AgoraRTC.createMicrophoneAndCameraTracks(MIC_CONFIG, cameraConfig());
+          } catch (e) {
+            post({ type: 'log', message: 'camera failed, mic only: ' + (e && e.message) });
+            created = [await AgoraRTC.createMicrophoneAudioTrack(MIC_CONFIG)];
+          }
+        }
+        // The call ended while the devices were opening: release them.
+        if (mySession !== session) {
+          closeTracks(created);
           return;
         }
-        try {
-          localTracks = await AgoraRTC.createMicrophoneAndCameraTracks(
-            { AEC: true, ANS: true },
-            { facingMode: facingMode, encoderConfig: '480p_1' }
-          );
-        } catch (e) {
-          post({ type: 'log', message: 'camera failed, mic only: ' + (e && e.message) });
-          localTracks = [await AgoraRTC.createMicrophoneAudioTrack({ AEC: true, ANS: true })];
+        if (findTrack('audio')) {
+          closeTracks(created.filter(function (t) { return t.trackMediaType === 'audio'; }));
+          created = created.filter(function (t) { return t.trackMediaType !== 'audio'; });
         }
+        localTracks = localTracks.concat(created);
         var videoTrack = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
         if (videoTrack) {
           videoTrack.play('local', { fit: 'cover' });
+          postLocalRect();
         }
+      }
+
+      function closeTracks(tracks) {
+        for (var i = 0; i < tracks.length; i++) {
+          try { tracks[i].stop && tracks[i].stop(); } catch (e) {}
+          try { tracks[i].close(); } catch (e) {}
+        }
+      }
+
+      /*
+       * Opens the microphone (once) without publishing it. join() runs this
+       * alongside the channel join instead of after it, so the voice path is
+       * ready the moment the join completes.
+       */
+      function openMicrophone() {
+        if (previewing) {
+          var retry = function () { return openMicrophone(); };
+          return previewing.then(retry, retry);
+        }
+        if (findTrack('audio')) return Promise.resolve();
+        if (micOpening) return micOpening;
+        var mySession = session;
+        var opening = AgoraRTC.createMicrophoneAudioTrack(MIC_CONFIG).then(function (track) {
+          if (mySession !== session || findTrack('audio')) {
+            closeTracks([track]);
+            return;
+          }
+          localTracks.push(track);
+        }, function (e) {
+          post({ type: 'log', message: 'microphone open failed: ' + (e && e.message) });
+        });
+        micOpening = opening;
+        opening.then(function () { if (micOpening === opening) micOpening = null; });
+        return opening;
       }
 
       async function publishAudioWithRetry() {
@@ -227,10 +357,12 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
               return;
             }
             if (!audioTrack) {
-              audioTrack = await AgoraRTC.createMicrophoneAudioTrack({
-                AEC: true,
-                ANS: true,
-              });
+              var mySession = session;
+              audioTrack = await AgoraRTC.createMicrophoneAudioTrack(MIC_CONFIG);
+              if (mySession !== session) {
+                closeTracks([audioTrack]);
+                throw new Error('call ended');
+              }
               localTracks.push(audioTrack);
             }
             await audioTrack.setEnabled(true);
@@ -282,9 +414,15 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         }
         for (var attempt = 0; !video && attempt < 5; attempt++) {
           try {
-            video = await AgoraRTC.createCameraVideoTrack({ facingMode: facingMode, encoderConfig: '480p_1' });
+            var mySession = session;
+            video = await AgoraRTC.createCameraVideoTrack(cameraConfig());
+            if (mySession !== session) {
+              closeTracks([video]);
+              return;
+            }
             localTracks.push(video);
             video.play('local', { fit: 'cover' });
+            postLocalRect();
           } catch (e) {
             post({ type: 'log', message: 'camera start failed (attempt ' + (attempt + 1) + '): ' + (e && e.message) });
             await sleep(700 * (attempt + 1));
@@ -386,6 +524,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
               setLocalFull(false);
             }
             post({ type: 'user-published', uid: user.uid, mediaType: mediaType });
+            postLocalRect();
           } catch (e) {
             post({ type: 'error', message: 'subscribe failed: ' + (e && e.message) });
           }
@@ -398,8 +537,10 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         c.on('user-unpublished', function (user, mediaType) {
           post({ type: 'user-unpublished', uid: user.uid, mediaType: mediaType });
         });
-        c.on('user-left', function (user) {
-          post({ type: 'user-left', uid: user.uid });
+        // reason: "Quit" (left on purpose) or "ServerTimeOut" (connection
+        // dropped; they may come back).
+        c.on('user-left', function (user, reason) {
+          post({ type: 'user-left', uid: user.uid, reason: reason || '' });
         });
         // Lets the call screen show "Reconnecting…" while the link recovers.
         c.on('connection-state-change', function (cur, prev, reason) {
@@ -418,6 +559,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       async function join(payload) {
+        var joinSession = session;
         var appId = payload.appId;
         var token = payload.token;
         var channelName = payload.channelName;
@@ -459,9 +601,20 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
             client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
             bindClientEvents(client);
           }
+          var mySession = session;
+          // Open the microphone while joining, not after: the two are
+          // independent and doing them together connects the call faster.
+          var micReady = publishAudio ? openMicrophone() : null;
           await client.join(appId, channelName, token, uid);
+          if (mySession !== session) {
+            // The call ended while joining.
+            try { await client.leave(); } catch (e) {}
+            joining = false;
+            return;
+          }
           joinedChannel = channelName;
           joinedUid = uid;
+          if (micReady) await micReady;
           tryResumeAudio();
 
           try {
@@ -502,16 +655,24 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           playAllRemoteAudio();
           joining = false;
         } catch (e) {
+          // A join aborted by leave() belongs to a call that already ended;
+          // reporting it would end the next call instead.
+          if (joinSession !== session) return;
           joining = false;
           post({ type: 'error', message: 'join failed: ' + (e && e.message) });
         }
       }
 
+      var previewing = null;
       async function preview(payload) {
         try {
           setAudioOnlyUi(!!payload.isAudio);
           if (!payload.isAudio && !joinedChannel) setLocalFull(true);
-          await createLocalTracks(!!payload.isAudio);
+          var opening = createLocalTracks(!!payload.isAudio);
+          previewing = opening;
+          var done = function () { if (previewing === opening) previewing = null; };
+          opening.then(done, done);
+          await opening;
           post({ type: 'preview-ready' });
         } catch (e) {
           post({ type: 'error', message: 'preview failed: ' + (e && e.message) });
@@ -556,7 +717,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         facingMode = facingMode === 'user' ? 'environment' : 'user';
         var oldVideo = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
         try {
-          var next = await AgoraRTC.createCameraVideoTrack({ facingMode: facingMode, encoderConfig: '480p_1' });
+          var next = await AgoraRTC.createCameraVideoTrack(cameraConfig());
           if (client && oldVideo) {
             await client.unpublish(oldVideo);
           }
@@ -584,6 +745,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           else if (cmd.type === 'resumeAudio') resumeAudio();
           else if (cmd.type === 'muteVideo') await muteVideo(!!cmd.muted);
           else if (cmd.type === 'switchCamera') await switchCamera();
+          else if (cmd.type === 'dragLocal') dragLocal(cmd);
           else if (cmd.type === 'renewToken') {
             if (client && cmd.token) await client.renewToken(cmd.token);
           }
@@ -613,6 +775,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       });
       window.addEventListener('message', onNativeMessage);
       document.addEventListener('message', onNativeMessage);
+
+      var dragLocal = function () {};
+      window.addEventListener('resize', function () { postLocalRect(); });
 
       function enableLocalPreviewDrag() {
         var el = document.getElementById('local');
@@ -703,7 +868,21 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           el.style.cursor = 'grab';
           el.style.transition = 'left 160ms cubic-bezier(0.22, 1, 0.36, 1), top 160ms cubic-bezier(0.22, 1, 0.36, 1)';
           commit(pos.left, pos.top);
+          setTimeout(postLocalRect, 200);
         }
+
+        // The same drag, driven by the app's handle over this view
+        // (gesture deltas in CSS px, which match the app's points).
+        dragLocal = function (cmd) {
+          if (cmd.phase === 'start') {
+            if (el.classList.contains('hidden') || el.classList.contains('full')) return;
+            onDown({ clientX: 0, clientY: 0, stopPropagation: function () {} });
+          } else if (cmd.phase === 'move') {
+            onMove({ clientX: Number(cmd.dx) || 0, clientY: Number(cmd.dy) || 0 });
+          } else {
+            onUp();
+          }
+        };
 
         el.addEventListener('pointerdown', onDown, { passive: false });
         window.addEventListener('pointermove', onMove, { passive: false });
