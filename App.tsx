@@ -26,7 +26,6 @@ import {
   View,
   Alert,
   Platform,
-  Linking,
   AppState,
   Text,
   DeviceEventEmitter,
@@ -158,11 +157,7 @@ import ConnectCacheManager, {
 import FloatingButton from './src/components/FloatingButton';
 // Background services removed for Expo compatibility
 import UpdateModal from './src/components/UpdateModal';
-// RNFS replaced with Expo FileSystem
-import * as FileSystem from 'expo-file-system';
-// Remote config removed for Expo compatibility
-import { getRemoteConfig, subscribeRemoteConfig } from './src/lib/remoteConfig';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useAutoUpdate } from './src/hooks/useAutoUpdate';
 import { initServerUrl } from './src/lib/serverUrl';
 import { usesLiveServer } from './src/lib/config';
 
@@ -854,206 +849,7 @@ function AppContent() {
   const dispatch = useDispatch();
   // Realtime online/offline status of connects + this device's foreground state.
   usePresenceSync(myProfile?._id, isConnected);
-  const [updateModalVisible, setUpdateModalVisible] =
-    React.useState<boolean>(false);
-  const [serverVersion, setServerVersion] = React.useState<string>('');
-  const [apkUrl, setApkUrl] = React.useState<string>('');
-  const [isDownloadingUpdate, setIsDownloadingUpdate] =
-    React.useState<boolean>(false);
-
-  const getCurrentAppVersion = React.useCallback((): string => {
-    try {
-      // Avoid TS JSON import issues by using require
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const appPackage = require('./package.json');
-      return appPackage?.version || '0.0.0';
-    } catch (e) {
-      return '0.0.0';
-    }
-  }, []);
-
-  const compareVersions = React.useCallback((a: string, b: string): number => {
-    // Normalize like 1.2.3 vs 1.2.10; ignore non-numeric suffixes
-    const toNums = (v: string) =>
-      (v || '')
-        .split('.')
-        .map(part => parseInt(String(part).replace(/[^0-9].*$/, ''), 10) || 0);
-    const aa = toNums(a);
-    const bb = toNums(b);
-    const len = Math.max(aa.length, bb.length);
-    for (let i = 0; i < len; i++) {
-      const x = aa[i] || 0;
-      const y = bb[i] || 0;
-      if (x > y) return 1;
-      if (x < y) return -1;
-    }
-    return 0;
-  }, []);
-
-  // Helper functions to track update modal shows per day
-  const getTodayDateString = React.useCallback((): string => {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(
-      2,
-      '0',
-    )}-${String(today.getDate()).padStart(2, '0')}`;
-  }, []);
-
-  // Check if we can show the modal and increment count atomically
-  const checkAndIncrementUpdateModalCount =
-    React.useCallback(async (): Promise<boolean> => {
-      try {
-        const storageKey = 'updateModalShowCount';
-        const today = getTodayDateString();
-        const stored = await AsyncStorage.getItem(storageKey);
-
-        let count = 0;
-        if (stored) {
-          const data = JSON.parse(stored);
-          if (data.date === today) {
-            count = data.count || 0;
-          }
-        }
-
-        // Check if shown less than 2 times today
-        if (count < 2) {
-          // Increment and save
-          await AsyncStorage.setItem(
-            storageKey,
-            JSON.stringify({
-              date: today,
-              count: count + 1,
-            }),
-          );
-          return true;
-        }
-
-        return false;
-      } catch (error) {
-        console.warn(
-          'Error checking/incrementing update modal show count:',
-          error,
-        );
-        // On error, allow showing (fail open)
-        return true;
-      }
-    }, [getTodayDateString]);
-
-  // Consume remote config set by index.js (/connect) and decide update prompt
-  React.useEffect(() => {
-    const applyConfig = async (cfg: any) => {
-      if (!cfg) return;
-      const serverAppVersion: string = cfg?.appVersion || '';
-      const serverIsNew: boolean = Boolean(cfg?.isNewVersionAvailable);
-      const serverApkUrl: string = cfg?.apkUrl || '';
-
-      setServerVersion(serverAppVersion);
-      setApkUrl(serverApkUrl);
-
-      if (Platform.OS === 'android' && serverApkUrl) {
-        const currentVersion = getCurrentAppVersion();
-        const newer =
-          serverIsNew ||
-          (serverAppVersion &&
-            compareVersions(serverAppVersion, currentVersion) > 0);
-        if (newer) {
-          // Check if we can show the modal (max 2 times per day) and increment count atomically
-          const canShow = await checkAndIncrementUpdateModalCount();
-          if (canShow) {
-            setUpdateModalVisible(true);
-          }
-        }
-      }
-    };
-
-    try {
-      const initial = getRemoteConfig();
-      if (initial) applyConfig(initial);
-    } catch (_) {}
-
-    const unsubscribe = subscribeRemoteConfig(cfg => applyConfig(cfg));
-    return () => {
-      try {
-        unsubscribe && unsubscribe();
-      } catch (_) {}
-    };
-  }, [
-    compareVersions,
-    getCurrentAppVersion,
-    checkAndIncrementUpdateModalCount,
-  ]);
-
-  const ensureStoragePermission =
-    React.useCallback(async (): Promise<boolean> => {
-      try {
-        const MediaLibrary = await import('expo-media-library/legacy');
-        const { status } = await MediaLibrary.requestPermissionsAsync();
-        return status === 'granted';
-      } catch (_) {
-        return false;
-      }
-    }, []);
-
-  const downloadAndInstallApk = React.useCallback(async () => {
-    if (!apkUrl) return;
-    if (Platform.OS !== 'android') {
-      try {
-        Linking.openURL(apkUrl);
-      } catch (_) {}
-      return;
-    }
-
-    const hasPerm = await ensureStoragePermission();
-    if (!hasPerm) {
-      try {
-        Linking.openURL(apkUrl);
-      } catch (_) {}
-      return;
-    }
-
-    try {
-      setIsDownloadingUpdate(true);
-      const safeVersion = (serverVersion || 'latest').replace(
-        /[^0-9A-Za-z._-]/g,
-        '',
-      );
-      const fileName = `Connect-${safeVersion}-${Date.now()}.apk`;
-      const destPath = `file:///tmp/Connect/${fileName}`;
-
-      const task = FileSystem.createDownloadResumable(
-        apkUrl,
-        destPath,
-        {},
-        downloadProgressInfo => {
-          const progress =
-            downloadProgressInfo.totalBytesWritten /
-            downloadProgressInfo.totalBytesExpectedToWrite;
-          console.log(`Download progress: ${Math.round(progress * 100)}%`);
-        },
-      );
-      const result = await task.downloadAsync();
-      if (result && result.status === 200) {
-        try {
-          await Linking.openURL(`file://${destPath}`);
-        } catch (e) {
-          // Fallback to open the original URL (browser/DM)
-          try {
-            await Linking.openURL(apkUrl);
-          } catch (_) {}
-        }
-      } else {
-        try {
-          await Linking.openURL(apkUrl);
-        } catch (_) {}
-      }
-    } catch (e) {
-      try {
-        await Linking.openURL(apkUrl);
-      } catch (_) {}
-    } finally {
-      setIsDownloadingUpdate(false);
-    }
-  }, [apkUrl, serverVersion, ensureStoragePermission]);
+  const appUpdate = useAutoUpdate();
 
   React.useEffect(() => {
     ensureSpeakMessageListener();
@@ -1426,11 +1222,13 @@ function AppContent() {
             ) : null}
             {/* Global update modal */}
             <UpdateModal
-              visible={updateModalVisible}
-              serverVersion={serverVersion}
-              apkUrl={apkUrl}
-              onDismiss={() => setUpdateModalVisible(false)}
-              onDownload={downloadAndInstallApk}
+              visible={appUpdate.visible}
+              phase={appUpdate.phase}
+              serverVersion={appUpdate.version}
+              progress={appUpdate.progress}
+              onDismiss={appUpdate.dismiss}
+              onAllow={appUpdate.allowInstalls}
+              onRetry={appUpdate.retry}
             />
           </>
         );

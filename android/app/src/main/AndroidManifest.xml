@@ -41,6 +41,9 @@
     
     <!-- Permission to query installed packages for device apps -->
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+
+    <!-- Self-update: install the newer APK set in admin (see update/AppUpdateModule.kt) -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     
     <!-- Background TTS and notification permissions -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
@@ -175,6 +178,11 @@
           <action android:name="com.connect.app.DECLINE_INCOMING_CALL" />
         </intent-filter>
       </receiver>
+
+      <!-- Result of a self-update install session -->
+      <receiver
+        android:name="com.connect.app.update.AppUpdateInstallReceiver"
+        android:exported="false" />
 
       <service
         android:name="com.connect.app.overlay.FloatingOverlayService"
