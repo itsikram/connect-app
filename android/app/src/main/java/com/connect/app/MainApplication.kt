@@ -9,6 +9,7 @@ import android.util.Log
 import android.os.Build
 import com.connect.app.CallNotificationPackage
 import com.connect.app.overlay.FloatingOverlayPackage
+import com.connect.app.update.AppUpdatePackage
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -82,6 +83,7 @@ class MainApplication : Application(), ReactApplication {
 
     packages.add(FloatingOverlayPackage())
     packages.add(CallNotificationPackage())
+    packages.add(AppUpdatePackage())
     return packages
   }
 
