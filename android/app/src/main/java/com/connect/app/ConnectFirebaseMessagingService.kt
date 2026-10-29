@@ -10,6 +10,7 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.RemoteMessage
 import expo.modules.notifications.service.ExpoFirebaseMessagingService
+import org.json.JSONObject
 
 class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
   companion object {
@@ -31,27 +32,30 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
 
   override fun onMessageReceived(remoteMessage: RemoteMessage) {
     val data = remoteMessage.data
-    if (data["type"] == "incoming_call") {
-      if (IncomingCallStore.reactRunning && IncomingCallStore.appInForeground) {
-        // On screen: the JS call screen rings in-app.
-        super.onMessageReceived(remoteMessage)
-      } else {
-        // Backgrounded, locked or killed: ring natively. Handing it to Expo
-        // here only posted a plain notification on a channel the app never
-        // creates, and the JS fallback (a Notifee foreground service) is not
-        // allowed to start from the background, so nothing rang.
-        IncomingCallNotifier.show(applicationContext, data)
-        if (IncomingCallStore.reactRunning) {
-          // Let the running JS app know so the call screen is ready when it is opened.
-          CallNotificationModule.emitIncomingCallRinging(data)
-        }
+
+    // Sent to an Expo push token (the app's fallback when it has no native
+    // FCM token): Expo draws its own format, so only calls need handling here.
+    val expoData = expoPayloadOf(data)
+    if (expoData != null) {
+      when (expoData["type"]) {
+        "incoming_call" -> if (ringIncomingCall(expoData)) return
+        "missed_call" -> IncomingCallNotifier.cancelIfRingingFor(
+          applicationContext, expoData["callerId"] ?: expoData["senderId"]
+        )
       }
+      super.onMessageReceived(remoteMessage)
+      return
+    }
+
+    if (data["type"] == "incoming_call") {
+      if (!ringIncomingCall(data)) super.onMessageReceived(remoteMessage)
       return
     }
 
     // The caller hung up or the call timed out (the server sends missed_call
-    // in both cases): stop a native ring still going for that caller, then
-    // show the missed-call notification below as usual.
+    // in both cases, data-only so it always reaches this service): stop a
+    // native ring still going for that caller, then show the missed-call
+    // notification below as usual.
     if (data["type"] == "missed_call") {
       IncomingCallNotifier.cancelIfRingingFor(applicationContext, data["callerId"] ?: data["senderId"])
     }
@@ -75,6 +79,36 @@ class ConnectFirebaseMessagingService : ExpoFirebaseMessagingService() {
     }
 
     super.onMessageReceived(remoteMessage)
+  }
+
+  /**
+   * Backgrounded, locked or killed: ring natively. Handing the call to Expo
+   * only posted a plain notification, and the JS fallback (a Notifee
+   * foreground service) is not allowed to start from the background, so
+   * nothing rang.
+   * @return false when the app is on screen: the JS call screen rings in-app.
+   */
+  private fun ringIncomingCall(data: Map<String, String>): Boolean {
+    if (IncomingCallStore.reactRunning && IncomingCallStore.appInForeground) return false
+    IncomingCallNotifier.show(applicationContext, data)
+    if (IncomingCallStore.reactRunning) {
+      // Let the running JS app know so the call screen is ready when it is opened.
+      CallNotificationModule.emitIncomingCallRinging(data)
+    }
+    return true
+  }
+
+  /** Our data from an Expo push, which carries it as JSON in `body`; null for other pushes. */
+  private fun expoPayloadOf(data: Map<String, String>): Map<String, String>? {
+    if (!data.containsKey("scopeKey") && !data.containsKey("experienceId")) return null
+    val json = try {
+      JSONObject(data["body"] ?: return null)
+    } catch (_: Exception) {
+      return null
+    }
+    val payload = HashMap<String, String>()
+    json.keys().forEach { key -> if (!json.isNull(key)) payload[key] = json.get(key).toString() }
+    return payload
   }
 
   /** Same message plus FCM notification fields (`gcm.n.*`) built from its data. */
