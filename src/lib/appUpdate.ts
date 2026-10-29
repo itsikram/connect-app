@@ -3,7 +3,13 @@ import { NativeEventEmitter, NativeModules, Platform } from 'react-native';
 // Android self-update (android/.../update/AppUpdateModule.kt). The latest
 // version and APK link are set in admin → Settings → General.
 const AppUpdate = Platform.OS === 'android' ? NativeModules.AppUpdate : null;
-const emitter = AppUpdate ? new NativeEventEmitter(AppUpdate) : null;
+// Runs while the app starts, so a problem here must never close the app.
+let emitter: NativeEventEmitter | null = null;
+try {
+  emitter = AppUpdate ? new NativeEventEmitter(AppUpdate) : null;
+} catch (error) {
+  console.warn('App update events unavailable:', error);
+}
 
 export type InstallStatus =
   | 'installing'

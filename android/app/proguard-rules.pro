@@ -124,6 +124,11 @@
 -keep class com.google.android.gms.auth.** { *; }
 -keep class com.reactnativegooglesignin.** { *; }
 
+# React Native Skia (camera photo filters). Its C++ calls these Java classes
+# over JNI, so R8 must not rename or strip them in release builds.
+-keep class com.shopify.reactnative.skia.** { *; }
+-dontwarn com.shopify.reactnative.skia.**
+
 # App native modules
 -keep class com.connect.app.** { *; }
 -keep class com.connect.app.overlay.** { *; }

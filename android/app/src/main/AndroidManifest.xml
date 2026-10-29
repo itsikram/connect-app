@@ -39,8 +39,13 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
     
-    <!-- Permission to query installed packages for device apps -->
-    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Not used by the app. Google Play Protect treats these as signs of a
+         harmful app and blocks installing the APK, so make sure no library
+         adds them back either. -->
+    <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" tools:node="remove" />
+    <uses-permission android:name="android.permission.USE_SIP" tools:node="remove" />
 
     <!-- Self-update: install the newer APK set in admin (see update/AppUpdateModule.kt) -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
@@ -48,9 +53,6 @@
     <!-- Background TTS and notification permissions -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <uses-permission android:name="android.permission.VIBRATE" />
-    <uses-permission android:name="android.permission.USE_SIP" />
-    <uses-permission android:name="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE" />
-    <uses-permission android:name="android.permission.BIND_ACCESSIBILITY_SERVICE" />
     
     <!-- Background processing permissions -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

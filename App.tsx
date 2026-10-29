@@ -100,7 +100,8 @@ import EditPost from './src/screens/EditPost';
 import AudioCall from './src/components/AudioCall';
 import VideoCall from './src/components/VideoCall';
 import LiveVoice from './src/components/LiveVoice';
-import CameraScreen from './src/screens/CameraScreen';
+// Loaded on first use: it pulls in Skia, which must not run during app start.
+import { getCameraScreen } from './src/screens/LazyCameraScreen';
 import GalleryScreen from './src/screens/GalleryScreen';
 import GalleryPreview from './src/screens/GalleryPreview';
 // Socket context
@@ -221,7 +222,7 @@ function HomeStack() {
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="EditPost" component={EditPost} />
       <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
-      <Stack.Screen name="Camera" component={CameraScreen} />
+      <Stack.Screen name="Camera" getComponent={getCameraScreen} />
       <Stack.Screen name="Gallery" component={GalleryScreen} />
       <Stack.Screen name="GalleryPreview" component={GalleryPreview} />
     </Stack.Navigator>
