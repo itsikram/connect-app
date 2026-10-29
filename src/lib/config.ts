@@ -22,15 +22,11 @@ interface EnvironmentConfig {
 
 type Environment = 'development' | 'staging' | 'production';
 
-// Live backends (same as connect-web). Each install sticks to one of them and
-// fails over to the next when it is down (see serverUrl.ts). The list can be
-// replaced at runtime through connect-bd.online/app-config.json or at build
-// time with EXPO_PUBLIC_SERVER_URLS="https://a,https://b".
-const DEFAULT_LIVE_SERVER_URLS = [
-  'https://connect-server-nhaw.onrender.com',
-  'https://connect-server-u85b.onrender.com',
-  'https://connect-server-k1if.onrender.com',
-];
+// Live backend (same as connect-web). The list can be replaced at runtime
+// through connect-bd.online/app-config.json or the admin panel, or at build
+// time with EXPO_PUBLIC_SERVER_URLS="https://a,https://b" (each install then
+// sticks to one server and fails over to the next; see serverUrl.ts).
+const DEFAULT_LIVE_SERVER_URLS = ['https://onlinestorefrontsigns.com'];
 
 // Last-resort server: always kept at the end of the live server list, so when
 // every admin-configured server is down the app moves here. Never picked
