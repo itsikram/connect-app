@@ -51,7 +51,7 @@ import {
   parseAgentIntent,
 } from '../services/agentActionCatalog';
 import { Audio } from '../lib/avCompat';
-import { isCallBusy } from '../lib/callSession';
+import { isCallBusy, newCallChannelName } from '../lib/callSession';
 import {
   AgentSpeechLanguage,
   createAgentSpeechController,
@@ -1136,8 +1136,8 @@ const AIAgentModal: React.FC<Props> = ({
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
         );
-        const effectiveChannel =
-          channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
+        // A fresh channel for every call, whatever the agent passed.
+        const effectiveChannel = ownId ? newCallChannelName(ownId, userId) : channelName;
         emitStartAudioCall({
           to: userId,
           channelName: effectiveChannel,
@@ -1157,8 +1157,8 @@ const AIAgentModal: React.FC<Props> = ({
         const ownId = String(
           (profile as Record<string, unknown> | null)?._id || '',
         );
-        const effectiveChannel =
-          channelName === userId && ownId ? `${ownId}-${userId}` : channelName;
+        // A fresh channel for every call, whatever the agent passed.
+        const effectiveChannel = ownId ? newCallChannelName(ownId, userId) : channelName;
         emitStartVideoCall({
           to: userId,
           channelName: effectiveChannel,

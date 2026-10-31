@@ -90,7 +90,7 @@ import {
   emitStartVideoCall,
   CALL_EVENTS,
 } from '../lib/callEvents';
-import { isCallBusy } from '../lib/callSession';
+import { isCallBusy, newCallChannelName } from '../lib/callSession';
 import {
   emitStartLiveVoice,
   emitStopLiveVoice,
@@ -1410,7 +1410,12 @@ const SingleMessage = () => {
   // Mark/suspend during call lifecycle
   useEffect(() => {
     const handleCallAccepted = ({ isAudio }: any) => setIsCallActive(true);
-    const handleCallEnded = () => setIsCallActive(false);
+    // Only once no call is left: an event for another call (or a late one)
+    // must not hand the front camera back to emotion detection mid-call. The
+    // overlays send LOCAL_ENDED after their call is over.
+    const handleCallEnded = () => {
+      if (!isCallBusy()) setIsCallActive(false);
+    };
     on('call-accepted', handleCallAccepted);
     on('video-call-ended', handleCallEnded);
     on('videoCallEnd', handleCallEnded);
@@ -4487,7 +4492,7 @@ const SingleMessage = () => {
       return;
     }
 
-    const channelName = `${myProfile._id}-${connect._id}`;
+    const channelName = newCallChannelName(String(myProfile._id), String(connect._id));
     // Release the emotion-detection camera while the call rings, not only
     // once it is answered, so it never competes with the call's capture.
     setIsCallActive(true);
@@ -4506,7 +4511,7 @@ const SingleMessage = () => {
       return;
     }
 
-    const channelName = `${myProfile._id}-${connect._id}`;
+    const channelName = newCallChannelName(String(myProfile._id), String(connect._id));
     // Release the emotion-detection camera while the call rings, not only
     // once it is answered, so it never competes with the call's capture.
     setIsCallActive(true);

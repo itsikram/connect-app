@@ -7,7 +7,12 @@ import {
   saveNotificationToken,
   configureNotificationsChannel,
 } from '../lib/pushExpo';
-import { configureIncomingCallChannels, parseIncomingCallNotificationData } from '../lib/incomingCallAlerts';
+import {
+  configureIncomingCallChannels,
+  parseIncomingCallNotificationData,
+  stopRingingForHandledCall,
+} from '../lib/incomingCallAlerts';
+import { wasCallHandled } from '../lib/callSession';
 import { emitIncomingCallFromPush } from '../lib/callEvents';
 import { notifyCallerRinging } from '../lib/callStatus';
 import { handleIncomingCallNotificationAction, expoActionId, notifeeActionId } from '../lib/callNotificationActions';
@@ -142,6 +147,12 @@ export const useNotifications = ({ navigate }: UseNotificationsProps) => {
         const nativeRingingSub = DeviceEventEmitter.addListener('nativeIncomingCallRinging', (raw: any) => {
           const parsed = parseIncomingCallNotificationData({ ...raw, type: 'incoming_call' });
           if (!parsed?.from || !parsed.channelName) return;
+          // A late push for a call already answered, declined or over here
+          // (e.g. the one in progress) rang natively: stop that ring.
+          if (wasCallHandled(parsed.channelName)) {
+            stopRingingForHandledCall(parsed.channelName).catch(() => {});
+            return;
+          }
           notifyCallerRinging(parsed.from);
           emitIncomingCallFromPush({ ...parsed, isAudio: raw?.isAudio !== false });
         });

@@ -66,6 +66,17 @@ export async function consumePendingIncomingCall(): Promise<PendingIncomingCall 
   return stored;
 }
 
+/** The call was answered, declined or ended here: don't replay it later. */
+export async function clearPendingIncomingCall(channelName?: string | null): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    if (!raw) return;
+    const stored = JSON.parse(raw);
+    if (channelName && stored?.channelName && String(stored.channelName) !== String(channelName)) return;
+    await AsyncStorage.removeItem(STORAGE_KEY);
+  } catch (_) {}
+}
+
 export function dispatchPendingIncomingCall(pending: PendingIncomingCall): void {
   if (pending.declined) {
     emitRejectCallFromPush(pending);

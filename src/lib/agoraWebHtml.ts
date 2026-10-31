@@ -249,6 +249,9 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         localTracks = [];
       }
 
+      // The leave in progress; join() waits for it before using the client.
+      var leaving = null;
+
       async function leave() {
         session += 1;
         joining = false;
@@ -258,19 +261,31 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         videoMuted = false;
         facingMode = 'user';
         micSilentChecks = 0;
-        try {
-          if (client) {
-            try { await client.unpublish(localTracks); } catch (e) {}
-            try { await client.leave(); } catch (e) {}
-          }
-        } catch (e) {}
-        await stopTracks();
+        // Forget this call's channel, devices and views right away rather
+        // than once Agora has finished leaving: the next call can start
+        // meanwhile (an incoming call previews its camera), and finishing
+        // this leave must not close its devices or clear its views.
+        var tracks = localTracks;
+        localTracks = [];
         joinedChannel = '';
         joinedUid = null;
         setLocalFull(false);
         resetLocalPosition();
         var remote = document.getElementById('remote');
         if (remote) remote.innerHTML = '';
+        var run = (async function () {
+          if (client) {
+            try { await client.unpublish(tracks); } catch (e) {}
+            try { await client.leave(); } catch (e) {}
+          }
+          closeTracks(tracks);
+        })();
+        leaving = run;
+        try {
+          await run;
+        } finally {
+          if (leaving === run) leaving = null;
+        }
         post({ type: 'left' });
       }
 
@@ -558,8 +573,47 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         });
       }
 
+      /*
+       * Join failures that clear up by themselves: a network blip, or this
+       * engine's previous session (the page was reloaded mid-call) that Agora
+       * has not timed out yet, which fails the rejoin with UID_CONFLICT for
+       * up to ~20 s. Bad tokens / app ids fail the same way every time.
+       */
+      var RETRYABLE_JOIN_ERRORS = ['UID_CONFLICT', 'CAN_NOT_GET_GATEWAY_SERVER', 'NETWORK_ERROR',
+        'NETWORK_TIMEOUT', 'WS_ABORT', 'WS_DISCONNECT', 'WS_ERR'];
+      function isRetryableJoinError(e) {
+        var message = String((e && e.message) || e || '');
+        if (/token|vendor key|dynamic key|app ?id/i.test(message)) return false;
+        return RETRYABLE_JOIN_ERRORS.indexOf(String((e && e.code) || '')) !== -1 ||
+          /UID_CONFLICT|NETWORK_ERROR|NETWORK_TIMEOUT/.test(message);
+      }
+
+      async function joinChannel(appId, channelName, token, uid, mySession) {
+        for (var attempt = 1; ; attempt++) {
+          try {
+            await client.join(appId, channelName, token, uid);
+            return;
+          } catch (e) {
+            if (mySession !== session || attempt >= 8 || !isRetryableJoinError(e)) throw e;
+            post({ type: 'log', message: 'join failed (attempt ' + attempt + '), retrying: ' + ((e && (e.code || e.message)) || e) });
+            await sleep(Math.min(4000, 1000 * attempt));
+            if (mySession !== session) throw e;
+          }
+        }
+      }
+
+      // In the channel but the microphone would not start (in use, denied):
+      // stay in the call, so the other side's voice and video still play,
+      // and let the health check keep retrying, instead of hanging up.
+      async function publishMicrophoneOrReport() {
+        try {
+          await publishAudioWithRetry();
+        } catch (e) {
+          post({ type: 'mic-unavailable', message: String((e && e.message) || e) });
+        }
+      }
+
       async function join(payload) {
-        var joinSession = session;
         var appId = payload.appId;
         var token = payload.token;
         var channelName = payload.channelName;
@@ -575,11 +629,7 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         }
 
         if (client && joinedChannel === channelName && joinedUid === uid) {
-          try {
-            if (publishAudio) await publishAudioWithRetry();
-          } catch (e) {
-            post({ type: 'error', message: 'microphone publish failed: ' + (e && e.message) });
-          }
+          if (publishAudio) await publishMicrophoneOrReport();
           ensureVideoPublished();
           post({ type: 'joined' });
           startHealthCheck();
@@ -588,8 +638,14 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
 
         if (joining) return;
         joining = true;
+        var joinSession = session;
 
         try {
+          // The previous call is still leaving: Agora cannot join meanwhile.
+          if (leaving) {
+            try { await leaving; } catch (e) {}
+          }
+          if (joinSession !== session) return;
           if (client && joinedChannel) {
             try { await client.unpublish(localTracks); } catch (e) {}
             try { await client.leave(); } catch (e) {}
@@ -605,24 +661,17 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
           // Open the microphone while joining, not after: the two are
           // independent and doing them together connects the call faster.
           var micReady = publishAudio ? openMicrophone() : null;
-          await client.join(appId, channelName, token, uid);
-          if (mySession !== session) {
-            // The call ended while joining.
-            try { await client.leave(); } catch (e) {}
-            joining = false;
-            return;
-          }
+          await joinChannel(appId, channelName, token, uid, mySession);
+          // The call ended while joining: leave() has left the channel (a
+          // second leave here could cut off the next call's join).
+          if (mySession !== session) return;
           joinedChannel = channelName;
           joinedUid = uid;
           if (micReady) await micReady;
           tryResumeAudio();
 
-          try {
-            if (publishAudio) await publishAudioWithRetry();
-          } catch (micErr) {
-            post({ type: 'error', message: 'microphone publish failed: ' + (micErr && micErr.message) });
-            throw micErr;
-          }
+          if (publishAudio) await publishMicrophoneOrReport();
+          if (mySession !== session) return;
 
           // Not awaited: camera retries must not delay "joined".
           ensureVideoPublished();
@@ -683,7 +732,13 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
         micMuted = muted;
         var track = localTracks.find(function (t) { return t.trackMediaType === 'audio'; });
         if (track) {
-          try { await track.setEnabled(!muted); } catch (e) {}
+          // setMuted keeps the microphone open and the track published, so
+          // unmuting is instant and cannot fail to get the microphone back
+          // (setEnabled released it). Same as the web app.
+          try {
+            if (typeof track.setMuted === 'function') await track.setMuted(muted);
+            else await track.setEnabled(!muted);
+          } catch (e) {}
         }
       }
 
@@ -714,8 +769,20 @@ export const AGORA_WEB_HTML = `<!DOCTYPE html>
       }
 
       async function switchCamera() {
-        facingMode = facingMode === 'user' ? 'environment' : 'user';
+        var nextFacing = facingMode === 'user' ? 'environment' : 'user';
         var oldVideo = localTracks.find(function (t) { return t.trackMediaType === 'video'; });
+        // Swap the camera in place: the other side keeps the picture instead
+        // of losing it while a new track is published.
+        if (oldVideo && !trackEnded(oldVideo) && typeof oldVideo.setDevice === 'function') {
+          try {
+            await oldVideo.setDevice({ facingMode: nextFacing });
+            facingMode = nextFacing;
+            return;
+          } catch (e) {
+            post({ type: 'log', message: 'in-place camera switch failed, reopening: ' + (e && e.message) });
+          }
+        }
+        facingMode = nextFacing;
         try {
           var next = await AgoraRTC.createCameraVideoTrack(cameraConfig());
           if (client && oldVideo) {

@@ -2,10 +2,12 @@ import * as Notifications from 'expo-notifications';
 import {
   parseIncomingCallNotificationData,
   stopIncomingCallAlert,
+  stopRingingForHandledCall,
 } from './incomingCallAlerts';
 import { emitIncomingCallFromPush, emitRejectCallFromPush } from './callEvents';
 import { notifyCallerRinging } from './callStatus';
 import { persistPendingIncomingCall } from './pendingIncomingCall';
+import { wasCallHandled } from './callSession';
 import api from './api';
 import { isExpoGo } from './expoGo';
 
@@ -56,6 +58,15 @@ export async function handleIncomingCallNotificationAction(
     ringtoneId: data?.ringtoneId,
   };
   if (!parsed.from || !parsed.channelName) return;
+
+  // Answered, declined or over here already: a late push or an old
+  // notification. Stop the ring it started and leave the call alone; a
+  // Decline on it must not end the call in progress, an Accept must not ring
+  // a call that is over.
+  if (wasCallHandled(parsed.channelName)) {
+    await stopRingingForHandledCall(parsed.channelName);
+    return;
+  }
 
   if (isDeclineAction(actionId)) {
     await persistPendingIncomingCall({ ...parsed, declined: true, action: 'decline_call' });

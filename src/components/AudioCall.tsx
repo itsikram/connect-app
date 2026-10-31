@@ -33,7 +33,15 @@ import {
 } from './call/CallUi';
 import { startRingback, stopRingback } from '../lib/callRingback';
 import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
-import { isCallBusy, setActiveCallKind } from '../lib/callSession';
+import {
+  clearActiveCallKind,
+  forgetHandledCall,
+  isCallBusy,
+  markCallHandled,
+  setActiveCallKind,
+  wasCallHandled,
+} from '../lib/callSession';
+import { clearPendingIncomingCall } from '../lib/pendingIncomingCall';
 import { startOngoingCallService } from '../lib/ongoingCall';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
@@ -95,10 +103,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const callSeenStatusSentRef = useRef(false);
   const callIgnoredStatusSentRef = useRef(false);
   const microphonePublishedRef = useRef(false);
-  const pendingAutoAcceptRef = useRef(false);
+  // Channel of a call accepted from its notification before it was on screen.
+  const pendingAutoAcceptRef = useRef<string | null>(null);
   const answerCallRef = useRef<(() => void) | null>(null);
   const pendingJoinRef = useRef<{ appId: string; token: string; channelName: string; uid: number } | null>(null);
   const startCallRef = useRef<(channelName: string) => Promise<void>>(async () => {});
+  const applyIncomingRef = useRef<(args: any) => void>(() => {});
+  // "Microphone unavailable" is said once per call.
+  const micAlertShownRef = useRef(false);
 
   const numericUid = hashProfileUid(myId);
 
@@ -136,21 +148,33 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   }, []);
 
   const cleanupAudioCall = useCallback(async () => {
+    const channel = currentChannelRef.current;
+    // With no call of its own, leave the video overlay's ringing, ringback
+    // and busy state alone.
+    const hadCall = !!channel || isJoiningOrJoined.current || receivingCallRef.current || callAcceptedRef.current;
     isTerminating.current = true;
     clearPeerGone();
-    stopRingback().catch(() => {});
-    await stopIncomingCallAlert();
+    if (channel) {
+      // Over: a late push or a replayed notification must not ring it again.
+      markCallHandled(channel);
+      clearPendingIncomingCall(channel).catch(() => {});
+    }
+    if (hadCall) {
+      stopRingback().catch(() => {});
+      await stopIncomingCallAlert();
+    }
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
     setEngineWarm(false);
     pendingJoinRef.current = null;
-    clearAgoraJoinPrefetch(currentChannelRef.current || undefined);
+    clearAgoraJoinPrefetch(channel || undefined);
     isJoiningOrJoined.current = false;
-    setActiveCallKind(null);
-    if (currentChannelRef.current) {
-      try { endMinimizedCall(`audio-${currentChannelRef.current}`); } catch (_) {}
+    micAlertShownRef.current = false;
+    clearActiveCallKind('audio');
+    if (channel) {
+      try { endMinimizedCall(`audio-${channel}`); } catch (_) {}
     }
-    emitLocalCallEnded();
+    if (hadCall) emitLocalCallEnded();
     setIsAudioCall(false);
     setReceivingCall(false);
     setCallAccepted(false);
@@ -173,7 +197,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     callStartTime.current = null;
     callSeenStatusSentRef.current = false;
     callIgnoredStatusSentRef.current = false;
-    pendingAutoAcceptRef.current = false;
+    pendingAutoAcceptRef.current = null;
     setTimeout(() => { isTerminating.current = false; }, 400);
   }, [clearPeerGone, endMinimizedCall]);
 
@@ -191,19 +215,24 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
+      // A duplicate "call-accepted" or a second answer must not start a
+      // second join.
+      if (isJoiningOrJoined.current) return;
+      isJoiningOrJoined.current = true;
+      microphonePublishedRef.current = false;
+      callAcceptedRef.current = true;
+      currentChannelRef.current = channelName;
+      setCallAccepted(true);
+      setCurrentChannel(channelName);
+      setActiveCallKind('audio');
+      stopRingback().catch(() => {});
       const permission = await Audio.requestPermissionsAsync();
+      if (isTerminating.current) return;
       if (!permission.granted) {
         throw new Error('Microphone permission is required for audio calls.');
       }
       // Keeps the microphone live if the screen is turned off mid-call.
-      startOngoingCallService({ isVideo: false });
-      stopRingback().catch(() => {});
-      setCallAccepted(true);
-      setCurrentChannel(channelName);
-      if (isJoiningOrJoined.current) return;
-      isJoiningOrJoined.current = true;
-      microphonePublishedRef.current = false;
-      setActiveCallKind('audio');
+      startOngoingCallService({ isVideo: false, peerName: callerNameRef.current || undefined });
       setMediaActive(true);
       setEngineWarm(true);
 
@@ -217,7 +246,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       await stopIncomingCallAlert();
       Alert.alert('Call failed', error?.message || 'Could not start the audio call.');
       isJoiningOrJoined.current = false;
-      setActiveCallKind(null);
+      clearActiveCallKind('audio');
       setIsAudioCall(false);
       setCallAccepted(false);
       endCallForPeer(channelName);
@@ -230,6 +259,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   const answerCall = useCallback(async () => {
     const incoming = incomingCallRef.current;
     if (!incoming) return;
+    // A second tap, or the notification's Accept on top of the button, must
+    // not answer twice: the caller would get call-accepted twice.
+    if (callAcceptedRef.current || isJoiningOrJoined.current) return;
+    callAcceptedRef.current = true;
+    setCallAccepted(true);
+    // Answered: a late push or a replayed notification must not ring it again.
+    markCallHandled(incoming.channelName);
+    clearPendingIncomingCall(incoming.channelName).catch(() => {});
     stopIncomingCallAlert().catch(() => {});
     receivingCallRef.current = false;
     setReceivingCall(false);
@@ -298,11 +335,28 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     emit('update-call-status', { to: String(to), status: 'Call ignored' });
   }, [emit]);
 
-  const applyIncomingAudioCall = useCallback(({ from, channelName, callerName: name, callerProfilePic: pic, ringtoneId }: any) => {
+  // `fromPush`: a push, a notification tap or a replay of one, which can
+  // arrive late or twice; otherwise the server's incoming-call event.
+  const applyIncomingAudioCall = useCallback((args: any) => {
+    const { from, channelName, callerName: name, callerProfilePic: pic, ringtoneId, fromPush, deferred = 0 } = args || {};
     if (!from || !channelName) return;
-    if (isTerminating.current) return;
-    if (receivingCallRef.current && currentChannelRef.current === channelName) return;
-    const placingOwnCall = !!currentChannelRef.current && currentChannelRef.current !== channelName;
+    // The server rings every call once (older apps reuse one channel per pair).
+    if (!fromPush && !deferred) forgetHandledCall(channelName);
+    if (isTerminating.current) {
+      // Still closing the previous call (e.g. the caller redialled at once):
+      // ring once that is done instead of dropping this call.
+      if (deferred < 3) {
+        setTimeout(() => applyIncomingRef.current({ ...args, deferred: deferred + 1 }), 450);
+      }
+      return;
+    }
+    // Already on screen (ringing, answering or connected): a second delivery
+    // must neither ring again nor be answered "busy".
+    if (currentChannelRef.current === channelName) return;
+    // Answered, declined or over (a late push, an old notification, or the
+    // caller hung up while this call waited above).
+    if ((fromPush || deferred) && wasCallHandled(channelName)) return;
+    const placingOwnCall = !!currentChannelRef.current;
     if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || placingOwnCall || isCallBusy()) {
       emit('audio-call-reject', { to: String(from), channelName, reason: 'busy' });
       return;
@@ -342,16 +396,25 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     }
   }, [clearEnded, emit, markCallSeenIfNeeded, numericUid]);
 
+  useEffect(() => { applyIncomingRef.current = applyIncomingAudioCall; }, [applyIncomingAudioCall]);
+
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
       if (isAudio === false) return;
       applyIncomingAudioCall({ from, channelName, callerName: name, callerProfilePic: pic });
     };
-    // Ignore events that belong to a different call than the one on screen.
+    // Ignore events that belong to a different call than the one on screen,
+    // and all of them while no call is on screen.
     const isForActiveCall = (channelName?: string) =>
-      !channelName ||
-      !currentChannelRef.current ||
-      String(channelName) === String(currentChannelRef.current);
+      !!currentChannelRef.current &&
+      (!channelName || String(channelName) === String(currentChannelRef.current));
+    // A call that ended before it reached the screen (it was still waiting
+    // for the previous call to close, or only its push is still to come).
+    const markOtherCallOver = (channelName?: string) => {
+      if (channelName && String(channelName) !== String(currentChannelRef.current || '')) {
+        markCallHandled(String(channelName));
+      }
+    };
     const onCallAccepted = ({ channelName, isAudio, callerName: acceptedName, callerProfilePic: acceptedPic }: any) => {
       if (!isAudio) return;
       if (!isForActiveCall(channelName) || !currentChannelRef.current) return;
@@ -365,18 +428,27 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       }
     };
     const onEnded = ({ channelName }: any = {}) => {
-      if (!isForActiveCall(channelName)) return;
+      if (!isForActiveCall(channelName)) {
+        markOtherCallOver(channelName);
+        return;
+      }
       stopIncomingCallAlert();
       if (callAcceptedRef.current) showEnded('Call ended');
       cleanupAudioCall();
     };
     const onCancelled = ({ channelName }: any = {}) => {
-      if (!isForActiveCall(channelName)) return;
+      if (!isForActiveCall(channelName)) {
+        markOtherCallOver(channelName);
+        return;
+      }
       stopIncomingCallAlert();
       cleanupAudioCall();
     };
     const onRejected = ({ channelName, reason }: any = {}) => {
-      if (!isForActiveCall(channelName)) return;
+      if (!isForActiveCall(channelName)) {
+        markOtherCallOver(channelName);
+        return;
+      }
       // A late duplicate reject must never tear down an answered call.
       if (callAcceptedRef.current || isJoiningOrJoined.current) return;
       stopIncomingCallAlert();
@@ -385,7 +457,8 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     };
     const onNotAccepted = ({ isAudio, channelName }: any) => {
       if (!isAudio) return;
-      if (channelName && currentChannelRef.current && channelName !== currentChannelRef.current) return;
+      if (!currentChannelRef.current) return;
+      if (channelName && channelName !== currentChannelRef.current) return;
       stopIncomingCallAlert();
       if (!receivingCallRef.current) showEnded('No answer');
       cleanupAudioCall();
@@ -436,6 +509,7 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       (async () => {
         try {
           const permission = await Audio.requestPermissionsAsync();
+          if (currentChannelRef.current !== detail.channelName) return;
           if (!permission.granted) {
             emit('audio-call-cancel', { to, channelName: detail.channelName });
             Alert.alert(
@@ -460,21 +534,38 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
     };
     const onPushIncoming = (detail: any) => {
       if (detail?.isAudio === false) return;
-      if (detail?.autoAccept) pendingAutoAcceptRef.current = true;
+      const channel = detail?.channelName ? String(detail.channelName) : '';
+      if (detail?.autoAccept && channel) {
+        // Accept pressed on the notification of the call already ringing here.
+        if (currentChannelRef.current === channel) {
+          if (receivingCallRef.current && !callAcceptedRef.current) answerCallRef.current?.();
+          return;
+        }
+        pendingAutoAcceptRef.current = channel;
+      }
       applyIncomingAudioCall({
         from: detail.from,
         channelName: detail.channelName,
         callerName: detail.callerName,
         callerProfilePic: detail.callerProfilePic,
         ringtoneId: detail.ringtoneId,
+        fromPush: true,
       });
     };
     const onPushReject = (detail: any) => {
       if (detail?.isAudio === false) return;
-      stopIncomingCallAlert();
-      if (detail.from && detail.channelName) {
-        emit('audio-call-reject', { to: String(detail.from), channelName: detail.channelName });
+      const channel = detail?.channelName ? String(detail.channelName) : '';
+      if (channel) markCallHandled(channel);
+      // The server ignores a decline for a call that was already answered.
+      if (detail.from && channel) {
+        emit('audio-call-reject', { to: String(detail.from), channelName: channel });
       }
+      // Decline pressed on an old notification, or on the notification of a
+      // call that was answered meanwhile: never close the call on screen.
+      if (!currentChannelRef.current) return;
+      if (channel && currentChannelRef.current !== channel) return;
+      if (callAcceptedRef.current || isJoiningOrJoined.current) return;
+      stopIncomingCallAlert();
       cleanupAudioCall();
     };
 
@@ -506,29 +597,36 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
   }, [applyIncomingAudioCall, cleanupAudioCall, clearEnded, emit, myId, numericUid, off, on, showEnded]);
 
   useEffect(() => {
+    // Replay a notification tap that arrived before this overlay mounted.
+    // A Decline goes first, so the call it declined is not rung below.
+    const replayReject = takeLastRejectCallFromPush();
+    if (replayReject && replayReject.isAudio !== false && replayReject.channelName) {
+      markCallHandled(replayReject.channelName);
+    }
     const replayIncoming = takeLastIncomingCallFromPush();
     if (replayIncoming && replayIncoming.isAudio !== false) {
-      if (replayIncoming.autoAccept) pendingAutoAcceptRef.current = true;
+      if (replayIncoming.autoAccept && replayIncoming.channelName) {
+        pendingAutoAcceptRef.current = String(replayIncoming.channelName);
+      }
       applyIncomingAudioCall({
         from: replayIncoming.from,
         channelName: replayIncoming.channelName,
         callerName: replayIncoming.callerName,
         callerProfilePic: replayIncoming.callerProfilePic,
         ringtoneId: replayIncoming.ringtoneId,
+        fromPush: true,
       });
     }
-    const replayReject = takeLastRejectCallFromPush();
-    if (replayReject && replayReject.isAudio !== false) {
-      stopIncomingCallAlert();
-      cleanupAudioCall();
-    }
-    // Replay a notification tap that arrived before this overlay mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (pendingAutoAcceptRef.current && receivingCall && incomingCall && !callAccepted) {
-      pendingAutoAcceptRef.current = false;
+    // Only the call that was accepted from its notification: a stale accept
+    // (its call was already over) must never answer the next call.
+    const accepted = pendingAutoAcceptRef.current;
+    if (accepted && receivingCall && incomingCall && !callAccepted) {
+      pendingAutoAcceptRef.current = null;
+      if (incomingCall.channelName !== accepted) return;
       const t = setTimeout(() => answerCallRef.current?.(), 0);
       return () => clearTimeout(t);
     }
@@ -679,6 +777,14 @@ const AudioCall: React.FC<AudioCallProps> = ({ myId }) => {
       // Re-assert the recording-capable session in case another sound switched
       // it to playback-only just before the call was marked active.
       configureInCallAudio(isSpeakerOnRef.current).catch(() => {});
+    }
+    if (event.type === 'mic-unavailable' && isJoiningOrJoined.current && !micAlertShownRef.current) {
+      // The call stays up and the engine keeps trying the microphone.
+      micAlertShownRef.current = true;
+      Alert.alert(
+        'Microphone unavailable',
+        'Connect could not start your microphone, so the other person may not hear you. Close other apps using the microphone; the call keeps trying.',
+      );
     }
     if (event.type === 'error') {
       console.warn('AudioCall media error', event.message);

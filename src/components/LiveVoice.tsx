@@ -14,6 +14,7 @@ import api from '../lib/api';
 import { hashProfileUid } from '../lib/agoraUid';
 import { configureLiveVoiceAudio } from '../lib/callRingtone';
 import {
+  clearActiveCallKind,
   getActiveCallKind,
   isCallBusy,
   setActiveCallKind,
@@ -217,7 +218,9 @@ const LiveVoice: React.FC<LiveVoiceProps> = ({ myId }) => {
 
       clearDurationTimer();
       ensureLeave();
-      setActiveCallKind(null);
+      // A live-voice stop from the peer can arrive during an audio or video
+      // call: only end live voice's own busy state, not the call's.
+      clearActiveCallKind('liveVoice');
 
       isJoiningRef.current = false;
       isActiveRef.current = false;

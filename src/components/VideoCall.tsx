@@ -32,7 +32,15 @@ import {
 } from './call/CallUi';
 import { startRingback, stopRingback } from '../lib/callRingback';
 import { CALL_EVENTS, emitLocalCallEnded, takeLastIncomingCallFromPush, takeLastRejectCallFromPush } from '../lib/callEvents';
-import { isCallBusy, setActiveCallKind } from '../lib/callSession';
+import {
+  clearActiveCallKind,
+  forgetHandledCall,
+  isCallBusy,
+  markCallHandled,
+  setActiveCallKind,
+  wasCallHandled,
+} from '../lib/callSession';
+import { clearPendingIncomingCall } from '../lib/pendingIncomingCall';
 import { startOngoingCallService } from '../lib/ongoingCall';
 import { configureInCallAudio } from '../lib/callRingtone';
 import { startIncomingCallAlert, stopIncomingCallAlert } from '../lib/incomingCallAlerts';
@@ -95,10 +103,14 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const callStartTime = useRef<number | null>(null);
   const callSeenStatusSentRef = useRef(false);
   const callIgnoredStatusSentRef = useRef(false);
-  const pendingAutoAcceptRef = useRef(false);
+  // Channel of a call accepted from its notification before it was on screen.
+  const pendingAutoAcceptRef = useRef<string | null>(null);
   const answerCallRef = useRef<(() => void) | null>(null);
   const pendingJoinRef = useRef<{ appId: string; token: string; channelName: string; uid: number } | null>(null);
   const startCallRef = useRef<(channelName: string) => Promise<void>>(async () => {});
+  const applyIncomingRef = useRef<(args: any) => void>(() => {});
+  // "Microphone unavailable" is said once per call.
+  const micAlertShownRef = useRef(false);
 
   const numericUid = hashProfileUid(myId);
 
@@ -137,22 +149,34 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   }, []);
 
   const cleanupVideoCall = useCallback(async () => {
+    const channel = currentChannelRef.current;
+    // With no call of its own, leave the audio overlay's ringing, ringback
+    // and busy state alone.
+    const hadCall = !!channel || isJoiningOrJoined.current || receivingCallRef.current || callAcceptedRef.current;
     isTerminating.current = true;
     clearPeerGone();
-    stopRingback().catch(() => {});
-    DeviceEventEmitter.emit('video-call-active', false);
-    await stopIncomingCallAlert();
+    if (channel) {
+      // Over: a late push or a replayed notification must not ring it again.
+      markCallHandled(channel);
+      clearPendingIncomingCall(channel).catch(() => {});
+    }
+    if (hadCall) {
+      stopRingback().catch(() => {});
+      DeviceEventEmitter.emit('video-call-active', false);
+      await stopIncomingCallAlert();
+    }
     try { engineRef.current?.leave(); } catch (_) {}
     setMediaActive(false);
     setEngineWarm(false);
     pendingJoinRef.current = null;
-    clearAgoraJoinPrefetch(currentChannelRef.current || undefined);
+    clearAgoraJoinPrefetch(channel || undefined);
     isJoiningOrJoined.current = false;
-    setActiveCallKind(null);
-    if (currentChannelRef.current) {
-      try { endMinimizedCall(`video-${currentChannelRef.current}`); } catch (_) {}
+    micAlertShownRef.current = false;
+    clearActiveCallKind('video');
+    if (channel) {
+      try { endMinimizedCall(`video-${channel}`); } catch (_) {}
     }
-    emitLocalCallEnded();
+    if (hadCall) emitLocalCallEnded();
     setIsVideoCall(false);
     setReceivingCall(false);
     setCallAccepted(false);
@@ -175,7 +199,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     callStartTime.current = null;
     callSeenStatusSentRef.current = false;
     callIgnoredStatusSentRef.current = false;
-    pendingAutoAcceptRef.current = false;
+    pendingAutoAcceptRef.current = null;
     setTimeout(() => { isTerminating.current = false; }, 400);
   }, [clearPeerGone, endMinimizedCall]);
 
@@ -193,25 +217,39 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const startCall = useCallback(async (channelName: string) => {
     try {
       if (isTerminating.current) return;
-      // The global emotion camera uses the same front camera as Agora.
-      DeviceEventEmitter.emit('video-call-active', true);
-      await new Promise(resolve => setTimeout(resolve, 150));
-      if (isTerminating.current) return;
-      stopRingback().catch(() => {});
-      setCallAccepted(true);
-      setCurrentChannel(channelName);
+      // A duplicate "call-accepted" or a second answer must not start a
+      // second join.
       if (isJoiningOrJoined.current) return;
       isJoiningOrJoined.current = true;
+      callAcceptedRef.current = true;
+      currentChannelRef.current = channelName;
+      setCallAccepted(true);
+      setCurrentChannel(channelName);
       setActiveCallKind('video');
       setMediaActive(true);
       setEngineWarm(true);
+      stopRingback().catch(() => {});
+      // The global emotion camera uses the same front camera as Agora.
+      DeviceEventEmitter.emit('video-call-active', true);
 
-      configureInCallAudio(true).catch(() => {});
+      // One permission request at a time, before the engine opens the
+      // devices: Android ignores a second request made while one is showing,
+      // and the engine's own camera/microphone request was then denied, so
+      // the join failed and the call ended for both sides.
+      const mic = await Audio.requestPermissionsAsync();
+      if (isTerminating.current) return;
+      if (!mic?.granted) {
+        throw new Error('Connect needs microphone access for video calls. Allow it in Settings and try again.');
+      }
+      // No camera: the engine joins with the microphone only.
+      await Camera.requestCameraPermissionsAsync().catch(() => null);
+      if (isTerminating.current) return;
       // Keeps the call audio going if the screen is turned off mid-call.
-      Audio.requestPermissionsAsync()
-        .then(() => startOngoingCallService({ isVideo: true }))
-        .catch(() => {});
-      Camera.requestCameraPermissionsAsync().catch(() => {});
+      startOngoingCallService({ isVideo: true, peerName: callerNameRef.current || undefined });
+      configureInCallAudio(true).catch(() => {});
+      // Let the emotion camera release the front camera first.
+      await new Promise(resolve => setTimeout(resolve, 150));
+      if (isTerminating.current) return;
       const creds = await prefetchAgoraJoin(channelName, numericUid);
       if (isTerminating.current) return;
       pendingJoinRef.current = creds;
@@ -221,7 +259,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       await stopIncomingCallAlert();
       Alert.alert('Call failed', error?.message || 'Could not start the video call.');
       isJoiningOrJoined.current = false;
-      setActiveCallKind(null);
+      clearActiveCallKind('video');
       setIsVideoCall(false);
       setCallAccepted(false);
       endCallForPeer(channelName);
@@ -234,6 +272,15 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const answerCall = useCallback(async () => {
     const incoming = incomingCallRef.current;
     if (!incoming) return;
+    // A second tap, or the notification's Accept on top of the button, must
+    // not answer twice: the caller got call-accepted twice and its second
+    // join attempt cut short the first, so it never sent audio or video.
+    if (callAcceptedRef.current || isJoiningOrJoined.current) return;
+    callAcceptedRef.current = true;
+    setCallAccepted(true);
+    // Answered: a late push or a replayed notification must not ring it again.
+    markCallHandled(incoming.channelName);
+    clearPendingIncomingCall(incoming.channelName).catch(() => {});
     stopIncomingCallAlert().catch(() => {});
     receivingCallRef.current = false;
     setReceivingCall(false);
@@ -302,11 +349,42 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     emit('update-call-status', { to: String(to), status: 'Call ignored' });
   }, [emit]);
 
-  const applyIncomingVideoCall = useCallback(({ from, channelName, callerName: name, callerProfilePic: pic, ringtoneId }: any) => {
+  // My camera behind the incoming-call screen, when the app may already use
+  // it. Asking for permissions here put system dialogs over the ringing
+  // screen (and Android drops one of two requests made at once); answering
+  // asks for them.
+  const previewWhileRinging = useCallback((channelName: string) => {
+    Promise.all([Audio.getPermissionsAsync(), Camera.getCameraPermissionsAsync()])
+      .then(([mic, cam]) => {
+        if (mic?.granted && cam?.granted && currentChannelRef.current === channelName && !callAcceptedRef.current) {
+          engineRef.current?.preview(false);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // `fromPush`: a push, a notification tap or a replay of one, which can
+  // arrive late or twice; otherwise the server's incoming-call event.
+  const applyIncomingVideoCall = useCallback((args: any) => {
+    const { from, channelName, callerName: name, callerProfilePic: pic, ringtoneId, fromPush, deferred = 0 } = args || {};
     if (!from || !channelName) return;
-    if (isTerminating.current) return;
-    if (receivingCallRef.current && currentChannelRef.current === channelName) return;
-    const placingOwnCall = !!currentChannelRef.current && currentChannelRef.current !== channelName;
+    // The server rings every call once (older apps reuse one channel per pair).
+    if (!fromPush && !deferred) forgetHandledCall(channelName);
+    if (isTerminating.current) {
+      // Still closing the previous call (e.g. the caller redialled at once):
+      // ring once that is done instead of dropping this call.
+      if (deferred < 3) {
+        setTimeout(() => applyIncomingRef.current({ ...args, deferred: deferred + 1 }), 450);
+      }
+      return;
+    }
+    // Already on screen (ringing, answering or connected): a second delivery
+    // must neither ring again nor be answered "busy".
+    if (currentChannelRef.current === channelName) return;
+    // Answered, declined or over (a late push, an old notification, or the
+    // caller hung up while this call waited above).
+    if ((fromPush || deferred) && wasCallHandled(channelName)) return;
+    const placingOwnCall = !!currentChannelRef.current;
     if (isJoiningOrJoined.current || callAcceptedRef.current || receivingCallRef.current || placingOwnCall || isCallBusy()) {
       emit('video-call-reject', { to: String(from), channelName, reason: 'busy' });
       return;
@@ -332,9 +410,7 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     setCurrentChannel(channelName);
     setEngineWarm(true);
     prefetchAgoraJoin(channelName, numericUid).catch(() => {});
-    Audio.requestPermissionsAsync().catch(() => {});
-    Camera.requestCameraPermissionsAsync().catch(() => {});
-    engineRef.current?.preview(false);
+    previewWhileRinging(channelName);
     startIncomingCallAlert({
       callerId,
       callerName: name,
@@ -346,18 +422,27 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     if (isAppFocused()) {
       markCallSeenIfNeeded();
     }
-  }, [clearEnded, emit, markCallSeenIfNeeded, numericUid]);
+  }, [clearEnded, emit, markCallSeenIfNeeded, numericUid, previewWhileRinging]);
+
+  useEffect(() => { applyIncomingRef.current = applyIncomingVideoCall; }, [applyIncomingVideoCall]);
 
   useEffect(() => {
     const onIncoming = ({ from, channelName, isAudio, callerName: name, callerProfilePic: pic }: any) => {
       if (isAudio) return;
       applyIncomingVideoCall({ from, channelName, callerName: name, callerProfilePic: pic });
     };
-    // Ignore events that belong to a different call than the one on screen.
+    // Ignore events that belong to a different call than the one on screen,
+    // and all of them while no call is on screen.
     const isForActiveCall = (channelName?: string) =>
-      !channelName ||
-      !currentChannelRef.current ||
-      String(channelName) === String(currentChannelRef.current);
+      !!currentChannelRef.current &&
+      (!channelName || String(channelName) === String(currentChannelRef.current));
+    // A call that ended before it reached the screen (it was still waiting
+    // for the previous call to close, or only its push is still to come).
+    const markOtherCallOver = (channelName?: string) => {
+      if (channelName && String(channelName) !== String(currentChannelRef.current || '')) {
+        markCallHandled(String(channelName));
+      }
+    };
     const onCallAccepted = ({ channelName, isAudio, callerName: acceptedName, callerProfilePic: acceptedPic }: any) => {
       if (isAudio) return;
       if (!isForActiveCall(channelName) || !currentChannelRef.current) return;
@@ -371,18 +456,27 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       }
     };
     const onEnded = ({ channelName }: any = {}) => {
-      if (!isForActiveCall(channelName)) return;
+      if (!isForActiveCall(channelName)) {
+        markOtherCallOver(channelName);
+        return;
+      }
       stopIncomingCallAlert();
       if (callAcceptedRef.current) showEnded('Call ended');
       cleanupVideoCall();
     };
     const onCancelled = ({ channelName }: any = {}) => {
-      if (!isForActiveCall(channelName)) return;
+      if (!isForActiveCall(channelName)) {
+        markOtherCallOver(channelName);
+        return;
+      }
       stopIncomingCallAlert();
       cleanupVideoCall();
     };
     const onRejected = ({ channelName, reason }: any = {}) => {
-      if (!isForActiveCall(channelName)) return;
+      if (!isForActiveCall(channelName)) {
+        markOtherCallOver(channelName);
+        return;
+      }
       // A late duplicate reject must never tear down an answered call.
       if (callAcceptedRef.current || isJoiningOrJoined.current) return;
       stopIncomingCallAlert();
@@ -391,7 +485,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
     };
     const onNotAccepted = ({ isAudio, channelName }: any) => {
       if (isAudio) return;
-      if (channelName && currentChannelRef.current && channelName !== currentChannelRef.current) return;
+      if (!currentChannelRef.current) return;
+      if (channelName && channelName !== currentChannelRef.current) return;
       stopIncomingCallAlert();
       if (!receivingCallRef.current) showEnded('No answer');
       cleanupVideoCall();
@@ -435,37 +530,67 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       });
       setOutgoingCallStatus('Calling...');
       setEngineWarm(true);
-      prefetchAgoraJoin(detail.channelName, numericUid).catch(() => {});
-      // Started now, while on screen: the caller may lock the phone before
-      // the other side answers.
-      Audio.requestPermissionsAsync()
-        .then(() => startOngoingCallService({
-          isVideo: true,
-          peerName: detail.calleeName || detail.callerName,
-        }))
-        .catch(() => {});
       setMediaActive(true);
-      Camera.requestCameraPermissionsAsync().then(() => {
-        engineRef.current?.preview(false);
-      }).catch(() => {});
+      prefetchAgoraJoin(detail.channelName, numericUid).catch(() => {});
+      const channel = String(detail.channelName);
+      const peerName = detail.calleeName || detail.callerName;
+      // One permission request at a time (Android ignores a second request
+      // made while one is showing), then my camera shows while it rings.
+      (async () => {
+        try {
+          const mic = await Audio.requestPermissionsAsync();
+          if (currentChannelRef.current !== channel) return;
+          if (!mic?.granted) {
+            emit('video-call-cancel', { to, channelName: channel });
+            Alert.alert('Microphone needed', 'Allow microphone access for Connect in Settings to make video calls.');
+            cleanupVideoCall();
+            return;
+          }
+          // Started now, while on screen: the caller may lock the phone
+          // before the other side answers.
+          startOngoingCallService({ isVideo: true, peerName });
+          await Camera.requestCameraPermissionsAsync().catch(() => null);
+          if (currentChannelRef.current !== channel || callAcceptedRef.current) return;
+          engineRef.current?.preview(false);
+        } catch (error) {
+          console.warn('VideoCall: camera/microphone warm-up failed', error);
+        }
+      })();
     };
     const onPushIncoming = (detail: any) => {
       if (detail?.isAudio) return;
-      if (detail?.autoAccept) pendingAutoAcceptRef.current = true;
+      const channel = detail?.channelName ? String(detail.channelName) : '';
+      if (detail?.autoAccept && channel) {
+        // Accept pressed on the notification of the call already ringing here.
+        if (currentChannelRef.current === channel) {
+          if (receivingCallRef.current && !callAcceptedRef.current) answerCallRef.current?.();
+          return;
+        }
+        pendingAutoAcceptRef.current = channel;
+      }
       applyIncomingVideoCall({
         from: detail.from,
         channelName: detail.channelName,
         callerName: detail.callerName,
         callerProfilePic: detail.callerProfilePic,
         ringtoneId: detail.ringtoneId,
+        fromPush: true,
       });
     };
     const onPushReject = (detail: any) => {
       if (detail?.isAudio) return;
-      stopIncomingCallAlert();
-      if (detail.from && detail.channelName) {
-        emit('video-call-reject', { to: String(detail.from), channelName: detail.channelName });
+      const channel = detail?.channelName ? String(detail.channelName) : '';
+      if (channel) markCallHandled(channel);
+      // The server ignores a decline for a call that was already answered.
+      if (detail.from && channel) {
+        emit('video-call-reject', { to: String(detail.from), channelName: channel });
       }
+      // Decline pressed on an old notification, or on the notification of a
+      // call that was answered meanwhile: never close the call on screen.
+      if (!currentChannelRef.current) return;
+      if (channel && currentChannelRef.current !== channel) return;
+      if (callAcceptedRef.current || isJoiningOrJoined.current) return;
+      stopIncomingCallAlert();
       cleanupVideoCall();
     };
 
@@ -497,29 +622,36 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   }, [applyIncomingVideoCall, cleanupVideoCall, clearEnded, emit, myId, numericUid, off, on, showEnded]);
 
   useEffect(() => {
+    // Replay a notification tap that arrived before this overlay mounted.
+    // A Decline goes first, so the call it declined is not rung below.
+    const replayReject = takeLastRejectCallFromPush();
+    if (replayReject && replayReject.isAudio === false && replayReject.channelName) {
+      markCallHandled(replayReject.channelName);
+    }
     const replayIncoming = takeLastIncomingCallFromPush();
     if (replayIncoming && replayIncoming.isAudio === false) {
-      if (replayIncoming.autoAccept) pendingAutoAcceptRef.current = true;
+      if (replayIncoming.autoAccept && replayIncoming.channelName) {
+        pendingAutoAcceptRef.current = String(replayIncoming.channelName);
+      }
       applyIncomingVideoCall({
         from: replayIncoming.from,
         channelName: replayIncoming.channelName,
         callerName: replayIncoming.callerName,
         callerProfilePic: replayIncoming.callerProfilePic,
         ringtoneId: replayIncoming.ringtoneId,
+        fromPush: true,
       });
     }
-    const replayReject = takeLastRejectCallFromPush();
-    if (replayReject && replayReject.isAudio === false) {
-      stopIncomingCallAlert();
-      cleanupVideoCall();
-    }
-    // Replay a notification tap that arrived before this overlay mounted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (pendingAutoAcceptRef.current && receivingCall && incomingCall && !callAccepted) {
-      pendingAutoAcceptRef.current = false;
+    // Only the call that was accepted from its notification: a stale accept
+    // (its call was already over) must never answer the next call.
+    const accepted = pendingAutoAcceptRef.current;
+    if (accepted && receivingCall && incomingCall && !callAccepted) {
+      pendingAutoAcceptRef.current = null;
+      if (incomingCall.channelName !== accepted) return;
       const t = setTimeout(() => answerCallRef.current?.(), 0);
       return () => clearTimeout(t);
     }
@@ -564,20 +696,10 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
   const toggleMute = useCallback(() => {
     const next = !isMutedRef.current;
     setIsMuted(next);
+    // Only the microphone: the engine mutes it without touching the camera.
+    // (Re-running the camera preview here could close and replace the
+    // published tracks mid-call.)
     engineRef.current?.muteAudio(next);
-
-    // If in a video call ensure video stays enabled and preview remains active.
-    try {
-      if (isCameraOnRef.current) {
-        // small timeout to let audio toggle process in the webview
-        setTimeout(() => {
-          // Re-enable video track (defensive)
-          engineRef.current?.muteVideo(false);
-          // Force a preview to ensure the webview's local track is replayed/published
-          engineRef.current?.preview(false);
-        }, 150);
-      }
-    } catch (e) {}
 
     if (isMinimizedRef.current && currentChannelRef.current) {
       updateMinimizedCall(`video-${currentChannelRef.current}`, { isMuted: next });
@@ -621,8 +743,8 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
 
   const handleEngineEvent = useCallback((event: any) => {
     if (event.type === 'ready') {
-      if (receivingCallRef.current && !callAcceptedRef.current) {
-        engineRef.current?.preview(false);
+      if (receivingCallRef.current && !callAcceptedRef.current && currentChannelRef.current) {
+        previewWhileRinging(currentChannelRef.current);
       }
       if (pendingJoinRef.current) {
         engineRef.current?.join({ ...pendingJoinRef.current, isAudio: false });
@@ -695,13 +817,21 @@ const VideoCall: React.FC<VideoCallProps> = ({ myId }) => {
       endCallForPeer();
       cleanupVideoCall();
     }
+    if (event.type === 'mic-unavailable' && isJoiningOrJoined.current && !micAlertShownRef.current) {
+      // The call stays up and the engine keeps trying the microphone.
+      micAlertShownRef.current = true;
+      Alert.alert(
+        'Microphone unavailable',
+        'Connect could not start your microphone, so the other person may not hear you. Close other apps using the microphone; the call keeps trying.',
+      );
+    }
     if (event.type === 'error') {
       console.warn('VideoCall media error', event.message);
     }
     if (__DEV__ && event.type === 'log') {
       console.log('[VideoCall]', event.message);
     }
-  }, [cleanupVideoCall, clearPeerGone, endCallForPeer, numericUid, showEnded]);
+  }, [cleanupVideoCall, clearPeerGone, endCallForPeer, numericUid, previewWhileRinging, showEnded]);
 
   // The engine sits under the call screen, so the screen carries a drag
   // handle over my small camera view and moves it in the engine.

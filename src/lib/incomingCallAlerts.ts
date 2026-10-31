@@ -15,6 +15,7 @@ import {
 } from './ringtoneAssets';
 import { getIncomingCallOsSound } from './expoGo';
 import { setLockScreenCallRinging } from './lockScreenCall';
+import { wasCallHandled } from './callSession';
 
 export const INCOMING_CALL_CATEGORY = 'incoming_call';
 const LEGACY_CALL_CHANNELS = ['incoming_calls', 'incoming_calls_v3', ANDROID_INCOMING_CALL_CHANNEL_ID];
@@ -323,6 +324,10 @@ export async function cancelIncomingCallNotifications(channelName?: string): Pro
  *   Notifee and then a plain notification as fallbacks.
  */
 export async function startIncomingCallAlert(payload: RingingPayload): Promise<void> {
+  // Already answered, declined or over here: a push that arrived late (FCM
+  // can lag the socket by seconds) used to ring again in the middle of the
+  // call it announced.
+  if (wasCallHandled(payload.channelName)) return;
   const token = ++alertToken;
   const ringtoneId = normalizeRingtoneId(payload.ringtoneId || (await getStoredRingtoneId()));
   const next = { ...payload, ringtoneId };
@@ -379,6 +384,19 @@ export async function stopIncomingCallAlert(channelName?: string): Promise<void>
   await stopNativeIncomingCallRing();
   await cancelAndroidCallForegroundNotification();
   await cancelIncomingCallNotifications(channelName);
+}
+
+/**
+ * A push or notification for a call that was already handled here started a
+ * ring (natively, or its notification is up): stop it, without silencing a
+ * different call that is ringing right now.
+ */
+export async function stopRingingForHandledCall(channelName?: string): Promise<void> {
+  if (ringingPayload && channelName && ringingPayload.channelName !== channelName) {
+    await Notifications.dismissNotificationAsync(callNotificationId(channelName)).catch(() => {});
+    return;
+  }
+  await stopIncomingCallAlert(channelName);
 }
 
 export function parseIncomingCallNotificationData(data: any) {

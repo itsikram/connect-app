@@ -27,6 +27,8 @@ export type AgoraEngineEvent =
   | { type: 'connection-state'; state: string; reason?: string }
   | { type: 'token-will-expire' }
   | { type: 'audio-enabled' }
+  /** In the channel, but the microphone would not start; the engine keeps retrying. */
+  | { type: 'mic-unavailable'; message?: string }
   | { type: 'video-published' }
   | { type: 'error'; message: string }
   | { type: 'log'; message: string };
