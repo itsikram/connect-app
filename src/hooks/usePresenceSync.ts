@@ -42,9 +42,21 @@ export default function usePresenceSync(profileId?: string | null, isConnected?:
     // native apps report "away" when backgrounded.
     const isForeground = () => Platform.OS === 'web' || AppState.currentState === 'active';
 
+    // Whether the user is looking at the app right now; while any of their
+    // devices/tabs is focused the server skips push notifications.
+    const isFocused = () => {
+      if (Platform.OS === 'web') {
+        return typeof document === 'undefined' ||
+          (document.visibilityState === 'visible' && document.hasFocus());
+      }
+      return AppState.currentState === 'active';
+    };
+    const reportFocus = () => socketService.emitIfConnected('presence:focus', { focused: isFocused() });
+
     const announce = () => {
       const active = isForeground();
       socketService.emitIfConnected(active ? 'presence:active' : 'presence:away');
+      reportFocus();
       if (active) {
         // Catch up on anything missed while backgrounded / disconnected.
         socketService.emitIfConnected('presence:subscribe', { profileIds: [], connects: true }, onSnapshot);
@@ -62,14 +74,24 @@ export default function usePresenceSync(profileId?: string | null, isConnected?:
       if (next === 'active') {
         socketService.reconnectNow();
         announce();
-      } else if (next === 'background' && Platform.OS !== 'web') {
-        socketService.emitIfConnected('presence:away');
+      } else {
+        if (next === 'background' && Platform.OS !== 'web') {
+          socketService.emitIfConnected('presence:away');
+        }
+        reportFocus();
       }
     };
     const sub = AppState.addEventListener('change', onAppState);
 
+    // AppState on web doesn't see a window losing focus to another app.
+    const webWindow = Platform.OS === 'web' && typeof window !== 'undefined' ? window : null;
+    webWindow?.addEventListener('focus', reportFocus);
+    webWindow?.addEventListener('blur', reportFocus);
+
     return () => {
       sub.remove();
+      webWindow?.removeEventListener('focus', reportFocus);
+      webWindow?.removeEventListener('blur', reportFocus);
       socketService.off('presence_snapshot', onSnapshot);
       socketService.off('presence_update', onUpdate);
       socketService.off('connect_online', onLegacyOnline);
