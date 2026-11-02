@@ -16,6 +16,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import Icon from 'react-native-vector-icons/MaterialIcons';
 import IconIonic from 'react-native-vector-icons/Ionicons';
+import { isCallBusy } from '../lib/callSession';
 
 type CameraMode = 'photo' | 'video';
 type FlashMode = 'off' | 'on' | 'auto';
@@ -82,6 +83,14 @@ const CameraScreenSimple = () => {
 
   const startRecording = useCallback(async () => {
     if (!camera.current || isRecording) return;
+    // Video recording opens the microphone, which the call is using.
+    if (isCallBusy()) {
+      Alert.alert(
+        'Recording unavailable',
+        'You can record videos after your call ends.',
+      );
+      return;
+    }
 
     try {
       setIsRecording(true);

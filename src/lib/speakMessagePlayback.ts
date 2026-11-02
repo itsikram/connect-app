@@ -1,7 +1,8 @@
-import { Platform } from 'react-native';
+import { DeviceEventEmitter, Platform } from 'react-native';
 import { Audio, InterruptionModeAndroid, InterruptionModeIOS } from './avCompat';
 import * as Speech from 'expo-speech';
 import socketService from '../services/socketService';
+import { isCallBusy } from './callSession';
 import {
   createPlayableVoiceSound,
   isAudioAttachmentUrl,
@@ -216,6 +217,8 @@ const speakText = async (text: string, interrupt = true) => {
 };
 
 export const playSpeakPayload = async (payload: SpeakPayload | string = {}) => {
+  // Never read a message aloud over a call or live voice.
+  if (isCallBusy()) return;
   const data: SpeakPayload =
     typeof payload === 'string'
       ? { message: payload }
@@ -264,6 +267,10 @@ export const ensureSpeakMessageListener = () => {
   socketBound = true;
   socketService.on('speak_message', onSpeakMessage);
   socketService.on('speak-message', onSpeakMessage);
+  // A call or live voice started: stop anything being read aloud.
+  DeviceEventEmitter.addListener('communication-session-active', (active: boolean) => {
+    if (active) stopSpokenPlayback().catch(() => {});
+  });
 };
 
 export default playSpeakPayload;

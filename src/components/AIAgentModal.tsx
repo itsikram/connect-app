@@ -16,6 +16,7 @@ import {
   TextInput,
   Vibration,
   View,
+  DeviceEventEmitter,
 } from 'react-native';
 import Modal from './SystemBarsModal';
 import Icon from 'react-native-vector-icons/MaterialIcons';
@@ -692,6 +693,21 @@ const AIAgentModal: React.FC<Props> = ({
     typeof createAgentSpeechController
   > | null>(null);
   const requestRef = React.useRef<AbortController | null>(null);
+
+  // A call or live voice started: stop talking and end the spoken
+  // conversation so Agora has the microphone and speaker to itself (the
+  // transcriber stops itself on the same event).
+  React.useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      'communication-session-active',
+      (active: boolean) => {
+        if (!active) return;
+        setVoiceConversation(false);
+        speechControllerRef.current?.stop().catch(() => {});
+      },
+    );
+    return () => subscription.remove();
+  }, []);
   const ambiguityRef = React.useRef<AgentMessage['profileChoices']>(undefined);
   const ambiguousActionRef = React.useRef<AgentActionIntent | null>(null);
   const ambiguityChoicesRef = React.useRef<ProfileChoice[]>([]);

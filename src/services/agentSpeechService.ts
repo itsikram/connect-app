@@ -5,6 +5,7 @@ import {
   agentSpeechEnded,
   agentSpeechStarted,
 } from './agentEcho';
+import { isCallBusy } from '../lib/callSession';
 
 export type AgentSpeechLanguage = 'auto' | 'bn-BD' | 'en-US';
 type AgentSpeechControllerOptions = {
@@ -141,6 +142,11 @@ export function createAgentSpeechController(
     draining = true;
     try {
       while (pending && drainGeneration === generation) {
+        // Never talk over a call or live voice (both sides would hear it).
+        if (isCallBusy()) {
+          pending = '';
+          break;
+        }
         const match = flushRequested
           ? [pending]
           : pending.match(/^(.+?[.!?।॥]+(?:\s|$)|.{1,180}(?:\s|$))/u);

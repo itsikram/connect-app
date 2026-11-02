@@ -2,7 +2,7 @@
   "expo": {
     "name": "Connect",
     "slug": "connect",
-    "version": "2.1.8",
+    "version": "2.1.9",
     "scheme": "connect",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -55,7 +55,7 @@
         "backgroundColor": "#FFFFFF"
       },
       "package": "com.connect.app",
-      "versionCode": 218,
+      "versionCode": 219,
       "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "resize",
       "permissions": [

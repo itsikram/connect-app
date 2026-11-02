@@ -782,6 +782,15 @@ const SingleMessage = () => {
 
   const startRecording = async () => {
     if (isRecordingRef.current || isUploadingAudio) return;
+    // Agora owns the microphone during a call or live voice; a second
+    // recorder (and its audio mode change) cuts the call's audio.
+    if (isCallBusy()) {
+      Alert.alert(
+        'Voice message unavailable',
+        'You can record voice messages after your call ends.',
+      );
+      return;
+    }
 
     await stopTranscriptionRef.current?.();
     await stopVoicePlaybackRef.current?.();
@@ -794,6 +803,7 @@ const SingleMessage = () => {
       );
       return;
     }
+    if (isCallBusy()) return;
 
     try {
       await setChatRecordingAudioMode();
@@ -812,6 +822,20 @@ const SingleMessage = () => {
         },
         120,
       );
+
+      // Stopped, or a call started, while the recorder was starting.
+      if (!isRecordingRef.current || isCallBusy()) {
+        await recording.stopAndUnloadAsync().catch(() => {});
+        if (isRecordingRef.current) {
+          isRecordingRef.current = false;
+          setIsRecording(false);
+          setRecordSecs(0);
+          setRecordTime('00:00');
+          setRecordMeter(0.12);
+        }
+        await restoreChatPlaybackAudioMode();
+        return;
+      }
 
       setRecording(recording);
       recordingRef.current = recording;
@@ -898,6 +922,21 @@ const SingleMessage = () => {
   const cancelRecording = async () => {
     await stopRecording(false);
   };
+
+  // A call (or live voice) started mid-recording: hand the microphone to it.
+  // The unfinished clip is not sent.
+  const stopRecordingRef = useRef(stopRecording);
+  stopRecordingRef.current = stopRecording;
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener(
+      'communication-session-active',
+      (active: boolean) => {
+        if (!active || !isRecordingRef.current) return;
+        void stopRecordingRef.current(false);
+      },
+    );
+    return () => subscription.remove();
+  }, []);
 
   const uploadAndSendAudio = async (filePath: string, duration: number) => {
     try {

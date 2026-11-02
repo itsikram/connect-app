@@ -23,6 +23,7 @@ import { Canvas, ColorMatrix, Image as SkiaImage, LinearGradient, Rect, useImage
 import type { SkImage } from '@shopify/react-native-skia';
 import { savePhotoToMedia, saveVideoToMedia } from '../lib/mediaLibrary';
 import { applyFilterToPhoto, CAMERA_FILTERS, getCameraFilter, matrixForIntensity } from '../lib/cameraFilters';
+import { isCallBusy } from '../lib/callSession';
 
 const MODE_OPTIONS = [
   { id: 'pano', label: 'Pano' },
@@ -211,6 +212,14 @@ const CameraScreen = () => {
 
   const startRecording = useCallback(async () => {
     if (!camera.current || isRecording) return;
+    // Video recording opens the microphone, which the call is using.
+    if (isCallBusy()) {
+      Alert.alert(
+        'Recording unavailable',
+        'You can record videos after your call ends.',
+      );
+      return;
+    }
 
     setIsRecording(true);
     try {
