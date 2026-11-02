@@ -4342,49 +4342,65 @@ const SingleMessage = () => {
     }
   };
 
-  const deleteConversation = async () => {
+  const performDeleteConversation = async () => {
+    if (!connect?._id || !myProfile?._id) return;
+    try {
+      await api.post('/message/deleteConversation', {
+        profileId: myProfile._id,
+        connectId: connect._id,
+      });
+
+      dispatch(
+        removeConversation({
+          connectId: connect._id,
+          currentUserId: myProfile._id,
+        }),
+      );
+
+      clearPendingMessageSave();
+      await clearMessagesFromStorage(myProfile._id, connect._id);
+      setMessages([]);
+      setInputText('');
+      setContextMenuVisible(false);
+      if (navigation.canGoBack()) {
+        navigation.goBack();
+      } else {
+        navigation.navigate('Message', { screen: 'MessageList' });
+      }
+    } catch (error: any) {
+      console.error('Failed to delete conversation:', error);
+      const errorMessage =
+        error?.response?.data?.message || 'Unable to delete this conversation.';
+      if (Platform.OS === 'web') {
+        window.alert(errorMessage);
+      } else {
+        Alert.alert('Error', errorMessage);
+      }
+    }
+  };
+
+  const deleteConversation = () => {
     if (!connect?._id || !myProfile?._id) return;
 
-    Alert.alert(
-      'Delete conversation',
-      `Delete this conversation with ${connect?.fullName || 'this connect'}?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await api.post('/message/deleteConversation', {
-                profileId: myProfile._id,
-                connectId: connect._id,
-              });
+    const prompt = `Delete this conversation with ${connect?.fullName || 'this connect'}?`;
 
-              dispatch(
-                removeConversation({
-                  connectId: connect._id,
-                  currentUserId: myProfile._id,
-                }),
-              );
+    // Alert.alert with buttons is a no-op on react-native-web, so the web
+    // build needs the browser's own confirm dialog.
+    if (Platform.OS === 'web') {
+      if (window.confirm(prompt)) {
+        performDeleteConversation();
+      }
+      return;
+    }
 
-              clearPendingMessageSave();
-              await clearMessagesFromStorage(myProfile._id, connect._id);
-              setMessages([]);
-              setInputText('');
-              setContextMenuVisible(false);
-              navigation.goBack();
-            } catch (error: any) {
-              console.error('Failed to delete conversation:', error);
-              Alert.alert(
-                'Error',
-                error?.response?.data?.message ||
-                  'Unable to delete this conversation.',
-              );
-            }
-          },
-        },
-      ],
-    );
+    Alert.alert('Delete conversation', prompt, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: performDeleteConversation,
+      },
+    ]);
   };
 
   const handleEditConnection = async (nextRelationshipTypes: string[]) => {
