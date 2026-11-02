@@ -39,7 +39,8 @@ class AppUpdateInstallReceiver : BroadcastReceiver() {
 
     AppUpdateModule.emitInstallStatus(
       if (status == PackageInstaller.STATUS_SUCCESS) "success" else "failed",
-      message ?: "Install failed ($status)"
+      message ?: "Install failed ($status)",
+      status
     )
   }
 

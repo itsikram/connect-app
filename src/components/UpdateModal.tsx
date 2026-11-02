@@ -8,9 +8,11 @@ type UpdateModalProps = {
   phase: UpdatePhase;
   serverVersion?: string;
   progress: number;
+  error?: string;
   onDismiss: () => void;
   onAllow: () => void;
   onRetry: () => void;
+  onUpdate: () => void;
 };
 
 export default function UpdateModal({
@@ -18,9 +20,11 @@ export default function UpdateModal({
   phase,
   serverVersion,
   progress,
+  error,
   onDismiss,
   onAllow,
   onRetry,
+  onUpdate,
 }: UpdateModalProps) {
   const versionLabel = serverVersion ? ` ${serverVersion}` : '';
 
@@ -28,7 +32,23 @@ export default function UpdateModal({
   let body: React.ReactNode = null;
   let actions: React.ReactNode = <Button onPress={onDismiss}>Hide</Button>;
 
-  if (phase === 'permission') {
+  if (phase === 'available') {
+    title = 'Update available';
+    body = (
+      <Text>
+        Connect{versionLabel} is available. Update now? You can turn on
+        automatic updates in Menu → About Connect.
+      </Text>
+    );
+    actions = (
+      <>
+        <Button onPress={onDismiss}>Later</Button>
+        <Button mode="contained" onPress={onUpdate}>
+          Update
+        </Button>
+      </>
+    );
+  } else if (phase === 'permission') {
     title = 'Update available';
     body = (
       <Text>
@@ -62,7 +82,16 @@ export default function UpdateModal({
     );
   } else {
     title = 'Update failed';
-    body = <Text>Could not update to version{versionLabel}.</Text>;
+    body = (
+      <View style={{ gap: 8 }}>
+        <Text>Could not update to version{versionLabel}.</Text>
+        {error ? (
+          <Text variant="bodySmall" style={{ opacity: 0.8 }}>
+            {error}
+          </Text>
+        ) : null}
+      </View>
+    );
     actions = (
       <>
         <Button onPress={onDismiss}>Later</Button>

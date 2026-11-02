@@ -429,6 +429,7 @@ const Menu = () => {
     ...(walletEnabled
       ? [{ id: 'wallet', label: 'Wallet', hint: 'View your coins', icon: 'monetization-on', color: '#D97706', onPress: goToWallet }]
       : []),
+    { id: 'about', label: 'About', hint: 'Version & updates', icon: 'info', color: '#0284C7', onPress: () => (navigation as any).navigate('Menu', { screen: 'About' }) },
   ];
   const orderedShortcuts = useMemo(() => {
     const orderIndex = new Map(appOrder.map((id, index) => [id, index]));

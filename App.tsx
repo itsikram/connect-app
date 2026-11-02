@@ -81,6 +81,7 @@ import {
   RecoverySos,
 } from './src/screens/RecoveryScreens';
 import Settings from './src/screens/Settings';
+import AboutScreen from './src/screens/AboutScreen';
 import Tasks from './src/screens/Tasks';
 import Notes from './src/screens/Notes';
 import MyProfile from './src/screens/MyProfile';
@@ -362,6 +363,7 @@ function MenuStack() {
       <Stack.Screen name="ConnectProfile" component={ConnectProfile} />
       <Stack.Screen name="SingleWatch" component={SingleWatch} />
       <Stack.Screen name="Settings" component={Settings} />
+      <Stack.Screen name="About" component={AboutScreen} />
       <Stack.Screen name="Tasks" component={Tasks} />
       <Stack.Screen name="Notes" component={Notes} />
       <Stack.Screen name="FitnessOnboarding" component={FitnessOnboarding} />
@@ -1227,9 +1229,11 @@ function AppContent() {
               phase={appUpdate.phase}
               serverVersion={appUpdate.version}
               progress={appUpdate.progress}
+              error={appUpdate.error}
               onDismiss={appUpdate.dismiss}
               onAllow={appUpdate.allowInstalls}
               onRetry={appUpdate.retry}
+              onUpdate={appUpdate.update}
             />
           </>
         );

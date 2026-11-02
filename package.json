@@ -1,6 +1,6 @@
 {
   "name": "Connect",
-  "version": "2.1.9",
+  "version": "2.2.0",
   "private": true,
   "main": "index.js",
   "scripts": {
@@ -12,6 +12,7 @@
     "test": "jest",
     "tunnel": "expo start --tunnel --go",
     "control": "node scripts/expo-control/index.js",
+    "check:apk": "python -I scripts/check_apk.py",
     "eas-build-post-install": "bash scripts/eas-fix-hermesc.sh",
     "eas:android:dev": "eas build --platform android --profile development",
     "eas:android:preview": "eas build --platform android --profile preview",

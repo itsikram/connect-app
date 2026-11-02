@@ -8,6 +8,8 @@ import android.content.pm.PackageInstaller
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -50,6 +52,46 @@ class AppUpdateModule(private val reactContext: ReactApplicationContext) :
       promise.reject("version_error", e)
     }
   }
+
+  /** Build, install and device details for the About screen. */
+  @ReactMethod
+  fun getAppInfo(promise: Promise) {
+    try {
+      val info = installedPackageInfo(reactContext)
+      val app = reactContext.applicationInfo
+      val map = Arguments.createMap()
+      map.putString("packageName", reactContext.packageName)
+      map.putString("versionName", info.versionName ?: "")
+      map.putDouble("versionCode", versionCodeOf(info).toDouble())
+      map.putDouble("firstInstallTime", info.firstInstallTime.toDouble())
+      map.putDouble("lastUpdateTime", info.lastUpdateTime.toDouble())
+      map.putInt("targetSdk", app.targetSdkVersion)
+      map.putInt("minSdk", app.minSdkVersion)
+      map.putString("installer", installerPackage())
+      // lib/arm64, lib/arm, lib/x86 or lib/x86_64: the native code this device runs.
+      map.putString("abi", app.nativeLibraryDir?.let { File(it).name } ?: "")
+      val abis = Arguments.createArray()
+      Build.SUPPORTED_ABIS.forEach { abis.pushString(it) }
+      map.putArray("supportedAbis", abis)
+      map.putDouble("pageSize", Os.sysconf(OsConstants._SC_PAGESIZE).toDouble())
+      promise.resolve(map)
+    } catch (e: Exception) {
+      promise.reject("app_info_error", e)
+    }
+  }
+
+  private fun installerPackage(): String? =
+    try {
+      val pm = reactContext.packageManager
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        pm.getInstallSourceInfo(reactContext.packageName).installingPackageName
+      } else {
+        @Suppress("DEPRECATION")
+        pm.getInstallerPackageName(reactContext.packageName)
+      }
+    } catch (_: Exception) {
+      null
+    }
 
   /** Whether the user allowed this app to install apps ("Install unknown apps"). */
   @ReactMethod
@@ -264,10 +306,12 @@ class AppUpdateModule(private val reactContext: ReactApplicationContext) :
     emit("AppUpdateProgress", map)
   }
 
-  private fun emitStatus(status: String, message: String?) {
+  private fun emitStatus(status: String, message: String?, code: Int? = null) {
     val map = Arguments.createMap()
     map.putString("status", status)
     if (message != null) map.putString("message", message)
+    // PackageInstaller.STATUS_* of a finished install session.
+    if (code != null) map.putInt("code", code)
     emit("AppUpdateStatus", map)
   }
 
@@ -293,8 +337,8 @@ class AppUpdateModule(private val reactContext: ReactApplicationContext) :
     @Volatile
     private var instance: AppUpdateModule? = null
 
-    fun emitInstallStatus(status: String, message: String?) {
-      instance?.emitStatus(status, message)
+    fun emitInstallStatus(status: String, message: String?, code: Int? = null) {
+      instance?.emitStatus(status, message, code)
     }
 
     /** Shows Android's install confirmation, from the app's screen when it is open. */
